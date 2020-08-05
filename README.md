@@ -4,6 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/smallstep/crypto)](https://goreportcard.com/report/github.com/smallstep/crypto)
 [![Build Status](https://travis-ci.com/smallstep/crypto.svg?branch=master)](https://travis-ci.com/smallstep/crypto)
 [![codecov](https://codecov.io/gh/smallstep/crypto/branch/master/graph/badge.svg)](https://codecov.io/gh/smallstep/crypto)
+[![Documentation](https://godoc.org/go.step.sm/crypto?status.svg)](https://pkg.go.dev/mod/go.step.sm/crypto)
 
 Crypto is a collection of packages used in [smallstep](https://smallstep.com) products. See:
 
