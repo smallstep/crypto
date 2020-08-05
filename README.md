@@ -12,7 +12,26 @@ Crypto is a collection of packages used in [smallstep](https://smallstep.com) pr
   authority (X.509 & SSH) & ACME server for secure automated certificate
   management, so you can use TLS everywhere & SSO for SSH.
 
-## x509util
+## Usage
 
-Package  implements utilities to build X.509 certificates based on JSON
+To add this to a project just run:
+
+```sh
+go get go.step.sm/crypto
+```
+
+### Packages
+
+### x509util
+
+Package x509util implements utilities to build X.509 certificates based on JSON
 templates.
+
+### sshutil
+
+Package sshutil implements utilities to build SSH certificates based on JSON
+templates.
+
+### randutil
+
+Package randutil provides methods to generate random strings and salts.
