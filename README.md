@@ -26,14 +26,14 @@ go get go.step.sm/crypto
 
 ### x509util
 
-Package x509util implements utilities to build X.509 certificates based on JSON
+Package `x509util` implements utilities to build X.509 certificates based on JSON
 templates.
 
 ### sshutil
 
-Package sshutil implements utilities to build SSH certificates based on JSON
+Package `sshutil` implements utilities to build SSH certificates based on JSON
 templates.
 
 ### randutil
 
-Package randutil provides methods to generate random strings and salts.
+Package `randutil` provides methods to generate random strings and salts.
