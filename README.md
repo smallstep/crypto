@@ -22,7 +22,7 @@ To add this to a project just run:
 go get go.step.sm/crypto
 ```
 
-### Packages
+## Packages
 
 ### x509util
 
