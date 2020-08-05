@@ -1,8 +1,9 @@
 # crypto
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Report Card](https://goreportcard.com/badge/github.com/smallstep/crypto)](https://goreportcard.com/report/github.com/smallstep/crypto)
 [![Build Status](https://travis-ci.com/smallstep/crypto.svg?branch=master)](https://travis-ci.com/smallstep/crypto)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![codecov](https://codecov.io/gh/smallstep/crypto/branch/master/graph/badge.svg)](https://codecov.io/gh/smallstep/crypto)
 
 Crypto is a collection of packages used in [smallstep](https://smallstep.com) products. See:
 
