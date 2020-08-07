@@ -1,8 +1,10 @@
 # crypto
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Report Card](https://goreportcard.com/badge/github.com/smallstep/crypto)](https://goreportcard.com/report/github.com/smallstep/crypto)
 [![Build Status](https://travis-ci.com/smallstep/crypto.svg?branch=master)](https://travis-ci.com/smallstep/crypto)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![codecov](https://codecov.io/gh/smallstep/crypto/branch/master/graph/badge.svg)](https://codecov.io/gh/smallstep/crypto)
+[![Documentation](https://godoc.org/go.step.sm/crypto?status.svg)](https://pkg.go.dev/mod/go.step.sm/crypto)
 
 Crypto is a collection of packages used in [smallstep](https://smallstep.com) products. See:
 
@@ -12,7 +14,26 @@ Crypto is a collection of packages used in [smallstep](https://smallstep.com) pr
   authority (X.509 & SSH) & ACME server for secure automated certificate
   management, so you can use TLS everywhere & SSO for SSH.
 
-## x509util
+## Usage
 
-Package  implements utilities to build X.509 certificates based on JSON
+To add this to a project just run:
+
+```sh
+go get go.step.sm/crypto
+```
+
+## Packages
+
+### x509util
+
+Package `x509util` implements utilities to build X.509 certificates based on JSON
 templates.
+
+### sshutil
+
+Package `sshutil` implements utilities to build SSH certificates based on JSON
+templates.
+
+### randutil
+
+Package `randutil` provides methods to generate random strings and salts.

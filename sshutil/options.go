@@ -1,8 +1,7 @@
-package x509util
+package sshutil
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/base64"
 	"io/ioutil"
 	"text/template"
@@ -30,7 +29,7 @@ type Options struct {
 	CertBuffer *bytes.Buffer
 }
 
-func (o *Options) apply(cr *x509.CertificateRequest, opts []Option) (*Options, error) {
+func (o *Options) apply(cr CertificateRequest, opts []Option) (*Options, error) {
 	for _, fn := range opts {
 		if err := fn(cr, o); err != nil {
 			return o, err
@@ -40,12 +39,12 @@ func (o *Options) apply(cr *x509.CertificateRequest, opts []Option) (*Options, e
 }
 
 // Option is the type used as a variadic argument in NewCertificate.
-type Option func(cr *x509.CertificateRequest, o *Options) error
+type Option func(cr CertificateRequest, o *Options) error
 
 // WithTemplate is an options that executes the given template text with the
 // given data.
 func WithTemplate(text string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+	return func(cr CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
 		funcMap := getFuncMap(&terr.Message)
 
@@ -70,7 +69,7 @@ func WithTemplate(text string, data TemplateData) Option {
 // WithTemplateBase64 is an options that executes the given template base64
 // string with the given data.
 func WithTemplateBase64(s string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+	return func(cr CertificateRequest, o *Options) error {
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
 			return errors.Wrap(err, "error decoding template")
@@ -83,7 +82,7 @@ func WithTemplateBase64(s string, data TemplateData) Option {
 // WithTemplateFile is an options that reads the template file and executes it
 // with the given data.
 func WithTemplateFile(path string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+	return func(cr CertificateRequest, o *Options) error {
 		filename := step.Abs(path)
 		b, err := ioutil.ReadFile(filename)
 		if err != nil {
