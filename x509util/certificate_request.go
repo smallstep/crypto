@@ -1,8 +1,13 @@
 package x509util
 
 import (
+	"crypto"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
+
+	"github.com/pkg/errors"
 )
 
 // CertificateRequest is the JSON representation of an X.509 certificate. It is
@@ -67,4 +72,24 @@ func (c *CertificateRequest) GetLeafCertificate() *Certificate {
 		x509.ExtKeyUsageClientAuth,
 	})
 	return cert
+}
+
+// CreateCertificateRequest creates a simple X.509 certificate request with the
+// given common name and sans.
+func CreateCertificateRequest(commonName string, sans []string, signer crypto.Signer) (*x509.CertificateRequest, error) {
+	dnsNames, ips, emails, uris := SplitSANs(sans)
+	asn1Data, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName: commonName,
+		},
+		DNSNames:       dnsNames,
+		IPAddresses:    ips,
+		EmailAddresses: emails,
+		URIs:           uris,
+	}, signer)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating certificate request")
+	}
+	// This should not fail
+	return x509.ParseCertificateRequest(asn1Data)
 }

@@ -1,9 +1,13 @@
 package x509util
 
 import (
+	"crypto"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"net"
 	"net/url"
 	"reflect"
@@ -11,7 +15,6 @@ import (
 )
 
 func Test_newCertificateRequest(t *testing.T) {
-
 	type args struct {
 		cr *x509.CertificateRequest
 	}
@@ -206,6 +209,67 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 			}
 			if got := c.GetLeafCertificate(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CertificateRequest.GetLeafCertificate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreateCertificateRequest(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badSigner := createBadSigner(t)
+
+	type args struct {
+		commonName string
+		sans       []string
+		signer     crypto.Signer
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *x509.CertificateRequest
+		wantErr bool
+	}{
+		{"ok", args{"foo.bar", []string{"foo.bar", "john@doe.com", "uri:uuid:48da8308-b399-4748-861f-cb418362f820", "1.2.3.4"}, priv}, &x509.CertificateRequest{
+			Version: 0,
+			Subject: pkix.Name{
+				CommonName: "foo.bar",
+				Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "foo.bar"}},
+			},
+			DNSNames:           []string{"foo.bar"},
+			EmailAddresses:     []string{"john@doe.com"},
+			IPAddresses:        []net.IP{{1, 2, 3, 4}},
+			URIs:               []*url.URL{{Scheme: "uri", Opaque: "uuid:48da8308-b399-4748-861f-cb418362f820"}},
+			PublicKey:          pub,
+			SignatureAlgorithm: x509.PureEd25519,
+			PublicKeyAlgorithm: x509.Ed25519,
+		}, false},
+		{"fail ", args{"foo.bar", []string{"foo.bar"}, badSigner}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := CreateCertificateRequest(tt.args.commonName, tt.args.sans, tt.args.signer)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CreateCertificateRequest() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if err := got.CheckSignature(); err != nil {
+					t.Errorf("CheckSignature() error = %v", err)
+					return
+				}
+				tt.want.Raw = got.Raw
+				tt.want.RawSubject = got.RawSubject
+				tt.want.RawSubjectPublicKeyInfo = got.RawSubjectPublicKeyInfo
+				tt.want.RawTBSCertificateRequest = got.RawTBSCertificateRequest
+				tt.want.Attributes = got.Attributes //nolint:deprecated
+				tt.want.Extensions = got.Extensions
+				tt.want.Signature = got.Signature
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("CreateCertificateRequest() = %v, want %v", got, tt.want)
 			}
 		})
 	}
