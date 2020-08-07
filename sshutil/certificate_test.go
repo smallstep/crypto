@@ -50,7 +50,7 @@ func TestNewCertificate(t *testing.T) {
 		want    *Certificate
 		wantErr bool
 	}{
-		{"user", args{cr, []Option{WithTemplate(DefaultCertificate, CreateTemplateData(UserCert, "jane@doe.com", []string{"jane"}))}}, &Certificate{
+		{"user", args{cr, []Option{WithTemplate(DefaultTemplate, CreateTemplateData(UserCert, "jane@doe.com", []string{"jane"}))}}, &Certificate{
 			Nonce:           nil,
 			Key:             key,
 			Serial:          0,
@@ -71,7 +71,7 @@ func TestNewCertificate(t *testing.T) {
 			SignatureKey: nil,
 			Signature:    nil,
 		}, false},
-		{"host", args{cr, []Option{WithTemplate(DefaultCertificate, CreateTemplateData(HostCert, "foobar", []string{"foo.internal", "bar.internal"}))}}, &Certificate{
+		{"host", args{cr, []Option{WithTemplate(DefaultTemplate, CreateTemplateData(HostCert, "foobar", []string{"foo.internal", "bar.internal"}))}}, &Certificate{
 			Nonce:           nil,
 			Key:             key,
 			Serial:          0,
@@ -116,7 +116,7 @@ func TestNewCertificate(t *testing.T) {
 			SignatureKey: nil,
 			Signature:    nil,
 		}, false},
-		{"base64", args{cr, []Option{WithTemplateBase64(base64.StdEncoding.EncodeToString([]byte(DefaultCertificate)), CreateTemplateData(HostCert, "foo.internal", nil))}}, &Certificate{
+		{"base64", args{cr, []Option{WithTemplateBase64(base64.StdEncoding.EncodeToString([]byte(DefaultTemplate)), CreateTemplateData(HostCert, "foo.internal", nil))}}, &Certificate{
 			Nonce:           nil,
 			Key:             key,
 			Serial:          0,

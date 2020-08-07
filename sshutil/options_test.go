@@ -42,7 +42,7 @@ func TestWithTemplate(t *testing.T) {
 		want    Options
 		wantErr bool
 	}{
-		{"user", args{DefaultCertificate, TemplateData{
+		{"user", args{DefaultTemplate, TemplateData{
 			TypeKey:       "user",
 			KeyIDKey:      "jane@doe.com",
 			PrincipalsKey: []string{"jane", "jane@doe.com"},
@@ -55,7 +55,7 @@ func TestWithTemplate(t *testing.T) {
 	"extensions": {"permit-X11-forwarding":"","permit-agent-forwarding":"","permit-port-forwarding":"","permit-pty":"","permit-user-rc":""},
 	"criticalOptions": null
 }`)}, false},
-		{"host", args{DefaultCertificate, TemplateData{
+		{"host", args{DefaultTemplate, TemplateData{
 			TypeKey:            "host",
 			KeyIDKey:           "foo",
 			PrincipalsKey:      []string{"foo.internal"},
@@ -105,7 +105,7 @@ func TestWithTemplateBase64(t *testing.T) {
 		want    Options
 		wantErr bool
 	}{
-		{"host", args{base64.StdEncoding.EncodeToString([]byte(DefaultCertificate)), TemplateData{
+		{"host", args{base64.StdEncoding.EncodeToString([]byte(DefaultTemplate)), TemplateData{
 			TypeKey:            "host",
 			KeyIDKey:           "foo.internal",
 			PrincipalsKey:      []string{"foo.internal", "bar.internal"},

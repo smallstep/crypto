@@ -140,8 +140,8 @@ func (t TemplateData) SetCertificateRequest(cr CertificateRequest) {
 	t.SetInsecure(CertificateRequestKey, cr)
 }
 
-// DefaultCertificate is the default template for an SSH certificate.
-const DefaultCertificate = `{
+// DefaultTemplate is the default template for an SSH certificate.
+const DefaultTemplate = `{
 	"type": "{{ .Type }}",
 	"keyId": "{{ .KeyID }}",
 	"principals": {{ toJson .Principals }},
@@ -149,9 +149,9 @@ const DefaultCertificate = `{
 	"criticalOptions": {{ toJson .CriticalOptions }}
 }`
 
-// DefaultAdminCertificate is the template used by an admin user in a OIDC
+// DefaultAdminTemplate is the template used by an admin user in a OIDC
 // provisioner.
-const DefaultAdminCertificate = `{
+const DefaultAdminTemplate = `{
 	"type": "{{ .Insecure.CR.Type }}",
 	"keyId": "{{ .Insecure.CR.KeyID }}",
 	"principals": {{ toJson .Insecure.CR.Principals }}
@@ -161,11 +161,11 @@ const DefaultAdminCertificate = `{
 {{- end }}
 }`
 
-// DefaultIIDCertificate is the default template for IID provisioners. By
-// default certificate type will be set always to host, key id to the instance
-// id. Principals will be only enforced by the provisioner if disableCustomSANs
-// is set to true.
-const DefaultIIDCertificate = `{
+// DefaultIIDTemplate is the default template for IID provisioners. By default
+// certificate type will be set always to host, key id to the instance id.
+// Principals will be only enforced by the provisioner if disableCustomSANs is
+// set to true.
+const DefaultIIDTemplate = `{
 	"type": "{{ .Type }}",
 	"keyId": "{{ .KeyID }}",
 {{- if .Insecure.CR.Principals }}

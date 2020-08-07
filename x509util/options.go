@@ -12,6 +12,10 @@ import (
 	"go.step.sm/crypto/internal/step"
 )
 
+// getFuncMap returns the list of functions provided by sprig. It changes the
+// function "fail" to set the given string, this way we can report template
+// errors directly to the template without having the wrapper that text/template
+// adds.
 func getFuncMap(failMessage *string) template.FuncMap {
 	m := sprig.TxtFuncMap()
 	m["fail"] = func(msg string) (string, error) {
