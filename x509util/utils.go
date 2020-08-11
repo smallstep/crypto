@@ -4,15 +4,29 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/base64"
+	"encoding/hex"
 	"math/big"
 	"net"
 	"net/url"
 	"strings"
 
 	"github.com/pkg/errors"
+)
+
+// FingerprintEncoding defines the supported encodigns in certificate
+// fingerprints.
+type FingerprintEncoding int
+
+// Supported fingerprint encodings.
+const (
+	HexFingerprint FingerprintEncoding = iota
+	Base64Fingerprint
+	Base64UrlFingerprint
 )
 
 // SplitSANs splits a slice of Subject Alternative Names into slices of
@@ -23,9 +37,6 @@ func SplitSANs(sans []string) (dnsNames []string, ips []net.IP, emails []string,
 	ips = []net.IP{}
 	emails = []string{}
 	uris = []*url.URL{}
-	if sans == nil {
-		return
-	}
 	for _, san := range sans {
 		if ip := net.ParseIP(san); ip != nil {
 			ips = append(ips, ip)
@@ -58,6 +69,28 @@ func CreateSANs(sans []string) []SubjectAlternativeName {
 		sanTypes = append(sanTypes, SubjectAlternativeName{Type: "uri", Value: v.String()})
 	}
 	return sanTypes
+}
+
+// Fingerprint returns the SHA-256 fingerprint of the certificate.
+func Fingerprint(cert *x509.Certificate) string {
+	return EncodedFingerprint(cert, HexFingerprint)
+}
+
+// EncodedFingerprint returns an encoded the SHA-256 fingerprint of the
+// certificate using the specified encoding. In an invalid encoding is passed,
+// the return value will be an empty string.
+func EncodedFingerprint(cert *x509.Certificate, encoding FingerprintEncoding) string {
+	sum := sha256.Sum256(cert.Raw)
+	switch encoding {
+	case HexFingerprint:
+		return strings.ToLower(hex.EncodeToString(sum[:]))
+	case Base64Fingerprint:
+		return base64.StdEncoding.EncodeToString(sum[:])
+	case Base64UrlFingerprint:
+		return base64.URLEncoding.EncodeToString(sum[:])
+	default:
+		return ""
+	}
 }
 
 // generateSerialNumber returns a random serial number.
