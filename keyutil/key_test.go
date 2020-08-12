@@ -53,9 +53,9 @@ func (k *badSSHPublicKey) Type() string                                 { return
 func (k *badSSHPublicKey) Marshal() []byte                              { return []byte("bar") }
 func (k *badSSHPublicKey) Verify(data []byte, sig *ssh.Signature) error { return nil }
 
-func must2(args ...interface{}) interface{} {
-	if args[1] != nil {
-		panic(args[1])
+func must(args ...interface{}) interface{} {
+	if err := args[len(args)-1]; err != nil {
+		panic(err)
 	}
 	return args[0]
 }
@@ -70,9 +70,9 @@ func setTeeReader(t *testing.T, w *bytes.Buffer) {
 }
 
 func TestPublicKey(t *testing.T) {
-	ecdsaKey := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
-	rsaKey := must2(generateRSAKey(2048)).(*rsa.PrivateKey)
-	ed25519Key := must2(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
+	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 
 	type args struct {
 		priv interface{}
@@ -137,7 +137,7 @@ func TestGenerateDefaultKey(t *testing.T) {
 func TestGenerateDefaultKeyPair(t *testing.T) {
 	buf := new(bytes.Buffer)
 	setTeeReader(t, buf)
-	ecdsaKey := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
 	rand.Reader = buf
 
 	tests := []struct {
@@ -257,10 +257,10 @@ func TestGenerateKey_rsa(t *testing.T) {
 func TestGenerateKeyPair(t *testing.T) {
 	buf := new(bytes.Buffer)
 	setTeeReader(t, buf)
-	p256Key := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
-	p384Key := must2(generateECKey("P-384")).(*ecdsa.PrivateKey)
-	p521Key := must2(generateECKey("P-521")).(*ecdsa.PrivateKey)
-	ed25519Key := must2(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	p256Key := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	p384Key := must(generateECKey("P-384")).(*ecdsa.PrivateKey)
+	p521Key := must(generateECKey("P-521")).(*ecdsa.PrivateKey)
+	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	_, err := generateOctKey(32)
 	assert.FatalError(t, err)
 	rand.Reader = buf
@@ -350,11 +350,56 @@ func TestGenerateKeyPair_rsa(t *testing.T) {
 	}
 }
 
+func TestGenerateSigner(t *testing.T) {
+	buf := new(bytes.Buffer)
+	setTeeReader(t, buf)
+	p256Key := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	p384Key := must(generateECKey("P-384")).(*ecdsa.PrivateKey)
+	p521Key := must(generateECKey("P-521")).(*ecdsa.PrivateKey)
+	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	_, err := generateOctKey(32)
+	assert.FatalError(t, err)
+	rand.Reader = buf
+
+	type args struct {
+		kty  string
+		crv  string
+		size int
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    crypto.Signer
+		wantErr bool
+	}{
+		{"P-256", args{"EC", "P-256", 0}, p256Key, false},
+		{"P-384", args{"EC", "P-384", 0}, p384Key, false},
+		{"P-521", args{"EC", "P-521", 0}, p521Key, false},
+		{"Ed25519", args{"OKP", "Ed25519", 0}, ed25519Key, false},
+		{"OCT", args{"oct", "", 32}, nil, true},
+		{"eof", args{"EC", "P-256", 0}, nil, true},
+		{"unknown", args{"EC", "P-128", 0}, nil, true},
+		{"unknown", args{"FOO", "", 1024}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GenerateSigner(tt.args.kty, tt.args.crv, tt.args.size)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GenerateSigner() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GenerateSigner() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractKey(t *testing.T) {
-	rsaKey := must2(generateRSAKey(2048)).(*rsa.PrivateKey)
-	ecKey := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
-	edKey := must2(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
-	octKey := must2(generateOctKey(64)).([]byte)
+	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
+	ecKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	edKey := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	octKey := must(generateOctKey(64)).([]byte)
 
 	b, _ := pem.Decode([]byte(testCRT))
 	cert, err := x509.ParseCertificate(b.Bytes)
@@ -413,13 +458,13 @@ func TestExtractKey(t *testing.T) {
 }
 
 func TestVerifyPair(t *testing.T) {
-	ecdsaKey := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
-	rsaKey := must2(generateRSAKey(2048)).(*rsa.PrivateKey)
-	ed25519Key := must2(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
+	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 
-	ecdsaKey1 := must2(generateECKey("P-256")).(*ecdsa.PrivateKey)
-	rsaKey1 := must2(generateRSAKey(2048)).(*rsa.PrivateKey)
-	ed25519Key1 := must2(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	ecdsaKey1 := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	rsaKey1 := must(generateRSAKey(2048)).(*rsa.PrivateKey)
+	ed25519Key1 := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 
 	type args struct {
 		pubkey interface{}

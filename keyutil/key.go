@@ -48,18 +48,49 @@ func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 
 // GenerateDefaultKey generates a public/private key pair using sane defaults
 // for key type, curve, and size.
-func GenerateDefaultKey() (interface{}, error) {
+func GenerateDefaultKey() (crypto.PrivateKey, error) {
 	return GenerateKey(DefaultKeyType, DefaultKeyCurve, DefaultKeySize)
 }
 
 // GenerateDefaultKeyPair generates a public/private key pair using configured
 // default values for key type, curve, and size.
-func GenerateDefaultKeyPair() (interface{}, interface{}, error) {
+func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 	return GenerateKeyPair(DefaultKeyType, DefaultKeyCurve, DefaultKeySize)
 }
 
 // GenerateKey generates a key of the given type (kty).
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
+	// ifacer makes sure that you can compare crypto.PrivateKey to nil.
+	ifacer := func(v crypto.PrivateKey, err error) (crypto.PrivateKey, error) {
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	}
+
+	switch kty {
+	case "EC", "RSA", "OKP":
+		return ifacer(GenerateSigner(kty, crv, size))
+	case "oct":
+		return ifacer(generateOctKey(size))
+	default:
+		return nil, errors.Errorf("unrecognized key type: %s", kty)
+	}
+}
+
+// GenerateKeyPair creates an asymmetric crypto keypair using input
+// configuration.
+func GenerateKeyPair(kty, crv string, size int) (crypto.PublicKey, crypto.PrivateKey, error) {
+	signer, err := GenerateSigner(kty, crv, size)
+	if err != nil {
+		return nil, nil, err
+	}
+	return signer.Public(), signer, nil
+}
+
+// GenerateSigner creates an asymentric crypto key that implements
+// crypto.Signer.
+func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 	switch kty {
 	case "EC":
 		return generateECKey(crv)
@@ -67,24 +98,9 @@ func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 		return generateRSAKey(size)
 	case "OKP":
 		return generateOKPKey(crv)
-	case "oct":
-		return generateOctKey(size)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
-}
-
-// GenerateKeyPair creates an asymmetric crypto keypair using input configuration.
-func GenerateKeyPair(kty, crv string, size int) (crypto.PublicKey, crypto.PrivateKey, error) {
-	priv, err := GenerateKey(kty, crv, size)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	pub, err := PublicKey(priv)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	return pub, priv, err
 }
 
 // ExtractKey returns the given public or private key or extracts the public key
@@ -141,7 +157,7 @@ func VerifyPair(pubkey crypto.PublicKey, key crypto.PrivateKey) error {
 	return nil
 }
 
-func generateECKey(crv string) (interface{}, error) {
+func generateECKey(crv string) (crypto.Signer, error) {
 	var c elliptic.Curve
 	switch crv {
 	case "P-256":
@@ -162,7 +178,7 @@ func generateECKey(crv string) (interface{}, error) {
 	return key, nil
 }
 
-func generateRSAKey(bits int) (interface{}, error) {
+func generateRSAKey(bits int) (crypto.Signer, error) {
 	key, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return nil, errors.Wrap(err, "error generating RSA key")
@@ -171,7 +187,7 @@ func generateRSAKey(bits int) (interface{}, error) {
 	return key, nil
 }
 
-func generateOKPKey(crv string) (interface{}, error) {
+func generateOKPKey(crv string) (crypto.Signer, error) {
 	switch crv {
 	case "Ed25519":
 		_, key, err := ed25519.GenerateKey(rand.Reader)
@@ -185,7 +201,7 @@ func generateOKPKey(crv string) (interface{}, error) {
 	}
 }
 
-func generateOctKey(size int) (interface{}, error) {
+func generateOctKey(size int) ([]byte, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	result := make([]byte, size)
 	for i := range result {
