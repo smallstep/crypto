@@ -60,19 +60,11 @@ func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 
 // GenerateKey generates a key of the given type (kty).
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
-	// ifacer makes sure that you can compare crypto.PrivateKey to nil.
-	ifacer := func(v crypto.PrivateKey, err error) (crypto.PrivateKey, error) {
-		if err != nil {
-			return nil, err
-		}
-		return v, nil
-	}
-
 	switch kty {
 	case "EC", "RSA", "OKP":
-		return ifacer(GenerateSigner(kty, crv, size))
+		return GenerateSigner(kty, crv, size)
 	case "oct":
-		return ifacer(generateOctKey(size))
+		return generateOctKey(size)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
@@ -201,7 +193,7 @@ func generateOKPKey(crv string) (crypto.Signer, error) {
 	}
 }
 
-func generateOctKey(size int) ([]byte, error) {
+func generateOctKey(size int) (interface{}, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	result := make([]byte, size)
 	for i := range result {
