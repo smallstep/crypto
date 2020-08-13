@@ -742,6 +742,9 @@ func TestOpenSSH(t *testing.T) {
 		if strings.HasSuffix(fn, ".pub.pem") {
 			continue
 		}
+		// To be able to run this in parallel we need to declare local
+		// variables.
+		fn, td := fn, td
 		t.Run(fn, func(t *testing.T) {
 			t.Parallel()
 			opts := []Options{

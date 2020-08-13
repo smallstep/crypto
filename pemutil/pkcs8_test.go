@@ -14,12 +14,16 @@ import (
 func TestEncryptDecryptPKCS8(t *testing.T) {
 	password := []byte("mypassword")
 	for fn, td := range files {
+		// skip encrypted and public keys
+		if td.encrypted || td.typ == rsaPublicKey || td.typ == ecdsaPublicKey || td.typ == ed25519PublicKey {
+			continue
+		}
+
+		// To be able to run this in parallel we need to declare local
+		// variables.
+		fn := fn
 		t.Run(fn, func(t *testing.T) {
 			t.Parallel()
-			// skip encrypted and public keys
-			if td.encrypted || td.typ == rsaPublicKey || td.typ == ecdsaPublicKey || td.typ == ed25519PublicKey {
-				return
-			}
 
 			data, err := ioutil.ReadFile(fn)
 			assert.FatalError(t, err)
@@ -30,7 +34,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 				return
 			}
 
-			data, err = MarshalPKCS8PrivateKey(key1)
+			data, err = x509.MarshalPKCS8PrivateKey(key1)
 			if err != nil {
 				t.Errorf("failed to marshal private key for %s: %v", fn, err)
 				return
@@ -52,7 +56,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 					continue
 				}
 
-				key2, err := ParsePKCS8PrivateKey(data)
+				key2, err := x509.ParsePKCS8PrivateKey(data)
 				if err != nil {
 					t.Errorf("failed to parse PKCS#8 key %s: %v", fn, err)
 					continue
@@ -96,7 +100,7 @@ func TestMarshalPKIXPublicKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := MarshalPKIXPublicKey(tt.args.pub)
+			got, err := x509.MarshalPKIXPublicKey(tt.args.pub)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MarshalPKIXPublicKey() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -140,7 +144,7 @@ func TestMarshalPKCS8PrivateKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := MarshalPKCS8PrivateKey(tt.args.key)
+			got, err := x509.MarshalPKCS8PrivateKey(tt.args.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MarshalPKCS8PrivateKey() error = %v, wantErr %v", err, tt.wantErr)
 				return
