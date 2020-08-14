@@ -293,7 +293,7 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 		priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "OPENSSH PRIVATE KEY":
-		priv, err := ParseOpenSSHPrivateKey(block.Bytes, withContext(ctx))
+		priv, err := ParseOpenSSHPrivateKey(b, withContext(ctx))
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "CERTIFICATE":
 		crt, err := x509.ParseCertificate(block.Bytes)

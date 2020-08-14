@@ -5,7 +5,6 @@
 package pemutil
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
@@ -57,50 +56,31 @@ type openSSHPrivateKeyBlock struct {
 //
 // This method is based on the implementation at
 // https://github.com/golang/crypto/blob/master/ssh/keys.go
-func ParseOpenSSHPrivateKey(key []byte, opts ...Options) (crypto.PrivateKey, error) {
+func ParseOpenSSHPrivateKey(pemBytes []byte, opts ...Options) (crypto.PrivateKey, error) {
 	// Populate options
 	ctx := newContext("PEM")
 	if err := ctx.apply(opts); err != nil {
 		return nil, err
 	}
 
-	if len(key) < len(sshMagic) || string(key[:len(sshMagic)]) != sshMagic {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, errors.Errorf("error decoding %s: not a valid PEM encoded block", ctx.filename)
+	}
+
+	if len(block.Bytes) < len(sshMagic) || string(block.Bytes[:len(sshMagic)]) != sshMagic {
 		return nil, errors.New("invalid openssh private key format")
 	}
-	remaining := key[len(sshMagic):]
+	remaining := block.Bytes[len(sshMagic):]
 
 	var w openSSHPrivateKey
 	if err := ssh.Unmarshal(remaining, &w); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error unmarshaling private key")
 	}
 
+	var err error
+	var key crypto.PrivateKey
 	if w.KdfName != "none" || w.CipherName != "none" {
-		if w.KdfName != sshDefaultKdf {
-			return nil, errors.Errorf("cannot decode encrypted private keys with %s key derivative function", w.KdfName)
-		}
-		if w.CipherName != sshDefaultCiphername {
-			return nil, errors.Errorf("cannot decode %s encrypted private keys", w.CipherName)
-		}
-
-		// Read kdf options.
-		buf := bytes.NewReader([]byte(w.KdfOpts))
-
-		var saltLength uint32
-		if err := binary.Read(buf, binary.BigEndian, &saltLength); err != nil {
-			return nil, errors.New("cannot decode encrypted private keys: bad format")
-		}
-
-		salt := make([]byte, saltLength)
-		if err := binary.Read(buf, binary.BigEndian, &salt); err != nil {
-			return nil, errors.New("cannot decode encrypted private keys: bad format")
-		}
-
-		var rounds uint32
-		if err := binary.Read(buf, binary.BigEndian, &rounds); err != nil {
-			return nil, errors.New("cannot decode encrypted private keys: bad format")
-		}
-
-		var err error
 		var password []byte
 		if len(ctx.password) > 0 {
 			password = ctx.password
@@ -112,163 +92,23 @@ func ParseOpenSSHPrivateKey(key []byte, opts ...Options) (crypto.PrivateKey, err
 		} else {
 			return nil, errors.Errorf("error decoding %s: file is password protected", ctx.filename)
 		}
-
-		// Derive the cipher key used in the cipher.
-		k, err := bcrypt_pbkdf.Key(password, salt, int(rounds), sshDefaultKeyLength+aes.BlockSize)
+		key, err = ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, password)
 		if err != nil {
-			return nil, errors.Wrap(err, "error deriving password")
+			return nil, errors.Wrap(err, "error parsing private key")
 		}
-
-		// Decrypt the private key using the derived secret.
-		dst := make([]byte, len(w.PrivKeyBlock))
-		iv := k[sshDefaultKeyLength : sshDefaultKeyLength+aes.BlockSize]
-		block, err := aes.NewCipher(k[:sshDefaultKeyLength])
+	} else {
+		key, err = ssh.ParseRawPrivateKey(pemBytes)
 		if err != nil {
-			return nil, errors.Wrap(err, "error creating cipher")
+			return nil, errors.Wrap(err, "error parsing private key")
 		}
-
-		stream := cipher.NewCTR(block, iv)
-		stream.XORKeyStream(dst, w.PrivKeyBlock)
-		w.PrivKeyBlock = dst
 	}
 
-	var pk1 openSSHPrivateKeyBlock
-	if err := ssh.Unmarshal(w.PrivKeyBlock, &pk1); err != nil {
-		if w.KdfName != "none" || w.CipherName != "none" {
-			return nil, errors.New("incorrect passphrase supplied")
-		}
-		return nil, err
-	}
-
-	if pk1.Check1 != pk1.Check2 {
-		if w.KdfName != "none" || w.CipherName != "none" {
-			return nil, errors.New("incorrect passphrase supplied")
-		}
-		return nil, errors.New("error decoding key: check mismatch")
-	}
-
-	// we only handle ed25519 and rsa keys currently
-	switch pk1.Keytype {
-	case ssh.KeyAlgoRSA:
-		// https://github.com/openssh/openssh-portable/blob/master/sshkey.c
-		key := struct {
-			N       *big.Int
-			E       *big.Int
-			D       *big.Int
-			Iqmp    *big.Int
-			P       *big.Int
-			Q       *big.Int
-			Comment string
-			Pad     []byte `ssh:"rest"`
-		}{}
-
-		if err := ssh.Unmarshal(pk1.Rest, &key); err != nil {
-			return nil, err
-		}
-
-		for i, b := range key.Pad {
-			if int(b) != i+1 {
-				return nil, errors.New("error decoding key: padding not as expected")
-			}
-		}
-
-		pk := &rsa.PrivateKey{
-			PublicKey: rsa.PublicKey{
-				N: key.N,
-				E: int(key.E.Int64()),
-			},
-			D:      key.D,
-			Primes: []*big.Int{key.P, key.Q},
-		}
-
-		if err := pk.Validate(); err != nil {
-			return nil, err
-		}
-
-		pk.Precompute()
-
-		return pk, nil
-	case ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521:
-		key := struct {
-			Curve   string
-			Pub     []byte
-			D       *big.Int
-			Comment string
-			Pad     []byte `ssh:"rest"`
-		}{}
-
-		if err := ssh.Unmarshal(pk1.Rest, &key); err != nil {
-			return nil, errors.Wrap(err, "error unmarshaling key")
-		}
-
-		for i, b := range key.Pad {
-			if int(b) != i+1 {
-				return nil, errors.New("error decoding key: padding not as expected")
-			}
-		}
-
-		var curve elliptic.Curve
-		switch key.Curve {
-		case "nistp256":
-			curve = elliptic.P256()
-		case "nistp384":
-			curve = elliptic.P384()
-		case "nistp521":
-			curve = elliptic.P521()
-		default:
-			return nil, errors.Errorf("error decoding key: unsupported elliptic curve %s", key.Curve)
-		}
-
-		N := curve.Params().N
-		X, Y := elliptic.Unmarshal(curve, key.Pub)
-		if X == nil || Y == nil {
-			return nil, errors.New("error decoding key: failed to unmarshal public key")
-		}
-
-		if key.D.Cmp(N) >= 0 {
-			return nil, errors.New("error decoding key: scalar is out of range")
-		}
-
-		x, y := curve.ScalarBaseMult(key.D.Bytes())
-		if x.Cmp(X) != 0 || y.Cmp(Y) != 0 {
-			return nil, errors.New("error decoding key: public key does not match private key")
-		}
-
-		return &ecdsa.PrivateKey{
-			PublicKey: ecdsa.PublicKey{
-				Curve: curve,
-				X:     X,
-				Y:     Y,
-			},
-			D: key.D,
-		}, nil
-	case ssh.KeyAlgoED25519:
-		key := struct {
-			Pub     []byte
-			Priv    []byte
-			Comment string
-			Pad     []byte `ssh:"rest"`
-		}{}
-
-		if err := ssh.Unmarshal(pk1.Rest, &key); err != nil {
-			return nil, err
-		}
-
-		for i, b := range key.Pad {
-			if int(b) != i+1 {
-				return nil, errors.New("error decoding key: padding not as expected")
-			}
-		}
-
-		if len(key.Priv) != ed25519.PrivateKeySize {
-			return nil, errors.New("private key unexpected length")
-		}
-
-		pk := ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize))
-		copy(pk, key.Priv)
-		return pk, nil
+	// Convert *ed25519.PrivateKey to ed25519.PrivateKey:
+	switch k := key.(type) {
+	case *ed25519.PrivateKey:
+		return *k, nil
 	default:
-		return nil, errors.Errorf("unsupported key type %s", pk1.Keytype)
+		return k, nil
 	}
 }
 
@@ -419,12 +259,11 @@ func SerializeOpenSSHPrivateKey(key crypto.PrivateKey, opts ...Options) (*pem.Bl
 		if err != nil {
 			return nil, err
 		}
-
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.BigEndian, uint32(sshDefaultSaltLength))
-		binary.Write(buf, binary.BigEndian, salt)
-		binary.Write(buf, binary.BigEndian, uint32(sshDefaultRounds))
-		w.KdfOpts = buf.String()
+		kdfOpts := struct {
+			Salt   []byte
+			Rounds uint32
+		}{salt, sshDefaultRounds}
+		w.KdfOpts = string(ssh.Marshal(kdfOpts))
 
 		// Derive key to encrypt the private key block.
 		k, err := bcrypt_pbkdf.Key(ctx.password, salt, sshDefaultRounds, sshDefaultKeyLength+aes.BlockSize)
