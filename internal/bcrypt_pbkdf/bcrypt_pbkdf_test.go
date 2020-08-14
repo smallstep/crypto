@@ -88,6 +88,7 @@ func TestBcryptHash(t *testing.T) {
 	}
 }
 
+//nolint:errcheck
 func BenchmarkKey(b *testing.B) {
 	pass := []byte("password")
 	salt := []byte("salt")

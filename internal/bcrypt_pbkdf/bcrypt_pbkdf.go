@@ -13,6 +13,7 @@ import (
 	// NOTE! Requires blowfish package version from Aug 1, 2014 or later.
 	// Will produce incorrect results if the package is older.
 	// See commit message for details: http://goo.gl/wx6g8O
+	//nolint:deprecated
 	"golang.org/x/crypto/blowfish"
 )
 
@@ -22,6 +23,7 @@ import (
 // Remember to get a good random salt of at least 16 bytes.  Using a higher
 // rounds count will increase the cost of an exhaustive search but will also
 // make derivation proportionally slower.
+//nolint:errcheck
 func Key(password, salt []byte, rounds, keyLen int) ([]byte, error) {
 	if rounds < 1 {
 		return nil, errors.New("bcrypt_pbkdf: number of rounds is too small")
