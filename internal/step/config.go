@@ -69,10 +69,7 @@ func init() {
 	// Get home path from environment or from the user object.
 	homePath = os.Getenv(HomeEnv)
 	if homePath == "" {
-		usr, err := user.Current()
-		if err == nil && usr.HomeDir != "" {
-			homePath = usr.HomeDir
-		} else {
+		if homePath = getUserHomeDir(); homePath == "" {
 			l.Fatalf("Error obtaining home directory, please define environment variable %s.", HomeEnv)
 		}
 	}
@@ -86,4 +83,12 @@ func init() {
 	// cleanup
 	homePath = filepath.Clean(homePath)
 	stepPath = filepath.Clean(stepPath)
+}
+
+func getUserHomeDir() string {
+	usr, err := user.Current()
+	if err == nil && usr.HomeDir != "" {
+		return usr.HomeDir
+	}
+	return ""
 }

@@ -88,3 +88,19 @@ func TestAbs(t *testing.T) {
 		})
 	}
 }
+
+func Test_getUserHomeDir(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"ok", os.Getenv("HOME")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getUserHomeDir(); got != tt.want {
+				t.Errorf("getUserHomeDir() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
