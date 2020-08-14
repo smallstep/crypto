@@ -270,7 +270,7 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 				return nil, err
 			}
 		} else {
-			return nil, errors.Errorf("error decoding %s: file is password protected", ctx.filename)
+			return nil, errors.Errorf("error decoding %s: key is password protected", ctx.filename)
 		}
 
 		block.Bytes, err = DecryptPEMBlock(block, pass)
