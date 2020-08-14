@@ -1,9 +1,12 @@
 package pemutil
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/pem"
 	"io/ioutil"
 	"reflect"
 	"testing"
@@ -68,55 +71,22 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 	}
 }
 
-func TestMarshalPKIXPublicKey(t *testing.T) {
-	mustPKIX := func(pub interface{}) []byte {
+func TestSerialize_PKCS8(t *testing.T) {
+	mustPKIX := func(pub interface{}) *pem.Block {
 		b, err := x509.MarshalPKIXPublicKey(pub)
 		assert.FatalError(t, err)
-		return b
+		return &pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: b,
+		}
 	}
-
-	rsaKey, err := Read("testdata/openssl.rsa2048.pub.pem")
-	assert.FatalError(t, err)
-	ecdsaKey, err := Read("testdata/openssl.p256.pub.pem")
-	assert.FatalError(t, err)
-	edKey, err := Read("testdata/pkcs8/openssl.ed25519.pem")
-	assert.FatalError(t, err)
-	edPubDer, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.pub.der")
-	assert.FatalError(t, err)
-
-	type args struct {
-		pub interface{}
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    []byte
-		wantErr bool
-	}{
-		{"rsa", args{rsaKey}, mustPKIX(rsaKey), false},
-		{"ecdsa", args{ecdsaKey}, mustPKIX(ecdsaKey), false},
-		{"ed25519", args{edKey.(ed25519.PrivateKey).Public()}, edPubDer, false},
-		{"fail", args{edKey}, nil, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := x509.MarshalPKIXPublicKey(tt.args.pub)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("MarshalPKIXPublicKey() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MarshalPKIXPublicKey() = \n got %v, \nwant %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMarshalPKCS8PrivateKey(t *testing.T) {
-	mustPKCS8 := func(pub interface{}) []byte {
-		b, err := x509.MarshalPKCS8PrivateKey(pub)
+	mustPKCS8 := func(priv interface{}) *pem.Block {
+		b, err := x509.MarshalPKCS8PrivateKey(priv)
 		assert.FatalError(t, err)
-		return b
+		return &pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: b,
+		}
 	}
 
 	rsaKey, err := Read("testdata/openssl.rsa2048.pem")
@@ -125,32 +95,38 @@ func TestMarshalPKCS8PrivateKey(t *testing.T) {
 	assert.FatalError(t, err)
 	edKey, err := Read("testdata/pkcs8/openssl.ed25519.pem")
 	assert.FatalError(t, err)
-	edPrivDer, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.der")
-	assert.FatalError(t, err)
+
+	rsaKeyPub := rsaKey.(*rsa.PrivateKey).Public()
+	ecdsaKeyPub := ecdsaKey.(*ecdsa.PrivateKey).Public()
+	edKeyPub := edKey.(ed25519.PrivateKey).Public()
 
 	type args struct {
-		key interface{}
+		pub interface{}
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    []byte
+		want    *pem.Block
 		wantErr bool
 	}{
 		{"rsa", args{rsaKey}, mustPKCS8(rsaKey), false},
+		{"rsa pub", args{rsaKeyPub}, mustPKIX(rsaKeyPub), false},
 		{"ecdsa", args{ecdsaKey}, mustPKCS8(ecdsaKey), false},
-		{"ed25519", args{edKey}, edPrivDer, false},
-		{"fail", args{edKey.(ed25519.PrivateKey).Public()}, nil, true},
+		{"ecdsa pub", args{ecdsaKeyPub}, mustPKIX(ecdsaKeyPub), false},
+		{"ed25519", args{edKey}, mustPKCS8(edKey), false},
+		{"ed25519 pub", args{edKeyPub}, mustPKIX(edKeyPub), false},
+		{"fail", args{[]byte("fooobar")}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := x509.MarshalPKCS8PrivateKey(tt.args.key)
+			// got, err := x509.MarshalPKIXPublicKey(tt.args.pub)
+			got, err := Serialize(tt.args.pub, WithPKCS8(true))
 			if (err != nil) != tt.wantErr {
-				t.Errorf("MarshalPKCS8PrivateKey() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Serialize() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MarshalPKCS8PrivateKey() = %v, want %v", got, tt.want)
+				t.Errorf("Serialize() = \n got %v, \nwant %v", got, tt.want)
 			}
 		})
 	}

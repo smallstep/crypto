@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/keyutil"
+	"golang.org/x/crypto/ssh"
 )
 
 type keyType int
@@ -134,7 +135,7 @@ func readOrParseSSH(fn string) (interface{}, error) {
 	return Read(fn)
 }
 
-func TestRead(t *testing.T) {
+func TestReadd(t *testing.T) {
 	var err error
 	var key interface{}
 
@@ -201,7 +202,8 @@ func TestRead(t *testing.T) {
 						ecdsaSignature := struct {
 							R, S *big.Int
 						}{}
-						asn1.Unmarshal(signature, &ecdsaSignature)
+						_, err := asn1.Unmarshal(signature, &ecdsaSignature)
+						assert.NoError(t, err)
 						verified := ecdsa.Verify(k, digest, ecdsaSignature.R, ecdsaSignature.S)
 						assert.True(t, verified)
 					case ed25519.PublicKey:
@@ -222,28 +224,33 @@ func TestRead(t *testing.T) {
 
 func TestReadCertificate(t *testing.T) {
 	tests := []struct {
-		fn  string
-		err error
+		fn   string
+		opts []Options
+		err  error
 	}{
-		{"testdata/ca.crt", nil},
-		{"testdata/ca.der", nil},
-		{"testdata/notexists.crt", errors.New("error reading testdata/notexists.crt: no such file or directory")},
-		{"testdata/badca.crt", errors.New("error parsing testdata/badca.crt")},
-		{"testdata/badpem.crt", errors.New("error decoding testdata/badpem.crt: not a valid PEM encoded block")},
-		{"testdata/badder.crt", errors.New("error parsing testdata/badder.crt: asn1: syntax error: data truncated")},
-		{"testdata/openssl.p256.pem", errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' does not contain a certificate")},
+		{"testdata/ca.crt", nil, nil},
+		{"testdata/ca.der", nil, nil},
+		{"testdata/bundle.crt", []Options{WithFirstBlock()}, nil},
+		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM endoded block")},
+		{"testdata/notexists.crt", nil, errors.New("error reading testdata/notexists.crt: no such file or directory")},
+		{"testdata/badca.crt", nil, errors.New("error parsing testdata/badca.crt")},
+		{"testdata/badpem.crt", nil, errors.New("error decoding testdata/badpem.crt: not a valid PEM encoded block")},
+		{"testdata/badder.crt", nil, errors.New("error parsing testdata/badder.crt: asn1: syntax error: data truncated")},
+		{"testdata/openssl.p256.pem", nil, errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' does not contain a certificate")},
 	}
 
 	for _, tc := range tests {
-		crt, err := ReadCertificate(tc.fn)
-		if tc.err != nil {
-			if assert.Error(t, err) {
-				assert.HasPrefix(t, err.Error(), tc.err.Error())
+		t.Run(tc.fn, func(t *testing.T) {
+			crt, err := ReadCertificate(tc.fn, tc.opts...)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Type(t, &x509.Certificate{}, crt)
 			}
-		} else {
-			assert.NoError(t, err)
-			assert.Type(t, &x509.Certificate{}, crt)
-		}
+		})
 	}
 }
 
@@ -350,6 +357,17 @@ func TestParsePEM(t *testing.T) {
 				cmpType: &x509.Certificate{},
 			}
 		},
+		"fail-options": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/ca.crt")
+			assert.FatalError(t, err)
+			err = errors.New("an error")
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{func(ctx *context) error { return err }},
+				cmpType: err,
+				err:     err,
+			}
+		},
 	}
 	for name, genTestCase := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -367,15 +385,15 @@ func TestParsePEM(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestSerialize(t *testing.T) {
 	tests := map[string]struct {
-		in   func() (interface{}, error)
-		pass string
-		file string
-		err  error
+		in    func() (interface{}, error)
+		pass  string
+		pkcs8 bool
+		file  string
+		err   error
 	}{
 		"unrecognized key type": {
 			in: func() (interface{}, error) {
@@ -405,6 +423,13 @@ func TestSerialize(t *testing.T) {
 			},
 			pass: "pass",
 		},
+		"EC Private Key success - encrypt pkcs8 data": {
+			in: func() (interface{}, error) {
+				return keyutil.GenerateKey("EC", "P-256", 0)
+			},
+			pass:  "pass",
+			pkcs8: true,
+		},
 		"EC Public Key success": {
 			in: func() (interface{}, error) {
 				pub, _, err := keyutil.GenerateKeyPair("EC", "P-256", 0)
@@ -420,6 +445,16 @@ func TestSerialize(t *testing.T) {
 			in: func() (interface{}, error) {
 				pub, _, err := keyutil.GenerateKeyPair("OKP", "Ed25519", 0)
 				return pub, err
+			},
+		},
+		"X.509 Certificate success": {
+			in: func() (interface{}, error) {
+				return ReadCertificate("testdata/ca.crt")
+			},
+		},
+		"X.509 Certificate request success": {
+			in: func() (interface{}, error) {
+				return &x509.CertificateRequest{}, nil
 			},
 		},
 		"propagate open key out file error": {
@@ -458,6 +493,8 @@ func TestSerialize(t *testing.T) {
 			p, err = Serialize(in)
 		} else if test.pass != "" && test.file != "" {
 			p, err = Serialize(in, WithPassword([]byte(test.pass)), ToFile(test.file, 0600))
+		} else if test.pass != "" && test.pkcs8 {
+			p, err = Serialize(in, WithPassword([]byte(test.pass)), WithPKCS8(true))
 		} else if test.pass != "" {
 			p, err = Serialize(in, WithPassword([]byte(test.pass)))
 		} else {
@@ -471,6 +508,7 @@ func TestSerialize(t *testing.T) {
 		} else {
 			if assert.Nil(t, test.err) {
 				switch k := in.(type) {
+				case *x509.Certificate, *x509.CertificateRequest:
 				case *rsa.PrivateKey:
 					if test.pass == "" {
 						assert.False(t, x509.IsEncryptedPEMBlock(p))
@@ -495,20 +533,32 @@ func TestSerialize(t *testing.T) {
 					assert.FatalError(t, err)
 					assert.Equals(t, p.Bytes, b)
 				case *ecdsa.PrivateKey:
-					assert.Equals(t, p.Type, "EC PRIVATE KEY")
 					var actualBytes []byte
 					if test.pass == "" {
+						assert.Equals(t, p.Type, "EC PRIVATE KEY")
 						assert.False(t, x509.IsEncryptedPEMBlock(p))
 						actualBytes = p.Bytes
+					} else if test.pkcs8 {
+						assert.Equals(t, p.Type, "ENCRYPTED PRIVATE KEY")
+						actualBytes, err = DecryptPKCS8PrivateKey(p.Bytes, []byte(test.pass))
+						assert.FatalError(t, err)
+						// remove padding
+						length := len(actualBytes)
+						paddginLength := int(actualBytes[length-1])
+						actualBytes = actualBytes[:length-paddginLength]
 					} else {
+						assert.Equals(t, p.Type, "EC PRIVATE KEY")
 						assert.True(t, x509.IsEncryptedPEMBlock(p))
 						assert.Equals(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
-
 						actualBytes, err = x509.DecryptPEMBlock(p, []byte(test.pass))
 						assert.FatalError(t, err)
 					}
 					var expectedBytes []byte
-					expectedBytes, err = x509.MarshalECPrivateKey(k)
+					if test.pkcs8 {
+						expectedBytes, err = x509.MarshalPKCS8PrivateKey(k)
+					} else {
+						expectedBytes, err = x509.MarshalECPrivateKey(k)
+					}
 					assert.FatalError(t, err)
 					assert.Equals(t, actualBytes, expectedBytes)
 
@@ -762,7 +812,7 @@ func TestOpenSSH(t *testing.T) {
 			block, err := SerializeOpenSSHPrivateKey(key, opts...)
 			assert.FatalError(t, err)
 
-			key2, err := ParseOpenSSHPrivateKey(block.Bytes, opts...)
+			key2, err := ParseOpenSSHPrivateKey(pem.EncodeToMemory(block), opts...)
 			assert.FatalError(t, err)
 
 			assert.Equals(t, key, key2)
@@ -776,6 +826,99 @@ func TestOpenSSH(t *testing.T) {
 			key3, err := Parse(pem.EncodeToMemory(block2), opts...)
 			assert.FatalError(t, err)
 			assert.Equals(t, key2, key3)
+		})
+	}
+}
+
+func TestRead_options(t *testing.T) {
+	mustKey := func(filename string) interface{} {
+		b, err := ioutil.ReadFile(filename)
+		assert.FatalError(t, err)
+		key, err := ssh.ParseRawPrivateKey(b)
+		assert.FatalError(t, err)
+		return key
+	}
+
+	p256Key := mustKey("testdata/openssl.p256.pem")
+	type args struct {
+		filename string
+		opts     []Options
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    interface{}
+		wantErr bool
+	}{
+		{"withPassword", args{"testdata/openssl.p256.enc.pem", []Options{WithPassword([]byte("mypassword"))}}, p256Key, false},
+		{"withPasswordFile", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordFile("testdata/password.txt")}}, p256Key, false},
+		{"withPasswordPrompt", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordPrompt("Enter the password", func(s string) ([]byte, error) {
+			return []byte("mypassword"), nil
+		})}}, p256Key, false},
+		{"missing", args{"testdata/missing.txt", nil}, nil, true},
+		{"missingPassword", args{"testdata/openssl.p256.enc.pem", nil}, nil, true},
+		{"withPasswordError", args{"testdata/openssl.p256.enc.pem", []Options{WithPassword([]byte("badpassword"))}}, nil, true},
+		{"withPasswordFileError", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordFile("testdata/missing.txt")}}, nil, true},
+		{"withPasswordPromptError", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordPrompt("Enter the password", func(s string) ([]byte, error) {
+			return nil, errors.New("an error")
+		})}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Read(tt.args.filename, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Read() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Read() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRead_promptPassword(t *testing.T) {
+	mustKey := func(filename string) interface{} {
+		b, err := ioutil.ReadFile(filename)
+		assert.FatalError(t, err)
+		key, err := ssh.ParseRawPrivateKey(b)
+		assert.FatalError(t, err)
+		return key
+	}
+
+	p256Key := mustKey("testdata/openssl.p256.pem")
+	type args struct {
+		filename         string
+		passwordPrompter PasswordPrompter
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    interface{}
+		wantErr bool
+	}{
+		{"PromptPassword", args{"testdata/openssl.p256.enc.pem", func(s string) ([]byte, error) {
+			return []byte("mypassword"), nil
+		}}, p256Key, false},
+		{"PromptPasswordBadPassword", args{"testdata/openssl.p256.enc.pem", func(s string) ([]byte, error) {
+			return []byte("badPassword"), nil
+		}}, nil, true},
+		{"PromptPasswordError", args{"testdata/openssl.p256.enc.pem", func(s string) ([]byte, error) {
+			return nil, errors.New("an error")
+		}}, nil, true},
+		{"PromptPasswordNil", args{"testdata/openssl.p256.enc.pem", nil}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			PromptPassword = tt.args.passwordPrompter
+			got, err := Read(tt.args.filename)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Read() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Read() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
