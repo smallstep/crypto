@@ -34,6 +34,10 @@ templates.
 Package `sshutil` implements utilities to build SSH certificates based on JSON
 templates.
 
+### keyutil
+
+Package `keyutil` implements utilities to generate cryptographic keys.
+
 ### randutil
 
 Package `randutil` provides methods to generate random strings and salts.
