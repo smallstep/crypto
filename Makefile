@@ -19,9 +19,12 @@ bootstrap:
 #########################################
 
 test:
-	$Q $(GOFLAGS) go test -short -coverprofile=coverage.out ./...
+	$Q $(GOFLAGS) go test -coverprofile=coverage.out ./...
 
-.PHONY: test
+race:
+	$Q $(GOFLAGS) go test -race ./...
+
+.PHONY: test race
 
 #########################################
 # Linting
