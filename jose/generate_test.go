@@ -7,15 +7,57 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"io/ioutil"
 	"math/big"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/smallstep/assert"
-	"github.com/stretchr/testify/require"
+	jose "gopkg.in/square/go-jose.v2"
 )
+
+func TestThumbprint(t *testing.T) {
+	parse := func(filename string) *JSONWebKey {
+		jwk, err := ReadKey(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return jwk
+	}
+
+	type args struct {
+		jwk *JSONWebKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"ec", args{parse("testdata/p256.priv.json")}, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", false},
+		{"ec pub", args{parse("testdata/p256.pub.json")}, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", false},
+		{"rsa", args{parse("testdata/rsa.priv.json")}, "CIsktcixZ5GyfkoWFyEV0tp5foASmBV4D-W7clYrCu8", false},
+		{"rsa pub", args{parse("testdata/rsa.pub.json")}, "CIsktcixZ5GyfkoWFyEV0tp5foASmBV4D-W7clYrCu8", false},
+		{"okp", args{parse("testdata/okp.priv.json")}, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", false},
+		{"okp pub", args{parse("testdata/okp.pub.json")}, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", false},
+		{"fail oct", args{parse("testdata/oct.json")}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Thumbprint(tt.args.jwk)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Thumbprint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Thumbprint() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestGenerateJWK(t *testing.T) {
 	tests := []struct {
@@ -141,9 +183,9 @@ func TestKeyUsageForCert(t *testing.T) {
 	for _, tt := range tests {
 		use, err := keyUsageForCert(tt.Cert)
 		if tt.ExpectErr != nil {
-			require.Equal(t, tt.ExpectErr, err)
+			assert.Equals(t, tt.ExpectErr, err)
 		} else {
-			require.Equal(t, tt.ExpectUse, use)
+			assert.Equals(t, tt.ExpectUse, use)
 		}
 	}
 }
@@ -194,10 +236,10 @@ func TestGenerateJWKFromPEMSubtle(t *testing.T) {
 				assert.Equals(t, tt.ExpectErr, err)
 				return
 			}
-			require.NoError(t, err)
-			require.Equal(t, tt.ExpectSig, jwk.Use)
-			require.Equal(t, ES256, jwk.Algorithm)
-			require.Equal(t, 1, len(jwk.Certificates))
+			assert.NoError(t, err)
+			assert.Equals(t, tt.ExpectSig, jwk.Use)
+			assert.Equals(t, ES256, jwk.Algorithm)
+			assert.Equals(t, 1, len(jwk.Certificates))
 		})
 	}
 }
@@ -221,5 +263,61 @@ func tempFile(t *testing.T) (_ *os.File, cleanup func()) {
 	return f, func() {
 		f.Close()
 		os.Remove(f.Name())
+	}
+}
+
+func TestGenerateDefaultKeyPair(t *testing.T) {
+	reader := mustTeeReader(t)
+	jwk := mustGenerateJWK(t, "EC", "P-256", "ES256", "sig", "", 0)
+	jwe := mustEncryptJWK(t, jwk, []byte("planned password"))
+	rand.Reader = reader
+	jose.RandReader = reader
+
+	var err error
+	if jwk.KeyID, err = Thumbprint(jwk); err != nil {
+		t.Fatal(err)
+	}
+	jwkPub := jwk.Public()
+
+	type args struct {
+		passphrase []byte
+	}
+	tests := []struct {
+		name           string
+		args           args
+		want           *JSONWebKey
+		want1          *JSONWebEncryption
+		want1Decrypted *JSONWebKey
+		wantErr        bool
+	}{
+		{"ok", args{[]byte("planned password")}, &jwkPub, jwe, jwk, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1, err := GenerateDefaultKeyPair(tt.args.passphrase)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GenerateDefaultKeyPair() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GenerateDefaultKeyPair() got = %#v, want %#v", got, tt.want)
+			}
+
+			if !reflect.DeepEqual(got1, tt.want1) {
+				data, err := Decrypt([]byte(got1.FullSerialize()), WithPassword(tt.args.passphrase))
+				if err != nil {
+					t.Fatalf("json.Marshal() error = %v", err)
+				}
+				var jwk JSONWebKey
+				if err = json.Unmarshal(data, &jwk); err != nil {
+					t.Log(string(data))
+					t.Fatalf("json.Unmarshal() error = %v", err)
+				}
+
+				if !reflect.DeepEqual(&jwk, fixJWK(tt.want1Decrypted)) {
+					t.Errorf("GenerateDefaultKeyPair() jwk = %#v, want %#v", &jwk, fixJWK(tt.want1Decrypted))
+				}
+			}
+		})
 	}
 }

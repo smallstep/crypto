@@ -9,12 +9,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/cli/crypto/pemutil"
-	"github.com/smallstep/cli/crypto/randutil"
-	"github.com/smallstep/cli/errs"
+	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/randutil"
 )
 
 const (
@@ -35,10 +33,20 @@ var (
 	errNoCertKeyUsage        = errors.New("jose/generate: certificate doesn't contain any key usage (use --subtle to ignore usage field)")
 )
 
+// Thumbprint computes the JWK Thumbprint of a key using SHA256 as the hash
+// algorithm. It returns the hash encoded in the Base64 raw url encoding.
+func Thumbprint(jwk *JSONWebKey) (string, error) {
+	hash, err := jwk.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", errors.Wrap(err, "error generating JWK thumbprint")
+	}
+	return base64.RawURLEncoding.EncodeToString(hash), nil
+}
+
 // GenerateDefaultKeyPair generates an asymmetric public/private key pair.
 // Returns the public key as a JWK and the private key as an encrypted JWE.
-func GenerateDefaultKeyPair(pass []byte) (*JSONWebKey, *JSONWebEncryption, error) {
-	if len(pass) == 0 {
+func GenerateDefaultKeyPair(passphrase []byte) (*JSONWebKey, *JSONWebEncryption, error) {
+	if len(passphrase) == 0 {
 		return nil, nil, errors.New("step-jose: password cannot be empty when encryptying a JWK")
 	}
 
@@ -48,41 +56,14 @@ func GenerateDefaultKeyPair(pass []byte) (*JSONWebKey, *JSONWebEncryption, error
 		return nil, nil, err
 	}
 
-	// The thumbprint is computed from the public key
-	hash, err := jwk.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "error generating JWK thumbprint")
-	}
-	jwk.KeyID = base64.RawURLEncoding.EncodeToString(hash)
-
-	b, err := json.Marshal(jwk)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "error marshaling JWK")
-	}
-
-	// Encrypt private key using PBES2
-	salt, err := randutil.Salt(PBKDF2SaltSize)
+	jwk.KeyID, err = Thumbprint(jwk)
 	if err != nil {
 		return nil, nil, err
 	}
-	recipient := Recipient{
-		Algorithm:  PBES2_HS256_A128KW,
-		Key:        pass,
-		PBES2Count: PBKDF2Iterations,
-		PBES2Salt:  salt,
-	}
 
-	opts := new(EncrypterOptions)
-	opts.WithContentType(ContentType("jwk+json"))
-
-	encrypter, err := NewEncrypter(DefaultEncAlgorithm, recipient, opts)
+	jwe, err := EncryptJWK(jwk, passphrase)
 	if err != nil {
-		return nil, nil, errs.Wrap(err, "error creating cipher")
-	}
-
-	jwe, err := encrypter.Encrypt(b)
-	if err != nil {
-		return nil, nil, errs.Wrap(err, "error encrypting data")
+		return nil, nil, err
 	}
 
 	public := jwk.Public()
