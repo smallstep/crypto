@@ -1,3 +1,5 @@
+// Package jose is a wrapper for gopkg.in/square/go-jose.v2 and implements
+// utilities to parse and generate JWT, JWK and JWKSets.
 package jose
 
 import (
