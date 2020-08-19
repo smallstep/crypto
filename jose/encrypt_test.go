@@ -97,7 +97,7 @@ func rsaEqual(priv *rsa.PrivateKey, x crypto.PrivateKey) bool {
 	if !ok {
 		return false
 	}
-	if !priv.PublicKey.Equal(&xx.PublicKey) || priv.D.Cmp(xx.D) != 0 {
+	if !(priv.PublicKey.N.Cmp(xx.N) == 0 && priv.PublicKey.E == xx.E) || priv.D.Cmp(xx.D) != 0 {
 		return false
 	}
 	if len(priv.Primes) != len(xx.Primes) {
