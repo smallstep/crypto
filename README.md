@@ -47,3 +47,7 @@ to PEM.
 ### randutil
 
 Package `randutil` provides methods to generate random strings and salts.
+
+### jose
+Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
+utilities to parse and generate JWT, JWK and JWKSets.
