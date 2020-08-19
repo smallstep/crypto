@@ -2,7 +2,6 @@ package jose
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -10,15 +9,13 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/cli/crypto/pemutil"
-	"github.com/smallstep/cli/ui"
+	"go.step.sm/crypto/pemutil"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -30,110 +27,74 @@ const (
 	octKeyType
 )
 
-// MaxDecryptTries is the maximum number of attempts to decrypt a file.
-const MaxDecryptTries = 3
-
-// Decrypt returns the decrypted version of the given data if it's encrypted,
-// it will return the raw data if it's not encrypted or the format is not
-// valid.
-func Decrypt(prompt string, data []byte, opts ...Option) ([]byte, error) {
-	ctx, err := new(context).apply(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	enc, err := jose.ParseEncrypted(string(data))
-	if err != nil {
-		return data, nil
-	}
-
-	// Decrypt flow
-	var pass []byte
-	for i := 0; i < MaxDecryptTries; i++ {
-		if len(ctx.password) == 0 {
-			pass, err = ui.PromptPassword(prompt, ctx.uiOptions...)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			pass = ctx.password
-		}
-
-		if data, err = enc.Decrypt(pass); err == nil {
-			return data, nil
-		}
-	}
-
-	return nil, errors.New("failed to decrypt JWK: invalid password")
-}
-
-func defKeyID(jwk *JSONWebKey) error {
-	var (
-		err  error
-		hash []byte
-	)
-	hash, err = jwk.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return errors.Wrap(err, "error generating JWK thumbprint")
-	}
-	jwk.KeyID = base64.RawURLEncoding.EncodeToString(hash)
-	return nil
-}
-
-// ParseKey returns a JSONWebKey from the given JWK file or a PEM file. For
-// password protected keys, it will ask the user for a password.
-// func ParseKey(filename, use, alg, kid string, subtle bool) (*JSONWebKey, error) {
-func ParseKey(filename string, opts ...Option) (*JSONWebKey, error) {
-	ctx, err := new(context).apply(opts...)
-	if err != nil {
-		return nil, err
-	}
-
+// ReadKey returns a JSONWebKey from the given JWK or PEM file. If the file is
+// password protected, and no password or prompt password function is given it
+// will fail.
+func ReadKey(filename string, opts ...Option) (*JSONWebKey, error) {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading %s", filename)
+	}
+	opts = append(opts, WithFilename(filename))
+	return ParseKey(b, opts...)
+}
+
+// ParseKey returns a JSONWebKey from the given JWK file or a PEM file. If the
+// file is password protected, and no password or prompt password function is
+// given it will fail.
+func ParseKey(b []byte, opts ...Option) (*JSONWebKey, error) {
+	ctx, err := new(context).apply(opts...)
+	if err != nil {
+		return nil, err
 	}
 
 	jwk := new(JSONWebKey)
 	switch guessKeyType(ctx, b) {
 	case jwkKeyType:
 		// Attempt to parse an encrypted file
-		prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
-		if b, err = Decrypt(prompt, b, opts...); err != nil {
+		// prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
+		if b, err = Decrypt(b, opts...); err != nil {
 			return nil, err
 		}
 
 		// Unmarshal the plain (or decrypted JWK)
 		if err = json.Unmarshal(b, jwk); err != nil {
-			return nil, errors.Errorf("error reading %s: unsupported format", filename)
+			return nil, errors.Errorf("error reading %s: unsupported format", ctx.filename)
 		}
 
 	// If KeyID not set by environment, then use the default.
 	// NOTE: we do not set this value by default in the case of jwkKeyType
 	// because it is assumed to have been left empty on purpose.
 	case pemKeyType:
-		jwk.Key, err = pemutil.ParseKey(b, pemutil.WithFilename(filename), pemutil.WithPassword(ctx.password))
+		pemOptions := []pemutil.Options{
+			pemutil.WithFilename(ctx.filename),
+		}
+		if ctx.password != nil {
+			pemOptions = append(pemOptions, pemutil.WithPassword(ctx.password))
+		}
+		if ctx.passwordPrompter != nil {
+			pemOptions = append(pemOptions, pemutil.WithPasswordPrompt(ctx.passwordPrompt, pemutil.PasswordPrompter(ctx.passwordPrompter)))
+		}
+		if pemutil.PromptPassword == nil && PromptPassword != nil {
+			pemutil.PromptPassword = pemutil.PasswordPrompter(PromptPassword)
+		}
+
+		jwk.Key, err = pemutil.ParseKey(b, pemOptions...)
 		if err != nil {
 			return nil, err
 		}
 		if len(ctx.kid) == 0 {
-			if err = defKeyID(jwk); err != nil {
+			if jwk.KeyID, err = Thumbprint(jwk); err != nil {
 				return nil, err
 			}
 		}
-
 	case octKeyType:
 		jwk.Key = b
-		if len(ctx.kid) == 0 {
-			if err = defKeyID(jwk); err != nil {
-				return nil, err
-			}
-		}
 	}
 
 	// Validate key id
 	if ctx.kid != "" && jwk.KeyID != "" && ctx.kid != jwk.KeyID {
-		return nil, errors.Errorf("kid %s does not match the kid on %s", ctx.kid, filename)
+		return nil, errors.Errorf("kid %s does not match the kid on %s", ctx.kid, ctx.filename)
 	}
 	if jwk.KeyID == "" {
 		jwk.KeyID = ctx.kid
@@ -147,7 +108,7 @@ func ParseKey(filename string, opts ...Option) (*JSONWebKey, error) {
 
 	// Validate alg: if the flag '--subtle' is passed we will allow to overwrite it
 	if !ctx.subtle && ctx.alg != "" && jwk.Algorithm != "" && ctx.alg != jwk.Algorithm {
-		return nil, errors.Errorf("alg %s does not match the alg on %s", ctx.alg, filename)
+		return nil, errors.Errorf("alg %s does not match the alg on %s", ctx.alg, ctx.filename)
 	}
 	if ctx.subtle && ctx.alg != "" {
 		jwk.Algorithm = ctx.alg
@@ -156,8 +117,11 @@ func ParseKey(filename string, opts ...Option) (*JSONWebKey, error) {
 	return jwk, nil
 }
 
-// ReadJWKSet reads a JWK Set from a URL or filename. URLs must start with "https://".
-func ReadJWKSet(filename string) ([]byte, error) {
+// ReadKeySet reads a JWK Set from a URL or filename. URLs must start with
+// "https://".
+func ReadKeySet(filename string, opts ...Option) (*jose.JSONWebKey, error) {
+	opts = append(opts, WithFilename(filename))
+	// From an url
 	if strings.HasPrefix(filename, "https://") {
 		resp, err := http.Get(filename)
 		if err != nil {
@@ -168,45 +132,40 @@ func ReadJWKSet(filename string) ([]byte, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "error retrieving %s", filename)
 		}
-		return b, nil
+		return ParseKeySet(b, opts...)
 	}
+	// From a file
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading %s", filename)
 	}
-	return b, nil
+	return ParseKeySet(b, opts...)
 }
 
 // ParseKeySet returns the JWK with the given key after parsing a JWKSet from
 // a given file.
-// func ParseKeySet(filename, alg, kid string, isSubtle bool) (*jose.JSONWebKey, error) {
-func ParseKeySet(filename string, opts ...Option) (*jose.JSONWebKey, error) {
+func ParseKeySet(b []byte, opts ...Option) (*jose.JSONWebKey, error) {
 	ctx, err := new(context).apply(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	b, err := ReadJWKSet(filename)
-	if err != nil {
-		return nil, err
-	}
-
 	// Attempt to parse an encrypted file
-	prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
-	if b, err = Decrypt(prompt, b); err != nil {
+	// prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
+	if b, err = Decrypt(b); err != nil {
 		return nil, err
 	}
 
 	// Unmarshal the plain or decrypted JWKSet
 	jwkSet := new(jose.JSONWebKeySet)
 	if err := json.Unmarshal(b, jwkSet); err != nil {
-		return nil, errors.Errorf("error reading %s: unsupported format", filename)
+		return nil, errors.Errorf("error reading %s: unsupported format", ctx.filename)
 	}
 
 	jwks := jwkSet.Key(ctx.kid)
 	switch len(jwks) {
 	case 0:
-		return nil, errors.Errorf("cannot find key with kid %s on %s", ctx.kid, filename)
+		return nil, errors.Errorf("cannot find key with kid %s on %s", ctx.kid, ctx.filename)
 	case 1:
 		jwk := &jwks[0]
 
@@ -216,14 +175,14 @@ func ParseKeySet(filename string, opts ...Option) (*jose.JSONWebKey, error) {
 		// Validate alg: if the flag '--subtle' is passed we will allow the
 		// overwrite of the alg
 		if !ctx.subtle && ctx.alg != "" && jwk.Algorithm != "" && ctx.alg != jwk.Algorithm {
-			return nil, errors.Errorf("alg %s does not match the alg on %s", ctx.alg, filename)
+			return nil, errors.Errorf("alg %s does not match the alg on %s", ctx.alg, ctx.filename)
 		}
 		if ctx.subtle && ctx.alg != "" {
 			jwk.Algorithm = ctx.alg
 		}
 		return jwk, nil
 	default:
-		return nil, errors.Errorf("multiple keys with kid %s have been found on %s", ctx.kid, filename)
+		return nil, errors.Errorf("multiple keys with kid %s have been found on %s", ctx.kid, ctx.filename)
 	}
 }
 

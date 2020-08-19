@@ -8,8 +8,13 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
+	"io/ioutil"
+	"reflect"
 	"strings"
 	"testing"
+
+	"go.step.sm/crypto/pemutil"
 
 	"github.com/smallstep/assert"
 )
@@ -44,48 +49,48 @@ var files = map[string]testdata{
 }
 
 var pemFiles = map[string]testdata{
-	"../crypto/pemutil/testdata/openssl.p256.pem":              {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/openssl.p256.pub.pem":          {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/openssl.p256.enc.pem":          {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/openssl.p384.pem":              {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/openssl.p384.pub.pem":          {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/openssl.p384.enc.pem":          {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/openssl.p521.pem":              {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/openssl.p521.pub.pem":          {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/openssl.p521.enc.pem":          {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/openssl.rsa1024.pem":           {rsaPrivateKey, false},
-	"../crypto/pemutil/testdata/openssl.rsa1024.pub.pem":       {rsaPublicKey, false},
-	"../crypto/pemutil/testdata/openssl.rsa1024.enc.pem":       {rsaPrivateKey, true},
-	"../crypto/pemutil/testdata/openssl.rsa2048.pem":           {rsaPrivateKey, false},
-	"../crypto/pemutil/testdata/openssl.rsa2048.pub.pem":       {rsaPublicKey, false},
-	"../crypto/pemutil/testdata/openssl.rsa2048.enc.pem":       {rsaPrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.ed25519.pem":     {ed25519PrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.ed25519.pub.pem": {ed25519PublicKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.ed25519.enc.pem": {ed25519PrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p256.pem":        {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p256.pub.pem":    {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p256.enc.pem":    {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p384.pem":        {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p384.pub.pem":    {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p384.enc.pem":    {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p521.pem":        {ecdsaPrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p521.pub.pem":    {ecdsaPublicKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.p521.enc.pem":    {ecdsaPrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.rsa2048.pem":     {rsaPrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.rsa2048.pub.pem": {rsaPublicKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.rsa2048.enc.pem": {rsaPrivateKey, true},
-	"../crypto/pemutil/testdata/pkcs8/openssl.rsa4096.pem":     {rsaPrivateKey, false},
-	"../crypto/pemutil/testdata/pkcs8/openssl.rsa4096.pub.pem": {rsaPublicKey, false},
+	"../pemutil/testdata/openssl.p256.pem":              {ecdsaPrivateKey, false},
+	"../pemutil/testdata/openssl.p256.pub.pem":          {ecdsaPublicKey, false},
+	"../pemutil/testdata/openssl.p256.enc.pem":          {ecdsaPrivateKey, true},
+	"../pemutil/testdata/openssl.p384.pem":              {ecdsaPrivateKey, false},
+	"../pemutil/testdata/openssl.p384.pub.pem":          {ecdsaPublicKey, false},
+	"../pemutil/testdata/openssl.p384.enc.pem":          {ecdsaPrivateKey, true},
+	"../pemutil/testdata/openssl.p521.pem":              {ecdsaPrivateKey, false},
+	"../pemutil/testdata/openssl.p521.pub.pem":          {ecdsaPublicKey, false},
+	"../pemutil/testdata/openssl.p521.enc.pem":          {ecdsaPrivateKey, true},
+	"../pemutil/testdata/openssl.rsa1024.pem":           {rsaPrivateKey, false},
+	"../pemutil/testdata/openssl.rsa1024.pub.pem":       {rsaPublicKey, false},
+	"../pemutil/testdata/openssl.rsa1024.enc.pem":       {rsaPrivateKey, true},
+	"../pemutil/testdata/openssl.rsa2048.pem":           {rsaPrivateKey, false},
+	"../pemutil/testdata/openssl.rsa2048.pub.pem":       {rsaPublicKey, false},
+	"../pemutil/testdata/openssl.rsa2048.enc.pem":       {rsaPrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.ed25519.pem":     {ed25519PrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.ed25519.pub.pem": {ed25519PublicKey, false},
+	"../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem": {ed25519PrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.p256.pem":        {ecdsaPrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p256.pub.pem":    {ecdsaPublicKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p256.enc.pem":    {ecdsaPrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.p384.pem":        {ecdsaPrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p384.pub.pem":    {ecdsaPublicKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p384.enc.pem":    {ecdsaPrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.p521.pem":        {ecdsaPrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p521.pub.pem":    {ecdsaPublicKey, false},
+	"../pemutil/testdata/pkcs8/openssl.p521.enc.pem":    {ecdsaPrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.rsa2048.pem":     {rsaPrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.rsa2048.pub.pem": {rsaPublicKey, false},
+	"../pemutil/testdata/pkcs8/openssl.rsa2048.enc.pem": {rsaPrivateKey, true},
+	"../pemutil/testdata/pkcs8/openssl.rsa4096.pem":     {rsaPrivateKey, false},
+	"../pemutil/testdata/pkcs8/openssl.rsa4096.pub.pem": {rsaPublicKey, false},
 }
 
-func validateParseKey(t *testing.T, fn, pass string, td testdata) {
+func validateReadKey(t *testing.T, fn, pass string, td testdata) {
 	var err error
 	var jwk *JSONWebKey
 
 	if td.encrypted {
-		jwk, err = ParseKey(fn, WithPassword([]byte(pass)))
+		jwk, err = ReadKey(fn, WithPassword([]byte(pass)))
 	} else {
-		jwk, err = ParseKey(fn)
+		jwk, err = ReadKey(fn)
 	}
 	assert.NoError(t, err)
 
@@ -117,24 +122,28 @@ func validateParseKey(t *testing.T, fn, pass string, td testdata) {
 	}
 
 	if td.encrypted {
-		jwkPriv, err := ParseKey(strings.Replace(fn, ".enc", "", 1))
+		jwkPriv, err := ReadKey(strings.Replace(fn, ".enc", "", 1))
 		assert.NoError(t, err)
 		assert.Equals(t, jwkPriv, jwk)
 	}
 }
 
-func TestParseKey(t *testing.T) {
+func TestReadKey(t *testing.T) {
 	for fn, td := range files {
-		validateParseKey(t, fn, "password", td)
+		validateReadKey(t, fn, "password", td)
 	}
 
 	for fn, td := range pemFiles {
-		validateParseKey(t, fn, "mypassword", td)
+		validateReadKey(t, fn, "mypassword", td)
+	}
+
+	if _, err := ReadKey("testdata/missing.txt"); err == nil {
+		t.Errorf("ReadKey() error = %v, wantErr true", err)
 	}
 }
 
-func TestParseKeyPasswordFile(t *testing.T) {
-	jwk, err := ParseKey("testdata/oct.txt", WithAlg("HS256"), WithUse("sig"), WithKid("the-kid"))
+func TestReadKeyPasswordFile(t *testing.T) {
+	jwk, err := ReadKey("testdata/oct.txt", WithAlg("HS256"), WithUse("sig"), WithKid("the-kid"))
 	assert.FatalError(t, err)
 	assert.Equals(t, []byte("a true random password"), jwk.Key)
 	assert.Equals(t, HS256, jwk.Algorithm)
@@ -142,28 +151,168 @@ func TestParseKeyPasswordFile(t *testing.T) {
 	assert.Equals(t, "the-kid", jwk.KeyID)
 }
 
-func TestParseKeySet(t *testing.T) {
-	jwk, err := ParseKeySet("testdata/jwks.json", WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"))
+func TestParseKey(t *testing.T) {
+	marshal := func(i interface{}) []byte {
+		b, err := json.Marshal(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	read := func(filename string) []byte {
+		b, err := ioutil.ReadFile(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	ecKey := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0))
+	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024))
+	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024))
+	edKey := fixJWK(mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0))
+	octKey := fixJWK(mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64))
+
+	encKey, err := EncryptJWK(edKey, testPassword)
+	assert.FatalError(t, err)
+	encKeyCompact, err := encKey.CompactSerialize()
+	assert.FatalError(t, err)
+
+	pemKey, err := pemutil.Read("../pemutil/testdata/pkcs8/openssl.ed25519.pem")
+	assert.FatalError(t, err)
+
+	ecKey.KeyID, err = Thumbprint(ecKey)
+	assert.FatalError(t, err)
+
+	type args struct {
+		b    []byte
+		opts []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *JSONWebKey
+		wantErr bool
+	}{
+		{"ec", args{marshal(ecKey), nil}, ecKey, false},
+		{"rsa", args{marshal(rsaKey), nil}, rsaKey, false},
+		{"rsa-pss", args{marshal(rsaPSSKey), nil}, rsaPSSKey, false},
+		{"okp", args{marshal(edKey), nil}, edKey, false},
+		{"oct", args{marshal(octKey), nil}, octKey, false},
+		{"encryptedCompactWithPassword", args{[]byte(encKeyCompact), []Option{WithPassword(testPassword)}}, edKey, false},
+		{"encryptedFullWithPasswordFile", args{[]byte(encKey.FullSerialize()), []Option{WithPasswordFile("testdata/passphrase.txt")}}, edKey, false},
+		{"pemPrivate", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), nil}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPublic", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pub.pem"), nil}, &JSONWebKey{
+			Key:       pemKey.(ed25519.PrivateKey).Public(),
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithPassword", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPassword([]byte("mypassword"))}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithPasswordFile", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPasswordFile("../pemutil/testdata/password.txt")}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithPasswordPrompter", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPasswordPrompter("What's the password", func(s string) ([]byte, error) {
+			return []byte("mypassword"), nil
+		})}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithKid", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithKid("foobarzar")}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "foobarzar",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithUse", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithUse("enc")}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Use:       "enc",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithAlg", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithAlg("EdDSA")}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "EdDSA",
+		}, false},
+		{"pemPrivateWithAlgWithSubtle", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithAlg("FOOBAR"), WithSubtle(true)}}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			Algorithm: "FOOBAR",
+		}, false},
+		{"octPrivateWithAlg", args{testPassword, []Option{WithAlg("HS256")}}, &JSONWebKey{
+			Key:       testPassword,
+			Algorithm: "HS256",
+		}, false},
+		{"octPrivateWithAlgWithKid", args{testPassword, []Option{WithAlg("HS256"), WithKid("foobarzar")}}, &JSONWebKey{
+			Key:       testPassword,
+			KeyID:     "foobarzar",
+			Algorithm: "HS256",
+		}, false},
+		{"failPassword", args{[]byte(encKeyCompact), []Option{WithPassword([]byte("bad password"))}}, nil, true},
+		{"failMissingFile", args{[]byte(encKeyCompact), []Option{WithPasswordFile("testdata/missing.txt")}}, nil, true},
+		{"failPEMPassword", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPassword([]byte("bad password"))}}, nil, true},
+		{"failECBWongAlg", args{marshal(ecKey), []Option{WithAlg("FOOBAR")}}, nil, true},
+		{"failECWrongKid", args{marshal(ecKey), []Option{WithKid("foobarzar")}}, nil, true},
+		{"failOCTMissingOptions", args{testPassword, nil}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseKey(tt.args.b, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// Make the rsa keys equal if they are
+			if tt.want != nil {
+				if k, ok := tt.want.Key.(*rsa.PrivateKey); ok {
+					if !k.Equal(got.Key) {
+						t.Errorf("ParseKey() got = %v, want %v", got, tt.want)
+						return
+					}
+					got.Key = k
+				}
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ParseKey() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadKeySet(t *testing.T) {
+	jwk, err := ReadKeySet("testdata/jwks.json", WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"))
 	assert.NoError(t, err)
 	assert.Type(t, ed25519.PublicKey{}, jwk.Key)
 	assert.Equals(t, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", jwk.KeyID)
 
-	jwk, err = ParseKeySet("testdata/jwks.json", WithKid("V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co"))
+	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co"))
 	assert.NoError(t, err)
 	assert.Type(t, &ecdsa.PublicKey{}, jwk.Key)
 	assert.Equals(t, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", jwk.KeyID)
 
-	jwk, err = ParseKeySet("testdata/jwks.json", WithKid("duplicated"))
+	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("duplicated"))
 	assert.Error(t, err)
 	assert.Equals(t, "multiple keys with kid duplicated have been found on testdata/jwks.json", err.Error())
 	assert.Nil(t, jwk)
 
-	jwk, err = ParseKeySet("testdata/jwks.json", WithKid("missing"))
+	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("missing"))
 	assert.Error(t, err)
 	assert.Equals(t, "cannot find key with kid missing on testdata/jwks.json", err.Error())
 	assert.Nil(t, jwk)
 
-	jwk, err = ParseKeySet("testdata/empty.json", WithKid("missing"))
+	jwk, err = ReadKeySet("testdata/empty.json", WithKid("missing"))
 	assert.Error(t, err)
 	assert.Equals(t, "cannot find key with kid missing on testdata/empty.json", err.Error())
 	assert.Nil(t, jwk)
