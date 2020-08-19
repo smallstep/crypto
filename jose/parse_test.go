@@ -14,9 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"go.step.sm/crypto/pemutil"
-
 	"github.com/smallstep/assert"
+	"go.step.sm/crypto/pemutil"
 )
 
 const (
@@ -276,7 +275,7 @@ func TestParseKey(t *testing.T) {
 			// Make the rsa keys equal if they are
 			if tt.want != nil {
 				if k, ok := tt.want.Key.(*rsa.PrivateKey); ok {
-					if !k.Equal(got.Key) {
+					if !rsaEqual(k, got.Key) {
 						t.Errorf("ParseKey() got = %v, want %v", got, tt.want)
 						return
 					}

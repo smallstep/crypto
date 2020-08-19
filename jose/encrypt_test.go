@@ -2,6 +2,7 @@ package jose
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -37,14 +38,6 @@ func mustGenerateJWK(t *testing.T, kty, crv, alg, use, kid string, size int) *JS
 	if err != nil {
 		t.Fatal(err)
 	}
-	return jwk
-}
-
-func fixJWK(jwk *JSONWebKey) *JSONWebKey {
-	jwk.Certificates = []*x509.Certificate{}
-	jwk.CertificatesURL = nil
-	jwk.CertificateThumbprintSHA1 = []uint8{}
-	jwk.CertificateThumbprintSHA256 = []uint8{}
 	return jwk
 }
 
@@ -87,6 +80,35 @@ func mustEncryptdata(t *testing.T, data, passphrase []byte) *JSONWebEncryption {
 	}
 
 	return jwe
+}
+
+func fixJWK(jwk *JSONWebKey) *JSONWebKey {
+	jwk.Certificates = []*x509.Certificate{}
+	jwk.CertificatesURL = nil
+	jwk.CertificateThumbprintSHA1 = []uint8{}
+	jwk.CertificateThumbprintSHA256 = []uint8{}
+	return jwk
+}
+
+// rsaEqual reports whether priv and x have equivalent values. It ignores
+// Precomputed values.
+func rsaEqual(priv *rsa.PrivateKey, x crypto.PrivateKey) bool {
+	xx, ok := x.(*rsa.PrivateKey)
+	if !ok {
+		return false
+	}
+	if !priv.PublicKey.Equal(&xx.PublicKey) || priv.D.Cmp(xx.D) != 0 {
+		return false
+	}
+	if len(priv.Primes) != len(xx.Primes) {
+		return false
+	}
+	for i := range priv.Primes {
+		if priv.Primes[i].Cmp(xx.Primes[i]) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func TestEncryptJWK(t *testing.T) {
@@ -192,7 +214,7 @@ func TestEncryptDecryptJWK(t *testing.T) {
 
 			// Make the rsa keys equal if they are
 			if k, ok := tt.args.jwk.Key.(*rsa.PrivateKey); ok {
-				if !k.Equal(jwk.Key) {
+				if !rsaEqual(k, jwk.Key) {
 					t.Errorf("Decrypt() got = %v, want %v", jwk.Key, tt.args.jwk.Key)
 					return
 				}
