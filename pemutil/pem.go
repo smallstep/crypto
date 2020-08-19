@@ -43,13 +43,15 @@ var WriteFile FileWriter = utils.WriteFile
 
 // context add options to the pem methods.
 type context struct {
-	filename   string
-	perm       os.FileMode
-	password   []byte
-	pkcs8      bool
-	openSSH    bool
-	comment    string
-	firstBlock bool
+	filename         string
+	perm             os.FileMode
+	password         []byte
+	pkcs8            bool
+	openSSH          bool
+	comment          string
+	firstBlock       bool
+	passwordPrompt   string
+	passwordPrompter PasswordPrompter
 }
 
 // newContext initializes the context with a filename.
@@ -126,11 +128,8 @@ func WithPasswordFile(filename string) Options {
 // WithPasswordPrompt ask the user for a password and adds it to the context.
 func WithPasswordPrompt(prompt string, fn PasswordPrompter) Options {
 	return func(ctx *context) error {
-		b, err := fn(prompt)
-		if err != nil {
-			return err
-		}
-		ctx.password = b
+		ctx.passwordPrompt = prompt
+		ctx.passwordPrompter = fn
 		return nil
 	}
 }
@@ -265,6 +264,10 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 
 		if len(ctx.password) > 0 {
 			pass = ctx.password
+		} else if ctx.passwordPrompter != nil {
+			if pass, err = ctx.passwordPrompter(ctx.passwordPrompt); err != nil {
+				return nil, err
+			}
 		} else if PromptPassword != nil {
 			if pass, err = PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", ctx.filename)); err != nil {
 				return nil, err
