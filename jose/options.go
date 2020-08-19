@@ -1,16 +1,17 @@
 package jose
 
 import (
-	"github.com/smallstep/cli/ui"
-	"github.com/smallstep/cli/utils"
+	"go.step.sm/crypto/internal/utils"
 )
 
 type context struct {
+	filename         string
 	use, alg, kid    string
 	subtle, insecure bool
 	noDefaults       bool
 	password         []byte
-	uiOptions        []ui.Option
+	passwordPrompt   string
+	passwordPrompter PasswordPrompter
 }
 
 // apply the options to the context and returns an error if one of the options
@@ -21,11 +22,22 @@ func (ctx *context) apply(opts ...Option) (*context, error) {
 			return nil, err
 		}
 	}
+	if ctx.filename == "" {
+		ctx.filename = "key"
+	}
 	return ctx, nil
 }
 
 // Option is the type used to add attributes to the context.
 type Option func(ctx *context) error
+
+// WithFilename adds the given filename to the context.
+func WithFilename(filename string) Option {
+	return func(ctx *context) error {
+		ctx.filename = filename
+		return nil
+	}
+}
 
 // WithUse adds the use claim to the context.
 func WithUse(use string) Option {
@@ -96,10 +108,12 @@ func WithPasswordFile(filename string) Option {
 	}
 }
 
-// WithUIOptions adds UI package options to the password prompts.
-func WithUIOptions(opts ...ui.Option) Option {
+// WithPasswordPrompter defines a method that can be used to prompt for the
+// password to decrypt an encrypted JWE.
+func WithPasswordPrompter(prompt string, fn PasswordPrompter) Option {
 	return func(ctx *context) error {
-		ctx.uiOptions = opts
+		ctx.passwordPrompt = prompt
+		ctx.passwordPrompter = fn
 		return nil
 	}
 }
