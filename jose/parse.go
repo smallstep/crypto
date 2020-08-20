@@ -29,13 +29,40 @@ const (
 	octKeyType
 )
 
+// read returns the bytes from reading a file, or from a url if the filename has
+// the prefix https://
+func read(filename string) ([]byte, error) {
+	if strings.HasPrefix(filename, "https://") {
+		resp, err := http.Get(filename)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error retrieving %s", filename)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			return nil, errors.Errorf("error retrieving %s: status code %d", filename, resp.StatusCode)
+		}
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error retrieving %s", filename)
+		}
+		return b, nil
+	}
+
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error reading %s", filename)
+	}
+	return b, nil
+}
+
 // ReadKey returns a JSONWebKey from the given JWK or PEM file. If the file is
 // password protected, and no password or prompt password function is given it
 // will fail.
 func ReadKey(filename string, opts ...Option) (*JSONWebKey, error) {
-	b, err := ioutil.ReadFile(filename)
+	b, err := read(filename)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error reading %s", filename)
+		return nil, err
 	}
 	opts = append(opts, WithFilename(filename))
 	return ParseKey(b, opts...)
@@ -121,32 +148,18 @@ func ParseKey(b []byte, opts ...Option) (*JSONWebKey, error) {
 
 // ReadKeySet reads a JWK Set from a URL or filename. URLs must start with
 // "https://".
-func ReadKeySet(filename string, opts ...Option) (*jose.JSONWebKey, error) {
-	opts = append(opts, WithFilename(filename))
-	// From an url
-	if strings.HasPrefix(filename, "https://") {
-		resp, err := http.Get(filename)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error retrieving %s", filename)
-		}
-		defer resp.Body.Close()
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error retrieving %s", filename)
-		}
-		return ParseKeySet(b, opts...)
-	}
-	// From a file
-	b, err := ioutil.ReadFile(filename)
+func ReadKeySet(filename string, opts ...Option) (*JSONWebKey, error) {
+	b, err := read(filename)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error reading %s", filename)
+		return nil, err
 	}
+	opts = append(opts, WithFilename(filename))
 	return ParseKeySet(b, opts...)
 }
 
 // ParseKeySet returns the JWK with the given key after parsing a JWKSet from
 // a given file.
-func ParseKeySet(b []byte, opts ...Option) (*jose.JSONWebKey, error) {
+func ParseKeySet(b []byte, opts ...Option) (*JSONWebKey, error) {
 	ctx, err := new(context).apply(opts...)
 	if err != nil {
 		return nil, err
