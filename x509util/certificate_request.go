@@ -1,14 +1,19 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 
 	"github.com/pkg/errors"
 )
+
+var emptyASN1Subject = []byte{0x30, 0}
+var oidExtensionSubjectAltName = []int{2, 5, 29, 17}
 
 // CertificateRequest is the JSON representation of an X.509 certificate. It is
 // used to build a certificate request from a template.
@@ -27,6 +32,18 @@ type CertificateRequest struct {
 }
 
 func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
+	// Set SubjectAltName extension as critical if Subject is empty.
+	if len(cr.Extensions) > 0 {
+		if asn1Subject, err := asn1.Marshal(cr.Subject.ToRDNSequence()); err == nil {
+			if bytes.Equal(asn1Subject, emptyASN1Subject) {
+				for i, ext := range cr.Extensions {
+					if ext.Id.Equal(oidExtensionSubjectAltName) {
+						cr.Extensions[i].Critical = true
+					}
+				}
+			}
+		}
+	}
 	return &CertificateRequest{
 		Version:            cr.Version,
 		Subject:            newSubject(cr.Subject),

@@ -1,6 +1,7 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -425,6 +426,57 @@ func TestCreateCertificate(t *testing.T) {
 			if !tt.wantErr {
 				if err := got.CheckSignatureFrom(iss); err != nil {
 					t.Errorf("Certificate.CheckSignatureFrom() error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateCertificate_criticalSANs(t *testing.T) {
+	cr, _ := createCertificateRequest(t, "", []string{"foo.com"})
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+
+	type args struct {
+		cr   *x509.CertificateRequest
+		opts []Option
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{"okNoOptions", args{cr, nil}},
+		{"okDefaultLeafTemplate", args{cr, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
+		{"okCertificateRequestTemplate", args{cr, []Option{WithTemplate(CertificateRequestTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert, err := NewCertificate(cr, tt.args.opts...)
+			if err != nil {
+				t.Fatalf("NewCertificate() error = %v", err)
+			}
+
+			template := cert.GetCertificate()
+			got, err := CreateCertificate(template, iss, template.PublicKey, issPriv)
+			if err != nil {
+				t.Fatalf("Certificate.CheckSignatureFrom() error = %v", err)
+			}
+
+			if err := got.CheckSignatureFrom(iss); err != nil {
+				t.Fatalf("Certificate.CheckSignatureFrom() error = %v", err)
+			}
+
+			asn1Subject, err := asn1.Marshal(got.Subject.ToRDNSequence())
+			if err != nil {
+				t.Fatalf("asn1.Marshal() error = %v", err)
+			}
+
+			if bytes.Equal(asn1Subject, emptyASN1Subject) {
+				for _, ext := range got.Extensions {
+					if ext.Id.Equal(oidExtensionSubjectAltName) && !ext.Critical {
+						t.Errorf("Extension %s is not critical: %v", ext.Id, ext)
+					}
+
 				}
 			}
 		})
