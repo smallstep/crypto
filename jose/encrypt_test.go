@@ -186,8 +186,10 @@ func TestEncryptDecryptJWK(t *testing.T) {
 		{"ok Ed25519 pub", args{edKey.Public(), testPassword}, false},
 		{"ok oct", args{*octKey, testPassword}, false},
 	}
-	for _, tt := range tests {
+	for _, tc := range tests {
+		tt := tc
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := EncryptJWK(&tt.args.jwk, tt.args.passphrase)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("EncryptJWK() error = %v, wantErr %v", err, tt.wantErr)

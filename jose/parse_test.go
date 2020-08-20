@@ -7,9 +7,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -129,15 +133,88 @@ func validateReadKey(t *testing.T, fn, pass string, td testdata) {
 
 func TestReadKey(t *testing.T) {
 	for fn, td := range files {
-		validateReadKey(t, fn, "password", td)
+		fn, td := fn, td
+		t.Run(fn, func(t *testing.T) {
+			validateReadKey(t, fn, "password", td)
+		})
 	}
 
 	for fn, td := range pemFiles {
-		validateReadKey(t, fn, "mypassword", td)
+		fn, td := fn, td
+		t.Run(fn, func(t *testing.T) {
+			validateReadKey(t, fn, "mypassword", td)
+		})
 	}
 
 	if _, err := ReadKey("testdata/missing.txt"); err == nil {
 		t.Errorf("ReadKey() error = %v, wantErr true", err)
+	}
+}
+
+func TestReadKey_https(t *testing.T) {
+	ok, err := ioutil.ReadFile("testdata/okp.pub.json")
+	assert.FatalError(t, err)
+	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
+	assert.FatalError(t, err)
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/ok":
+			w.Header().Set("ContentType", "application/jwk-set+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, string(ok))
+		case "/empty":
+			w.Header().Set("ContentType", "application/jwk-set+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, "{}")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintln(w, http.StatusText(http.StatusNotFound))
+		}
+	}))
+	srvClient := srv.Client()
+	defer func() {
+		srv.Close()
+		http.DefaultClient = &http.Client{}
+	}()
+
+	type args struct {
+		client   *http.Client
+		filename string
+		opts     []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *JSONWebKey
+		wantErr bool
+	}{
+		{"ok", args{srvClient, srv.URL + "/ok", nil}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "EdDSA",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"failWithKid", args{srvClient, srv.URL + "/ok", []Option{WithKid("foobar")}}, nil, true},
+		{"failEmpty", args{srvClient, srv.URL + "/empty", nil}, nil, true},
+		{"failNotFound", args{srvClient, srv.URL + "/notFound", nil}, nil, true},
+		{"failClient", args{&http.Client{}, srv.URL + "/ok", nil}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			http.DefaultClient = tt.args.client
+			got, err := ReadKey(tt.args.filename, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReadKeySet() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReadKeySet() = \n%#v, want \n%#v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -265,7 +342,9 @@ func TestParseKey(t *testing.T) {
 		{"failOCTMissingOptions", args{testPassword, nil}, nil, true},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := ParseKey(tt.args.b, tt.args.opts...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseKey() error = %v, wantErr %v", err, tt.wantErr)
@@ -315,6 +394,73 @@ func TestReadKeySet(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equals(t, "cannot find key with kid missing on testdata/empty.json", err.Error())
 	assert.Nil(t, jwk)
+}
+
+func TestReadKeySet_https(t *testing.T) {
+	ok, err := ioutil.ReadFile("testdata/jwks.json")
+	assert.FatalError(t, err)
+	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
+	assert.FatalError(t, err)
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/ok":
+			w.Header().Set("ContentType", "application/jwk-set+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, string(ok))
+		case "/empty":
+			w.Header().Set("ContentType", "application/jwk-set+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, "{}")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintln(w, http.StatusText(http.StatusNotFound))
+		}
+	}))
+	srvClient := srv.Client()
+	defer func() {
+		srv.Close()
+		http.DefaultClient = &http.Client{}
+	}()
+
+	type args struct {
+		client   *http.Client
+		filename string
+		opts     []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *JSONWebKey
+		wantErr bool
+	}{
+		{"ok", args{srvClient, srv.URL + "/ok", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "EdDSA",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"failEmpty", args{srvClient, srv.URL + "/empty", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failNotFound", args{srvClient, srv.URL + "/notFound", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failClient", args{&http.Client{}, srv.URL + "/ok", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failNoOptions", args{srvClient, srv.URL + "/ok", nil}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			http.DefaultClient = tt.args.client
+			got, err := ReadKeySet(tt.args.filename, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReadKeySet() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReadKeySet() = \n%#v, want \n%#v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestGuessJWKAlgorithm(t *testing.T) {
@@ -372,5 +518,32 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	for _, tc := range tests {
 		guessJWKAlgorithm(new(context), tc.jwk)
 		assert.Equals(t, tc.expected, tc.jwk.Algorithm)
+	}
+}
+
+func TestParseKeySet(t *testing.T) {
+	type args struct {
+		b    []byte
+		opts []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *JSONWebKey
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseKeySet(tt.args.b, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseKeySet() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ParseKeySet() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

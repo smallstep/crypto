@@ -101,40 +101,44 @@ func TestGenerateJWK(t *testing.T) {
 		{"oct", "", "A256GCMKW", "enc", "a-kid", 0, "A256GCMKW", 32, []byte{}, true},
 	}
 
-	for _, tc := range tests {
-		jwk, err := GenerateJWK(tc.kty, tc.crv, tc.alg, tc.use, tc.kid, tc.size)
-		if !tc.ok {
-			assert.Error(t, err)
-			assert.Nil(t, jwk)
-			continue
-		}
-		assert.NoError(t, err)
-
-		assert.Equals(t, tc.kid, jwk.KeyID)
-		assert.Equals(t, tc.expectedAlg, jwk.Algorithm)
-		assert.Type(t, tc.expectedType, jwk.Key)
-
-		switch key := jwk.Key.(type) {
-		case *ecdsa.PrivateKey:
-			switch tc.expectedSize {
-			case 256:
-				assert.Equals(t, elliptic.P256(), key.Curve)
-			case 384:
-				assert.Equals(t, elliptic.P384(), key.Curve)
-			case 521:
-				assert.Equals(t, elliptic.P521(), key.Curve)
-			default:
-				t.Errorf("unexpected size %d", tc.expectedSize)
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.kty, func(t *testing.T) {
+			t.Parallel()
+			jwk, err := GenerateJWK(tc.kty, tc.crv, tc.alg, tc.use, tc.kid, tc.size)
+			if !tc.ok {
+				assert.Error(t, err)
+				assert.Nil(t, jwk)
+				return
 			}
-		case *rsa.PrivateKey:
-			assert.Equals(t, tc.expectedSize, key.N.BitLen())
-		case ed25519.PrivateKey:
-			assert.Equals(t, tc.expectedSize, len(key))
-		case []byte:
-			assert.Equals(t, tc.expectedSize, len(key))
-		default:
-			t.Errorf("unexpected key type %T", key)
-		}
+			assert.NoError(t, err)
+
+			assert.Equals(t, tc.kid, jwk.KeyID)
+			assert.Equals(t, tc.expectedAlg, jwk.Algorithm)
+			assert.Type(t, tc.expectedType, jwk.Key)
+
+			switch key := jwk.Key.(type) {
+			case *ecdsa.PrivateKey:
+				switch tc.expectedSize {
+				case 256:
+					assert.Equals(t, elliptic.P256(), key.Curve)
+				case 384:
+					assert.Equals(t, elliptic.P384(), key.Curve)
+				case 521:
+					assert.Equals(t, elliptic.P521(), key.Curve)
+				default:
+					t.Errorf("unexpected size %d", tc.expectedSize)
+				}
+			case *rsa.PrivateKey:
+				assert.Equals(t, tc.expectedSize, key.N.BitLen())
+			case ed25519.PrivateKey:
+				assert.Equals(t, tc.expectedSize, len(key))
+			case []byte:
+				assert.Equals(t, tc.expectedSize, len(key))
+			default:
+				t.Errorf("unexpected key type %T", key)
+			}
+		})
 	}
 }
 
@@ -291,6 +295,9 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 		wantErr        bool
 	}{
 		{"ok", args{[]byte("planned password")}, &jwkPub, jwe, jwk, false},
+		{"failEmptyPassword", args{[]byte("")}, nil, nil, nil, true},
+		{"failNilPassword", args{nil}, nil, nil, nil, true},
+		{"failEOF", args{[]byte("planned password")}, nil, nil, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
