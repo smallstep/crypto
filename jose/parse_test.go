@@ -522,6 +522,16 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 }
 
 func TestParseKeySet(t *testing.T) {
+	b, err := ioutil.ReadFile("testdata/jwks.json")
+	assert.FatalError(t, err)
+	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
+	assert.FatalError(t, err)
+
+	jwe := mustEncryptData(t, b, testPassword)
+	encryptedJSON := []byte(jwe.FullSerialize())
+	encryptedCompact, err := jwe.CompactSerialize()
+	assert.FatalError(t, err)
+
 	type args struct {
 		b    []byte
 		opts []Option
@@ -532,7 +542,49 @@ func TestParseKeySet(t *testing.T) {
 		want    *JSONWebKey
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{"ok", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "EdDSA",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"okEncryptedJSON", args{encryptedJSON, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPassword(testPassword)}}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "EdDSA",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"okEncryptedCompact", args{[]byte(encryptedCompact), []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPasswordFile("testdata/passphrase.txt")}}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "EdDSA",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"okWithAlgSubtle", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithSubtle(true), WithAlg("FOOBAR")}}, &JSONWebKey{
+			Key:                         ed25519.PublicKey(key),
+			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			Algorithm:                   "FOOBAR",
+			Use:                         "sig",
+			Certificates:                []*x509.Certificate{},
+			CertificateThumbprintSHA1:   []byte{},
+			CertificateThumbprintSHA256: []byte{},
+		}, false},
+		{"failOptions", args{b, []Option{WithPasswordFile("testdata/missing.txt")}}, nil, true},
+		{"failDecrypt", args{encryptedJSON, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPassword([]byte("bad-password"))}}, nil, true},
+		{"failNoOptions", args{b, []Option{}}, nil, true},
+		{"failBadData", args{[]byte("foo"), []Option{}}, nil, true},
+		{"failEmpty", args{[]byte("{}"), []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failDuplicated", args{b, []Option{WithKid("duplicated")}}, nil, true},
+		{"failWithAlg", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithAlg("FOOBAR")}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -47,10 +47,10 @@ func mustEncryptJWK(t *testing.T, jwk *JSONWebKey, passphrase []byte) *JSONWebEn
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mustEncryptdata(t, data, passphrase)
+	return mustEncryptData(t, data, passphrase)
 }
 
-func mustEncryptdata(t *testing.T, data, passphrase []byte) *JSONWebEncryption {
+func mustEncryptData(t *testing.T, data, passphrase []byte) *JSONWebEncryption {
 	t.Helper()
 
 	salt, err := randutil.Salt(PBKDF2SaltSize)
@@ -232,7 +232,7 @@ func TestEncryptDecryptJWK(t *testing.T) {
 
 func TestDecrypt(t *testing.T) {
 	data := []byte("the-plain-data")
-	jwe := mustEncryptdata(t, data, testPassword)
+	jwe := mustEncryptData(t, data, testPassword)
 	s, err := jwe.CompactSerialize()
 	assert.FatalError(t, err)
 	encryptedData := []byte(s)

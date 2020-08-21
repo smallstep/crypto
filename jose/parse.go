@@ -166,8 +166,7 @@ func ParseKeySet(b []byte, opts ...Option) (*JSONWebKey, error) {
 	}
 
 	// Attempt to parse an encrypted file
-	// prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
-	if b, err = Decrypt(b); err != nil {
+	if b, err = Decrypt(b, opts...); err != nil {
 		return nil, err
 	}
 
