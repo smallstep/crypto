@@ -1,5 +1,3 @@
-// Package jose is a wrapper for gopkg.in/square/go-jose.v2 and implements
-// utilities to parse and generate JWT, JWK and JWKSets.
 package jose
 
 import (
@@ -18,7 +16,6 @@ import (
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/pemutil"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 type keyType int
@@ -168,7 +165,7 @@ func ParseKeySet(b []byte, opts ...Option) (*JSONWebKey, error) {
 	}
 
 	// Unmarshal the plain or decrypted JWKSet
-	jwkSet := new(jose.JSONWebKeySet)
+	jwkSet := new(JSONWebKeySet)
 	if err := json.Unmarshal(b, jwkSet); err != nil {
 		return nil, errors.Errorf("error reading %s: unsupported format", ctx.filename)
 	}
@@ -222,7 +219,7 @@ var X5cInsecureKey = "x5cInsecure"
 
 // GetX5cInsecureHeader extracts the x5cInsecure certificate chain from the token.
 func GetX5cInsecureHeader(jwt *JSONWebToken) ([]*x509.Certificate, error) {
-	x5cVal, ok := jwt.Headers[0].ExtraHeaders[jose.HeaderKey(X5cInsecureKey)]
+	x5cVal, ok := jwt.Headers[0].ExtraHeaders[HeaderKey(X5cInsecureKey)]
 	if !ok {
 		return nil, errors.New("ssh check-host token missing x5cInsecure header")
 	}
@@ -285,7 +282,7 @@ func guessKeyType(ctx *context, data []byte) keyType {
 	// jwk or file with oct data
 	case "HS256", "HS384", "HS512":
 		// Encrypted JWK ?
-		if _, err := jose.ParseEncrypted(string(data)); err == nil {
+		if _, err := ParseEncrypted(string(data)); err == nil {
 			return jwkKeyType
 		}
 		// JSON JWK ?
@@ -304,7 +301,7 @@ func guessKeyType(ctx *context, data []byte) keyType {
 }
 
 // guessJWKAlgorithm set the algorithm if it's not set and we can guess it
-func guessJWKAlgorithm(ctx *context, jwk *jose.JSONWebKey) {
+func guessJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 	if jwk.Algorithm == "" {
 		// Force default algorithm if passed.
 		if ctx.alg != "" {
@@ -353,7 +350,7 @@ func guessJWKAlgorithm(ctx *context, jwk *jose.JSONWebKey) {
 
 // guessKnownJWKAlgorithm sets the algorithm for keys that only have one
 // possible algorithm.
-func guessKnownJWKAlgorithm(ctx *context, jwk *jose.JSONWebKey) {
+func guessKnownJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 	if jwk.Algorithm == "" && jwk.Use != "enc" {
 		switch k := jwk.Key.(type) {
 		case *ecdsa.PrivateKey:
