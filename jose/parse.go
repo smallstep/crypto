@@ -324,7 +324,7 @@ func guessJWKAlgorithm(ctx *context, jwk *jose.JSONWebKey) {
 			if jwk.Use == "enc" {
 				jwk.Algorithm = string(DefaultOctKeyAlgorithm)
 			} else {
-				jwk.Algorithm = string(DefaultOctSigsAlgorithm)
+				jwk.Algorithm = string(DefaultOctSigAlgorithm)
 			}
 		case *ecdsa.PrivateKey:
 			if jwk.Use == "enc" {

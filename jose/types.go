@@ -190,8 +190,8 @@ const (
 	DefaultRSAKeyAlgorithm = RSA_OAEP_256
 	DefaultOctKeyAlgorithm = A256GCMKW
 	// Signature algorithms
-	DefaultRSASigAlgorithm  = RS256
-	DefaultOctSigsAlgorithm = HS256
+	DefaultRSASigAlgorithm = RS256
+	DefaultOctSigAlgorithm = HS256
 	// Content encryption algorithm
 	DefaultEncAlgorithm = A256GCM
 )
