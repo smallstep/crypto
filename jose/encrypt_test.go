@@ -131,6 +131,9 @@ func TestEncryptJWK(t *testing.T) {
 			jose.RandReader = reader
 			return jwe
 		}, false},
+		{"fail marshal", args{&JSONWebKey{Key: "a string"}, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
+			return nil
+		}, true},
 		{"fail encrypt", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
 			reader := mustTeeReader(t)
 			_, _ = randutil.Salt(PBKDF2SaltSize)

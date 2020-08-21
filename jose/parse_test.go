@@ -514,6 +514,29 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	guessJWKAlgorithm(ctx, jwk)
 	assert.Equals(t, HS384, jwk.Algorithm)
 
+	// With no defaults
+	ctx, err = new(context).apply(WithNoDefaults(true))
+	assert.NoError(t, err)
+	jwk = mustGenerateJWK(t, "EC", "P-256", "ES256", "sig", "", 0)
+	jwk.Algorithm = ""
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, ES256, jwk.Algorithm)
+
+	pub := jwk.Public()
+	pub.Algorithm = ""
+	guessJWKAlgorithm(ctx, &pub)
+	assert.Equals(t, ES256, pub.Algorithm)
+
+	jwk = mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)
+	jwk.Algorithm = ""
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, EdDSA, jwk.Algorithm)
+
+	pub = jwk.Public()
+	pub.Algorithm = ""
+	guessJWKAlgorithm(ctx, &pub)
+	assert.Equals(t, EdDSA, pub.Algorithm)
+
 	// Defaults
 	for _, tc := range tests {
 		guessJWKAlgorithm(new(context), tc.jwk)
@@ -595,6 +618,54 @@ func TestParseKeySet(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseKeySet() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_guessKeyType(t *testing.T) {
+	marshal := func(i interface{}) []byte {
+		b, err := json.Marshal(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	ecKey := mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0)
+	rsaKey := mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024)
+	rsaPSSKey := mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024)
+	edKey := mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)
+	octKey := mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64)
+	octHS384 := mustGenerateJWK(t, "oct", "", "HS384", "sig", "", 64)
+
+	rsaPEM, err := ioutil.ReadFile("../pemutil/testdata/openssl.p256.pem")
+	assert.FatalError(t, err)
+
+	type args struct {
+		ctx  *context
+		data []byte
+	}
+	tests := []struct {
+		name string
+		args args
+		want keyType
+	}{
+		{"ec", args{&context{}, marshal(ecKey)}, jwkKeyType},
+		{"rsaKey", args{&context{}, marshal(rsaKey)}, jwkKeyType},
+		{"rsaPSSKey", args{&context{}, marshal(rsaPSSKey)}, jwkKeyType},
+		{"edKey", args{&context{}, marshal(edKey)}, jwkKeyType},
+		{"octKey", args{&context{}, marshal(octKey)}, jwkKeyType},
+		{"encrypted", args{&context{}, marshal(mustEncryptJWK(t, ecKey, testPassword))}, jwkKeyType},
+		{"rsaPEM", args{&context{}, rsaPEM}, pemKeyType},
+		{"encryptedAlgHS256", args{&context{alg: "HS256"}, []byte(mustEncryptJWK(t, octKey, testPassword).FullSerialize())}, jwkKeyType},
+		{"jwkAlgHS384", args{&context{alg: "HS384"}, marshal(octHS384)}, jwkKeyType},
+		{"bloblAlgHS512", args{&context{alg: "HS512"}, testPassword}, octKeyType},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := guessKeyType(tt.args.ctx, tt.args.data); got != tt.want {
+				t.Errorf("guessKeyType() = %v, want %v", got, tt.want)
 			}
 		})
 	}

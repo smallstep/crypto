@@ -22,14 +22,14 @@ var PromptPassword PasswordPrompter
 // EncryptJWK returns the given JWK encrypted with the default encryption
 // algorithm (PBES2-HS256+A128KW).
 func EncryptJWK(jwk *JSONWebKey, passphrase []byte) (*JSONWebEncryption, error) {
-	salt, err := randutil.Salt(PBKDF2SaltSize)
-	if err != nil {
-		return nil, err
-	}
-
 	b, err := json.Marshal(jwk)
 	if err != nil {
 		return nil, errors.Wrap(err, "error marshaling JWK")
+	}
+
+	salt, err := randutil.Salt(PBKDF2SaltSize)
+	if err != nil {
+		return nil, err
 	}
 
 	// Encrypt private key using PBES2

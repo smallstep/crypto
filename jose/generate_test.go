@@ -99,6 +99,7 @@ func TestGenerateJWK(t *testing.T) {
 		{"oct", "", "A128GCMKW", "enc", "a-kid", 0, "A128GCMKW", 32, []byte{}, true},
 		{"oct", "", "A192GCMKW", "enc", "a-kid", 0, "A192GCMKW", 32, []byte{}, true},
 		{"oct", "", "A256GCMKW", "enc", "a-kid", 0, "A256GCMKW", 32, []byte{}, true},
+		{"fail", "", "", "", "", 0, "", 0, nil, false},
 	}
 
 	for _, tt := range tests {

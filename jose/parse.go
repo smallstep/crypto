@@ -43,10 +43,7 @@ func read(filename string) ([]byte, error) {
 			return nil, errors.Errorf("error retrieving %s: status code %d", filename, resp.StatusCode)
 		}
 		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error retrieving %s", filename)
-		}
-		return b, nil
+		return b, errors.Wrapf(err, "error retrieving %s", filename)
 	}
 
 	b, err := ioutil.ReadFile(filename)
