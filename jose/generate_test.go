@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/smallstep/assert"
+	"go.step.sm/crypto/pemutil"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -113,8 +114,9 @@ func TestGenerateJWK(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-
-			assert.Equals(t, tc.kid, jwk.KeyID)
+			if tc.kid != "" {
+				assert.Equals(t, tc.kid, jwk.KeyID)
+			}
 			assert.Equals(t, tc.expectedAlg, jwk.Algorithm)
 			assert.Type(t, tc.expectedType, jwk.Key)
 
@@ -192,6 +194,99 @@ func TestKeyUsageForCert(t *testing.T) {
 		} else {
 			assert.Equals(t, tt.ExpectUse, use)
 		}
+	}
+}
+
+func TestGenerateJWKFromPEM(t *testing.T) {
+	mustKey := func(filename string) interface{} {
+		key, err := pemutil.Read(filename)
+		assert.FatalError(t, err)
+		return key
+	}
+	mustCert := func(filename string) *x509.Certificate {
+		cert, err := pemutil.ReadCertificate(filename)
+		assert.FatalError(t, err)
+		return cert
+	}
+	type args struct {
+		filename string
+		subtle   bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *JSONWebKey
+		wantErr bool
+	}{
+		{"p256", args{"../pemutil/testdata/openssl.p256.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p256.pem"),
+			Algorithm: ES256,
+		}, false},
+		{"p384", args{"../pemutil/testdata/openssl.p384.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p384.pem"),
+			Algorithm: ES384,
+		}, false},
+		{"p521", args{"../pemutil/testdata/openssl.p521.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p521.pem"),
+			Algorithm: ES512,
+		}, false},
+		{"ed25519", args{"../pemutil/testdata/pkcs8/openssl.ed25519.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.ed25519.pem"),
+			Algorithm: EdDSA,
+		}, false},
+		{"rsa", args{"../pemutil/testdata/openssl.rsa2048.pem", false}, &JSONWebKey{
+			Key: mustKey("../pemutil/testdata/openssl.rsa2048.pem"),
+		}, false},
+		{"p256 pub", args{"../pemutil/testdata/openssl.p256.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p256.pub.pem"),
+			Algorithm: ES256,
+		}, false},
+		{"p384 pub", args{"../pemutil/testdata/openssl.p384.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p384.pub.pem"),
+			Algorithm: ES384,
+		}, false},
+		{"p521 pub", args{"../pemutil/testdata/openssl.p521.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/openssl.p521.pub.pem"),
+			Algorithm: ES512,
+		}, false},
+		{"ed25519 pub", args{"../pemutil/testdata/pkcs8/openssl.ed25519.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.ed25519.pub.pem"),
+			Algorithm: EdDSA,
+		}, false},
+		{"rsa pub", args{"../pemutil/testdata/openssl.rsa2048.pub.pem", false}, &JSONWebKey{
+			Key: mustKey("../pemutil/testdata/openssl.rsa2048.pub.pem"),
+		}, false},
+		{"rsa cert", args{"testdata/rsa2048.crt", true}, &JSONWebKey{
+			Key:          mustCert("testdata/rsa2048.crt").PublicKey,
+			Certificates: []*x509.Certificate{mustCert("testdata/rsa2048.crt")},
+		}, false},
+		{"ed25519 cert", args{"../x509util/testdata/ed25519.crt", true}, &JSONWebKey{
+			Key:          mustCert("../x509util/testdata/ed25519.crt").PublicKey,
+			Certificates: []*x509.Certificate{mustCert("../x509util/testdata/ed25519.crt")},
+			Algorithm:    EdDSA,
+		}, false},
+		{"p256 cert", args{"../x509util/testdata/google.crt", false}, &JSONWebKey{
+			Key:          mustCert("../x509util/testdata/google.crt").PublicKey,
+			Certificates: []*x509.Certificate{mustCert("../x509util/testdata/google.crt")},
+			Algorithm:    ES256,
+			Use:          "sig",
+		}, false},
+		{"fail missing", args{"testdata/missing.txt", false}, nil, true},
+		{"fail no subtle", args{"testdata/rsa2048.crt", false}, nil, true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := GenerateJWKFromPEM(tt.args.filename, tt.args.subtle)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GenerateJWKFromPEM() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GenerateJWKFromPEM() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
