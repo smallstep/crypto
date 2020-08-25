@@ -40,10 +40,15 @@ Package `keyutil` implements utilities to generate cryptographic keys.
 
 ### pemutil
 
-Package `pemutil` implements utilities to parse keys and certificate. It also
+Package `pemutil` implements utilities to parse keys and certificates. It also
 includes a method to serialize keys, X.509 certificates and certificate requests
 to PEM.
 
 ### randutil
 
 Package `randutil` provides methods to generate random strings and salts.
+
+### jose
+
+Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
+utilities to parse and generate JWT, JWK and JWKSets.

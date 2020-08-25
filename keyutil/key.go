@@ -1,3 +1,4 @@
+// Package keyutil implements utilities to generate cryptographic keys.
 package keyutil
 
 import (
