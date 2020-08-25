@@ -75,7 +75,6 @@ func ParseKey(b []byte, opts ...Option) (*JSONWebKey, error) {
 	switch guessKeyType(ctx, b) {
 	case jwkKeyType:
 		// Attempt to parse an encrypted file
-		// prompt := fmt.Sprintf("Please enter the password to decrypt %s", filename)
 		if b, err = Decrypt(b, opts...); err != nil {
 			return nil, err
 		}

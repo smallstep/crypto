@@ -40,7 +40,7 @@ Package `keyutil` implements utilities to generate cryptographic keys.
 
 ### pemutil
 
-Package `pemutil` implements utilities to parse keys and certificate. It also
+Package `pemutil` implements utilities to parse keys and certificates. It also
 includes a method to serialize keys, X.509 certificates and certificate requests
 to PEM.
 
