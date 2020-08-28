@@ -200,7 +200,7 @@ func TestCertificateRequest_GetCertificateRequest(t *testing.T) {
 				got.RawSubject = nil
 				got.RawSubjectPublicKeyInfo = nil
 				got.RawTBSCertificateRequest = nil
-				got.Attributes = nil
+				got.Attributes = nil //nolint:deprecated
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CertificateRequest.GetCertificateRequest() = %v, want %v", got, tt.want)
