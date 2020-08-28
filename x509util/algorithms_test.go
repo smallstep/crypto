@@ -29,6 +29,45 @@ func TestSignatureAlgorithm_Set(t *testing.T) {
 	}
 }
 
+func TestSignatureAlgorithm_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		s       SignatureAlgorithm
+		want    []byte
+		wantErr bool
+	}{
+		{"UnknownSignatureAlgorithm", SignatureAlgorithm(x509.UnknownSignatureAlgorithm), []byte(`""`), false},
+		{"MD2WithRSA", SignatureAlgorithm(x509.MD2WithRSA), []byte(`"` + MD2_RSA + `"`), false},
+		{"MD5WithRSA", SignatureAlgorithm(x509.MD5WithRSA), []byte(`"` + MD5_RSA + `"`), false},
+		{"SHA1WithRSA", SignatureAlgorithm(x509.SHA1WithRSA), []byte(`"` + SHA1_RSA + `"`), false},
+		{"SHA256WithRSA", SignatureAlgorithm(x509.SHA256WithRSA), []byte(`"` + SHA256_RSA + `"`), false},
+		{"SHA384WithRSA", SignatureAlgorithm(x509.SHA384WithRSA), []byte(`"` + SHA384_RSA + `"`), false},
+		{"SHA512WithRSA", SignatureAlgorithm(x509.SHA512WithRSA), []byte(`"` + SHA512_RSA + `"`), false},
+		{"DSAWithSHA1", SignatureAlgorithm(x509.DSAWithSHA1), []byte(`"` + DSA_SHA1 + `"`), false},
+		{"DSAWithSHA256", SignatureAlgorithm(x509.DSAWithSHA256), []byte(`"` + DSA_SHA256 + `"`), false},
+		{"ECDSAWithSHA1", SignatureAlgorithm(x509.ECDSAWithSHA1), []byte(`"` + ECDSA_SHA1 + `"`), false},
+		{"ECDSAWithSHA256", SignatureAlgorithm(x509.ECDSAWithSHA256), []byte(`"` + ECDSA_SHA256 + `"`), false},
+		{"ECDSAWithSHA384", SignatureAlgorithm(x509.ECDSAWithSHA384), []byte(`"` + ECDSA_SHA384 + `"`), false},
+		{"ECDSAWithSHA512", SignatureAlgorithm(x509.ECDSAWithSHA512), []byte(`"` + ECDSA_SHA512 + `"`), false},
+		{"SHA256WithRSAPSS", SignatureAlgorithm(x509.SHA256WithRSAPSS), []byte(`"` + SHA256_RSAPSS + `"`), false},
+		{"SHA384WithRSAPSS", SignatureAlgorithm(x509.SHA384WithRSAPSS), []byte(`"` + SHA384_RSAPSS + `"`), false},
+		{"SHA512WithRSAPSS", SignatureAlgorithm(x509.SHA512WithRSAPSS), []byte(`"` + SHA512_RSAPSS + `"`), false},
+		{"PureEd25519", SignatureAlgorithm(x509.PureEd25519), []byte(`"` + Ed25519 + `"`), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.s.MarshalJSON()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SignatureAlgorithm.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SignatureAlgorithm.MarshalJSON() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSignatureAlgorithm_UnmarshalJSON(t *testing.T) {
 	type args struct {
 		data []byte
@@ -56,10 +95,11 @@ func TestSignatureAlgorithm_UnmarshalJSON(t *testing.T) {
 		{"ECDSA-SHA512", args{[]byte(`"ECDSA-SHA512"`)}, SignatureAlgorithm(x509.ECDSAWithSHA512), false},
 		{"Ed25519", args{[]byte(`"Ed25519"`)}, SignatureAlgorithm(x509.PureEd25519), false},
 		{"lowercase", args{[]byte(`"ecdsa-sha256"`)}, SignatureAlgorithm(x509.ECDSAWithSHA256), false},
-		{"empty", args{[]byte(`""`)}, SignatureAlgorithm(0), true},
+		{"empty", args{[]byte(`""`)}, SignatureAlgorithm(0), false},
+		{"null", args{[]byte(`null`)}, SignatureAlgorithm(0), false},
 		{"unknown", args{[]byte(`"unknown"`)}, SignatureAlgorithm(0), true},
-		{"null", args{[]byte(`null`)}, SignatureAlgorithm(0), true},
 		{"number", args{[]byte(`0`)}, SignatureAlgorithm(0), true},
+		{"numberString", args{[]byte(`"0"`)}, SignatureAlgorithm(0), true},
 		{"object", args{[]byte(`{}`)}, SignatureAlgorithm(0), true},
 	}
 	for _, tt := range tests {

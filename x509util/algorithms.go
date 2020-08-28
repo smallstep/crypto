@@ -26,7 +26,7 @@ const (
 	ECDSA_SHA256  = "ECDSA-SHA256"
 	ECDSA_SHA384  = "ECDSA-SHA384"
 	ECDSA_SHA512  = "ECDSA-SHA512"
-	Ed25519       = "ED25519"
+	Ed25519       = "Ed25519"
 )
 
 // SignatureAlgorithm is the JSON representation of the X509 signature algorithms
@@ -35,6 +35,14 @@ type SignatureAlgorithm x509.SignatureAlgorithm
 // Set sets the signature algorithm in the given certificate.
 func (s SignatureAlgorithm) Set(c *x509.Certificate) {
 	c.SignatureAlgorithm = x509.SignatureAlgorithm(s)
+}
+
+// MarshalJSON implements the json.Marshaller interface.
+func (s SignatureAlgorithm) MarshalJSON() ([]byte, error) {
+	if s == SignatureAlgorithm(x509.UnknownSignatureAlgorithm) {
+		return []byte(`""`), nil
+	}
+	return []byte(`"` + x509.SignatureAlgorithm(s).String() + `"`), nil
 }
 
 // UnmarshalJSON implements the json.Unmarshal interface and unmarshals and
@@ -47,6 +55,8 @@ func (s *SignatureAlgorithm) UnmarshalJSON(data []byte) error {
 
 	var sa x509.SignatureAlgorithm
 	switch strings.ToUpper(name) {
+	case "":
+		sa = x509.UnknownSignatureAlgorithm
 	case MD2_RSA:
 		sa = x509.MD2WithRSA
 	case MD5_RSA:
@@ -77,7 +87,7 @@ func (s *SignatureAlgorithm) UnmarshalJSON(data []byte) error {
 		sa = x509.ECDSAWithSHA384
 	case ECDSA_SHA512:
 		sa = x509.ECDSAWithSHA512
-	case Ed25519:
+	case Ed25519, "ED25519":
 		sa = x509.PureEd25519
 	default:
 		return errors.Errorf("unsupported signatureAlgorithm %s", name)

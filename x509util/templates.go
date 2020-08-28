@@ -155,3 +155,10 @@ const DefaultRootTemplate = `{
 // CertificateRequestTemplate is a template that will sign the given certificate
 // request.
 const CertificateRequestTemplate = `{{ toJson .Insecure.CR }}`
+
+// DefaultCertificateRequestTemplate is the templated used by default when
+// creating a new certificate request.
+const DefaultCertificateRequestTemplate = `{
+	"subject": {{ toJson .Subject }},
+	"sans": {{ toJson .SANs }}
+}`
