@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
 
 	"github.com/pkg/errors"
 )
@@ -18,19 +19,52 @@ var oidExtensionSubjectAltName = []int{2, 5, 29, 17}
 // CertificateRequest is the JSON representation of an X.509 certificate. It is
 // used to build a certificate request from a template.
 type CertificateRequest struct {
-	Version            int                     `json:"version"`
-	Subject            Subject                 `json:"subject"`
-	DNSNames           MultiString             `json:"dnsNames"`
-	EmailAddresses     MultiString             `json:"emailAddresses"`
-	IPAddresses        MultiIP                 `json:"ipAddresses"`
-	URIs               MultiURL                `json:"uris"`
-	Extensions         []Extension             `json:"extensions"`
-	PublicKey          interface{}             `json:"-"`
-	PublicKeyAlgorithm x509.PublicKeyAlgorithm `json:"-"`
-	Signature          []byte                  `json:"-"`
-	SignatureAlgorithm x509.SignatureAlgorithm `json:"-"`
+	Version            int                      `json:"version"`
+	Subject            Subject                  `json:"subject"`
+	DNSNames           MultiString              `json:"dnsNames"`
+	EmailAddresses     MultiString              `json:"emailAddresses"`
+	IPAddresses        MultiIP                  `json:"ipAddresses"`
+	URIs               MultiURL                 `json:"uris"`
+	SANs               []SubjectAlternativeName `json:"sans"`
+	Extensions         []Extension              `json:"extensions"`
+	SignatureAlgorithm SignatureAlgorithm       `json:"signatureAlgorithm"`
+	PublicKey          interface{}              `json:"-"`
+	PublicKeyAlgorithm x509.PublicKeyAlgorithm  `json:"-"`
+	Signature          []byte                   `json:"-"`
+	Signer             crypto.Signer            `json:"-"`
 }
 
+// NewCertificateRequest creates a certificate request from a template.
+func NewCertificateRequest(signer crypto.Signer, opts ...Option) (*CertificateRequest, error) {
+	pub := signer.Public()
+	o, err := new(Options).apply(&x509.CertificateRequest{
+		PublicKey: pub,
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no template use only the certificate request with the default leaf key
+	// usages.
+	if o.CertBuffer == nil {
+		return &CertificateRequest{
+			PublicKey: pub,
+			Signer:    signer,
+		}, nil
+	}
+
+	// With templates
+	var cr CertificateRequest
+	if err := json.NewDecoder(o.CertBuffer).Decode(&cr); err != nil {
+		return nil, errors.Wrap(err, "error unmarshaling certificate")
+	}
+	cr.PublicKey = pub
+	cr.Signer = signer
+	return &cr, nil
+}
+
+// newCertificateRequest is an internal method that creates a CertificateRequest
+// from an x509.CertificateRequest.
 func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
 	// Set SubjectAltName extension as critical if Subject is empty.
 	if len(cr.Extensions) > 0 {
@@ -55,8 +89,27 @@ func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
 		PublicKey:          cr.PublicKey,
 		PublicKeyAlgorithm: cr.PublicKeyAlgorithm,
 		Signature:          cr.Signature,
-		SignatureAlgorithm: cr.SignatureAlgorithm,
+		SignatureAlgorithm: SignatureAlgorithm(cr.SignatureAlgorithm),
 	}
+}
+
+// GetCertificateRequest returns the equivalent x509.CertificateRequest.
+func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, error) {
+	cert := c.GetCertificate().GetCertificate()
+	asn1Data, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject:            cert.Subject,
+		DNSNames:           cert.DNSNames,
+		IPAddresses:        cert.IPAddresses,
+		EmailAddresses:     cert.EmailAddresses,
+		URIs:               cert.URIs,
+		ExtraExtensions:    cert.ExtraExtensions,
+		SignatureAlgorithm: cert.SignatureAlgorithm,
+	}, c.Signer)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating certificate request")
+	}
+	// This should not fail
+	return x509.ParseCertificateRequest(asn1Data)
 }
 
 // GetCertificate returns the Certificate representation of the
@@ -68,9 +121,11 @@ func (c *CertificateRequest) GetCertificate() *Certificate {
 		EmailAddresses:     c.EmailAddresses,
 		IPAddresses:        c.IPAddresses,
 		URIs:               c.URIs,
+		SANs:               c.SANs,
 		Extensions:         c.Extensions,
 		PublicKey:          c.PublicKey,
 		PublicKeyAlgorithm: c.PublicKeyAlgorithm,
+		SignatureAlgorithm: c.SignatureAlgorithm,
 	}
 }
 
