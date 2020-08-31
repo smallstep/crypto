@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -918,6 +919,79 @@ func TestRead_promptPassword(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Read() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadCertificateRequest(t *testing.T) {
+	expected := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName: "hello.smallstep.com",
+			Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "hello.smallstep.com"}},
+		},
+		PublicKey: &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X: new(big.Int).SetBytes([]byte{
+				0x8a, 0x8f, 0x43, 0x2f, 0x2b, 0xa0, 0x94, 0xcc,
+				0x5a, 0x91, 0x2d, 0xf0, 0xd3, 0x40, 0xd4, 0x29,
+				0xd1, 0x9b, 0x79, 0x75, 0xc1, 0xd8, 0xc7, 0xe0,
+				0xea, 0xd5, 0x68, 0x7d, 0xe5, 0xd8, 0x6a, 0x7f,
+			}),
+			Y: new(big.Int).SetBytes([]byte{
+				0x51, 0x6e, 0xf7, 0xed, 0x66, 0xe7, 0xe2, 0xca,
+				0x92, 0x00, 0x56, 0xa1, 0x99, 0xa8, 0xee, 0xc2,
+				0x47, 0xd1, 0x1b, 0x92, 0x8c, 0x87, 0x6f, 0xfe,
+				0xc6, 0x70, 0xa4, 0x1a, 0xe4, 0x76, 0x7d, 0xac,
+			}),
+		},
+		PublicKeyAlgorithm: x509.ECDSA,
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+		Signature: []byte{
+			0x30, 0x44, 0x02, 0x20, 0x66, 0x0c, 0xfd, 0x81,
+			0xdc, 0x7d, 0x8a, 0x73, 0xa9, 0xe9, 0xb4, 0x97,
+			0xe0, 0x49, 0x18, 0x89, 0x40, 0xb2, 0x2d, 0x5f,
+			0x71, 0x1a, 0xf6, 0x9b, 0xa2, 0xfb, 0xb9, 0x0b,
+			0xd5, 0x24, 0x46, 0xbf, 0x02, 0x20, 0x11, 0x81,
+			0x6e, 0x4a, 0x74, 0x97, 0x8b, 0x5e, 0xb0, 0x02,
+			0xa8, 0x5d, 0xe9, 0x6c, 0x2f, 0x28, 0x09, 0x8c,
+			0xfb, 0x94, 0x19, 0x12, 0xca, 0xf8, 0xeb, 0x5d,
+			0x8c, 0xf0, 0x48, 0x37, 0x56, 0x68,
+		},
+	}
+	type args struct {
+		filename string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *x509.CertificateRequest
+		wantErr bool
+	}{
+		{"ok", args{"testdata/test.csr"}, expected, false},
+		{"ok der", args{"testdata/test.der"}, expected, false},
+		{"ok keytool", args{"testdata/keytool.csr"}, expected, false},
+		{"fail missing", args{"testdata/missing.csr"}, nil, true},
+		{"fail bad csr", args{"testdata/bad.csr"}, nil, true},
+		{"fail certificate", args{"testdata/ca.crt"}, nil, true},
+		{"fail certificate der", args{"testdata/ca.der"}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ReadCertificateRequest(tt.args.filename)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReadCertificateRequest() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			// Cleanup raw data
+			if got != nil {
+				got.Raw = nil
+				got.RawSubject = nil
+				got.RawSubjectPublicKeyInfo = nil
+				got.RawTBSCertificateRequest = nil
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReadCertificateRequest() = \n%#v, want \n%#v", got, tt.want)
 			}
 		})
 	}
