@@ -7,27 +7,48 @@ import (
 	"github.com/pkg/errors"
 )
 
-// List of signature algorithms, all of them have values in upper case to match
-// them with the string representation.
-// nolint:golint
+// List of signature algorithms.
 const (
-	MD2_RSA       = "MD2-RSA"
-	MD5_RSA       = "MD5-RSA"
-	SHA1_RSA      = "SHA1-RSA"
-	SHA256_RSA    = "SHA256-RSA"
-	SHA384_RSA    = "SHA384-RSA"
-	SHA512_RSA    = "SHA512-RSA"
-	SHA256_RSAPSS = "SHA256-RSAPSS"
-	SHA384_RSAPSS = "SHA384-RSAPSS"
-	SHA512_RSAPSS = "SHA512-RSAPSS"
-	DSA_SHA1      = "DSA-SHA1"
-	DSA_SHA256    = "DSA-SHA256"
-	ECDSA_SHA1    = "ECDSA-SHA1"
-	ECDSA_SHA256  = "ECDSA-SHA256"
-	ECDSA_SHA384  = "ECDSA-SHA384"
-	ECDSA_SHA512  = "ECDSA-SHA512"
-	Ed25519       = "Ed25519"
+	MD2WithRSA       = "MD2-RSA"
+	MD5WithRSA       = "MD5-RSA"
+	SHA1WithRSA      = "SHA1-RSA"
+	SHA256WithRSA    = "SHA256-RSA"
+	SHA384WithRSA    = "SHA384-RSA"
+	SHA512WithRSA    = "SHA512-RSA"
+	DSAWithSHA1      = "DSA-SHA1"
+	DSAWithSHA256    = "DSA-SHA256"
+	ECDSAWithSHA1    = "ECDSA-SHA1"
+	ECDSAWithSHA256  = "ECDSA-SHA256"
+	ECDSAWithSHA384  = "ECDSA-SHA384"
+	ECDSAWithSHA512  = "ECDSA-SHA512"
+	SHA256WithRSAPSS = "SHA256-RSAPSS"
+	SHA384WithRSAPSS = "SHA384-RSAPSS"
+	SHA512WithRSAPSS = "SHA512-RSAPSS"
+	PureEd25519      = "Ed25519"
 )
+
+var signatureAlgorithmMapping = []struct {
+	name  string
+	value x509.SignatureAlgorithm
+}{
+	{"", x509.UnknownSignatureAlgorithm},
+	{MD2WithRSA, x509.MD2WithRSA},
+	{MD5WithRSA, x509.MD5WithRSA},
+	{SHA1WithRSA, x509.SHA1WithRSA},
+	{SHA256WithRSA, x509.SHA256WithRSA},
+	{SHA384WithRSA, x509.SHA384WithRSA},
+	{SHA512WithRSA, x509.SHA512WithRSA},
+	{DSAWithSHA1, x509.DSAWithSHA1},
+	{DSAWithSHA256, x509.DSAWithSHA256},
+	{ECDSAWithSHA1, x509.ECDSAWithSHA1},
+	{ECDSAWithSHA256, x509.ECDSAWithSHA256},
+	{ECDSAWithSHA384, x509.ECDSAWithSHA384},
+	{ECDSAWithSHA512, x509.ECDSAWithSHA512},
+	{SHA256WithRSAPSS, x509.SHA256WithRSAPSS},
+	{SHA384WithRSAPSS, x509.SHA384WithRSAPSS},
+	{SHA512WithRSAPSS, x509.SHA512WithRSAPSS},
+	{PureEd25519, x509.PureEd25519},
+}
 
 // SignatureAlgorithm is the JSON representation of the X509 signature algorithms
 type SignatureAlgorithm x509.SignatureAlgorithm
@@ -53,46 +74,12 @@ func (s *SignatureAlgorithm) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	var sa x509.SignatureAlgorithm
-	switch strings.ToUpper(name) {
-	case "":
-		sa = x509.UnknownSignatureAlgorithm
-	case MD2_RSA:
-		sa = x509.MD2WithRSA
-	case MD5_RSA:
-		sa = x509.MD5WithRSA
-	case SHA1_RSA:
-		sa = x509.SHA1WithRSA
-	case SHA256_RSA:
-		sa = x509.SHA256WithRSA
-	case SHA384_RSA:
-		sa = x509.SHA384WithRSA
-	case SHA512_RSA:
-		sa = x509.SHA512WithRSA
-	case SHA256_RSAPSS:
-		sa = x509.SHA256WithRSAPSS
-	case SHA384_RSAPSS:
-		sa = x509.SHA384WithRSAPSS
-	case SHA512_RSAPSS:
-		sa = x509.SHA512WithRSAPSS
-	case DSA_SHA1:
-		sa = x509.DSAWithSHA1
-	case DSA_SHA256:
-		sa = x509.DSAWithSHA256
-	case ECDSA_SHA1:
-		sa = x509.ECDSAWithSHA1
-	case ECDSA_SHA256:
-		sa = x509.ECDSAWithSHA256
-	case ECDSA_SHA384:
-		sa = x509.ECDSAWithSHA384
-	case ECDSA_SHA512:
-		sa = x509.ECDSAWithSHA512
-	case Ed25519, "ED25519":
-		sa = x509.PureEd25519
-	default:
-		return errors.Errorf("unsupported signatureAlgorithm %s", name)
+	for _, m := range signatureAlgorithmMapping {
+		if strings.EqualFold(name, m.name) {
+			*s = SignatureAlgorithm(m.value)
+			return nil
+		}
 	}
 
-	*s = SignatureAlgorithm(sa)
-	return nil
+	return errors.Errorf("unsupported signatureAlgorithm %s", name)
 }

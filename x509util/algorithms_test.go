@@ -37,22 +37,22 @@ func TestSignatureAlgorithm_MarshalJSON(t *testing.T) {
 		wantErr bool
 	}{
 		{"UnknownSignatureAlgorithm", SignatureAlgorithm(x509.UnknownSignatureAlgorithm), []byte(`""`), false},
-		{"MD2WithRSA", SignatureAlgorithm(x509.MD2WithRSA), []byte(`"` + MD2_RSA + `"`), false},
-		{"MD5WithRSA", SignatureAlgorithm(x509.MD5WithRSA), []byte(`"` + MD5_RSA + `"`), false},
-		{"SHA1WithRSA", SignatureAlgorithm(x509.SHA1WithRSA), []byte(`"` + SHA1_RSA + `"`), false},
-		{"SHA256WithRSA", SignatureAlgorithm(x509.SHA256WithRSA), []byte(`"` + SHA256_RSA + `"`), false},
-		{"SHA384WithRSA", SignatureAlgorithm(x509.SHA384WithRSA), []byte(`"` + SHA384_RSA + `"`), false},
-		{"SHA512WithRSA", SignatureAlgorithm(x509.SHA512WithRSA), []byte(`"` + SHA512_RSA + `"`), false},
-		{"DSAWithSHA1", SignatureAlgorithm(x509.DSAWithSHA1), []byte(`"` + DSA_SHA1 + `"`), false},
-		{"DSAWithSHA256", SignatureAlgorithm(x509.DSAWithSHA256), []byte(`"` + DSA_SHA256 + `"`), false},
-		{"ECDSAWithSHA1", SignatureAlgorithm(x509.ECDSAWithSHA1), []byte(`"` + ECDSA_SHA1 + `"`), false},
-		{"ECDSAWithSHA256", SignatureAlgorithm(x509.ECDSAWithSHA256), []byte(`"` + ECDSA_SHA256 + `"`), false},
-		{"ECDSAWithSHA384", SignatureAlgorithm(x509.ECDSAWithSHA384), []byte(`"` + ECDSA_SHA384 + `"`), false},
-		{"ECDSAWithSHA512", SignatureAlgorithm(x509.ECDSAWithSHA512), []byte(`"` + ECDSA_SHA512 + `"`), false},
-		{"SHA256WithRSAPSS", SignatureAlgorithm(x509.SHA256WithRSAPSS), []byte(`"` + SHA256_RSAPSS + `"`), false},
-		{"SHA384WithRSAPSS", SignatureAlgorithm(x509.SHA384WithRSAPSS), []byte(`"` + SHA384_RSAPSS + `"`), false},
-		{"SHA512WithRSAPSS", SignatureAlgorithm(x509.SHA512WithRSAPSS), []byte(`"` + SHA512_RSAPSS + `"`), false},
-		{"PureEd25519", SignatureAlgorithm(x509.PureEd25519), []byte(`"` + Ed25519 + `"`), false},
+		{"MD2WithRSA", SignatureAlgorithm(x509.MD2WithRSA), []byte(`"` + MD2WithRSA + `"`), false},
+		{"MD5WithRSA", SignatureAlgorithm(x509.MD5WithRSA), []byte(`"` + MD5WithRSA + `"`), false},
+		{"SHA1WithRSA", SignatureAlgorithm(x509.SHA1WithRSA), []byte(`"` + SHA1WithRSA + `"`), false},
+		{"SHA256WithRSA", SignatureAlgorithm(x509.SHA256WithRSA), []byte(`"` + SHA256WithRSA + `"`), false},
+		{"SHA384WithRSA", SignatureAlgorithm(x509.SHA384WithRSA), []byte(`"` + SHA384WithRSA + `"`), false},
+		{"SHA512WithRSA", SignatureAlgorithm(x509.SHA512WithRSA), []byte(`"` + SHA512WithRSA + `"`), false},
+		{"DSAWithSHA1", SignatureAlgorithm(x509.DSAWithSHA1), []byte(`"` + DSAWithSHA1 + `"`), false},
+		{"DSAWithSHA256", SignatureAlgorithm(x509.DSAWithSHA256), []byte(`"` + DSAWithSHA256 + `"`), false},
+		{"ECDSAWithSHA1", SignatureAlgorithm(x509.ECDSAWithSHA1), []byte(`"` + ECDSAWithSHA1 + `"`), false},
+		{"ECDSAWithSHA256", SignatureAlgorithm(x509.ECDSAWithSHA256), []byte(`"` + ECDSAWithSHA256 + `"`), false},
+		{"ECDSAWithSHA384", SignatureAlgorithm(x509.ECDSAWithSHA384), []byte(`"` + ECDSAWithSHA384 + `"`), false},
+		{"ECDSAWithSHA512", SignatureAlgorithm(x509.ECDSAWithSHA512), []byte(`"` + ECDSAWithSHA512 + `"`), false},
+		{"SHA256WithRSAPSS", SignatureAlgorithm(x509.SHA256WithRSAPSS), []byte(`"` + SHA256WithRSAPSS + `"`), false},
+		{"SHA384WithRSAPSS", SignatureAlgorithm(x509.SHA384WithRSAPSS), []byte(`"` + SHA384WithRSAPSS + `"`), false},
+		{"SHA512WithRSAPSS", SignatureAlgorithm(x509.SHA512WithRSAPSS), []byte(`"` + SHA512WithRSAPSS + `"`), false},
+		{"PureEd25519", SignatureAlgorithm(x509.PureEd25519), []byte(`"` + PureEd25519 + `"`), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestSignatureAlgorithm_UnmarshalJSON(t *testing.T) {
 		want    SignatureAlgorithm
 		wantErr bool
 	}{
-		{"MD2_RSA", args{[]byte(`"MD2-RSA"`)}, SignatureAlgorithm(x509.MD2WithRSA), false},
+		{"MD2-RSA", args{[]byte(`"MD2-RSA"`)}, SignatureAlgorithm(x509.MD2WithRSA), false},
 		{"MD5-RSA", args{[]byte(`"MD5-RSA"`)}, SignatureAlgorithm(x509.MD5WithRSA), false},
 		{"SHA1-RSA", args{[]byte(`"SHA1-RSA"`)}, SignatureAlgorithm(x509.SHA1WithRSA), false},
 		{"SHA256-RSA", args{[]byte(`"SHA256-RSA"`)}, SignatureAlgorithm(x509.SHA256WithRSA), false},
