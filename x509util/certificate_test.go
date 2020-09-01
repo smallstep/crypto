@@ -140,7 +140,7 @@ func TestNewCertificate(t *testing.T) {
 			Extensions:         newExtensions(cr.Extensions),
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.Ed25519,
-			SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 		}, false},
 		{"okDefaultTemplate", args{cr, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
 			Subject:  Subject{CommonName: "commonName"},
