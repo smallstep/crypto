@@ -265,6 +265,30 @@ func (k *ExtKeyUsage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnknownExtKeyUsage represents the list of OIDs of extended key usages unknown
+// to crypto/x509.
+type UnknownExtKeyUsage MultiObjectIdentifier
+
+// MarshalJSON implements the json.Marshaler interface in UnknownExtKeyUsage.
+func (u UnknownExtKeyUsage) MarshalJSON() ([]byte, error) {
+	return MultiObjectIdentifier(u).MarshalJSON()
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface in UnknownExtKeyUsage.
+func (u *UnknownExtKeyUsage) UnmarshalJSON(data []byte) error {
+	var v MultiObjectIdentifier
+	if err := json.Unmarshal(data, &v); err != nil {
+		return errors.Wrap(err, "error unmarshaling json")
+	}
+	*u = UnknownExtKeyUsage(v)
+	return nil
+}
+
+// Set sets the policy identifiers to the given certificate.
+func (u UnknownExtKeyUsage) Set(c *x509.Certificate) {
+	c.UnknownExtKeyUsage = u
+}
+
 // SubjectKeyID represents the binary value of the subject key identifier
 // extension, this should be the SHA-1 hash of the public key. In JSON this
 // value should be a base64-encoded string, and in most cases it should not be

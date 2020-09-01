@@ -187,12 +187,13 @@ func TestNewCertificate(t *testing.T) {
 			Extensions:            []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("extension")}},
 			KeyUsage:              KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage:           ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+			UnknownExtKeyUsage:    []asn1.ObjectIdentifier{[]int{1, 3, 6, 1, 4, 1, 44924, 1, 6}, []int{1, 3, 6, 1, 4, 1, 44924, 1, 7}},
 			SubjectKeyID:          []byte("subjectKeyId"),
 			AuthorityKeyID:        []byte("authorityKeyId"),
 			OCSPServer:            []string{"https://ocsp.server"},
 			IssuingCertificateURL: []string{"https://ca.com"},
 			CRLDistributionPoints: []string{"https://ca.com/ca.crl"},
-			PolicyIdentifiers:     PolicyIdentifiers{[]int{5, 6, 7, 8, 9, 0}},
+			PolicyIdentifiers:     PolicyIdentifiers{[]int{1, 2, 3, 4, 5, 6}},
 			BasicConstraints: &BasicConstraints{
 				IsCA:       false,
 				MaxPathLen: 0,
@@ -246,6 +247,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 		Extensions            []Extension
 		KeyUsage              KeyUsage
 		ExtKeyUsage           ExtKeyUsage
+		UnknownExtKeyUsage    UnknownExtKeyUsage
 		SubjectKeyID          SubjectKeyID
 		AuthorityKeyID        AuthorityKeyID
 		OCSPServer            OCSPServer
@@ -284,6 +286,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				x509.ExtKeyUsageServerAuth,
 				x509.ExtKeyUsageClientAuth,
 			}),
+			UnknownExtKeyUsage:    []asn1.ObjectIdentifier{[]int{1, 3, 6, 1, 4, 1, 44924, 1, 6}, []int{1, 3, 6, 1, 4, 1, 44924, 1, 7}},
 			SubjectKeyID:          []byte("subject-key-id"),
 			AuthorityKeyID:        []byte("authority-key-id"),
 			OCSPServer:            []string{"https://oscp.server"},
@@ -310,6 +313,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				x509.ExtKeyUsageServerAuth,
 				x509.ExtKeyUsageClientAuth,
 			},
+			UnknownExtKeyUsage:    []asn1.ObjectIdentifier{[]int{1, 3, 6, 1, 4, 1, 44924, 1, 6}, []int{1, 3, 6, 1, 4, 1, 44924, 1, 7}},
 			SubjectKeyId:          []byte("subject-key-id"),
 			AuthorityKeyId:        []byte("authority-key-id"),
 			OCSPServer:            []string{"https://oscp.server"},
@@ -341,6 +345,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				Extensions:            tt.fields.Extensions,
 				KeyUsage:              tt.fields.KeyUsage,
 				ExtKeyUsage:           tt.fields.ExtKeyUsage,
+				UnknownExtKeyUsage:    tt.fields.UnknownExtKeyUsage,
 				SubjectKeyID:          tt.fields.SubjectKeyID,
 				AuthorityKeyID:        tt.fields.AuthorityKeyID,
 				OCSPServer:            tt.fields.OCSPServer,
