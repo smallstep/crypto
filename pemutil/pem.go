@@ -244,6 +244,33 @@ func ReadCertificateBundle(filename string) ([]*x509.Certificate, error) {
 	return []*x509.Certificate{crt}, nil
 }
 
+// ReadCertificateRequest returns a *x509.CertificateRequest from the given
+// filename. It supports certificates formats PEM and DER.
+func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
+	b, err := utils.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// PEM format
+	if bytes.HasPrefix(b, []byte("-----BEGIN ")) {
+		csr, err := Parse(b, WithFilename(filename))
+		if err != nil {
+			return nil, err
+		}
+		switch csr := csr.(type) {
+		case *x509.CertificateRequest:
+			return csr, nil
+		default:
+			return nil, errors.Errorf("error decoding PEM: file '%s' does not contain a certificate request", filename)
+		}
+	}
+
+	// DER format (binary)
+	csr, err := x509.ParseCertificateRequest(b)
+	return csr, errors.Wrapf(err, "error parsing %s", filename)
+}
+
 // Parse returns the key or certificate PEM-encoded in the given bytes.
 func Parse(b []byte, opts ...Options) (interface{}, error) {
 	// Populate options
