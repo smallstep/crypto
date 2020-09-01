@@ -26,6 +26,7 @@ type Certificate struct {
 	Extensions            []Extension              `json:"extensions"`
 	KeyUsage              KeyUsage                 `json:"keyUsage"`
 	ExtKeyUsage           ExtKeyUsage              `json:"extKeyUsage"`
+	UnknownExtKeyUsage    UnknownExtKeyUsage       `json:"unknownExtKeyUsage"`
 	SubjectKeyID          SubjectKeyID             `json:"subjectKeyId"`
 	AuthorityKeyID        AuthorityKeyID           `json:"authorityKeyId"`
 	OCSPServer            OCSPServer               `json:"ocspServer"`
@@ -98,6 +99,7 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	// Defined extensions.
 	c.KeyUsage.Set(cert)
 	c.ExtKeyUsage.Set(cert)
+	c.UnknownExtKeyUsage.Set(cert)
 	c.SubjectKeyID.Set(cert)
 	c.AuthorityKeyID.Set(cert)
 	c.OCSPServer.Set(cert)

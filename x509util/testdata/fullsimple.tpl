@@ -11,12 +11,13 @@
     "extensions": [{"id":"1.2.3.4","critical":true,"value":"ZXh0ZW5zaW9u"}],
     "keyUsage": ["digitalSignature"],
     "extKeyUsage": ["serverAuth"],
+    "unknownExtKeyUsage": ["1.3.6.1.4.1.44924.1.6", "1.3.6.1.4.1.44924.1.7"],
     "subjectKeyId": "c3ViamVjdEtleUlk",
     "authorityKeyId": "YXV0aG9yaXR5S2V5SWQ=",
     "ocspServer": "https://ocsp.server",
     "issuingCertificateURL": "https://ca.com",
     "crlDistributionPoints": "https://ca.com/ca.crl",
-    "policyIdentifiers": "5.6.7.8.9.0",
+    "policyIdentifiers": "1.2.3.4.5.6",
     "basicConstraints": {
         "isCA": false, 
         "maxPathLen": 0

@@ -406,6 +406,84 @@ func TestExtKeyUsage_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+func TestUnknownExtKeyUsage_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		m       UnknownExtKeyUsage
+		want    []byte
+		wantErr bool
+	}{
+		{"ok", []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, []byte(`["1.2.3.4","5.6.7.8.9.0"]`), false},
+		{"empty", []asn1.ObjectIdentifier{}, []byte(`[]`), false},
+		{"nil", nil, []byte(`null`), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := json.Marshal(tt.m)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UnknownExtKeyUsage.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("UnknownExtKeyUsage.MarshalJSON() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnknownExtKeyUsage_UnmarshalJSON(t *testing.T) {
+	type args struct {
+		data []byte
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    UnknownExtKeyUsage
+		wantErr bool
+	}{
+		{"string", args{[]byte(`"1.2.3.4"`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}}, false},
+		{"array", args{[]byte(`["1.2.3.4", "5.6.7.8.9.0"]`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, false},
+		{"empty", args{[]byte(`[]`)}, []asn1.ObjectIdentifier{}, false},
+		{"null", args{[]byte(`null`)}, nil, false},
+		{"fail", args{[]byte(`":foo:bar"`)}, nil, true},
+		{"failJSON", args{[]byte(`["https://iss#sub"`)}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got UnknownExtKeyUsage
+			if err := got.UnmarshalJSON(tt.args.data); (err != nil) != tt.wantErr {
+				t.Errorf("UnknownExtKeyUsage.UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("UnknownExtKeyUsage.UnmarshalJSON() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnknownExtKeyUsage_Set(t *testing.T) {
+	type args struct {
+		c *x509.Certificate
+	}
+	tests := []struct {
+		name string
+		o    UnknownExtKeyUsage
+		args args
+		want *x509.Certificate
+	}{
+		{"ok", []asn1.ObjectIdentifier{{1, 2, 3, 4}}, args{&x509.Certificate{}}, &x509.Certificate{UnknownExtKeyUsage: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}},
+		{"overwrite", []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}, args{&x509.Certificate{UnknownExtKeyUsage: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}}, &x509.Certificate{UnknownExtKeyUsage: []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.o.Set(tt.args.c)
+			if !reflect.DeepEqual(tt.args.c, tt.want) {
+				t.Errorf("UnknownExtKeyUsage.Set() = %v, want %v", tt.args.c, tt.want)
+			}
+		})
+	}
+}
+
 func TestSubjectKeyID_Set(t *testing.T) {
 	type args struct {
 		c *x509.Certificate
