@@ -53,12 +53,9 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	}
 
 	// If no template use only the certificate request with the default leaf key
-	// usages. And do not enforce signature algorithm from the CSR, it might not
-	// be compatible with the certificate signer.
+	// usages.
 	if o.CertBuffer == nil {
-		cert := newCertificateRequest(cr).GetLeafCertificate()
-		cert.SignatureAlgorithm = 0
-		return cert, nil
+		return newCertificateRequest(cr).GetLeafCertificate(), nil
 	}
 
 	// With templates
