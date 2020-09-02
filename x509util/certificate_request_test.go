@@ -253,7 +253,7 @@ func TestCertificateRequest_GetCertificate(t *testing.T) {
 				Extensions:         []Extension{{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
 				PublicKey:          []byte("publicKey"),
 				PublicKeyAlgorithm: x509.Ed25519,
-				SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 	}
@@ -326,7 +326,7 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 				}),
 				PublicKey:          []byte("publicKey"),
 				PublicKeyAlgorithm: x509.Ed25519,
-				SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 		{"rsa",
@@ -357,7 +357,7 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 				}),
 				PublicKey:          &rsa.PublicKey{},
 				PublicKeyAlgorithm: x509.RSA,
-				SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 	}

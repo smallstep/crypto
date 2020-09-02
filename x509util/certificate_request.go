@@ -111,7 +111,7 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 		EmailAddresses:     cert.EmailAddresses,
 		URIs:               cert.URIs,
 		ExtraExtensions:    cert.ExtraExtensions,
-		SignatureAlgorithm: cert.SignatureAlgorithm,
+		SignatureAlgorithm: x509.SignatureAlgorithm(c.SignatureAlgorithm),
 	}, c.Signer)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating certificate request")
@@ -122,6 +122,10 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 
 // GetCertificate returns the Certificate representation of the
 // CertificateRequest.
+//
+// GetCertificate will not specify a SignatureAlgorithm, it's not possible to
+// guarantee that the certificate signer can sign with the CertificateRequest
+// SignatureAlgorithm.
 func (c *CertificateRequest) GetCertificate() *Certificate {
 	return &Certificate{
 		Subject:            c.Subject,
@@ -133,12 +137,16 @@ func (c *CertificateRequest) GetCertificate() *Certificate {
 		Extensions:         c.Extensions,
 		PublicKey:          c.PublicKey,
 		PublicKeyAlgorithm: c.PublicKeyAlgorithm,
-		SignatureAlgorithm: c.SignatureAlgorithm,
+		SignatureAlgorithm: 0,
 	}
 }
 
 // GetLeafCertificate returns the Certificate representation of the
 // CertificateRequest, including KeyUsage and ExtKeyUsage extensions.
+//
+// GetLeafCertificate will not specify a SignatureAlgorithm, it's not possible
+// to guarantee that the certificate signer can sign with the CertificateRequest
+// SignatureAlgorithm.
 func (c *CertificateRequest) GetLeafCertificate() *Certificate {
 	keyUsage := x509.KeyUsageDigitalSignature
 	if _, ok := c.PublicKey.(*rsa.PublicKey); ok {
