@@ -75,15 +75,17 @@ func Test_newCertificateRequest(t *testing.T) {
 	}{
 		{"ok", args{&x509.CertificateRequest{}}, &CertificateRequest{}},
 		{"complex", args{&x509.CertificateRequest{
-			Extensions: []pkix.Extension{{Id: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
-			Subject:    pkix.Name{Province: []string{"CA"}, CommonName: "commonName"},
-			DNSNames:   []string{"foo"},
-			PublicKey:  []byte("publicKey"),
+			Extensions:         []pkix.Extension{{Id: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
+			Subject:            pkix.Name{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: x509.PureEd25519,
 		}}, &CertificateRequest{
-			Extensions: []Extension{{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
-			Subject:    Subject{Province: []string{"CA"}, CommonName: "commonName"},
-			DNSNames:   []string{"foo"},
-			PublicKey:  []byte("publicKey"),
+			Extensions:         []Extension{{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
+			Subject:            Subject{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 		}},
 	}
 	for _, tt := range tests {
@@ -251,7 +253,7 @@ func TestCertificateRequest_GetCertificate(t *testing.T) {
 				Extensions:         []Extension{{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
 				PublicKey:          []byte("publicKey"),
 				PublicKeyAlgorithm: x509.Ed25519,
-				SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 	}
@@ -324,7 +326,7 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 				}),
 				PublicKey:          []byte("publicKey"),
 				PublicKeyAlgorithm: x509.Ed25519,
-				SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 		{"rsa",
@@ -355,7 +357,7 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 				}),
 				PublicKey:          &rsa.PublicKey{},
 				PublicKeyAlgorithm: x509.RSA,
-				SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+				SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 			},
 		},
 	}

@@ -65,6 +65,12 @@ func NewCertificateRequest(signer crypto.Signer, opts ...Option) (*CertificateRe
 
 // newCertificateRequest is an internal method that creates a CertificateRequest
 // from an x509.CertificateRequest.
+//
+// This method is used to create the template variable .Insecure.CR or to
+// initialize the Certificate when no templates are used. newCertificateRequest
+// will always ignore the SignatureAlgorithm because we cannot guarantee that
+// the signer will be able to sign a certificate template if
+// Certificate.SignatureAlgorithm is set.
 func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
 	// Set SubjectAltName extension as critical if Subject is empty.
 	if len(cr.Extensions) > 0 {
@@ -89,7 +95,9 @@ func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
 		PublicKey:          cr.PublicKey,
 		PublicKeyAlgorithm: cr.PublicKeyAlgorithm,
 		Signature:          cr.Signature,
-		SignatureAlgorithm: SignatureAlgorithm(cr.SignatureAlgorithm),
+		// Do not enforce signature algorithm from the CSR, it might not
+		// be compatible with the certificate signer.
+		SignatureAlgorithm: 0,
 	}
 }
 
@@ -103,7 +111,7 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 		EmailAddresses:     cert.EmailAddresses,
 		URIs:               cert.URIs,
 		ExtraExtensions:    cert.ExtraExtensions,
-		SignatureAlgorithm: cert.SignatureAlgorithm,
+		SignatureAlgorithm: x509.SignatureAlgorithm(c.SignatureAlgorithm),
 	}, c.Signer)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating certificate request")
@@ -114,6 +122,10 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 
 // GetCertificate returns the Certificate representation of the
 // CertificateRequest.
+//
+// GetCertificate will not specify a SignatureAlgorithm, it's not possible to
+// guarantee that the certificate signer can sign with the CertificateRequest
+// SignatureAlgorithm.
 func (c *CertificateRequest) GetCertificate() *Certificate {
 	return &Certificate{
 		Subject:            c.Subject,
@@ -125,12 +137,16 @@ func (c *CertificateRequest) GetCertificate() *Certificate {
 		Extensions:         c.Extensions,
 		PublicKey:          c.PublicKey,
 		PublicKeyAlgorithm: c.PublicKeyAlgorithm,
-		SignatureAlgorithm: c.SignatureAlgorithm,
+		SignatureAlgorithm: 0,
 	}
 }
 
 // GetLeafCertificate returns the Certificate representation of the
 // CertificateRequest, including KeyUsage and ExtKeyUsage extensions.
+//
+// GetLeafCertificate will not specify a SignatureAlgorithm, it's not possible
+// to guarantee that the certificate signer can sign with the CertificateRequest
+// SignatureAlgorithm.
 func (c *CertificateRequest) GetLeafCertificate() *Certificate {
 	keyUsage := x509.KeyUsageDigitalSignature
 	if _, ok := c.PublicKey.(*rsa.PublicKey); ok {
