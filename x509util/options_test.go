@@ -112,6 +112,26 @@ func TestWithTemplate(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
+		{"admin", args{DefaultAdminLeafTemplate, TemplateData{}, cr}, Options{
+			CertBuffer: bytes.NewBufferString(`{
+	"subject": {"commonName":"foo"},
+	"dnsNames": ["foo.com"],
+	"emailAddresses": ["foo@foo.com"],
+	"ipAddresses": ["::1"],
+	"uris": ["https://foo.com"],
+	"keyUsage": ["digitalSignature"],
+	"extKeyUsage": ["serverAuth", "clientAuth"]
+}`)}, false},
+		{"adminRSA", args{DefaultAdminLeafTemplate, TemplateData{}, crRSA}, Options{
+			CertBuffer: bytes.NewBufferString(`{
+	"subject": {"commonName":"foo"},
+	"dnsNames": ["foo.com"],
+	"emailAddresses": ["foo@foo.com"],
+	"ipAddresses": ["::1"],
+	"uris": ["https://foo.com"],
+	"keyUsage": ["keyEncipherment", "digitalSignature"],
+	"extKeyUsage": ["serverAuth", "clientAuth"]
+}`)}, false},
 		{"fail", args{`{{ fail "a message" }}`, TemplateData{}, cr}, Options{}, true},
 		{"error", args{`{{ mustHas 3 .Data }}`, TemplateData{
 			"Data": 3,

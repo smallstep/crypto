@@ -129,6 +129,23 @@ const DefaultIIDLeafTemplate = `{
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`
 
+// DefaultAdminLeafTemplate is a template used by default by K8sSA and
+// admin-OIDC provisioners. This template takes all the SANs and subject from
+// the certificate request.
+const DefaultAdminLeafTemplate = `{
+	"subject": {{ toJson .Insecure.CR.Subject }},
+	"dnsNames": {{ toJson .Insecure.CR.DNSNames }},
+	"emailAddresses": {{ toJson .Insecure.CR.EmailAddresses }},
+	"ipAddresses": {{ toJson .Insecure.CR.IPAddresses }},
+	"uris": {{ toJson .Insecure.CR.URIs }},
+{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+	"keyUsage": ["keyEncipherment", "digitalSignature"],
+{{- else }}
+	"keyUsage": ["digitalSignature"],
+{{- end }}
+	"extKeyUsage": ["serverAuth", "clientAuth"]
+}`
+
 // DefaultIntermediateTemplate is a template that can be used to generate an
 // intermediate certificate.
 const DefaultIntermediateTemplate = `{
