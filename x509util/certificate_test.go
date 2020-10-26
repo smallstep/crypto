@@ -488,3 +488,68 @@ func TestCreateCertificate_criticalSANs(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateCertificateTemplate(t *testing.T) {
+	cr1, _ := createCertificateRequest(t, "commonName", []string{"doe.com", "jane@doe.com", "1.2.3.4", "urn:uuid:2bbe86fc-a35e-4c68-a5cb-cb1060f57629"})
+	cr2, _ := createCertificateRequest(t, "", []string{"doe.com"})
+	cr3, _ := createCertificateRequest(t, "commonName", []string{})
+
+	fail, _ := createCertificateRequest(t, "commonName", []string{"doe.com"})
+	fail.Signature = []byte{1, 2, 3, 4}
+
+	type args struct {
+		cr *x509.CertificateRequest
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *x509.Certificate
+		wantErr bool
+	}{
+		{"ok", args{cr1}, &x509.Certificate{
+			Subject: pkix.Name{
+				CommonName: "commonName",
+				Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "commonName"}},
+			},
+			PublicKey:          cr1.PublicKey,
+			PublicKeyAlgorithm: cr1.PublicKeyAlgorithm,
+			ExtraExtensions: []pkix.Extension{
+				{Id: oidExtensionSubjectAltName, Critical: false, Value: cr1.Extensions[0].Value},
+			},
+			DNSNames:       []string{"doe.com"},
+			EmailAddresses: []string{"jane@doe.com"},
+			IPAddresses:    []net.IP{net.ParseIP("1.2.3.4").To4()},
+			URIs:           []*url.URL{{Scheme: "urn", Opaque: "uuid:2bbe86fc-a35e-4c68-a5cb-cb1060f57629"}},
+		}, false},
+		{"ok critical", args{cr2}, &x509.Certificate{
+			Subject:            pkix.Name{},
+			PublicKey:          cr2.PublicKey,
+			PublicKeyAlgorithm: cr3.PublicKeyAlgorithm,
+			ExtraExtensions: []pkix.Extension{
+				{Id: oidExtensionSubjectAltName, Critical: true, Value: cr2.Extensions[0].Value},
+			},
+			DNSNames: []string{"doe.com"},
+		}, false},
+		{"ok no extensions", args{cr3}, &x509.Certificate{
+			Subject: pkix.Name{
+				CommonName: "commonName",
+				Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "commonName"}},
+			},
+			PublicKey:          cr3.PublicKey,
+			PublicKeyAlgorithm: cr3.PublicKeyAlgorithm,
+		}, false},
+		{"fail", args{fail}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := CreateCertificateTemplate(tt.args.cr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CreateCertificateTemplate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("CreateCertificateTemplate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
