@@ -214,6 +214,29 @@ func TestNewCertificate(t *testing.T) {
 			PublicKeyAlgorithm: x509.Ed25519,
 		},
 			false},
+		{"okOPCUA", args{cr, []Option{WithTemplateFile("./testdata/opcua.tpl", TemplateData{
+			SANsKey: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+			},
+			TokenKey: map[string]interface{}{
+				"iss": "https://iss",
+				"sub": "sub",
+			},
+		})}}, &Certificate{
+			Subject:  Subject{CommonName: ""},
+			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
+			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageKeyAgreement | x509.KeyUsageCertSign),
+			BasicConstraints: &BasicConstraints{
+				IsCA:       false,
+				MaxPathLen: 0,
+			},
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.Ed25519,
+		}, false},
 		{"badSignature", args{crBadSignateure, nil}, nil, true},
 		{"failTemplate", args{cr, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
 		{"missingTemplate", args{cr, []Option{WithTemplateFile("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
