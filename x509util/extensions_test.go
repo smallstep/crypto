@@ -778,13 +778,13 @@ func TestBasicConstraints_Set(t *testing.T) {
 		args   args
 		want   *x509.Certificate
 	}{
-		{"IsCAFalse", fields{false, 0}, args{&x509.Certificate{}}, &x509.Certificate{}},
-		{"IsCAFalseWithPathLen", fields{false, 1}, args{&x509.Certificate{}}, &x509.Certificate{}},
-		{"IsCAFalseWithAnyPathLen", fields{false, -1}, args{&x509.Certificate{}}, &x509.Certificate{}},
+		{"IsCAFalse", fields{false, 0}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: false, BasicConstraintsValid: true}},
+		{"IsCAFalseWithPathLen", fields{false, 1}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: false, BasicConstraintsValid: true}},
+		{"IsCAFalseWithAnyPathLen", fields{false, -1}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: false, BasicConstraintsValid: true}},
 		{"IsCATrue", fields{true, 0}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: true, MaxPathLen: 0, MaxPathLenZero: true, BasicConstraintsValid: true}},
 		{"IsCATrueWithPathLen", fields{true, 1}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: true, MaxPathLen: 1, MaxPathLenZero: false, BasicConstraintsValid: true}},
 		{"IsCATrueWithAnyPathLen", fields{true, -1}, args{&x509.Certificate{}}, &x509.Certificate{IsCA: true, MaxPathLen: -1, MaxPathLenZero: false, BasicConstraintsValid: true}},
-		{"overwriteToFalse", fields{false, 0}, args{&x509.Certificate{IsCA: true, MaxPathLen: 0, MaxPathLenZero: true, BasicConstraintsValid: true}}, &x509.Certificate{}},
+		{"overwriteToFalse", fields{false, 0}, args{&x509.Certificate{IsCA: true, MaxPathLen: 0, MaxPathLenZero: true, BasicConstraintsValid: true}}, &x509.Certificate{IsCA: false, BasicConstraintsValid: true}},
 		{"overwriteToTrue", fields{true, -100}, args{&x509.Certificate{IsCA: true, MaxPathLen: 0, MaxPathLenZero: true, BasicConstraintsValid: true}}, &x509.Certificate{IsCA: true, MaxPathLen: -1, MaxPathLenZero: false, BasicConstraintsValid: true}},
 	}
 	for _, tt := range tests {
