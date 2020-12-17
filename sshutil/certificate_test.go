@@ -42,7 +42,7 @@ func TestNewCertificate(t *testing.T) {
 
 	crEscape := CertificateRequest{
 		Type:       "host",
-		KeyID:      `foobar", "criticalOptions": {"foo": "bar"},`,
+		KeyID:      `foobar", "criticalOptions": {"foo": "bar"},"foo":"`,
 		Principals: []string{"foo.internal", "bar.internal"},
 		Key:        key,
 	}
@@ -98,7 +98,7 @@ func TestNewCertificate(t *testing.T) {
 			Key:             key,
 			Serial:          0,
 			Type:            HostCert,
-			KeyID:           `foobar", "criticalOptions": {"foo": "bar"},`,
+			KeyID:           `foobar", "criticalOptions": {"foo": "bar"},"foo":"`,
 			Principals:      []string{"foo.internal", "bar.internal"},
 			ValidAfter:      0,
 			ValidBefore:     0,
