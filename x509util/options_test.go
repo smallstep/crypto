@@ -58,6 +58,7 @@ func Test_getFuncMap_fail(t *testing.T) {
 func TestWithTemplate(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	crRSA, _ := createRSACertificateRequest(t, 2048, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
+	crQuotes, _ := createCertificateRequest(t, `foo"}`, []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	type args struct {
 		text string
 		data TemplateData
@@ -93,7 +94,7 @@ func TestWithTemplate(t *testing.T) {
 		}, false},
 		{"iid", args{DefaultIIDLeafTemplate, TemplateData{}, cr}, Options{
 			CertBuffer: bytes.NewBufferString(`{
-	"subject": {"commonName":"foo"},
+	"subject": {"commonName": "foo"},
 	"dnsNames": ["foo.com"],
 	"emailAddresses": ["foo@foo.com"],
 	"ipAddresses": ["::1"],
@@ -106,9 +107,20 @@ func TestWithTemplate(t *testing.T) {
 			SANsKey: []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
 		}, crRSA}, Options{
 			CertBuffer: bytes.NewBufferString(`{
-	"subject": {"commonName":"foo"},
+	"subject": {"commonName": "foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
 	"keyUsage": ["keyEncipherment", "digitalSignature"],
+	"extKeyUsage": ["serverAuth", "clientAuth"]
+}`),
+		}, false},
+		{"iidEscape", args{DefaultIIDLeafTemplate, TemplateData{}, crQuotes}, Options{
+			CertBuffer: bytes.NewBufferString(`{
+	"subject": {"commonName": "foo\"}"},
+	"dnsNames": ["foo.com"],
+	"emailAddresses": ["foo@foo.com"],
+	"ipAddresses": ["::1"],
+	"uris": ["https://foo.com"],
+	"keyUsage": ["digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
