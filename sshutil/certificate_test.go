@@ -40,6 +40,13 @@ func TestNewCertificate(t *testing.T) {
 		Key: key,
 	}
 
+	crEscape := CertificateRequest{
+		Type:       "host",
+		KeyID:      `foobar", "criticalOptions": {"foo": "bar"},`,
+		Principals: []string{"foo.internal", "bar.internal"},
+		Key:        key,
+	}
+
 	type args struct {
 		cr   CertificateRequest
 		opts []Option
@@ -77,6 +84,21 @@ func TestNewCertificate(t *testing.T) {
 			Serial:          0,
 			Type:            HostCert,
 			KeyID:           "foobar",
+			Principals:      []string{"foo.internal", "bar.internal"},
+			ValidAfter:      0,
+			ValidBefore:     0,
+			CriticalOptions: nil,
+			Extensions:      nil,
+			Reserved:        nil,
+			SignatureKey:    nil,
+			Signature:       nil,
+		}, false},
+		{"host escape", args{crEscape, []Option{WithTemplate(CertificateRequestTemplate, CreateTemplateData(HostCert, "foobar", []string{"foo.internal", "bar.internal"}))}}, &Certificate{
+			Nonce:           nil,
+			Key:             key,
+			Serial:          0,
+			Type:            HostCert,
+			KeyID:           `foobar", "criticalOptions": {"foo": "bar"},`,
 			Principals:      []string{"foo.internal", "bar.internal"},
 			ValidAfter:      0,
 			ValidBefore:     0,
