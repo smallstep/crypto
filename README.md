@@ -48,6 +48,10 @@ to PEM.
 
 Package `randutil` provides methods to generate random strings and salts.
 
+### tlsutil
+
+Package `tlsutil` provides utilities to configure tls client and servers.
+
 ### jose
 
 Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
