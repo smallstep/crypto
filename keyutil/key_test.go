@@ -350,6 +350,35 @@ func TestGenerateKeyPair_rsa(t *testing.T) {
 	}
 }
 
+func TestGenerateDefaultSigner(t *testing.T) {
+	buf := new(bytes.Buffer)
+	setTeeReader(t, buf)
+	ecdsaKey, err := generateECKey("P-256")
+	assert.FatalError(t, err)
+	rand.Reader = buf
+
+	tests := []struct {
+		name    string
+		want    interface{}
+		wantErr bool
+	}{
+		{"ok", ecdsaKey, false},
+		{"eof", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GenerateDefaultSigner()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GenerateDefaultSigner() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GenerateDefaultSigner() = %T, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGenerateSigner(t *testing.T) {
 	buf := new(bytes.Buffer)
 	setTeeReader(t, buf)
