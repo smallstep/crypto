@@ -1,0 +1,214 @@
+package tlsutil
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"io/ioutil"
+	"math/big"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"reflect"
+	"testing"
+	"time"
+
+	"go.step.sm/crypto/x509util"
+)
+
+func testServerRenewFunc(hello *tls.ClientHelloInfo) (*tls.Certificate, *tls.Config, error) {
+	var err error
+	leafCert.NotBefore = time.Now()
+	leafCert.DNSNames, leafCert.IPAddresses, leafCert.EmailAddresses, leafCert.URIs = x509util.SplitSANs([]string{hello.ServerName})
+	leafCert.NotAfter = leafCert.NotBefore.Add(time.Hour)
+	leafCert.SerialNumber = leafCert.SerialNumber.Add(leafCert.SerialNumber, big.NewInt(1))
+	leafCert, err = x509util.CreateCertificate(leafCert, issuerCert, leafKey.Public(), issuerKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &tls.Certificate{
+		Certificate: [][]byte{leafCert.Raw},
+		PrivateKey:  leafKey,
+		Leaf:        leafCert,
+	}, tlsConfig, nil
+}
+
+func TestNewServerCredentials(t *testing.T) {
+	type args struct {
+		fn ServerRenewFunc
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *ServerCredentials
+		wantErr bool
+	}{
+		{"ok", args{testServerRenewFunc}, &ServerCredentials{RenewFunc: testServerRenewFunc, cache: newCredentialsCache()}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewServerCredentials(tt.args.fn)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewServerCredentials() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			// Cannot deep equal methods
+			if got != nil {
+				got.RenewFunc = nil
+			}
+			if tt.want != nil {
+				tt.want.RenewFunc = nil
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewServerCredentials() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServerCredentials_GetCertificate(t *testing.T) {
+	// Prepare server
+	sc, err := NewServerCredentials(testServerRenewFunc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "ok")
+	}))
+	srv.TLS = &tls.Config{
+		GetCertificate: sc.GetCertificate,
+	}
+	srv.StartTLS()
+	// We need to set Certificates to nil, because if the hello message does not
+	// have a SNI, this certificate will be used.
+	srv.TLS.Certificates = nil
+	defer srv.Close()
+
+	// Create url with localhost
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dnsURL := "https://" + net.JoinHostPort("localhost", p)
+
+	// Prepare valid client
+	pool := x509.NewCertPool()
+	pool.AddCert(issuerCert)
+
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{
+		RootCAs: pool,
+	}
+
+	tests := []struct {
+		name    string
+		client  *http.Client
+		url     string
+		want    []byte
+		wantErr bool
+	}{
+		{"ok", &http.Client{Transport: tr}, dnsURL, []byte("ok"), false},
+		{"fail empty", &http.Client{}, dnsURL, nil, true},
+		{"fail httptest", srv.Client(), dnsURL, nil, true},
+		{"fail ip", &http.Client{Transport: tr}, srv.URL, nil, true},
+		{"fail httptest ip", srv.Client(), srv.URL, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := tt.client.Get(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("http.Client.Get() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if resp != nil && resp.Body != nil {
+				got, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					t.Errorf("ioutil.ReadAll() error = %v", err)
+					return
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("http.Client.Get() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestServerCredentials_GetConfigForClient(t *testing.T) {
+	// Prepare server
+	sc, err := NewServerCredentials(testServerRenewFunc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "ok")
+	}))
+	srv.TLS = &tls.Config{
+		GetConfigForClient: sc.GetConfigForClient,
+	}
+	srv.StartTLS()
+	// We need to set Certificates to nil, because if the hello message does not
+	// have a SNI, this certificate will be used.
+	srv.TLS.Certificates = nil
+	defer srv.Close()
+
+	// Create url with localhost
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dnsURL := "https://" + net.JoinHostPort("localhost", p)
+
+	// Prepare valid client
+	pool := x509.NewCertPool()
+	pool.AddCert(issuerCert)
+
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{
+		RootCAs: pool,
+	}
+
+	tests := []struct {
+		name    string
+		client  *http.Client
+		url     string
+		want    []byte
+		wantErr bool
+	}{
+		{"ok", &http.Client{Transport: tr}, dnsURL, []byte("ok"), false},
+		{"fail empty", &http.Client{}, dnsURL, nil, true},
+		{"fail httptest", srv.Client(), dnsURL, nil, true},
+		{"fail ip", &http.Client{Transport: tr}, srv.URL, nil, true},
+		{"fail httptest ip", srv.Client(), srv.URL, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := tt.client.Get(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("http.Client.Get() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if resp != nil && resp.Body != nil {
+				got, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					t.Errorf("ioutil.ReadAll() error = %v", err)
+					return
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("http.Client.Get() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
