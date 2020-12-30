@@ -193,7 +193,7 @@ func TestRenewer_Run(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.renewJitter = 1
-	r.renewBefore = tlsCert.Leaf.NotAfter.Sub(time.Now()) - time.Second
+	r.renewBefore = time.Until(tlsCert.Leaf.NotAfter) - time.Second
 
 	r.Run()
 	defer r.Stop()
@@ -218,7 +218,7 @@ func TestRenewer_RunContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.renewJitter = 1
-	r.renewBefore = tlsCert.Leaf.NotAfter.Sub(time.Now()) - time.Second
+	r.renewBefore = time.Until(tlsCert.Leaf.NotAfter) - time.Second
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
