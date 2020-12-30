@@ -175,7 +175,8 @@ func TestNewRenewer(t *testing.T) {
 				tt.want.RenewFunc = nil
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewRenewer() = %#v, want %#v", got, tt.want)
+				t.Errorf("NewRenewer() = %v, want %v", got, tt.want)
+				t.Errorf("NewRenewer() = %#v, want %#v", got.config, tt.want.config)
 			}
 		})
 	}
