@@ -126,7 +126,7 @@ func TestNewRenewer(t *testing.T) {
 		{"ok", args{tlsCert, tlsConfig, testRenewFunc, nil}, &Renewer{
 			RenewFunc:    testRenewFunc,
 			cert:         tlsCert,
-			config:       tlsConfig,
+			config:       tlsConfig.Clone(),
 			renewBefore:  time.Hour / 3,
 			renewJitter:  time.Hour / 20,
 			certNotAfter: leafCert.NotAfter,
@@ -134,7 +134,7 @@ func TestNewRenewer(t *testing.T) {
 		{"WithRenewBefore", args{tlsCert, tlsConfig, testRenewFunc, []renewerOptions{WithRenewBefore(time.Minute)}}, &Renewer{
 			RenewFunc:    testRenewFunc,
 			cert:         tlsCert,
-			config:       tlsConfig,
+			config:       tlsConfig.Clone(),
 			renewBefore:  time.Minute,
 			renewJitter:  time.Hour / 20,
 			certNotAfter: leafCert.NotAfter,
@@ -142,7 +142,7 @@ func TestNewRenewer(t *testing.T) {
 		{"WithRenewJitter", args{tlsCert, tlsConfig, testRenewFunc, []renewerOptions{WithRenewJitter(time.Minute)}}, &Renewer{
 			RenewFunc:    testRenewFunc,
 			cert:         tlsCert,
-			config:       tlsConfig,
+			config:       tlsConfig.Clone(),
 			renewBefore:  time.Hour / 3,
 			renewJitter:  time.Minute,
 			certNotAfter: leafCert.NotAfter,
@@ -176,7 +176,6 @@ func TestNewRenewer(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewRenewer() = %v, want %v", got, tt.want)
-				t.Errorf("NewRenewer() = %#v, want %#v", got.config, tt.want.config)
 			}
 		})
 	}
