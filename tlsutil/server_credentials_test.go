@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"testing"
 	"time"
@@ -87,15 +85,7 @@ func TestServerCredentials_GetCertificate(t *testing.T) {
 	defer srv.Close()
 
 	// Create url with localhost
-	u, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, p, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dnsURL := "https://" + net.JoinHostPort("localhost", p)
+	dnsURL := getLocalHostURL(t, srv.URL)
 
 	// Prepare valid client
 	pool := x509.NewCertPool()
@@ -160,15 +150,7 @@ func TestServerCredentials_GetConfigForClient(t *testing.T) {
 	defer srv.Close()
 
 	// Create url with localhost
-	u, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, p, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dnsURL := "https://" + net.JoinHostPort("localhost", p)
+	dnsURL := getLocalHostURL(t, srv.URL)
 
 	// Prepare valid client
 	pool := x509.NewCertPool()
@@ -208,6 +190,49 @@ func TestServerCredentials_GetConfigForClient(t *testing.T) {
 				if !reflect.DeepEqual(got, tt.want) {
 					t.Errorf("http.Client.Get() = %v, want %v", got, tt.want)
 				}
+			}
+		})
+	}
+}
+
+func TestServerCredentials_RenewFunc_error(t *testing.T) {
+	// Prepare server
+	sc, err := NewServerCredentials(func(hello *tls.ClientHelloInfo) (*tls.Certificate, *tls.Config, error) {
+		return nil, nil, fmt.Errorf("test error")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		tlsConfig *tls.Config
+	}{
+		{"fail GetCertificate", &tls.Config{GetCertificate: sc.GetCertificate}},
+		{"fail GetConfigForClient", &tls.Config{GetConfigForClient: sc.GetConfigForClient}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "ok")
+			}))
+			srv.TLS = tt.tlsConfig
+			srv.StartTLS()
+			defer srv.Close()
+
+			// Prepare valid client
+			pool := x509.NewCertPool()
+			pool.AddCert(issuerCert)
+
+			tr := http.DefaultTransport.(*http.Transport).Clone()
+			tr.TLSClientConfig = &tls.Config{
+				RootCAs: pool,
+			}
+
+			c := &http.Client{Transport: tr}
+			if _, err := c.Get(getLocalHostURL(t, srv.URL)); err == nil {
+				t.Errorf("http.Client.Get() error = %v, wantErr true", err)
 			}
 		})
 	}
