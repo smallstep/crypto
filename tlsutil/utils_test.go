@@ -17,6 +17,7 @@ func TestSanitizeName(t *testing.T) {
 		{"ok", args{"smallstep.com"}, "smallstep.com", false},
 		{"ok ascii", args{"bücher.example.com"}, "xn--bcher-kva.example.com", false},
 		{"fail", args{"xn--bücher.example.com"}, "", true},
+		{"fail empty", args{""}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,6 +49,8 @@ func TestSanitizeHost(t *testing.T) {
 		{"ok ascii port", args{"bücher.example.com:443"}, "xn--bcher-kva.example.com", false},
 		{"fail", args{"xn--bücher.example.com"}, "", true},
 		{"fail port", args{"xn--bücher.example.com:443"}, "", true},
+		{"fail empty", args{""}, "", true},
+		{"fail empty with port", args{":443"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

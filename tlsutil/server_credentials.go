@@ -60,7 +60,7 @@ func (c *ServerCredentials) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls
 	}
 
 	if v, ok := c.cache.Load(sni); ok {
-		return v.tlsConfig, nil
+		return v.renewer.GetConfigForClient(hello)
 	}
 
 	renewer, err := c.getCertificate(sni, hello)
@@ -86,9 +86,8 @@ func (c *ServerCredentials) getCertificate(sni string, hello *tls.ClientHelloInf
 	renewer.Run()
 
 	c.cache.Store(sni, &credentialsCacheElement{
-		sni:       sni,
-		renewer:   renewer,
-		tlsConfig: tlsConfig,
+		sni:     sni,
+		renewer: renewer,
 	})
 
 	return renewer, nil

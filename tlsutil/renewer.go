@@ -52,8 +52,19 @@ func NewRenewer(cert *tls.Certificate, config *tls.Config, fn RenewFunc, opts ..
 	r := &Renewer{
 		RenewFunc:    fn,
 		cert:         cert,
-		config:       config,
+		config:       config.Clone(),
 		certNotAfter: cert.Leaf.NotAfter,
+	}
+
+	// Use renewer methods.
+	if r.config.GetCertificate == nil {
+		r.config.GetCertificate = r.GetCertificate
+	}
+	if r.config.GetClientCertificate == nil {
+		r.config.GetClientCertificate = r.GetClientCertificate
+	}
+	if r.config.GetConfigForClient == nil {
+		r.config.GetConfigForClient = r.GetConfigForClient
 	}
 
 	for _, f := range opts {
@@ -77,6 +88,11 @@ func NewRenewer(cert *tls.Certificate, config *tls.Config, fn RenewFunc, opts ..
 	}
 
 	return r, nil
+}
+
+// GetConfig returns the current tls.Config.
+func (r *Renewer) GetConfig() *tls.Config {
+	return r.getConfigForClient()
 }
 
 // Run starts the certificate renewer for the given certificate.
@@ -107,14 +123,14 @@ func (r *Renewer) Stop() bool {
 // GetCertificate returns the current server certificate.
 //
 // This method is set in the tls.Config GetCertificate property.
-func (r *Renewer) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (r *Renewer) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return r.getCertificate(), nil
 }
 
 // GetClientCertificate returns the current client certificate.
 //
 // This method is set in the tls.Config GetClientCertificate property.
-func (r *Renewer) GetClientCertificate(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+func (r *Renewer) GetClientCertificate(hello *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 	return r.getCertificate(), nil
 }
 
@@ -163,6 +179,16 @@ func (r *Renewer) setCertificate(cert *tls.Certificate, config *tls.Config) {
 	r.cert = cert
 	r.config = config
 	r.certNotAfter = cert.Leaf.NotAfter
+	// Use renewer methods.
+	if r.config.GetCertificate == nil {
+		r.config.GetCertificate = r.GetCertificate
+	}
+	if r.config.GetClientCertificate == nil {
+		r.config.GetClientCertificate = r.GetClientCertificate
+	}
+	if r.config.GetConfigForClient == nil {
+		r.config.GetConfigForClient = r.GetConfigForClient
+	}
 	r.Unlock()
 }
 

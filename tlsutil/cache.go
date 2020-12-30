@@ -1,14 +1,12 @@
 package tlsutil
 
 import (
-	"crypto/tls"
 	"sync"
 )
 
 type credentialsCacheElement struct {
-	sni       string
-	renewer   *Renewer
-	tlsConfig *tls.Config
+	sni     string
+	renewer *Renewer
 }
 
 type credentialsCache struct {
