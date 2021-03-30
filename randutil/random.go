@@ -66,3 +66,9 @@ func Alphanumeric(length int) (string, error) {
 func ASCII(length int) (string, error) {
 	return String(length, ascii)
 }
+
+// Alphabet returns a random string of the given length using the 52
+// alphabetic characters in the POSIX/C locale (a-z+A-Z).
+func Alphabet(length int) (string, error) {
+	return String(length, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+}
