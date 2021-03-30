@@ -35,6 +35,11 @@ func TestErrors(t *testing.T) {
 		str, err = ASCII(size)
 		assert.Error(t, err)
 		assert.Len(t, 0, str)
+
+		str, err = Alphabet(size)
+		assert.Error(t, err)
+		assert.Len(t, 0, str)
+
 	}
 }
 
@@ -104,6 +109,21 @@ func TestASCII(t *testing.T) {
 		assert.True(t, re.MatchString(a))
 		assert.NoError(t, err)
 		b, err := ASCII(l)
+		assert.True(t, re.MatchString(b))
+		assert.NoError(t, err)
+		// Most of the time
+		assert.NotEquals(t, a, b)
+	}
+}
+
+func TestAlphabet(t *testing.T) {
+	re := regexp.MustCompilePOSIX(`^[a-zA-Z]+$`)
+	lengths := []int{4, 8, 16, 32}
+	for _, l := range lengths {
+		a, err := Alphabet(l)
+		assert.True(t, re.MatchString(a))
+		assert.NoError(t, err)
+		b, err := Alphabet(l)
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
