@@ -388,6 +388,7 @@ func TestParsePEM(t *testing.T) {
 	}
 }
 
+// nolint:staticcheck
 func TestSerialize(t *testing.T) {
 	tests := map[string]struct {
 		in    func() (interface{}, error)
