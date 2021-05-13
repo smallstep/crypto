@@ -1,6 +1,7 @@
 package randutil
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"regexp"
@@ -14,13 +15,17 @@ func TestErrors(t *testing.T) {
 	df := forceErrorRandReader()
 	defer df()
 
+	str, err := UUIDv4()
+	assert.Error(t, err)
+	assert.Len(t, 0, str)
+
 	sizes := []int{4, 8, 16, 32}
 	for _, size := range sizes {
 		b, err := Salt(size)
 		assert.Error(t, err)
 		assert.Len(t, 0, b)
 
-		str, err := String(size, "0123456789")
+		str, err = String(size, "0123456789")
 		assert.Error(t, err)
 		assert.Len(t, 0, str)
 
@@ -39,7 +44,6 @@ func TestErrors(t *testing.T) {
 		str, err = Alphabet(size)
 		assert.Error(t, err)
 		assert.Len(t, 0, str)
-
 	}
 }
 
@@ -131,6 +135,41 @@ func TestAlphabet(t *testing.T) {
 	}
 }
 
+func TestUUIDv4(t *testing.T) {
+	re := regexp.MustCompilePOSIX(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	uuid, err := UUIDv4()
+	assert.NoError(t, err)
+	assert.Len(t, 36, uuid)
+	assert.True(t, re.MatchString(uuid))
+
+	b := make([]byte, 32)
+	copy(b[16:], []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6})
+	df := forceByteReader(b)
+	defer df()
+
+	tests := []struct {
+		name    string
+		want    string
+		wantErr bool
+	}{
+		{"ok", "00000000-0000-4000-8000-000000000000", false},
+		{"ok", "01020304-0506-4708-8900-010203040506", false},
+		{"fail", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := UUIDv4()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UUIDv4() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("UUIDv4() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 type errorReader struct{}
 
 func (r *errorReader) Read(p []byte) (int, error) {
@@ -140,6 +179,14 @@ func (r *errorReader) Read(p []byte) (int, error) {
 func forceErrorRandReader() func() {
 	old := rand.Reader
 	rand.Reader = new(errorReader)
+	return func() {
+		rand.Reader = old
+	}
+}
+
+func forceByteReader(b []byte) func() {
+	old := rand.Reader
+	rand.Reader = bytes.NewReader(b)
 	return func() {
 		rand.Reader = old
 	}
