@@ -2,6 +2,7 @@ package jose
 
 import (
 	"crypto/sha1"
+	"crypto/x509"
 	"encoding/base64"
 	"testing"
 
@@ -11,70 +12,67 @@ import (
 )
 
 var (
-	badCertFile     = "./testdata/bad-rsa.crt"
-	badKeyFile      = "./testdata/bad-rsa.key"
-	invalidCertFile = "./testdata/invalid.crt"
-	certFile        = "./testdata/rsa2048.crt"
-	keyFile         = "./testdata/rsa2048.key"
+	badCertFile = "./testdata/bad-rsa.crt"
+	badKeyFile  = "./testdata/bad-rsa.key"
+	certFile    = "./testdata/rsa2048.crt"
+	keyFile     = "./testdata/rsa2048.key"
 )
 
 func Test_validateX5(t *testing.T) {
 	type test struct {
-		cf  string
-		key interface{}
-		err error
+		certs []*x509.Certificate
+		key   interface{}
+		err   error
 	}
 	tests := map[string]func() test{
-		"fail/certFile-empty-string": func() test {
+		"fail/empty-certs": func() test {
 			return test{
-				cf:  "",
-				key: nil,
-				err: errors.New("certfile cannot be empty"),
-			}
-		},
-		"fail/invalid-cert": func() test {
-			return test{
-				cf:  invalidCertFile,
-				key: nil,
-				err: errors.New("error reading certificate chain from file"),
+				certs: []*x509.Certificate{},
+				key:   nil,
+				err:   errors.New("certs cannot be empty"),
 			}
 		},
 		"fail/bad-key": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
 			return test{
-				cf:  certFile,
-				key: nil,
-				err: errors.New("error verifying certificate and key"),
+				certs: certs,
+				key:   nil,
+				err:   errors.New("error verifying certificate and key"),
 			}
 		},
 		"fail/cert-not-approved-for-digital-signature": func() test {
+			certs, err := pemutil.ReadCertificateBundle(badCertFile)
+			assert.FatalError(t, err)
 			k, err := pemutil.Read(badKeyFile)
 			assert.FatalError(t, err)
 			return test{
-				cf:  badCertFile,
-				key: k,
+				certs: certs,
+				key:   k,
 				err: errors.New("certificate/private-key pair used to sign " +
 					"token is not approved for digital signature"),
 			}
 		},
 		"ok": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
 			k, err := pemutil.Read(keyFile)
 			assert.FatalError(t, err)
 			return test{
-				cf:  certFile,
-				key: k,
+				certs: certs,
+				key:   k,
 			}
 		},
 	}
 	for name, run := range tests {
 		t.Run(name, func(t *testing.T) {
 			tc := run()
-			if certs, err := validateX5(tc.cf, tc.key); err != nil {
+			if err := validateX5(tc.certs, tc.key); err != nil {
 				if assert.NotNil(t, tc.err) {
 					assert.HasPrefix(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.Nil(t, tc.err)
-				assert.NotNil(t, certs)
 			}
 		})
 	}
@@ -82,20 +80,22 @@ func Test_validateX5(t *testing.T) {
 
 func TestValidateX5T(t *testing.T) {
 	type test struct {
-		cf  string
-		key interface{}
-		fp  string
-		err error
+		certs []*x509.Certificate
+		key   interface{}
+		fp    string
+		err   error
 	}
 	tests := map[string]func() test{
 		"fail/validateX5-error": func() test {
 			return test{
-				cf:  "",
-				key: nil,
-				err: errors.New("ValidateX5T: certfile cannot be empty"),
+				certs: []*x509.Certificate{},
+				key:   nil,
+				err:   errors.New("ValidateX5T: certs cannot be empty"),
 			}
 		},
 		"ok": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
 			k, err := pemutil.Read(keyFile)
 			assert.FatalError(t, err)
 			cert, err := pemutil.ReadCertificate(certFile)
@@ -104,16 +104,16 @@ func TestValidateX5T(t *testing.T) {
 			// (see https://tools.ietf.org/html/rfc7515#section-4.1.7)
 			fp := sha1.Sum(cert.Raw)
 			return test{
-				cf:  certFile,
-				key: k,
-				fp:  base64.URLEncoding.EncodeToString(fp[:]),
+				certs: certs,
+				key:   k,
+				fp:    base64.URLEncoding.EncodeToString(fp[:]),
 			}
 		},
 	}
 	for name, run := range tests {
 		t.Run(name, func(t *testing.T) {
 			tc := run()
-			if fingerprint, err := ValidateX5T(tc.cf, tc.key); err != nil {
+			if fingerprint, err := ValidateX5T(tc.certs, tc.key); err != nil {
 				if assert.NotNil(t, tc.err) {
 					assert.HasPrefix(t, err.Error(), tc.err.Error())
 				}
@@ -127,31 +127,33 @@ func TestValidateX5T(t *testing.T) {
 
 func TestValidateX5C(t *testing.T) {
 	type test struct {
-		cf  string
-		key interface{}
-		err error
+		certs []*x509.Certificate
+		key   interface{}
+		err   error
 	}
 	tests := map[string]func() test{
 		"fail/validateX5-error": func() test {
 			return test{
-				cf:  "",
-				key: nil,
-				err: errors.New("ValidateX5C: certfile cannot be empty"),
+				certs: []*x509.Certificate{},
+				key:   nil,
+				err:   errors.New("ValidateX5C: certs cannot be empty"),
 			}
 		},
 		"ok": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
 			k, err := pemutil.Read(keyFile)
 			assert.FatalError(t, err)
 			return test{
-				cf:  certFile,
-				key: k,
+				certs: certs,
+				key:   k,
 			}
 		},
 	}
 	for name, run := range tests {
 		t.Run(name, func(t *testing.T) {
 			tc := run()
-			if certs, err := ValidateX5C(tc.cf, tc.key); err != nil {
+			if certs, err := ValidateX5C(tc.certs, tc.key); err != nil {
 				if assert.NotNil(t, tc.err) {
 					assert.HasPrefix(t, err.Error(), tc.err.Error())
 				}
