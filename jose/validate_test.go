@@ -12,11 +12,10 @@ import (
 )
 
 var (
-	badCertFile     = "./testdata/bad-rsa.crt"
-	badKeyFile      = "./testdata/bad-rsa.key"
-	invalidCertFile = "./testdata/invalid.crt"
-	certFile        = "./testdata/rsa2048.crt"
-	keyFile         = "./testdata/rsa2048.key"
+	badCertFile = "./testdata/bad-rsa.crt"
+	badKeyFile  = "./testdata/bad-rsa.key"
+	certFile    = "./testdata/rsa2048.crt"
+	keyFile     = "./testdata/rsa2048.key"
 )
 
 func Test_validateX5(t *testing.T) {
