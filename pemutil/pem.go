@@ -196,6 +196,31 @@ func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
 	return nil, errors.New("error parsing certificate: no certificate found")
 }
 
+// ParseCertificateBundle extracts all the certificates in the given data.
+func ParseCertificateBundle(pemData []byte) ([]*x509.Certificate, error) {
+	var block *pem.Block
+	var certs []*x509.Certificate
+	for len(pemData) > 0 {
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, errors.New("error decoding pem block")
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing certificate")
+		}
+		certs = append(certs, cert)
+	}
+	if len(certs) == 0 {
+		return nil, errors.New("error parsing certificate: no certificate found")
+	}
+	return certs, nil
+}
+
 // ParseCertificateRequest extracts the first certificate from the given pem.
 func ParseCertificateRequest(pemData []byte) (*x509.CertificateRequest, error) {
 	var block *pem.Block
