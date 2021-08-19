@@ -174,7 +174,7 @@ func WithFirstBlock() Options {
 	}
 }
 
-// ParseCertificate extract the first certificate from the given pem.
+// ParseCertificate extracts the first certificate from the given pem.
 func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
 	var block *pem.Block
 	for len(pemData) > 0 {
