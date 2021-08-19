@@ -174,6 +174,76 @@ func WithFirstBlock() Options {
 	}
 }
 
+// ParseCertificate extracts the first certificate from the given pem.
+func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
+	var block *pem.Block
+	for len(pemData) > 0 {
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, errors.New("error decoding pem block")
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing certificate")
+		}
+		return cert, nil
+	}
+
+	return nil, errors.New("error parsing certificate: no certificate found")
+}
+
+// ParseCertificateBundle extracts all the certificates in the given data.
+func ParseCertificateBundle(pemData []byte) ([]*x509.Certificate, error) {
+	var block *pem.Block
+	var certs []*x509.Certificate
+	for len(pemData) > 0 {
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, errors.New("error decoding pem block")
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing certificate")
+		}
+		certs = append(certs, cert)
+	}
+	if len(certs) == 0 {
+		return nil, errors.New("error parsing certificate: no certificate found")
+	}
+	return certs, nil
+}
+
+// ParseCertificateRequest extracts the first certificate from the given pem.
+func ParseCertificateRequest(pemData []byte) (*x509.CertificateRequest, error) {
+	var block *pem.Block
+	for len(pemData) > 0 {
+		block, pemData = pem.Decode(pemData)
+		if block == nil {
+			return nil, errors.New("error decoding pem block")
+		}
+		if (block.Type != "CERTIFICATE REQUEST" && block.Type != "NEW CERTIFICATE REQUEST") ||
+			len(block.Headers) != 0 {
+			continue
+		}
+
+		csr, err := x509.ParseCertificateRequest(block.Bytes)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing certificate request")
+		}
+		return csr, nil
+	}
+
+	return nil, errors.New("error parsing certificate request: no certificate found")
+}
+
 // ReadCertificate returns a *x509.Certificate from the given filename. It
 // supports certificates formats PEM and DER.
 func ReadCertificate(filename string, opts ...Options) (*x509.Certificate, error) {

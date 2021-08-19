@@ -223,6 +223,103 @@ func TestReadd(t *testing.T) {
 	}
 }
 
+func TestParseCertificate(t *testing.T) {
+	tests := []struct {
+		fn  string
+		err error
+	}{
+		{"testdata/ca.crt", nil},
+		{"testdata/bundle.crt", nil},
+		{"testdata/badca.crt", errors.New("error parsing certificate")},
+		{"testdata/badpem.crt", errors.New("error decoding pem block")},
+		{"testdata/badder.crt", errors.New("error decoding pem block")},
+		{"testdata/openssl.p256.pem", errors.New("error parsing certificate: no certificate found")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.fn, func(t *testing.T) {
+			b, err := ioutil.ReadFile(tc.fn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			crt, err := ParseCertificate(b)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Type(t, &x509.Certificate{}, crt)
+			}
+		})
+	}
+}
+
+func TestParseCertificateBundle(t *testing.T) {
+	tests := []struct {
+		fn  string
+		len int
+		err error
+	}{
+		{"testdata/ca.crt", 1, nil},
+		{"testdata/bundle.crt", 2, nil},
+		{"testdata/badca.crt", 0, errors.New("error parsing certificate")},
+		{"testdata/badpem.crt", 0, errors.New("error decoding pem block")},
+		{"testdata/badder.crt", 0, errors.New("error decoding pem block")},
+		{"testdata/openssl.p256.pem", 0, errors.New("error parsing certificate: no certificate found")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.fn, func(t *testing.T) {
+			b, err := ioutil.ReadFile(tc.fn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			crts, err := ParseCertificateBundle(b)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Type(t, []*x509.Certificate{}, crts)
+			}
+			assert.Len(t, tc.len, crts)
+		})
+	}
+}
+
+func TestParseCertificateRequest(t *testing.T) {
+	tests := []struct {
+		fn   string
+		opts []Options
+		err  error
+	}{
+		{"testdata/test.csr", nil, nil},
+		{"testdata/badpem.csr", nil, errors.New("error parsing certificate request")},
+		{"testdata/bad.csr", nil, errors.New("error decoding pem block")},
+		{"testdata/ca.crt", nil, errors.New("error parsing certificate request: no certificate found")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.fn, func(t *testing.T) {
+			b, err := ioutil.ReadFile(tc.fn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			csr, err := ParseCertificateRequest(b)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Type(t, &x509.CertificateRequest{}, csr)
+			}
+		})
+	}
+}
+
 func TestReadCertificate(t *testing.T) {
 	tests := []struct {
 		fn   string
