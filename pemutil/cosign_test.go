@@ -17,13 +17,13 @@ import (
 )
 
 func TestParseCosignPrivateKey(t *testing.T) {
-	b, err := ioutil.ReadFile("testdata/cosign.key")
+	b, err := ioutil.ReadFile("testdata/cosign.enc.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
 	block, _ := pem.Decode(b)
 	if block == nil {
-		t.Fatal("error decoding testdata/cosign.key")
+		t.Fatal("error decoding testdata/cosign.enc.pem")
 	}
 
 	var env cosignEnvelope
@@ -149,7 +149,7 @@ func TestParseCosignPrivateKey(t *testing.T) {
 	}
 }
 
-func TestParseCosignPrivateKey_PublicKey(t *testing.T) {
+func TestParseCosignPrivateKey_equal(t *testing.T) {
 	parsePem := func(fn string) []byte {
 		b, err := ioutil.ReadFile(fn)
 		if err != nil {
@@ -162,19 +162,29 @@ func TestParseCosignPrivateKey_PublicKey(t *testing.T) {
 		return block.Bytes
 	}
 
-	priv, err := ParseCosignPrivateKey(parsePem("testdata/cosign.key"), []byte("mypassword"))
+	key, err := ParseCosignPrivateKey(parsePem("testdata/cosign.enc.pem"), []byte("mypassword"))
 	if err != nil {
 		t.Errorf("ParseCosignPrivateKey() error = %v", err)
 		return
 	}
 
-	pub, err := x509.ParsePKIXPublicKey(parsePem("testdata/cosign.pub"))
+	priv, err := x509.ParsePKCS8PrivateKey(parsePem("testdata/cosign.pem"))
+	if err != nil {
+		t.Errorf("ParsePKCS8PrivateKey() error = %v", err)
+		return
+	}
+
+	if !reflect.DeepEqual(priv, key) {
+		t.Errorf("Private keys do not match() = %v, want %v", priv, key)
+	}
+
+	pub, err := x509.ParsePKIXPublicKey(parsePem("testdata/cosign.pub.pem"))
 	if err != nil {
 		t.Errorf("ParsePKIXPublicKey() error = %v", err)
 		return
 	}
 
-	if !reflect.DeepEqual(pub, priv.(crypto.Signer).Public()) {
-		t.Errorf("Public keys do not match() = %v, want %v", pub, priv.(crypto.Signer).Public())
+	if !reflect.DeepEqual(pub, key.(crypto.Signer).Public()) {
+		t.Errorf("Public keys do not match() = %v, want %v", pub, key.(crypto.Signer).Public())
 	}
 }
