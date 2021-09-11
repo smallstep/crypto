@@ -123,6 +123,8 @@ var files = map[string]testdata{
 	"testdata/pkcs8/openssl.rsa2048.enc.pem": {rsaPrivateKey, true},
 	"testdata/pkcs8/openssl.rsa4096.pem":     {rsaPrivateKey, false},
 	"testdata/pkcs8/openssl.rsa4096.pub.pem": {rsaPublicKey, false},
+	"testdata/cosign.pub":                    {ecdsaPublicKey, false},
+	"testdata/cosign.key":                    {ecdsaPrivateKey, true},
 }
 
 func readOrParseSSH(fn string) (interface{}, error) {
