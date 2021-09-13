@@ -75,6 +75,19 @@ func (c *context) apply(opts []Options) error {
 	return nil
 }
 
+// promptPassword returns the password or prompts for one.
+func (c *context) promptPassword() ([]byte, error) {
+	if len(c.password) > 0 {
+		return c.password, nil
+	} else if c.passwordPrompter != nil {
+		return c.passwordPrompter(c.passwordPrompt)
+	} else if PromptPassword != nil {
+		return PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", c.filename))
+	} else {
+		return nil, errors.Errorf("error decoding %s: key is password protected", c.filename)
+	}
+}
+
 // Options is the type to add attributes to the context.
 type Options func(o *context) error
 
@@ -359,21 +372,9 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 
 	// PEM is encrypted: ask for password
 	if block.Headers["Proc-Type"] == "4,ENCRYPTED" || block.Type == "ENCRYPTED PRIVATE KEY" {
-		var err error
-		var pass []byte
-
-		if len(ctx.password) > 0 {
-			pass = ctx.password
-		} else if ctx.passwordPrompter != nil {
-			if pass, err = ctx.passwordPrompter(ctx.passwordPrompt); err != nil {
-				return nil, err
-			}
-		} else if PromptPassword != nil {
-			if pass, err = PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", ctx.filename)); err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, errors.Errorf("error decoding %s: key is password protected", ctx.filename)
+		pass, err := ctx.promptPassword()
+		if err != nil {
+			return nil, err
 		}
 
 		block.Bytes, err = DecryptPEMBlock(block, pass)
@@ -404,6 +405,13 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 	case "CERTIFICATE REQUEST", "NEW CERTIFICATE REQUEST":
 		csr, err := x509.ParseCertificateRequest(block.Bytes)
 		return csr, errors.Wrapf(err, "error parsing %s", ctx.filename)
+	case "ENCRYPTED COSIGN PRIVATE KEY":
+		pass, err := ctx.promptPassword()
+		if err != nil {
+			return nil, err
+		}
+		priv, err := ParseCosignPrivateKey(block.Bytes, pass)
+		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	default:
 		return nil, errors.Errorf("error decoding %s: contains an unexpected header '%s'", ctx.filename, block.Type)
 	}
