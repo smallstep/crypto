@@ -3,11 +3,13 @@ package tlsutil
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -60,6 +62,66 @@ func TestNewServerCredentials(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewServerCredentials() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewServerCredentialsFromFile(t *testing.T) {
+	dir := t.TempDir()
+
+	certFile := filepath.Join(dir, "testcert.crt")
+	keyFile := filepath.Join(dir, "testcert.key")
+	if err := ioutil.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: leafCert.Raw,
+	}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(leafKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	}), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		certFile string
+		keyFile  string
+	}
+	tests := []struct {
+		name     string
+		args     args
+		wantCert *tls.Certificate
+		wantErr  bool
+	}{
+		{"ok", args{certFile, keyFile}, &tls.Certificate{
+			Certificate: [][]byte{leafCert.Raw},
+			PrivateKey:  leafKey,
+			Leaf:        leafCert,
+		}, false},
+		{"fail", args{certFile, filepath.Join(dir, "missing.key")}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewServerCredentialsFromFile(tt.args.certFile, tt.args.keyFile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewServerCredentialsFromFile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantCert != nil {
+				cert, err := got.GetCertificate(&tls.ClientHelloInfo{ServerName: "localhost"})
+				if err != nil {
+					t.Errorf("GetCertificate() error = %v", err)
+					return
+				}
+				if !reflect.DeepEqual(cert, tt.wantCert) {
+					t.Errorf("GetCertificate() = \n%v, want \n%v", cert, tt.wantCert)
+				}
 			}
 		})
 	}
@@ -233,6 +295,31 @@ func TestServerCredentials_RenewFunc_error(t *testing.T) {
 			c := &http.Client{Transport: tr}
 			if _, err := c.Get(getLocalHostURL(t, srv.URL)); err == nil {
 				t.Errorf("http.Client.Get() error = %v, wantErr true", err)
+			}
+		})
+	}
+}
+
+func TestServerCredentials_TLSConfig(t *testing.T) {
+	sc, err := NewServerCredentials(testServerRenewFunc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name              string
+		serverCredentials *ServerCredentials
+		want              *tls.Config
+	}{
+		{"ok", sc, &tls.Config{
+			GetCertificate:     sc.GetCertificate,
+			GetConfigForClient: sc.GetConfigForClient,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.serverCredentials.TLSConfig()
+			if got.GetCertificate == nil || got.GetConfigForClient == nil {
+				t.Errorf("ServerCredentials.TLSConfig() = \n%#v, want \n%#v", got, tt.want)
 			}
 		})
 	}

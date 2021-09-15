@@ -1,5 +1,6 @@
 # Set V to 1 for verbose output from the Makefile
 Q=$(if $V,,@)
+SRC=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
 all: lint test
 

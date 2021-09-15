@@ -2,7 +2,10 @@ package tlsutil
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+
+	"github.com/pkg/errors"
 )
 
 // ServerRenewFunc defines the type of the functions used to get a new tls
@@ -22,6 +25,36 @@ func NewServerCredentials(fn ServerRenewFunc) (*ServerCredentials, error) {
 		RenewFunc: fn,
 		cache:     newCredentialsCache(),
 	}, nil
+}
+
+// NewServerCredentialsFromFile returns a ServerCredentials that renews the
+// certificate from a file in disk.
+func NewServerCredentialsFromFile(certFile, keyFile string) (*ServerCredentials, error) {
+	if _, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
+		return nil, errors.Wrap(err, "error loading certificate")
+	}
+	return NewServerCredentials(func(*tls.ClientHelloInfo) (*tls.Certificate, *tls.Config, error) {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "error loading certificate")
+		}
+		if cert.Leaf == nil {
+			cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "error parsing certificate")
+			}
+		}
+		return &cert, &tls.Config{}, nil
+	})
+}
+
+// TLSConfig returns a *tls.Config with GetCertificate and GetConfigForClient
+// set.
+func (c *ServerCredentials) TLSConfig() *tls.Config {
+	return &tls.Config{
+		GetCertificate:     c.GetCertificate,
+		GetConfigForClient: c.GetConfigForClient,
+	}
 }
 
 // GetCertificate returns the certificate for the SNI in the hello message.
