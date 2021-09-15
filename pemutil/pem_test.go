@@ -1,6 +1,7 @@
 package pemutil
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -138,7 +139,7 @@ func readOrParseSSH(fn string) (interface{}, error) {
 	return Read(fn)
 }
 
-func TestReadd(t *testing.T) {
+func TestRead(t *testing.T) {
 	var err error
 	var key interface{}
 
@@ -331,7 +332,7 @@ func TestReadCertificate(t *testing.T) {
 		{"testdata/ca.crt", nil, nil},
 		{"testdata/ca.der", nil, nil},
 		{"testdata/bundle.crt", []Options{WithFirstBlock()}, nil},
-		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM endoded block")},
+		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM encoded block")},
 		{"testdata/notexists.crt", nil, errors.New("error reading testdata/notexists.crt: no such file or directory")},
 		{"testdata/badca.crt", nil, errors.New("error parsing testdata/badca.crt")},
 		{"testdata/badpem.crt", nil, errors.New("error decoding testdata/badpem.crt: not a valid PEM encoded block")},
@@ -386,7 +387,7 @@ func TestReadCertificateBundle(t *testing.T) {
 	}
 }
 
-func TestParsePEM(t *testing.T) {
+func TestParse(t *testing.T) {
 	type ParseTest struct {
 		in      []byte
 		opts    []Options
@@ -466,6 +467,37 @@ func TestParsePEM(t *testing.T) {
 				opts:    []Options{func(ctx *context) error { return err }},
 				cmpType: err,
 				err:     err,
+			}
+		},
+		"fail-password": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/openssl.p256.enc.pem")
+			assert.FatalError(t, err)
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{WithPassword([]byte("badpassword"))},
+				cmpType: ecdsa.PrivateKey{},
+				err:     errors.New("error decrypting PEM"),
+			}
+		},
+		"fail-pkcs8-password": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
+			assert.FatalError(t, err)
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{WithPassword([]byte("badpassword"))},
+				cmpType: ed25519.PrivateKey{},
+				err:     errors.New("error parsing PEM"),
+			}
+		},
+		"fail-type": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/openssl.p256.pub.pem")
+			assert.FatalError(t, err)
+			b = bytes.ReplaceAll(b, []byte("PUBLIC KEY"), []byte("EC PUBLIC KEY"))
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{},
+				cmpType: nil,
+				err:     errors.New("error decoding PEM: contains an unexpected header 'EC PUBLIC KEY'"),
 			}
 		},
 	}
