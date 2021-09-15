@@ -88,6 +88,20 @@ func (c *context) promptPassword() ([]byte, error) {
 	}
 }
 
+// promptEncryptPassword returns the password or prompts for one if
+// WithPassword, WithPasswordFile or WithPasswordPrompt have been used. This
+// method is used to encrypt keys, and it will only use the options passed, it
+// will not use the global PromptPassword.
+func (c *context) promptEncryptPassword() ([]byte, error) {
+	if len(c.password) > 0 {
+		return c.password, nil
+	} else if c.passwordPrompter != nil {
+		return c.passwordPrompter(c.passwordPrompt)
+	} else {
+		return nil, nil
+	}
+}
+
 // Options is the type to add attributes to the context.
 type Options func(o *context) error
 
@@ -367,7 +381,7 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 	case block == nil:
 		return nil, errors.Errorf("error decoding %s: not a valid PEM encoded block", ctx.filename)
 	case len(rest) > 0 && !ctx.firstBlock:
-		return nil, errors.Errorf("error decoding %s: contains more than one PEM endoded block", ctx.filename)
+		return nil, errors.Errorf("error decoding %s: contains more than one PEM encoded block", ctx.filename)
 	}
 
 	// PEM is encrypted: ask for password
@@ -535,18 +549,24 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 		return nil, errors.Errorf("cannot serialize type '%T', value '%v'", k, k)
 	}
 
+	// Request password if needed.
+	password, err := ctx.promptEncryptPassword()
+	if err != nil {
+		return nil, err
+	}
+
 	// Apply options on the PEM blocks.
-	if ctx.password != nil {
+	if password != nil {
 		if _, ok := in.(crypto.PrivateKey); ok && ctx.pkcs8 {
 			var err error
-			p, err = EncryptPKCS8PrivateKey(rand.Reader, p.Bytes, ctx.password, DefaultEncCipher)
+			p, err = EncryptPKCS8PrivateKey(rand.Reader, p.Bytes, password, DefaultEncCipher)
 			if err != nil {
 				return nil, err
 			}
 		} else {
 			var err error
 			// nolint:staticcheck
-			p, err = x509.EncryptPEMBlock(rand.Reader, p.Type, p.Bytes, ctx.password, DefaultEncCipher)
+			p, err = x509.EncryptPEMBlock(rand.Reader, p.Type, p.Bytes, password, DefaultEncCipher)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to serialize to PEM")
 			}
