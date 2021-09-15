@@ -5,7 +5,6 @@ package pemutil
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -468,6 +467,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 	}
 
 	var p *pem.Block
+	var isPrivateKey bool
 	switch k := in.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
 		b, err := x509.MarshalPKIXPublicKey(k)
@@ -479,6 +479,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			Bytes: b,
 		}
 	case *rsa.PrivateKey:
+		isPrivateKey = true
 		switch {
 		case ctx.pkcs8:
 			b, err := x509.MarshalPKCS8PrivateKey(k)
@@ -498,6 +499,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			}
 		}
 	case *ecdsa.PrivateKey:
+		isPrivateKey = true
 		switch {
 		case ctx.pkcs8:
 			b, err := x509.MarshalPKCS8PrivateKey(k)
@@ -521,6 +523,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			}
 		}
 	case ed25519.PrivateKey:
+		isPrivateKey = true
 		switch {
 		case !ctx.pkcs8 && ctx.openSSH:
 			return SerializeOpenSSHPrivateKey(k, withContext(ctx))
@@ -549,26 +552,28 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 		return nil, errors.Errorf("cannot serialize type '%T', value '%v'", k, k)
 	}
 
-	// Request password if needed.
-	password, err := ctx.promptEncryptPassword()
-	if err != nil {
-		return nil, err
-	}
+	if isPrivateKey {
+		// Request password if needed.
+		password, err := ctx.promptEncryptPassword()
+		if err != nil {
+			return nil, err
+		}
 
-	// Apply options on the PEM blocks.
-	if password != nil {
-		if _, ok := in.(crypto.PrivateKey); ok && ctx.pkcs8 {
-			var err error
-			p, err = EncryptPKCS8PrivateKey(rand.Reader, p.Bytes, password, DefaultEncCipher)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			var err error
-			// nolint:staticcheck
-			p, err = x509.EncryptPEMBlock(rand.Reader, p.Type, p.Bytes, password, DefaultEncCipher)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to serialize to PEM")
+		// Apply options on the PEM blocks.
+		if password != nil {
+			if ctx.pkcs8 {
+				var err error
+				p, err = EncryptPKCS8PrivateKey(rand.Reader, p.Bytes, password, DefaultEncCipher)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				var err error
+				// nolint:staticcheck
+				p, err = x509.EncryptPEMBlock(rand.Reader, p.Type, p.Bytes, password, DefaultEncCipher)
+				if err != nil {
+					return nil, errors.Wrap(err, "failed to serialize to PEM")
+				}
 			}
 		}
 	}
