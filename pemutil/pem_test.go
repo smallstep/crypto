@@ -627,7 +627,9 @@ func TestSerialize(t *testing.T) {
 		} else if test.pass != "" && test.file != "" {
 			p, err = Serialize(in, WithPassword([]byte(test.pass)), ToFile(test.file, 0600))
 		} else if test.pass != "" && test.pkcs8 {
-			p, err = Serialize(in, WithPassword([]byte(test.pass)), WithPKCS8(true))
+			p, err = Serialize(in, WithPKCS8(true), WithPasswordPrompt("Please enter the password to encrypt the key", func(prompt string) ([]byte, error) {
+				return []byte(test.pass), nil
+			}))
 		} else if test.pass != "" {
 			p, err = Serialize(in, WithPassword([]byte(test.pass)))
 		} else {
