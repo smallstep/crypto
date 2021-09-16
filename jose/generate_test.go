@@ -42,8 +42,8 @@ func TestThumbprint(t *testing.T) {
 		{"ec pub", args{parse("testdata/p256.pub.json")}, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", false},
 		{"rsa", args{parse("testdata/rsa.priv.json")}, "CIsktcixZ5GyfkoWFyEV0tp5foASmBV4D-W7clYrCu8", false},
 		{"rsa pub", args{parse("testdata/rsa.pub.json")}, "CIsktcixZ5GyfkoWFyEV0tp5foASmBV4D-W7clYrCu8", false},
-		{"okp", args{parse("testdata/okp.priv.json")}, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", false},
-		{"okp pub", args{parse("testdata/okp.pub.json")}, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", false},
+		{"okp", args{parse("testdata/okp.priv.json")}, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", false},
+		{"okp pub", args{parse("testdata/okp.pub.json")}, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", false},
 		{"fail oct", args{parse("testdata/oct.json")}, "", true},
 	}
 	for _, tt := range tests {

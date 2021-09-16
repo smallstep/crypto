@@ -191,7 +191,7 @@ func TestReadKey_https(t *testing.T) {
 	}{
 		{"ok", args{srvClient, srv.URL + "/ok", nil}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
@@ -279,29 +279,29 @@ func TestParseKey(t *testing.T) {
 		{"encryptedFullWithPasswordFile", args{[]byte(encKey.FullSerialize()), []Option{WithPasswordFile("testdata/passphrase.txt")}}, edKey, false},
 		{"pemPrivate", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), nil}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPublic", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pub.pem"), nil}, &JSONWebKey{
 			Key:       pemKey.(ed25519.PrivateKey).Public(),
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithPassword", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPassword([]byte("mypassword"))}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithPasswordFile", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPasswordFile("../pemutil/testdata/password.txt")}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithPasswordPrompter", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem"), []Option{WithPasswordPrompter("What's the password", func(s string) ([]byte, error) {
 			return []byte("mypassword"), nil
 		})}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithKid", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithKid("foobarzar")}}, &JSONWebKey{
@@ -311,18 +311,18 @@ func TestParseKey(t *testing.T) {
 		}, false},
 		{"pemPrivateWithUse", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithUse("enc")}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Use:       "enc",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithAlg", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithAlg("EdDSA")}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "EdDSA",
 		}, false},
 		{"pemPrivateWithAlgWithSubtle", args{read("../pemutil/testdata/pkcs8/openssl.ed25519.pem"), []Option{WithAlg("FOOBAR"), WithSubtle(true)}}, &JSONWebKey{
 			Key:       pemKey,
-			KeyID:     "Q5lGzIh3uwouVlH-YzeOhqnivkOqG_oyT_1LT-38pqo",
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
 			Algorithm: "FOOBAR",
 		}, false},
 		{"octPrivateWithAlg", args{testPassword, []Option{WithAlg("HS256")}}, &JSONWebKey{
@@ -370,10 +370,10 @@ func TestParseKey(t *testing.T) {
 }
 
 func TestReadKeySet(t *testing.T) {
-	jwk, err := ReadKeySet("testdata/jwks.json", WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"))
+	jwk, err := ReadKeySet("testdata/jwks.json", WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"))
 	assert.NoError(t, err)
 	assert.Type(t, ed25519.PublicKey{}, jwk.Key)
-	assert.Equals(t, "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus", jwk.KeyID)
+	assert.Equals(t, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", jwk.KeyID)
 
 	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co"))
 	assert.NoError(t, err)
@@ -434,18 +434,18 @@ func TestReadKeySet_https(t *testing.T) {
 		want    *JSONWebKey
 		wantErr bool
 	}{
-		{"ok", args{srvClient, srv.URL + "/ok", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, &JSONWebKey{
+		{"ok", args{srvClient, srv.URL + "/ok", []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
 			CertificateThumbprintSHA1:   []byte{},
 			CertificateThumbprintSHA256: []byte{},
 		}, false},
-		{"failEmpty", args{srvClient, srv.URL + "/empty", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
-		{"failNotFound", args{srvClient, srv.URL + "/notFound", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
-		{"failClient", args{&http.Client{}, srv.URL + "/ok", []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failEmpty", args{srvClient, srv.URL + "/empty", []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, nil, true},
+		{"failNotFound", args{srvClient, srv.URL + "/notFound", []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, nil, true},
+		{"failClient", args{&http.Client{}, srv.URL + "/ok", []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, nil, true},
 		{"failNoOptions", args{srvClient, srv.URL + "/ok", nil}, nil, true},
 	}
 	for _, tt := range tests {
@@ -565,36 +565,36 @@ func TestParseKeySet(t *testing.T) {
 		want    *JSONWebKey
 		wantErr bool
 	}{
-		{"ok", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, &JSONWebKey{
+		{"ok", args{b, []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
 			CertificateThumbprintSHA1:   []byte{},
 			CertificateThumbprintSHA256: []byte{},
 		}, false},
-		{"okEncryptedJSON", args{encryptedJSON, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPassword(testPassword)}}, &JSONWebKey{
+		{"okEncryptedJSON", args{encryptedJSON, []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"), WithPassword(testPassword)}}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
 			CertificateThumbprintSHA1:   []byte{},
 			CertificateThumbprintSHA256: []byte{},
 		}, false},
-		{"okEncryptedCompact", args{[]byte(encryptedCompact), []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPasswordFile("testdata/passphrase.txt")}}, &JSONWebKey{
+		{"okEncryptedCompact", args{[]byte(encryptedCompact), []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"), WithPasswordFile("testdata/passphrase.txt")}}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
 			CertificateThumbprintSHA1:   []byte{},
 			CertificateThumbprintSHA256: []byte{},
 		}, false},
-		{"okWithAlgSubtle", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithSubtle(true), WithAlg("FOOBAR")}}, &JSONWebKey{
+		{"okWithAlgSubtle", args{b, []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"), WithSubtle(true), WithAlg("FOOBAR")}}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus",
+			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
 			Algorithm:                   "FOOBAR",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
@@ -602,12 +602,12 @@ func TestParseKeySet(t *testing.T) {
 			CertificateThumbprintSHA256: []byte{},
 		}, false},
 		{"failOptions", args{b, []Option{WithPasswordFile("testdata/missing.txt")}}, nil, true},
-		{"failDecrypt", args{encryptedJSON, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithPassword([]byte("bad-password"))}}, nil, true},
+		{"failDecrypt", args{encryptedJSON, []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"), WithPassword([]byte("bad-password"))}}, nil, true},
 		{"failNoOptions", args{b, []Option{}}, nil, true},
 		{"failBadData", args{[]byte("foo"), []Option{}}, nil, true},
-		{"failEmpty", args{[]byte("{}"), []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus")}}, nil, true},
+		{"failEmpty", args{[]byte("{}"), []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM")}}, nil, true},
 		{"failDuplicated", args{b, []Option{WithKid("duplicated")}}, nil, true},
-		{"failWithAlg", args{b, []Option{WithKid("VjIIRw8jzUM58xrVkc4_g9Tfe2MrPPr8GM8Kjijzqus"), WithAlg("FOOBAR")}}, nil, true},
+		{"failWithAlg", args{b, []Option{WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"), WithAlg("FOOBAR")}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
