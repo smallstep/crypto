@@ -28,7 +28,7 @@ func NewServerCredentials(fn ServerRenewFunc) (*ServerCredentials, error) {
 }
 
 // NewServerCredentialsFromFile returns a ServerCredentials that renews the
-// certificate from a file in disk.
+// certificate from a file on disk.
 func NewServerCredentialsFromFile(certFile, keyFile string) (*ServerCredentials, error) {
 	if _, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
 		return nil, errors.Wrap(err, "error loading certificate")
