@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -198,9 +199,9 @@ func TestNewRenewer(t *testing.T) {
 }
 
 func TestRenewer_Run(t *testing.T) {
-	i := 0
+	var i int32
 	fn := func() (*tls.Certificate, *tls.Config, error) {
-		i++
+		atomic.AddInt32(&i, 1)
 		return testRenewFunc()
 	}
 
@@ -215,17 +216,17 @@ func TestRenewer_Run(t *testing.T) {
 	defer r.Stop()
 
 	time.Sleep(2 * time.Second)
-	if i == 0 {
+	if ii := atomic.LoadInt32(&i); ii == 0 {
 		t.Errorf("Renewer.Run() timer didn't run")
 	} else {
-		t.Logf("Renewer.Run() run %d times", i)
+		t.Logf("Renewer.Run() run %d times", ii)
 	}
 }
 
 func TestRenewer_RunContext(t *testing.T) {
-	i := 0
+	var i int32
 	fn := func() (*tls.Certificate, *tls.Config, error) {
-		i++
+		atomic.AddInt32(&i, 1)
 		return testRenewFunc()
 	}
 
@@ -241,10 +242,10 @@ func TestRenewer_RunContext(t *testing.T) {
 	r.RunContext(ctx)
 
 	time.Sleep(2 * time.Second)
-	if i == 0 {
+	if ii := atomic.LoadInt32(&i); ii == 0 {
 		t.Errorf("Renewer.RunContext() timer didn't run")
 	} else {
-		t.Logf("Renewer.RunContext() run %d times", i)
+		t.Logf("Renewer.RunContext() run %d times", ii)
 	}
 }
 
