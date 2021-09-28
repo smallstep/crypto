@@ -486,7 +486,7 @@ func TestParse(t *testing.T) {
 				in:      b,
 				opts:    []Options{WithPassword([]byte("badpassword"))},
 				cmpType: ed25519.PrivateKey{},
-				err:     errors.New("error parsing PEM"),
+				err:     errors.New("error decrypting PEM: x509: decryption password incorrect"),
 			}
 		},
 		"fail-type": func(t *testing.T) *ParseTest {
