@@ -34,6 +34,8 @@ type cosignCipher struct {
 }
 
 // ParseCosignPrivateKey returns the private key encoded using cosign envelope.
+// If an incorrect password is detected an x509.IncorrectPasswordError is
+// returned.
 //
 // Cosign keys are encrypted under a password using scrypt as a KDF and
 // nacl/secretbox for encryption.
@@ -65,7 +67,7 @@ func ParseCosignPrivateKey(data []byte, password []byte) (crypto.PrivateKey, err
 
 	out, ok := secretbox.Open(nil, env.Ciphertext, &nonce, &key)
 	if !ok {
-		return nil, errors.New("error opening secretbox: invalid key")
+		return nil, x509.IncorrectPasswordError
 	}
 
 	priv, err := x509.ParsePKCS8PrivateKey(out)

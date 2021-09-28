@@ -188,3 +188,24 @@ func TestParseCosignPrivateKey_equal(t *testing.T) {
 		t.Errorf("Public keys do not match() = %v, want %v", pub, key.(crypto.Signer).Public())
 	}
 }
+
+func TestParseCosignPrivateKey_IncorrectPasswordError(t *testing.T) {
+	b, err := ioutil.ReadFile("testdata/cosign.enc.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(b)
+	if block == nil {
+		t.Fatal("error decoding testdata/cosign.enc.pem")
+	}
+
+	_, err = ParseCosignPrivateKey(block.Bytes, []byte("mypassword"))
+	if err != nil {
+		t.Errorf("ParseCosignPrivateKey() error = %v", err)
+	}
+
+	_, err = ParseCosignPrivateKey(block.Bytes, []byte("foobar"))
+	if err != x509.IncorrectPasswordError {
+		t.Errorf("ParseCosignPrivateKey() error = %v, wantErr = %v", err, x509.IncorrectPasswordError)
+	}
+}
