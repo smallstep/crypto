@@ -274,7 +274,7 @@ func DecryptPKCS8PrivateKey(data, password []byte) ([]byte, error) {
 		}
 	}
 
-	return data, nil
+	return data[:dlen-last], nil
 }
 
 // EncryptPKCS8PrivateKey returns a PEM block holding the given PKCS#8 encroded

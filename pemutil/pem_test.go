@@ -677,10 +677,6 @@ func TestSerialize(t *testing.T) {
 						assert.Equals(t, p.Type, "ENCRYPTED PRIVATE KEY")
 						actualBytes, err = DecryptPKCS8PrivateKey(p.Bytes, []byte(test.pass))
 						assert.FatalError(t, err)
-						// remove padding
-						length := len(actualBytes)
-						paddginLength := int(actualBytes[length-1])
-						actualBytes = actualBytes[:length-paddginLength]
 					} else {
 						assert.Equals(t, p.Type, "EC PRIVATE KEY")
 						assert.True(t, x509.IsEncryptedPEMBlock(p))
