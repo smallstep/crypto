@@ -12,25 +12,36 @@ jobs:
         uses: golangci/golangci-lint-action@v2
         with:
           version: latest
-  build:
+
+  backwardCompatibility:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.17', '1.16' ]
+        go: [ '1.16' ]
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Go
-      uses: actions/setup-go@v2
+    - uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go }}
+    - name: Build
+      run: go build ./...
+    - name: Test
+      run: go test ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: '1.17'
     - name: Build
       run: go build -v ./...
     - name: Test
       run: go test -v -coverprofile=coverage.out ./...
     - name: Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v2
       with:
-        files: ./coverage.out # optional
+        files: ./coverage.out  # optional
         name: codecov-umbrella # optional
         fail_ci_if_error: true # optional (default = false)
-
