@@ -182,7 +182,11 @@ func DecryptPEMBlock(block *pem.Block, password []byte) ([]byte, error) {
 }
 
 // DecryptPKCS8PrivateKey takes a password encrypted private key using the
-// PKCS#8 encoding and returns the decrypted data in PKCS#8 form.
+// PKCS#8 encoding and returns the decrypted data in PKCS#8 form. If an
+// incorrect password is detected an x509.IncorrectPasswordError is returned.
+// Because of deficiencies in the format, it's not always possible to detect an
+// incorrect password. In these cases no error will be returned but the
+// decrypted DER bytes will be random noise.
 //
 // It supports AES-128-CBC, AES-192-CBC, AES-256-CBC, DES, or 3DES encrypted
 // data using the key derived with PBKDF2 over the given password.
@@ -213,7 +217,6 @@ func DecryptPKCS8PrivateKey(data, password []byte) ([]byte, error) {
 		keyHash = sha256.New
 	}
 
-	encryptedKey := pki.PrivateKey
 	var symkey []byte
 	var block cipher.Block
 	var err error
@@ -242,10 +245,36 @@ func DecryptPKCS8PrivateKey(data, password []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	data = pki.PrivateKey
 	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(encryptedKey, encryptedKey)
+	mode.CryptBlocks(data, data)
 
-	return encryptedKey, nil
+	// Blocks are padded using a scheme where the last n bytes of padding are all
+	// equal to n. It can pad from 1 to blocksize bytes inclusive. See RFC 1423.
+	// For example:
+	//	[x y z 2 2]
+	//	[x y 7 7 7 7 7 7 7]
+	// If we detect a bad padding, we assume it is an invalid password.
+	blockSize := block.BlockSize()
+	dlen := len(data)
+	if dlen == 0 || dlen%blockSize != 0 {
+		return nil, errors.New("error decrypting PEM: invalid padding")
+	}
+
+	last := int(data[dlen-1])
+	if dlen < last {
+		return nil, x509.IncorrectPasswordError
+	}
+	if last == 0 || last > blockSize {
+		return nil, x509.IncorrectPasswordError
+	}
+	for _, val := range data[dlen-last:] {
+		if int(val) != last {
+			return nil, x509.IncorrectPasswordError
+		}
+	}
+
+	return data[:dlen-last], nil
 }
 
 // EncryptPKCS8PrivateKey returns a PEM block holding the given PKCS#8 encroded

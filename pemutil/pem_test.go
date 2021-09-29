@@ -486,7 +486,7 @@ func TestParse(t *testing.T) {
 				in:      b,
 				opts:    []Options{WithPassword([]byte("badpassword"))},
 				cmpType: ed25519.PrivateKey{},
-				err:     errors.New("error parsing PEM"),
+				err:     errors.New("error decrypting PEM: x509: decryption password incorrect"),
 			}
 		},
 		"fail-type": func(t *testing.T) *ParseTest {
@@ -677,10 +677,6 @@ func TestSerialize(t *testing.T) {
 						assert.Equals(t, p.Type, "ENCRYPTED PRIVATE KEY")
 						actualBytes, err = DecryptPKCS8PrivateKey(p.Bytes, []byte(test.pass))
 						assert.FatalError(t, err)
-						// remove padding
-						length := len(actualBytes)
-						paddginLength := int(actualBytes[length-1])
-						actualBytes = actualBytes[:length-paddginLength]
 					} else {
 						assert.Equals(t, p.Type, "EC PRIVATE KEY")
 						assert.True(t, x509.IsEncryptedPEMBlock(p))

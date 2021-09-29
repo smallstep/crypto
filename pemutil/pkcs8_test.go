@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/smallstep/assert"
@@ -129,5 +130,87 @@ func TestSerialize_PKCS8(t *testing.T) {
 				t.Errorf("Serialize() = \n got %v, \nwant %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDecryptPKCS8PrivateKey(t *testing.T) {
+	password := []byte("mypassword")
+
+	for name, td := range files {
+		// skip non-encrypted and non pkcs8 keys
+		if !td.encrypted || !strings.HasPrefix(name, "testdata/pkcs8/") {
+			continue
+		}
+
+		t.Run(name, func(t *testing.T) {
+			data, err := ioutil.ReadFile(name)
+			if err != nil {
+				t.Errorf("ioutil.ReadFile() error = %v", err)
+				return
+			}
+			block, _ := pem.Decode(data)
+			if block == nil {
+				t.Errorf("pem.Decode() failed, block = %v", block)
+				return
+			}
+			data, err = DecryptPKCS8PrivateKey(block.Bytes, password)
+			if err != nil {
+				t.Errorf("DecryptPKCS8PrivateKey() error = %v", err)
+				return
+			}
+			// Invalid password
+			_, err = DecryptPKCS8PrivateKey(block.Bytes, []byte("foobar"))
+			if err != x509.IncorrectPasswordError {
+				t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
+			}
+			_, err = x509.ParsePKCS8PrivateKey(data)
+			if err != nil {
+				t.Errorf("x509.ParsePKCS8PrivateKey() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestDecryptPKCS8PrivateKey_ciphers(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	password := []byte("mypassword")
+	for _, alg := range rfc1423Algos {
+		t.Run(alg.name, func(t *testing.T) {
+			encData, err := EncryptPKCS8PrivateKey(rand.Reader, data, password, alg.cipher)
+			if err != nil {
+				t.Errorf("EncryptPKCS8PrivateKey() error = %v", err)
+				return
+			}
+			decData, err := DecryptPKCS8PrivateKey(encData.Bytes, password)
+			if err != nil {
+				t.Errorf("DecryptPKCS8PrivateKey() error = %v", err)
+				return
+			}
+			// Invalid password
+			_, err = DecryptPKCS8PrivateKey(encData.Bytes, []byte("foobar"))
+			if err != x509.IncorrectPasswordError {
+				t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
+			}
+
+			// Check with original key
+			key, err := x509.ParsePKCS8PrivateKey(decData)
+			if err != nil {
+				t.Errorf("x509.ParsePKCS8PrivateKey() error = %v", err)
+			}
+
+			if !reflect.DeepEqual(key, priv) {
+				t.Errorf("DecryptPKCS8PrivateKey() got = %v, want = %v", key, priv)
+			}
+		})
+
 	}
 }
