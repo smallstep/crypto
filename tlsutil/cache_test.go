@@ -139,7 +139,7 @@ func Test_credentialsCache_Delete(t *testing.T) {
 func Test_credentialsCache_Range(t *testing.T) {
 	got := []*credentialsCacheElement{}
 	want := []*credentialsCacheElement{
-		&credentialsCacheElement{sni: "ok.test"},
+		{sni: "ok.test"},
 	}
 	type fields struct {
 		CacheStore *sync.Map
