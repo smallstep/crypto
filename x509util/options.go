@@ -18,6 +18,8 @@ import (
 // adds.
 func getFuncMap(failMessage *string) template.FuncMap {
 	m := sprig.TxtFuncMap()
+	delete(m, "env")
+	delete(m, "expandenv")
 	m["fail"] = func(msg string) (string, error) {
 		*failMessage = msg
 		return "", errors.New(msg)
