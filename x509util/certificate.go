@@ -79,15 +79,25 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
 
-	// SANs are directly converted.
-	cert.DNSNames = c.DNSNames
-	cert.EmailAddresses = c.EmailAddresses
-	cert.IPAddresses = c.IPAddresses
-	cert.URIs = c.URIs
+	if c.hasExtendedSANs() {
 
-	// SANs slice.
-	for _, san := range c.SANs {
-		san.Set(cert)
+		subjectAltNameExtension, err := createSubjectAltNameExtension(c)
+		if err != nil {
+			panic(err)
+		}
+		subjectAltNameExtension.Set(cert)
+
+	} else {
+		// When we have no extended SANs, use the golang x509 lib to create the extension instead
+		cert.DNSNames = c.DNSNames
+		cert.EmailAddresses = c.EmailAddresses
+		cert.IPAddresses = c.IPAddresses
+		cert.URIs = c.URIs
+
+		// SANs slice.
+		for _, san := range c.SANs {
+			san.Set(cert)
+		}
 	}
 
 	// Subject.
@@ -120,6 +130,19 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	c.SignatureAlgorithm.Set(cert)
 
 	return cert
+}
+
+// hasExtendedSANs returns true if the certificate contains any SAN types that
+// are not supported by the golang x509 library (i.e. RegisteredID, OtherName,
+// DirectoryName, X400Address, or EDIPartyName)
+// See also https://datatracker.ietf.org/doc/html/rfc5280.html#section-4.2.1.6
+func (c *Certificate) hasExtendedSANs() bool {
+	for _, san := range c.SANs {
+		if !(san.Type == DNSType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == EmailType) {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateCertificate signs the given template using the parent private key and
