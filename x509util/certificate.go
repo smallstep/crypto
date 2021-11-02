@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/json"
 
 	"github.com/pkg/errors"
@@ -79,7 +80,7 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
 
-	if c.hasExtendedSANs() {
+	if c.hasExtendedSANs() && !c.hasExtension(subjectAlternativeNameOID) {
 
 		subjectAltNameExtension, err := createSubjectAltNameExtension(c)
 		if err != nil {
@@ -139,6 +140,15 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 func (c *Certificate) hasExtendedSANs() bool {
 	for _, san := range c.SANs {
 		if !(san.Type == DNSType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == EmailType) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Certificate) hasExtension(oid ObjectIdentifier) bool {
+	for _, e := range c.Extensions {
+		if asn1.ObjectIdentifier(e.ID).Equal(asn1.ObjectIdentifier(oid)) {
 			return true
 		}
 	}

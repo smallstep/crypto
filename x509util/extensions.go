@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -648,6 +649,11 @@ func createSubjectAltNameExtension(c *Certificate) (*Extension, error) {
 						}
 
 						rawBytes, err = asn1.Marshal(oidVal)
+					case "raw":
+						// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
+						// marshaller. By using this type users can add ASN1 datatypes manually into templates
+						// to support some unsupported types like BMPString or HEX types
+						rawBytes, err = base64.StdEncoding.DecodeString(sanValue)
 					case "utf8":
 						fallthrough
 					case "ia5":
