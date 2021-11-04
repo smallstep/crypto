@@ -7,13 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
+	"go.step.sm/crypto/tlsutil"
 	"math/big"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
+	"unicode"
 )
 
 func convertName(s string) string {
@@ -77,10 +78,12 @@ const (
 	nameTypeRegisteredID = 8
 )
 
+const sanTypeSeparator = ";"
+
 var subjectAlternativeNameOID = ObjectIdentifier{2, 5, 29, 17}
 
 // OtherNameValue is a simple struct to ensure the ASN1 marshaller
-// creates a SEQUENCE asn1 type when creating the OtherName
+// creates an EXPLICIT asn1 type when creating the OtherName
 type OtherNameValue struct {
 	V interface{}
 }
@@ -189,6 +192,146 @@ func (s SubjectAlternativeName) Set(c *x509.Certificate) {
 	default:
 		panic(fmt.Sprintf("unsupported subject alternative name type %s", s.Type))
 	}
+}
+
+func (s SubjectAlternativeName) RawValue() (*asn1.RawValue, error) {
+	var asnValue asn1.RawValue
+
+	switch s.Type {
+	case "", AutoType:
+		// autotype requires us to find out what the type is
+		if _, err := parseObjectIdentifier(s.Value); err != nil {
+			return SubjectAlternativeName{Type: RegisteredIDType, Value: s.Value}.RawValue()
+		} else if ip := net.ParseIP(s.Value); ip != nil {
+			return SubjectAlternativeName{Type: IPType, Value: s.Value}.RawValue()
+		} else if u, err := url.Parse(s.Value); err == nil && u.Scheme != "" {
+			return SubjectAlternativeName{Type: URIType, Value: s.Value}.RawValue()
+		} else if strings.Contains(s.Value, "@") {
+			return SubjectAlternativeName{Type: EmailType, Value: s.Value}.RawValue()
+		} else {
+			return SubjectAlternativeName{Type: DNSType, Value: s.Value}.RawValue()
+		}
+	case EmailType:
+		err := isIA5String(s.Value)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error converting SAN type %s value to ia5", s.Type)
+		}
+		asnValue = asn1.RawValue{Tag: nameTypeEmail, Class: asn1.ClassContextSpecific, Bytes: []byte(s.Value)}
+	case DNSType:
+		ia5String, err := tlsutil.SanitizeName(s.Value)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error converting SAN type %s value to ia5", s.Type)
+		}
+		asnValue = asn1.RawValue{Tag: nameTypeDNS, Class: asn1.ClassContextSpecific, Bytes: []byte(ia5String)}
+	case X400AddressType, DirectoryNameType, EDIPartyNameType:
+		return nil, fmt.Errorf("unimplemented SAN type %s", s.Type)
+	case URIType:
+		err := isIA5String(s.Value)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error converting SAN type %s value to ia5", s.Type)
+		}
+		asnValue = asn1.RawValue{Tag: nameTypeURI, Class: asn1.ClassContextSpecific, Bytes: []byte(s.Value)}
+	case IPType:
+		if rawIP := net.ParseIP(s.Value); rawIP != nil {
+			ip := rawIP.To4()
+			if ip == nil {
+				ip = rawIP
+			}
+			asnValue = asn1.RawValue{Tag: nameTypeIP, Class: asn1.ClassContextSpecific, Bytes: ip}
+		} else {
+			return nil, fmt.Errorf("cannot convert %s to IP", s.Value)
+		}
+	case RegisteredIDType:
+		if s.Value != "" {
+			oid, err := parseObjectIdentifier(s.Value)
+			if err == nil {
+				rawBytes, err := asn1.MarshalWithParams(oid, fmt.Sprintf("tag:%d", nameTypeRegisteredID))
+				if err != nil {
+					return nil, errors.Wrap(err, "unable to Marshal RegisteredID SAN")
+				}
+				asnValue = asn1.RawValue{FullBytes: rawBytes}
+			} else {
+				return nil, errors.Wrap(err, "error parsing OID for RegisteredID SAN")
+			}
+		} else {
+			return nil, errors.New("blank RegisteredID SAN is not allowed")
+		}
+	default:
+		if s.Type != "" {
+			// if san.Type is a valid OID, we assume it is an OtherName
+			oid, err := parseObjectIdentifier(s.Type)
+			if err == nil {
+				// the OtherName value can be any type depending on the OID
+				// ASN supports a great number of formats (https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html),
+				// but golang's asn1 lib supports much fewer -- for now support anything the golang asn1 marshaller supports
+
+				// The default type is printable, but if the value is prefixed with a type, use that
+				var valueType = "printable"
+				var sanValue = s.Value
+				var rawBytes []byte
+				var err error
+
+				if strings.Contains(s.Value, sanTypeSeparator) {
+					valueType = strings.Split(s.Value, sanTypeSeparator)[0]
+					sanValue = s.Value[len(valueType)+1:]
+				}
+
+				switch valueType {
+				case "int":
+					var i int
+					i, err = strconv.Atoi(sanValue)
+					if err != nil {
+						return nil, errors.Wrapf(err, "invalid int value for int-typed SAN OtherName %s", s.Type)
+					}
+					rawBytes, err = asn1.Marshal(i)
+				case "oid":
+					var oidVal asn1.ObjectIdentifier
+					oidVal, err = parseObjectIdentifier(sanValue)
+					if err != nil {
+						return nil, errors.Wrapf(err, "invalid OID value for OID-typed SAN OtherName %s", s.Type)
+					}
+
+					rawBytes, err = asn1.Marshal(oidVal)
+				case "raw":
+					// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
+					// marshaller. By using this type users can add ASN1 data types manually into templates
+					// to support some unsupported types like BMPString, Octet String, and others
+					rawBytes, err = base64.StdEncoding.DecodeString(sanValue)
+				case "utf8", "ia5", "numeric", "printable":
+					rawBytes, err = asn1.MarshalWithParams(sanValue, valueType)
+				default:
+					// if it's an unknown type, default to printable - but use the entire value specified in case there is a semicolon in the value
+					ia5String, err := tlsutil.SanitizeName(s.Value) //TODO need to tighten this up so it sanitizes correctly to printable and not ia5
+					if err != nil {
+						return nil, errors.Wrapf(err, "error converting SAN type %s value to ia5", s.Type)
+					}
+					rawBytes, err = asn1.MarshalWithParams(ia5String, "printable")
+				}
+
+				if err != nil {
+					return nil, errors.Wrapf(err, "could not marshal ASN1 value %v", s.Value)
+				}
+
+				// OtherName SANs are an ASN1 sequence containing OID and Value
+				otherName := OtherName{
+					OID: oid,
+					Value: OtherNameValue{
+						V: asn1.RawValue{FullBytes: rawBytes}, //load in the raw OtherName value
+					},
+				}
+				otherNameBytes, err := asn1.MarshalWithParams(otherName, fmt.Sprintf("tag:%d", nameTypeOtherName)) //use MarshalWithParams so we can set the context-specific tag - in this case 0
+				if err != nil {
+					return nil, errors.Wrap(err, "unable to Marshal otherName SAN")
+				}
+				asnValue = asn1.RawValue{FullBytes: otherNameBytes}
+			} else {
+				return nil, fmt.Errorf("unsupported SAN type %s", s.Type)
+			}
+		}
+
+	}
+
+	return &asnValue, nil
 }
 
 // KeyUsage type represents the JSON array used to represent the key usages of a
@@ -546,151 +689,74 @@ func createSubjectAltNameExtension(c *Certificate) (*Extension, error) {
 	// we need to generate the extension manually
 
 	var rawValues []interface{}
-	allSANs := make([]SubjectAlternativeName, len(c.SANs))
-
-	// First copy in all our known types (DNS, Email, URI, IPs) from the Certificate object into a complete list
-	copy(allSANs, c.SANs)
 
 	for _, dnsName := range c.DNSNames {
-		allSANs = append(allSANs, SubjectAlternativeName{
+		rawValue, err := SubjectAlternativeName{
 			Type:  DNSType,
 			Value: dnsName,
-		})
+		}.RawValue()
+
+		if err != nil {
+			return nil, err
+		}
+
+		rawValues = append(rawValues, *rawValue)
 	}
 
-	for _, emailAddress := range c.EmailAddresses {
-		allSANs = append(allSANs, SubjectAlternativeName{
+	for _, emailAddress := range c.DNSNames {
+		rawValue, err := SubjectAlternativeName{
 			Type:  EmailType,
 			Value: emailAddress,
-		})
+		}.RawValue()
+
+		if err != nil {
+			return nil, err
+		}
+
+		rawValues = append(rawValues, *rawValue)
 	}
 
 	for _, uri := range c.URIs {
-		allSANs = append(allSANs, SubjectAlternativeName{
+		rawValue, err := SubjectAlternativeName{
 			Type:  URIType,
 			Value: uri.String(),
-		})
+		}.RawValue()
+
+		if err != nil {
+			return nil, err
+		}
+
+		rawValues = append(rawValues, *rawValue)
 	}
 
 	for _, ip := range c.IPAddresses {
-		allSANs = append(allSANs, SubjectAlternativeName{
+		rawValue, err := SubjectAlternativeName{
 			Type:  IPType,
 			Value: ip.String(),
-		})
-	}
+		}.RawValue()
 
-	// Now iterate over all the SANs and construct the raw ASN1 encoded values and place them in rawValues
-	for _, san := range allSANs {
-
-		switch san.Type {
-
-		case EmailType:
-			rawValues = append(rawValues, asn1.RawValue{Tag: nameTypeEmail, Class: 2, Bytes: []byte(san.Value)})
-		case DNSType:
-			rawValues = append(rawValues, asn1.RawValue{Tag: nameTypeDNS, Class: 2, Bytes: []byte(san.Value)})
-		case X400AddressType:
-			fallthrough
-		case DirectoryNameType:
-			fallthrough
-		case EDIPartyNameType:
-			return nil, fmt.Errorf("unimplemented SAN type %s", san.Type)
-		case URIType:
-			rawValues = append(rawValues, asn1.RawValue{Tag: nameTypeURI, Class: 2, Bytes: []byte(san.Value)})
-		case IPType:
-			if rawIP := net.ParseIP(san.Value); rawIP != nil {
-				ip := rawIP.To4()
-				if ip == nil {
-					ip = rawIP
-				}
-				rawValues = append(rawValues, asn1.RawValue{Tag: nameTypeIP, Class: 2, Bytes: ip})
-			}
-		case RegisteredIDType:
-			if san.Value != "" {
-				oid, err := parseObjectIdentifier(san.Value)
-				if err == nil {
-					rawBytes, _ := asn1.MarshalWithParams(oid, fmt.Sprintf("tag:%d", nameTypeRegisteredID))
-					rawValues = append(rawValues, asn1.RawValue{FullBytes: rawBytes})
-				}
-			}
-		default:
-			if san.Type != "" {
-				// if san.Type is a valid OID, we assume it is an OtherName
-				oid, err := parseObjectIdentifier(san.Type)
-				if err == nil {
-					var otherNameValue interface{}
-
-					// the OtherName value can be any type depending on the OID
-					// ASN supports a great number of formats (https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html),
-					// but golang's asn1 lib supports much fewer -- for now support anything the golang asn1 marshaller supports
-
-					// The default type is printable, but if the value is prefixed with a type, use that
-					var valueType = "printable"
-					var sanValue = san.Value
-					var rawBytes []byte
-
-					if strings.Contains(san.Value, ";") {
-						valueType = strings.Split(san.Value, ";")[0]
-						sanValue = san.Value[len(valueType)+1:]
-					}
-
-					switch valueType {
-					case "int":
-						var i int
-						i, err = strconv.Atoi(sanValue)
-						if err != nil {
-							return nil, fmt.Errorf("invalid int value for int-typed SAN OtherName %s", san.Type)
-						}
-						rawBytes, err = asn1.Marshal(i)
-					case "oid":
-						var oidVal asn1.ObjectIdentifier
-						oidVal, err = parseObjectIdentifier(sanValue)
-						if err != nil {
-							return nil, fmt.Errorf("invalid OID value for OID-typed SAN OtherName %s", san.Type)
-						}
-
-						rawBytes, err = asn1.Marshal(oidVal)
-					case "raw":
-						// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
-						// marshaller. By using this type users can add ASN1 datatypes manually into templates
-						// to support some unsupported types like BMPString or HEX types
-						rawBytes, err = base64.StdEncoding.DecodeString(sanValue)
-					case "utf8":
-						fallthrough
-					case "ia5":
-						fallthrough
-					case "numeric":
-						fallthrough
-					case "printable":
-						rawBytes, err = asn1.MarshalWithParams(sanValue, valueType)
-					default:
-						// if it's an unknown type, default to printable - but use the entire value specified in case there is a semicolon in the value
-						rawBytes, err = asn1.MarshalWithParams(san.Value, "printable")
-					}
-
-					if err != nil {
-						return nil, fmt.Errorf("could not marshal ASN1 values: %v", err)
-					}
-
-					otherNameValue = asn1.RawValue{FullBytes: rawBytes}
-
-					// OtherName SANs are an ASN1 sequence containing OID and Value
-					otherName := OtherName{
-						OID:   oid,
-						Value: OtherNameValue{V: otherNameValue},
-					}
-					generalNameBytes, _ := asn1.MarshalWithParams(otherName, fmt.Sprintf("tag:%d", nameTypeOtherName))
-					rawValues = append(rawValues, asn1.RawValue{FullBytes: generalNameBytes})
-				} else {
-					return nil, fmt.Errorf("unsupported SAN type %s", san.Type)
-				}
-			}
-
+		if err != nil {
+			return nil, err
 		}
 
+		rawValues = append(rawValues, *rawValue)
+	}
+
+	for _, san := range c.SANs {
+		rawValue, err := san.RawValue()
+
+		if err != nil {
+			return nil, err
+		}
+
+		rawValues = append(rawValues, *rawValue)
 	}
 
 	// Now marshal the rawValues into the ASN1 sequence, and create an Extension object to hold the extension
-	rawBytes, _ := asn1.Marshal(rawValues)
+	rawBytes, err := asn1.Marshal(rawValues)
+	if err != nil {
+		return nil, errors.Wrap(err, "error marshalling SubjectAlternativeName extension to ASN1")
+	}
 
 	subjectAltNameExtension := Extension{
 		ID:       subjectAlternativeNameOID,
@@ -699,4 +765,15 @@ func createSubjectAltNameExtension(c *Certificate) (*Extension, error) {
 	}
 
 	return &subjectAltNameExtension, nil
+}
+
+func isIA5String(s string) error {
+	for _, r := range s {
+		// Per RFC5280 "IA5String is limited to the set of ASCII characters"
+		if r > unicode.MaxASCII {
+			return fmt.Errorf("x509: %q cannot be encoded as an IA5String", s)
+		}
+	}
+
+	return nil
 }
