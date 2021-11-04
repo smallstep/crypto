@@ -87,7 +87,6 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 			panic(err)
 		}
 		subjectAltNameExtension.Set(cert)
-
 	} else {
 		// When we have no extended SANs, use the golang x509 lib to create the extension instead
 		cert.DNSNames = c.DNSNames
