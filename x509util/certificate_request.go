@@ -1,19 +1,16 @@
 package x509util
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/json"
 
 	"github.com/pkg/errors"
 )
 
-var emptyASN1Subject = []byte{0x30, 0}
 var oidExtensionSubjectAltName = []int{2, 5, 29, 17}
 
 // CertificateRequest is the JSON representation of an X.509 certificate. It is
@@ -175,12 +172,10 @@ func CreateCertificateRequest(commonName string, sans []string, signer crypto.Si
 // fixSubjectAltName makes sure to mark the SAN extension to critical if the
 // subject is empty.
 func fixSubjectAltName(cr *x509.CertificateRequest) {
-	if asn1Subject, err := asn1.Marshal(cr.Subject.ToRDNSequence()); err == nil {
-		if bytes.Equal(asn1Subject, emptyASN1Subject) {
-			for i, ext := range cr.Extensions {
-				if ext.Id.Equal(oidExtensionSubjectAltName) {
-					cr.Extensions[i].Critical = true
-				}
+	if subjectIsEmpty(cr.Subject) {
+		for i, ext := range cr.Extensions {
+			if ext.Id.Equal(oidExtensionSubjectAltName) {
+				cr.Extensions[i].Critical = true
 			}
 		}
 	}

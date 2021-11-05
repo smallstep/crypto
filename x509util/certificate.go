@@ -80,14 +80,15 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
 
-	if c.hasExtendedSANs() && !c.hasExtension(subjectAlternativeNameOID) {
+	// Subject.
+	c.Subject.Set(cert)
 
-		subjectAltNameExtension, err := createSubjectAltNameExtension(c)
+	if c.hasExtendedSANs() && !c.hasExtension(oidExtensionSubjectAltName) {
+		subjectAltNameExtension, err := createSubjectAltNameExtension(c, subjectIsEmpty(cert.Subject))
 		if err != nil {
 			panic(err)
 		}
 		subjectAltNameExtension.Set(cert)
-
 	} else {
 		// When we have no extended SANs, use the golang x509 lib to create the extension instead
 		cert.DNSNames = c.DNSNames
@@ -100,9 +101,6 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 			san.Set(cert)
 		}
 	}
-
-	// Subject.
-	c.Subject.Set(cert)
 
 	// Defined extensions.
 	c.KeyUsage.Set(cert)
