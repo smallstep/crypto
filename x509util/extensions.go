@@ -197,9 +197,7 @@ func (s SubjectAlternativeName) RawValue() (*asn1.RawValue, error) {
 	switch s.Type {
 	case "", AutoType:
 		// autotype requires us to find out what the type is
-		if _, err := parseObjectIdentifier(s.Value); err != nil {
-			return SubjectAlternativeName{Type: RegisteredIDType, Value: s.Value}.RawValue()
-		} else if ip := net.ParseIP(s.Value); ip != nil {
+		if ip := net.ParseIP(s.Value); ip != nil {
 			return SubjectAlternativeName{Type: IPType, Value: s.Value}.RawValue()
 		} else if u, err := url.Parse(s.Value); err == nil && u.Scheme != "" {
 			return SubjectAlternativeName{Type: URIType, Value: s.Value}.RawValue()
