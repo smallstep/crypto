@@ -19,6 +19,7 @@ import (
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/internal/utils"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -425,6 +426,16 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 		}
 		priv, err := ParseCosignPrivateKey(block.Bytes, pass)
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
+	case "NEBULA X25519 PUBLIC KEY":
+		if len(block.Bytes) != x25519.PublicKeySize {
+			return nil, errors.Errorf("error parsing %s: key is not 32 bytes", ctx.filename)
+		}
+		return x25519.PublicKey(block.Bytes), nil
+	case "NEBULA X25519 PRIVATE KEY":
+		if len(block.Bytes) != x25519.PrivateKeySize {
+			return nil, errors.Errorf("error parsing %s: key is not 32 bytes", ctx.filename)
+		}
+		return x25519.PrivateKey(block.Bytes), nil
 	default:
 		return nil, errors.Errorf("error decoding %s: contains an unexpected header '%s'", ctx.filename, block.Type)
 	}
