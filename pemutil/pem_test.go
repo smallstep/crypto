@@ -23,6 +23,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -35,6 +36,8 @@ const (
 	ed25519PrivateKey
 	rsaPublicKey
 	rsaPrivateKey
+	x25519PublicKey
+	x25519PrivateKey
 )
 
 const (
@@ -126,6 +129,8 @@ var files = map[string]testdata{
 	"testdata/pkcs8/openssl.rsa4096.pub.pem": {rsaPublicKey, false},
 	"testdata/cosign.pub.pem":                {ecdsaPublicKey, false},
 	"testdata/cosign.enc.pem":                {ecdsaPrivateKey, true},
+	"testdata/nebula.pub":                    {x25519PublicKey, false},
+	"testdata/nebula.key":                    {x25519PrivateKey, false},
 }
 
 func readOrParseSSH(fn string) (interface{}, error) {
@@ -167,6 +172,10 @@ func TestRead(t *testing.T) {
 				assert.Type(t, &rsa.PublicKey{}, key)
 			case rsaPrivateKey:
 				assert.Type(t, &rsa.PrivateKey{}, key)
+			case x25519PublicKey:
+				assert.Type(t, x25519.PublicKey{}, key)
+			case x25519PrivateKey:
+				assert.Type(t, x25519.PrivateKey{}, key)
 			default:
 				t.Errorf("type %T not supported", key)
 			}
@@ -498,6 +507,26 @@ func TestParse(t *testing.T) {
 				opts:    []Options{},
 				cmpType: nil,
 				err:     errors.New("error decoding PEM: contains an unexpected header 'EC PUBLIC KEY'"),
+			}
+		},
+		"fail-nebula-pub-size": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/badnebula.pub")
+			assert.FatalError(t, err)
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{},
+				cmpType: nil,
+				err:     errors.New("error parsing PEM: key is not 32 bytes"),
+			}
+		},
+		"fail-nebula-key-size": func(t *testing.T) *ParseTest {
+			b, err := ioutil.ReadFile("testdata/badnebula.key")
+			assert.FatalError(t, err)
+			return &ParseTest{
+				in:      b,
+				opts:    []Options{},
+				cmpType: nil,
+				err:     errors.New("error parsing PEM: key is not 32 bytes"),
 			}
 		},
 	}
@@ -861,6 +890,10 @@ func TestParseKey(t *testing.T) {
 				assert.Type(t, &rsa.PublicKey{}, key)
 			case rsaPrivateKey:
 				assert.Type(t, &rsa.PrivateKey{}, key)
+			case x25519PublicKey:
+				assert.Type(t, x25519.PublicKey{}, key)
+			case x25519PrivateKey:
+				assert.Type(t, x25519.PrivateKey{}, key)
 			default:
 				t.Errorf("type %T not supported", key)
 			}
@@ -921,6 +954,10 @@ func TestParseSSH(t *testing.T) {
 func TestOpenSSH(t *testing.T) {
 	for fn, td := range files {
 		if strings.HasSuffix(fn, ".pub.pem") {
+			continue
+		}
+		// skip x25519 keys
+		if td.typ == x25519PublicKey || td.typ == x25519PrivateKey {
 			continue
 		}
 		// To be able to run this in parallel we need to declare local

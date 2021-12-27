@@ -22,6 +22,10 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 		if td.encrypted || td.typ == rsaPublicKey || td.typ == ecdsaPublicKey || td.typ == ed25519PublicKey {
 			continue
 		}
+		// skip x25519 keys
+		if td.typ == x25519PublicKey || td.typ == x25519PrivateKey {
+			continue
+		}
 
 		// To be able to run this in parallel we need to declare local
 		// variables.
