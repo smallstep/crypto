@@ -113,6 +113,8 @@ func TestVectors(t *testing.T) {
 		wantSignature []byte
 		wantErr       bool
 	}{
+		// Test vector from
+		// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_fast_tests.c#L324
 		{"ok", []byte{
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 			0xbd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -128,6 +130,8 @@ func TestVectors(t *testing.T) {
 			0x69, 0xad, 0xa5, 0x76, 0xd6, 0x3d, 0xca, 0xf2,
 			0xac, 0x32, 0x6c, 0x11, 0xd0, 0xb9, 0x77, 0x02,
 		}, false},
+		// Test vector from
+		// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_slow_tests.c#L98
 		{"ok", []byte{
 			0xb0, 0x3d, 0x85, 0x79, 0x6d, 0x92, 0x89, 0x78,
 			0x26, 0xaf, 0x9d, 0xb9, 0x13, 0x98, 0xf3, 0xf9,
@@ -169,6 +173,12 @@ func TestVectors(t *testing.T) {
 			0x6e, 0xd3, 0x78, 0xaa, 0x04, 0xeb, 0x71, 0x51,
 			0x9d, 0xe8, 0x7a, 0x5b, 0xd8, 0x49, 0x7b, 0x05,
 		}, false},
+		// Test vector from
+		// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_slow_tests.c#L165
+		//
+		// Note that byte 16 is altered before comparing it with the expected
+		// signature, so the real value for b[16] is 0xb4 instead of 0xb5.
+		// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_slow_tests.c#L211
 		{"ok", []byte{
 			0xb8, 0x96, 0x4, 0xb2, 0xcc, 0xe1, 0x1b, 0xe9,
 			0xd5, 0x4a, 0xe5, 0x1, 0x1e, 0x3c, 0x2b, 0xfe,
