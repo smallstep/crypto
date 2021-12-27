@@ -1,10 +1,10 @@
 package x25519
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ed25519"
 	"crypto/sha512"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"strconv"
@@ -76,7 +76,7 @@ func (p PrivateKey) PublicKey() (PublicKey, error) {
 	return pub, nil
 }
 
-// ShareKey returns the result of the scalar multiplication (scalar * point),
+// SharedKey returns the result of the scalar multiplication (scalar * point),
 // using the PrivateKey as the scalar value and the given key as the point. Both
 // scalar and point must be slices of 32 bytes.
 func (p PrivateKey) SharedKey(peerPublicKey []byte) ([]byte, error) {
@@ -133,7 +133,7 @@ func Sign(rand io.Reader, p PrivateKey, message []byte) (signature []byte, err e
 	}
 
 	// Using same prefix in libsignal-protocol-c implementation, but can be any
-	// 32 by prefix. Golang's ed25519 implementation uses:
+	// 32 byte prefix. Golang's ed25519 implementation uses:
 	//
 	//   ph := sha512.Sum512(a.Bytes())
 	//   prefix := ph[32:]
@@ -235,7 +235,7 @@ func Verify(publicKey PublicKey, message []byte, sig []byte) bool {
 
 	minusA := (&edwards25519.Point{}).Negate(A)
 	R := (&edwards25519.Point{}).VarTimeDoubleScalarBaseMult(h, minusA, s)
-	return bytes.Equal(sig[:32], R.Bytes())
+	return subtle.ConstantTimeCompare(sig[:32], R.Bytes()) == 1
 }
 
 // calculateKeyPair converts a Montgomery private key k to a twisted Edwards
