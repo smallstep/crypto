@@ -4,16 +4,16 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
 	"net"
 	"net/url"
+	"os"
 	"reflect"
 	"testing"
 )
 
 func decodeCertificateFile(t *testing.T, filename string) *x509.Certificate {
 	t.Helper()
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		t.Fatal(err)
 	}

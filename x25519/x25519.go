@@ -195,7 +195,7 @@ func Sign(rand io.Reader, p PrivateKey, message []byte) (signature []byte, err e
 //       if bytes_equal(R, Rcheck):
 //           return true
 //       return false
-func Verify(publicKey PublicKey, message []byte, sig []byte) bool {
+func Verify(publicKey PublicKey, message, sig []byte) bool {
 	// The following code should be equivalent to:
 	//
 	//   pub, err := publicKey.ToEd25519()

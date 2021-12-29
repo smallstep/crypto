@@ -1,7 +1,7 @@
 // Copyright 2014 Dmitry Chestnykh. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
+//nolint:revive // ignore underscore in package
 package bcrypt_pbkdf
 
 import (
@@ -88,7 +88,6 @@ func TestBcryptHash(t *testing.T) {
 	}
 }
 
-//nolint:errcheck
 func BenchmarkKey(b *testing.B) {
 	pass := []byte("password")
 	salt := []byte("salt")

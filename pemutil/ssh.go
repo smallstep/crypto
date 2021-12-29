@@ -19,7 +19,7 @@ import (
 	"math/big"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/internal/bcrypt_pbkdf"
+	bcryptpbkdf "go.step.sm/crypto/internal/bcrypt_pbkdf"
 	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/ssh"
 )
@@ -271,7 +271,7 @@ func SerializeOpenSSHPrivateKey(key crypto.PrivateKey, opts ...Options) (*pem.Bl
 		w.KdfOpts = string(ssh.Marshal(kdfOpts))
 
 		// Derive key to encrypt the private key block.
-		k, err := bcrypt_pbkdf.Key(password, salt, sshDefaultRounds, sshDefaultKeyLength+aes.BlockSize)
+		k, err := bcryptpbkdf.Key(password, salt, sshDefaultRounds, sshDefaultKeyLength+aes.BlockSize)
 		if err != nil {
 			return nil, errors.Wrap(err, "error deriving decryption key")
 		}
