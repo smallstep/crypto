@@ -13,7 +13,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"reflect"
@@ -135,7 +134,7 @@ var files = map[string]testdata{
 
 func readOrParseSSH(fn string) (interface{}, error) {
 	if strings.HasPrefix(fn, "testdata/openssh") && strings.HasSuffix(fn, ".pub.pem") {
-		b, err := ioutil.ReadFile(fn)
+		b, err := os.ReadFile(fn)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +249,7 @@ func TestParseCertificate(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.fn, func(t *testing.T) {
-			b, err := ioutil.ReadFile(tc.fn)
+			b, err := os.ReadFile(tc.fn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -283,7 +282,7 @@ func TestParseCertificateBundle(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.fn, func(t *testing.T) {
-			b, err := ioutil.ReadFile(tc.fn)
+			b, err := os.ReadFile(tc.fn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -315,7 +314,7 @@ func TestParseCertificateRequest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.fn, func(t *testing.T) {
-			b, err := ioutil.ReadFile(tc.fn)
+			b, err := os.ReadFile(tc.fn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -405,7 +404,7 @@ func TestParse(t *testing.T) {
 	}
 	tests := map[string]func(t *testing.T) *ParseTest{
 		"success-ecdsa-public-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.p256.pub.pem")
+			b, err := os.ReadFile("testdata/openssl.p256.pub.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -414,7 +413,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-rsa-public-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.rsa1024.pub.pem")
+			b, err := os.ReadFile("testdata/openssl.rsa1024.pub.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -423,7 +422,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-rsa-private-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.rsa1024.pem")
+			b, err := os.ReadFile("testdata/openssl.rsa1024.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -432,7 +431,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-ecdsa-private-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.p256.pem")
+			b, err := os.ReadFile("testdata/openssl.p256.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -441,7 +440,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-ed25519-private-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.pem")
+			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -450,7 +449,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-ed25519-enc-private-key": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
+			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -459,7 +458,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"success-x509-crt": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/ca.crt")
+			b, err := os.ReadFile("testdata/ca.crt")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -468,7 +467,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-options": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/ca.crt")
+			b, err := os.ReadFile("testdata/ca.crt")
 			assert.FatalError(t, err)
 			err = errors.New("an error")
 			return &ParseTest{
@@ -479,7 +478,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-password": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.p256.enc.pem")
+			b, err := os.ReadFile("testdata/openssl.p256.enc.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -489,7 +488,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-pkcs8-password": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
+			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -499,7 +498,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-type": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/openssl.p256.pub.pem")
+			b, err := os.ReadFile("testdata/openssl.p256.pub.pem")
 			assert.FatalError(t, err)
 			b = bytes.ReplaceAll(b, []byte("PUBLIC KEY"), []byte("EC PUBLIC KEY"))
 			return &ParseTest{
@@ -510,7 +509,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-nebula-pub-size": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/badnebula.pub")
+			b, err := os.ReadFile("testdata/badnebula.pub")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -520,7 +519,7 @@ func TestParse(t *testing.T) {
 			}
 		},
 		"fail-nebula-key-size": func(t *testing.T) *ParseTest {
-			b, err := ioutil.ReadFile("testdata/badnebula.key")
+			b, err := os.ReadFile("testdata/badnebula.key")
 			assert.FatalError(t, err)
 			return &ParseTest{
 				in:      b,
@@ -730,7 +729,7 @@ func TestSerialize(t *testing.T) {
 						assert.Equals(t, fileInfo.Mode(), os.FileMode(0600))
 						// Verify that key written to file is correct
 						var keyFileBytes []byte
-						keyFileBytes, err = ioutil.ReadFile(test.file)
+						keyFileBytes, err = os.ReadFile(test.file)
 						assert.FatalError(t, err)
 						pemKey, _ := pem.Decode(keyFileBytes)
 						assert.Equals(t, pemKey.Type, "EC PRIVATE KEY")
@@ -804,9 +803,9 @@ func TestParseDER(t *testing.T) {
 	ecdsaKey := k2.(*ecdsa.PrivateKey)
 	edKey := k3.(ed25519.PrivateKey)
 	// Ed25519 der files
-	edPubDer, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.pub.der")
+	edPubDer, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.pub.der")
 	assert.FatalError(t, err)
-	edPrivDer, err := ioutil.ReadFile("testdata/pkcs8/openssl.ed25519.der")
+	edPrivDer, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.der")
 	assert.FatalError(t, err)
 
 	toDER := func(k interface{}) []byte {
@@ -867,7 +866,7 @@ func TestParseKey(t *testing.T) {
 			continue
 		}
 		t.Run(fn, func(t *testing.T) {
-			data, err := ioutil.ReadFile(fn)
+			data, err := os.ReadFile(fn)
 			assert.FatalError(t, err)
 			if td.encrypted {
 				key, err = ParseKey(data, WithPassword([]byte("mypassword")))
@@ -931,7 +930,7 @@ func TestParseSSH(t *testing.T) {
 			continue
 		}
 		t.Run(fn, func(t *testing.T) {
-			data, err := ioutil.ReadFile(fn)
+			data, err := os.ReadFile(fn)
 			assert.FatalError(t, err)
 			key, err = ParseSSH(data)
 			assert.FatalError(t, err)
@@ -1000,7 +999,7 @@ func TestOpenSSH(t *testing.T) {
 
 func TestRead_options(t *testing.T) {
 	mustKey := func(filename string) interface{} {
-		b, err := ioutil.ReadFile(filename)
+		b, err := os.ReadFile(filename)
 		assert.FatalError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
 		assert.FatalError(t, err)
@@ -1047,7 +1046,7 @@ func TestRead_options(t *testing.T) {
 
 func TestRead_promptPassword(t *testing.T) {
 	mustKey := func(filename string) interface{} {
-		b, err := ioutil.ReadFile(filename)
+		b, err := os.ReadFile(filename)
 		assert.FatalError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
 		assert.FatalError(t, err)

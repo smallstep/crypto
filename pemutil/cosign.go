@@ -39,7 +39,7 @@ type cosignCipher struct {
 //
 // Cosign keys are encrypted under a password using scrypt as a KDF and
 // nacl/secretbox for encryption.
-func ParseCosignPrivateKey(data []byte, password []byte) (crypto.PrivateKey, error) {
+func ParseCosignPrivateKey(data, password []byte) (crypto.PrivateKey, error) {
 	var env cosignEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
 		return nil, errors.Wrap(err, "error unmarshaling key")

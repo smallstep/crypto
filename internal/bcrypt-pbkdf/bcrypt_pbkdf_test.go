@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package bcrypt_pbkdf
+package bcryptpbkdf
 
 import (
 	"bytes"
@@ -88,7 +88,6 @@ func TestBcryptHash(t *testing.T) {
 	}
 }
 
-//nolint:errcheck
 func BenchmarkKey(b *testing.B) {
 	pass := []byte("password")
 	salt := []byte("salt")

@@ -101,7 +101,7 @@ func (b *badSigner) Public() crypto.PublicKey {
 	return b.pub
 }
 
-func (b *badSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (b *badSigner) Sign(random io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	return nil, fmt.Errorf("💥")
 }
 
