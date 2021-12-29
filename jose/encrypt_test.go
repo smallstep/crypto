@@ -19,7 +19,7 @@ import (
 
 var testPassword = []byte("Supercalifragilisticexpialidocious")
 
-func mustTeeReader(t *testing.T) io.Reader {
+func mustTeeReader(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	reader := rand.Reader
 	t.Cleanup(func() {

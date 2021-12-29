@@ -20,6 +20,7 @@ import (
 
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 const (
@@ -474,6 +475,8 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	assert.FatalError(t, err)
 	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
 	assert.FatalError(t, err)
+	xPub, xPriv, err := x25519.GenerateKey(rand.Reader)
+	assert.FatalError(t, err)
 
 	tests := []struct {
 		jwk      *JSONWebKey
@@ -498,6 +501,10 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 		{&JSONWebKey{Key: edPub, Use: "sig"}, EdDSA},
 		{&JSONWebKey{Key: edPriv, Use: ""}, EdDSA},
 		{&JSONWebKey{Key: edPriv, Use: "sig"}, EdDSA},
+		{&JSONWebKey{Key: xPub, Use: ""}, XEdDSA},
+		{&JSONWebKey{Key: xPub, Use: "sig"}, XEdDSA},
+		{&JSONWebKey{Key: xPriv, Use: ""}, XEdDSA},
+		{&JSONWebKey{Key: xPriv, Use: "sig"}, XEdDSA},
 	}
 
 	// With context
@@ -536,6 +543,14 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	pub.Algorithm = ""
 	guessJWKAlgorithm(ctx, &pub)
 	assert.Equals(t, EdDSA, pub.Algorithm)
+
+	jwk = &JSONWebKey{Key: xPriv, Algorithm: "", Use: "sig"}
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, XEdDSA, jwk.Algorithm)
+
+	jwk = &JSONWebKey{Key: xPub, Algorithm: "", Use: "sig"}
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, XEdDSA, jwk.Algorithm)
 
 	// Defaults
 	for _, tc := range tests {
