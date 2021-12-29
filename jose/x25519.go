@@ -10,7 +10,7 @@ import (
 	"go.step.sm/crypto/x25519"
 )
 
-const x25519ThumbprintTemplate = `{"crv":"X25519","kty":"OKP","x":"%s"}`
+const x25519ThumbprintTemplate = `{"crv":"X25519","kty":"OKP","x":%q}`
 
 func x25519Thumbprint(key x25519.PublicKey, hash crypto.Hash) ([]byte, error) {
 	if len(key) != 32 {
@@ -22,7 +22,7 @@ func x25519Thumbprint(key x25519.PublicKey, hash crypto.Hash) ([]byte, error) {
 }
 
 // X25519Signer implements the jose.OpaqueSigner using an X25519 key and XEdDSA
-// as a signing algorithm.
+// as the signing algorithm.
 type X25519Signer x25519.PrivateKey
 
 // Public returns the public key of the current signing key.
@@ -41,7 +41,7 @@ func (s X25519Signer) Algs() []SignatureAlgorithm {
 }
 
 // SignPayload signs a payload with the current signing key using the given
-// algorithm, it will fails if it's not XEdDSA.
+// algorithm, it will fail if it's not XEdDSA.
 func (s X25519Signer) SignPayload(payload []byte, alg SignatureAlgorithm) ([]byte, error) {
 	if alg != XEdDSA {
 		return nil, errors.Errorf("x25519 key does not support the signature algorithm %s", alg)
@@ -53,6 +53,8 @@ func (s X25519Signer) SignPayload(payload []byte, alg SignatureAlgorithm) ([]byt
 // key and XEdDSA as a signing algorithm.
 type X25519Verifier x25519.PublicKey
 
+// VerifyPayload verifies the given signature using the X25519 public key, it
+// will fail if the signature algorithm is not XEdDSA.
 func (v X25519Verifier) VerifyPayload(payload []byte, signature []byte, alg SignatureAlgorithm) error {
 	if alg != XEdDSA {
 		return errors.Errorf("x25519 key does not support the signature algorithm %s", alg)

@@ -19,6 +19,9 @@ import (
 
 var testPassword = []byte("Supercalifragilisticexpialidocious")
 
+// mustTeeReader returns a buffer that can be used to capture reads from
+// rand.Reader and replay them if we set `rand.Reader` to that buffer.
+// mustTeeReader resets rand.Reader on cleanup.
 func mustTeeReader(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	reader := rand.Reader
