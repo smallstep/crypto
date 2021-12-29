@@ -441,6 +441,80 @@ func TestTemplateData_SetUserData(t *testing.T) {
 	}
 }
 
+func TestTemplateData_SetCertificate(t *testing.T) {
+	crt1 := Certificate{Key: mustGeneratePublicKey(t)}
+	crt2 := Certificate{Key: mustGeneratePublicKey(t)}
+	type args struct {
+		crt Certificate
+	}
+	tests := []struct {
+		name string
+		t    TemplateData
+		args args
+		want TemplateData
+	}{
+		{"ok", TemplateData{}, args{crt1}, TemplateData{
+			CertificateKey: crt1,
+		}},
+		{"overwrite", TemplateData{
+			CertificateKey: crt1,
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}, args{crt2}, TemplateData{
+			CertificateKey: crt2,
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.t.SetCertificate(tt.args.crt)
+			if !reflect.DeepEqual(tt.t, tt.want) {
+				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateData_SetCertificateChain(t *testing.T) {
+	crt1 := Certificate{Key: mustGeneratePublicKey(t)}
+	crt2 := Certificate{Key: mustGeneratePublicKey(t)}
+	type args struct {
+		crt []interface{}
+	}
+	tests := []struct {
+		name string
+		t    TemplateData
+		args args
+		want TemplateData
+	}{
+		{"ok", TemplateData{}, args{[]interface{}{crt1, crt2}}, TemplateData{
+			CertificateChainKey: []interface{}{crt1, crt2},
+		}},
+		{"overwrite", TemplateData{
+			CertificateChainKey: []interface{}{crt1, crt2},
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}, args{[]interface{}{crt1}}, TemplateData{
+			CertificateChainKey: []interface{}{crt1},
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.t.SetCertificateChain(tt.args.crt)
+			if !reflect.DeepEqual(tt.t, tt.want) {
+				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
+			}
+		})
+	}
+}
+
 func TestTemplateData_SetCertificateRequest(t *testing.T) {
 	cr1 := CertificateRequest{Key: mustGeneratePublicKey(t)}
 	cr2 := CertificateRequest{Key: mustGeneratePublicKey(t)}

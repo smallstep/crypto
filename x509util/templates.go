@@ -12,6 +12,8 @@ const (
 	InsecureKey           = "Insecure"
 	UserKey               = "User"
 	CertificateRequestKey = "CR"
+	CertificateKey        = "Crt"
+	CertificateChainKey   = "Chain"
 )
 
 // TemplateError represents an error in a template produced by the fail
@@ -85,6 +87,18 @@ func (t TemplateData) SetToken(v interface{}) {
 // data.
 func (t TemplateData) SetUserData(v interface{}) {
 	t.SetInsecure(UserKey, v)
+}
+
+// SetCertificate sets a the given certificate in the template. This certificate
+// is generally present in a token header.
+func (t TemplateData) SetCertificate(crt interface{}) {
+	t.Set(CertificateKey, crt)
+}
+
+// SetCertificateChain sets a the given certificate chain in the template. These
+// certificates are generally present in a token header.
+func (t TemplateData) SetCertificateChain(chain interface{}) {
+	t.Set(CertificateChainKey, chain)
 }
 
 // SetCertificateRequest sets the given certificate request in the insecure
