@@ -344,7 +344,7 @@ func TestReadCertificate(t *testing.T) {
 		{"testdata/notexists.crt", nil, errors.New("error reading testdata/notexists.crt: no such file or directory")},
 		{"testdata/badca.crt", nil, errors.New("error parsing testdata/badca.crt")},
 		{"testdata/badpem.crt", nil, errors.New("error decoding testdata/badpem.crt: not a valid PEM encoded block")},
-		{"testdata/badder.crt", nil, errors.New("error parsing testdata/badder.crt:")},
+		{"testdata/badder.crt", nil, errors.New("error parsing testdata/badder.crt")},
 		{"testdata/openssl.p256.pem", nil, errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' does not contain a certificate")},
 	}
 
@@ -375,7 +375,7 @@ func TestReadCertificateBundle(t *testing.T) {
 		{"testdata/notexists.crt", 0, errors.New("error reading testdata/notexists.crt: no such file or directory")},
 		{"testdata/badca.crt", 0, errors.New("error parsing testdata/badca.crt")},
 		{"testdata/badpem.crt", 0, errors.New("error decoding PEM: file 'testdata/badpem.crt' contains unexpected data")},
-		{"testdata/badder.crt", 0, errors.New("error parsing testdata/badder.crt:")},
+		{"testdata/badder.crt", 0, errors.New("error parsing testdata/badder.crt")},
 		{"testdata/openssl.p256.pem", 0, errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' is not a certificate bundle")},
 	}
 
