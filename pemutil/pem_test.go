@@ -547,7 +547,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// nolint:staticcheck
+//nolint:staticcheck // required for legacy compatibility
 func TestSerialize(t *testing.T) {
 	tests := map[string]struct {
 		in    func() (interface{}, error)

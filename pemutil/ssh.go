@@ -19,7 +19,7 @@ import (
 	"math/big"
 
 	"github.com/pkg/errors"
-	bcryptpbkdf "go.step.sm/crypto/internal/bcryptpbkdf"
+	bcryptpbkdf "go.step.sm/crypto/internal/bcrypt_pbkdf"
 	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/ssh"
 )

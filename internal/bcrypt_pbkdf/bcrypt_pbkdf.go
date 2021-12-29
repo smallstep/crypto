@@ -4,7 +4,8 @@
 
 // Package bcrypt_pbkdf implements password-based key derivation function based
 // on bcrypt compatible with bcrypt_pbkdf(3) from OpenBSD.
-package bcryptpbkdf
+//nolint:revive // ignore underscore in package
+package bcrypt_pbkdf
 
 import (
 	"crypto/sha512"
