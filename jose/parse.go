@@ -17,6 +17,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 type keyType int
@@ -344,6 +345,8 @@ func guessJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 		// Ed25519 can only be used for signing operations
 		case ed25519.PrivateKey, ed25519.PublicKey:
 			jwk.Algorithm = EdDSA
+		case x25519.PrivateKey, x25519.PublicKey:
+			jwk.Algorithm = XEdDSA
 		}
 	}
 }
@@ -359,6 +362,8 @@ func guessKnownJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 			jwk.Algorithm = getECAlgorithm(k.Curve)
 		case ed25519.PrivateKey, ed25519.PublicKey:
 			jwk.Algorithm = EdDSA
+		case x25519.PrivateKey, x25519.PublicKey:
+			jwk.Algorithm = XEdDSA
 		}
 	}
 }

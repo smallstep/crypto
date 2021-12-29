@@ -56,3 +56,8 @@ Package `tlsutil` provides utilities to configure tls client and servers.
 
 Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
 utilities to parse and generate JWT, JWK and JWKSets.
+
+### x25519
+
+Package `x25519` adds support for X25519 keys and the
+[XEdDSA](https://signal.org/docs/specifications/xeddsa/) signature scheme.

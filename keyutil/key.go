@@ -41,7 +41,9 @@ func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 		return &k.PublicKey, nil
 	case ed25519.PrivateKey:
 		return k.Public(), nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case x25519.PrivateKey:
+		return k.Public(), nil
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return k, nil
 	default:
 		return nil, errors.Errorf("unrecognized key type: %T", priv)

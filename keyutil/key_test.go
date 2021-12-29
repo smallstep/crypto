@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/smallstep/assert"
+	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -73,6 +74,8 @@ func TestPublicKey(t *testing.T) {
 	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
 	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	x25519Pub, x25519Priv, err := x25519.GenerateKey(rand.Reader)
+	assert.FatalError(t, err)
 
 	type args struct {
 		priv interface{}
@@ -89,6 +92,8 @@ func TestPublicKey(t *testing.T) {
 		{"rsaPublic", args{&rsaKey.PublicKey}, rsaKey.Public(), false},
 		{"ed25519", args{ed25519Key}, ed25519Key.Public(), false},
 		{"ed25519Public", args{ed25519.PublicKey(ed25519Key[32:])}, ed25519Key.Public(), false},
+		{"x25519", args{x25519Priv}, x25519Pub, false},
+		{"x25519Public", args{x25519Pub}, x25519Pub, false},
 		{"fail", args{[]byte("octkey")}, nil, true},
 	}
 	for _, tt := range tests {
