@@ -153,8 +153,8 @@ const (
 	PS256  = "PS256"  // RSASSA-PSS using SHA256 and MGF1-SHA256
 	PS384  = "PS384"  // RSASSA-PSS using SHA384 and MGF1-SHA384
 	PS512  = "PS512"  // RSASSA-PSS using SHA512 and MGF1-SHA512
-	EdDSA  = "EdDSA"  // Ed25591
-	XEdDSA = "XEdDSA" // X25591 with XEdDSA signature schema
+	EdDSA  = "EdDSA"  // Ed25519 with EdDSA signature schema
+	XEdDSA = "XEdDSA" // X25519 with XEdDSA signature schema
 )
 
 // Content encryption algorithms
