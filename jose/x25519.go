@@ -17,7 +17,7 @@ func x25519Thumbprint(key x25519.PublicKey, hash crypto.Hash) ([]byte, error) {
 		return nil, errors.New("invalid elliptic key")
 	}
 	h := hash.New()
-	h.Write([]byte(fmt.Sprintf(x25519ThumbprintTemplate, base64.RawURLEncoding.EncodeToString(key))))
+	fmt.Fprintf(h, x25519ThumbprintTemplate, base64.RawURLEncoding.EncodeToString(key))
 	return h.Sum(nil), nil
 }
 
@@ -55,7 +55,7 @@ type X25519Verifier x25519.PublicKey
 
 // VerifyPayload verifies the given signature using the X25519 public key, it
 // will fail if the signature algorithm is not XEdDSA.
-func (v X25519Verifier) VerifyPayload(payload []byte, signature []byte, alg SignatureAlgorithm) error {
+func (v X25519Verifier) VerifyPayload(payload, signature []byte, alg SignatureAlgorithm) error {
 	if alg != XEdDSA {
 		return errors.Errorf("x25519 key does not support the signature algorithm %s", alg)
 	}
