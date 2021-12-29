@@ -2,7 +2,6 @@ package x509util
 
 import (
 	"crypto/x509"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +22,7 @@ func ReadCertPool(path string) (*x509.CertPool, error) {
 		pool  = x509.NewCertPool()
 	)
 	if info != nil && info.IsDir() {
-		finfos, err := ioutil.ReadDir(path)
+		finfos, err := os.ReadDir(path)
 		if err != nil {
 			return nil, errors.Wrap(err, "error reading cert pool")
 		}
@@ -39,7 +38,7 @@ func ReadCertPool(path string) (*x509.CertPool, error) {
 
 	var found bool
 	for _, f := range files {
-		bytes, err := ioutil.ReadFile(f)
+		bytes, err := os.ReadFile(f)
 		if err != nil {
 			return nil, errors.Wrap(err, "error reading cert pool")
 		}

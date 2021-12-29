@@ -76,9 +76,9 @@ func TestAbs(t *testing.T) {
 		want string
 	}{
 		{"abs", args{"/foo/bar/zar"}, "/foo/bar/zar"},
-		{"home", args{"~/foo/bar/zar"}, filepath.Join(home, "foo/bar/zar")},
+		{"home", args{"~/foo/bar/zar"}, filepath.Join(home, "foo", "bar", "zar")},
 		{"relative", args{"./foo/bar/zar"}, abs},
-		{"step", args{"foo/bar/zar"}, filepath.Join(home, ".step/foo/bar/zar")},
+		{"step", args{"foo/bar/zar"}, filepath.Join(home, ".step", "foo", "bar", "zar")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

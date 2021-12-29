@@ -7,7 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -33,7 +33,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 		t.Run(fn, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := ioutil.ReadFile(fn)
+			data, err := os.ReadFile(fn)
 			assert.FatalError(t, err)
 
 			key1, err := Parse(data)
@@ -147,9 +147,9 @@ func TestDecryptPKCS8PrivateKey(t *testing.T) {
 		}
 
 		t.Run(name, func(t *testing.T) {
-			data, err := ioutil.ReadFile(name)
+			data, err := os.ReadFile(name)
 			if err != nil {
-				t.Errorf("ioutil.ReadFile() error = %v", err)
+				t.Errorf("os.ReadFile() error = %v", err)
 				return
 			}
 			block, _ := pem.Decode(data)

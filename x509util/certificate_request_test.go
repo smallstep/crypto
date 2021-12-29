@@ -202,7 +202,7 @@ func TestCertificateRequest_GetCertificateRequest(t *testing.T) {
 				got.RawSubject = nil
 				got.RawSubjectPublicKeyInfo = nil
 				got.RawTBSCertificateRequest = nil
-				got.Attributes = nil //nolint:staticcheck
+				got.Attributes = nil //nolint:staticcheck // testing legacy behavior
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CertificateRequest.GetCertificateRequest() = %v, want %v", got, tt.want)
@@ -433,7 +433,7 @@ func TestCreateCertificateRequest(t *testing.T) {
 				tt.want.RawSubject = got.RawSubject
 				tt.want.RawSubjectPublicKeyInfo = got.RawSubjectPublicKeyInfo
 				tt.want.RawTBSCertificateRequest = got.RawTBSCertificateRequest
-				tt.want.Attributes = got.Attributes //nolint:staticcheck
+				tt.want.Attributes = got.Attributes //nolint:staticcheck // testing legacy behavior
 				tt.want.Extensions = got.Extensions
 				tt.want.Signature = got.Signature
 			}

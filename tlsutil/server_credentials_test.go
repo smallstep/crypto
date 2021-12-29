@@ -5,10 +5,11 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -72,7 +73,7 @@ func TestNewServerCredentialsFromFile(t *testing.T) {
 
 	certFile := filepath.Join(dir, "testcert.crt")
 	keyFile := filepath.Join(dir, "testcert.key")
-	if err := ioutil.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{
+	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: leafCert.Raw,
 	}), 0600); err != nil {
@@ -82,7 +83,7 @@ func TestNewServerCredentialsFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{
 		Type:  "PRIVATE KEY",
 		Bytes: keyBytes,
 	}), 0600); err != nil {
@@ -179,9 +180,9 @@ func TestServerCredentials_GetCertificate(t *testing.T) {
 				return
 			}
 			if resp != nil && resp.Body != nil {
-				got, err := ioutil.ReadAll(resp.Body)
+				got, err := io.ReadAll(resp.Body)
 				if err != nil {
-					t.Errorf("ioutil.ReadAll() error = %v", err)
+					t.Errorf("io.ReadAll() error = %v", err)
 					return
 				}
 				if !reflect.DeepEqual(got, tt.want) {
@@ -244,9 +245,9 @@ func TestServerCredentials_GetConfigForClient(t *testing.T) {
 				return
 			}
 			if resp != nil && resp.Body != nil {
-				got, err := ioutil.ReadAll(resp.Body)
+				got, err := io.ReadAll(resp.Body)
 				if err != nil {
-					t.Errorf("ioutil.ReadAll() error = %v", err)
+					t.Errorf("io.ReadAll() error = %v", err)
 					return
 				}
 				if !reflect.DeepEqual(got, tt.want) {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/base64"
-	"io/ioutil"
+	"os"
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
@@ -90,7 +90,7 @@ func WithTemplateBase64(s string, data TemplateData) Option {
 func WithTemplateFile(path string, data TemplateData) Option {
 	return func(cr *x509.CertificateRequest, o *Options) error {
 		filename := step.Abs(path)
-		b, err := ioutil.ReadFile(filename)
+		b, err := os.ReadFile(filename)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}

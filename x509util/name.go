@@ -85,7 +85,6 @@ func (s Subject) Set(c *x509.Certificate) {
 // Issuer is the JSON representation of the X.509 issuer field.
 type Issuer Name
 
-// nolint:unused
 func newIssuer(n pkix.Name) Issuer {
 	return Issuer{
 		Country:            n.Country,

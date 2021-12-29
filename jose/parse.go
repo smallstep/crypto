@@ -9,8 +9,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -40,11 +41,11 @@ func read(filename string) ([]byte, error) {
 		if resp.StatusCode >= 400 {
 			return nil, errors.Errorf("error retrieving %s: status code %d", filename, resp.StatusCode)
 		}
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		return b, errors.Wrapf(err, "error retrieving %s", filename)
 	}
 
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading %s", filename)
 	}
@@ -106,7 +107,7 @@ func ParseKey(b []byte, opts ...Option) (*JSONWebKey, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(ctx.kid) == 0 {
+		if ctx.kid == "" {
 			if jwk.KeyID, err = Thumbprint(jwk); err != nil {
 				return nil, err
 			}
