@@ -441,7 +441,7 @@ func TestTemplateData_SetUserData(t *testing.T) {
 	}
 }
 
-func TestTemplateData_SetCertificate(t *testing.T) {
+func TestTemplateData_SetAuthorizationCertificate(t *testing.T) {
 	crt1 := Certificate{Key: mustGeneratePublicKey(t)}
 	crt2 := Certificate{Key: mustGeneratePublicKey(t)}
 	type args struct {
@@ -454,15 +454,15 @@ func TestTemplateData_SetCertificate(t *testing.T) {
 		want TemplateData
 	}{
 		{"ok", TemplateData{}, args{crt1}, TemplateData{
-			CertificateKey: crt1,
+			AuthorizationCrtKey: crt1,
 		}},
 		{"overwrite", TemplateData{
-			CertificateKey: crt1,
+			AuthorizationCrtKey: crt1,
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
 		}, args{crt2}, TemplateData{
-			CertificateKey: crt2,
+			AuthorizationCrtKey: crt2,
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
@@ -470,7 +470,7 @@ func TestTemplateData_SetCertificate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.t.SetCertificate(tt.args.crt)
+			tt.t.SetAuthorizationCertificate(tt.args.crt)
 			if !reflect.DeepEqual(tt.t, tt.want) {
 				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
 			}
@@ -478,7 +478,7 @@ func TestTemplateData_SetCertificate(t *testing.T) {
 	}
 }
 
-func TestTemplateData_SetCertificateChain(t *testing.T) {
+func TestTemplateData_SetAuthorizationCertificateChain(t *testing.T) {
 	crt1 := Certificate{Key: mustGeneratePublicKey(t)}
 	crt2 := Certificate{Key: mustGeneratePublicKey(t)}
 	type args struct {
@@ -491,15 +491,15 @@ func TestTemplateData_SetCertificateChain(t *testing.T) {
 		want TemplateData
 	}{
 		{"ok", TemplateData{}, args{[]interface{}{crt1, crt2}}, TemplateData{
-			CertificateChainKey: []interface{}{crt1, crt2},
+			AuthorizationChainKey: []interface{}{crt1, crt2},
 		}},
 		{"overwrite", TemplateData{
-			CertificateChainKey: []interface{}{crt1, crt2},
+			AuthorizationChainKey: []interface{}{crt1, crt2},
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
 		}, args{[]interface{}{crt1}}, TemplateData{
-			CertificateChainKey: []interface{}{crt1},
+			AuthorizationChainKey: []interface{}{crt1},
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
@@ -507,7 +507,7 @@ func TestTemplateData_SetCertificateChain(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.t.SetCertificateChain(tt.args.crt)
+			tt.t.SetAuthorizationCertificateChain(tt.args.crt)
 			if !reflect.DeepEqual(tt.t, tt.want) {
 				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
 			}
