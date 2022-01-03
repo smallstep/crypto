@@ -136,7 +136,7 @@ func (t TemplateData) SetUserData(v interface{}) {
 	t.SetInsecure(UserKey, v)
 }
 
-// SetCertificate sets a the given certificate in the template. This certificate
+// SetCertificate sets the given certificate in the template. This certificate
 // is generally present in a token header.
 func (t TemplateData) SetCertificate(crt interface{}) {
 	t.Set(CertificateKey, crt)
