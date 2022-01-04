@@ -61,7 +61,7 @@ func (p PublicKey) ToEd25519() (ed25519.PublicKey, error) {
 // Public returns the public key using scalar multiplication (scalar * point)
 // using the Curve25519 basepoint. It will return nil if the private key is not
 // a valid one.
-func (p PrivateKey) Public() PublicKey {
+func (p PrivateKey) Public() crypto.PublicKey {
 	pub, _ := p.PublicKey()
 	return pub
 }
