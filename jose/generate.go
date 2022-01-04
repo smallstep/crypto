@@ -41,7 +41,10 @@ func Thumbprint(jwk *JSONWebKey) (string, error) {
 	case x25519.PublicKey:
 		sum, err = x25519Thumbprint(key, crypto.SHA256)
 	case x25519.PrivateKey:
-		sum, err = x25519Thumbprint(key.Public(), crypto.SHA256)
+		var pub x25519.PublicKey
+		if pub, err = key.PublicKey(); err == nil {
+			sum, err = x25519Thumbprint(pub, crypto.SHA256)
+		}
 	default:
 		sum, err = jwk.Thumbprint(crypto.SHA256)
 	}
