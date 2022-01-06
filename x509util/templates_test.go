@@ -226,6 +226,80 @@ func TestTemplateData_SetUserData(t *testing.T) {
 	}
 }
 
+func TestTemplateData_SetAuthorizationCertificate(t *testing.T) {
+	crt1 := Certificate{DNSNames: []string{"crt1"}}
+	crt2 := Certificate{DNSNames: []string{"crt2"}}
+	type args struct {
+		crt Certificate
+	}
+	tests := []struct {
+		name string
+		t    TemplateData
+		args args
+		want TemplateData
+	}{
+		{"ok", TemplateData{}, args{crt1}, TemplateData{
+			AuthorizationCrtKey: crt1,
+		}},
+		{"overwrite", TemplateData{
+			AuthorizationCrtKey: crt1,
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}, args{crt2}, TemplateData{
+			AuthorizationCrtKey: crt2,
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.t.SetAuthorizationCertificate(tt.args.crt)
+			if !reflect.DeepEqual(tt.t, tt.want) {
+				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateData_SetAuthorizationCertificateChain(t *testing.T) {
+	crt1 := Certificate{DNSNames: []string{"crt1"}}
+	crt2 := Certificate{DNSNames: []string{"crt2"}}
+	type args struct {
+		crt []interface{}
+	}
+	tests := []struct {
+		name string
+		t    TemplateData
+		args args
+		want TemplateData
+	}{
+		{"ok", TemplateData{}, args{[]interface{}{crt1, crt2}}, TemplateData{
+			AuthorizationChainKey: []interface{}{crt1, crt2},
+		}},
+		{"overwrite", TemplateData{
+			AuthorizationChainKey: []interface{}{crt1, crt2},
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}, args{[]interface{}{crt1}}, TemplateData{
+			AuthorizationChainKey: []interface{}{crt1},
+			InsecureKey: TemplateData{
+				UserKey: "data",
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.t.SetAuthorizationCertificateChain(tt.args.crt)
+			if !reflect.DeepEqual(tt.t, tt.want) {
+				t.Errorf("TemplateData.SetCertificate() = %v, want %v", tt.t, tt.want)
+			}
+		})
+	}
+}
+
 func TestTemplateData_SetCertificateRequest(t *testing.T) {
 	cr := &x509.CertificateRequest{
 		DNSNames: []string{"foo", "bar"},
