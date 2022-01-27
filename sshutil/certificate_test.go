@@ -4,12 +4,31 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
+	"fmt"
+	"io"
 	"reflect"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
 )
+
+type badSigner struct {
+	signer ssh.Signer
+}
+
+func (b *badSigner) PublicKey() ssh.PublicKey {
+	return b.signer.PublicKey()
+}
+
+func (b *badSigner) Sign(r io.Reader, data []byte) (*ssh.Signature, error) {
+	return nil, fmt.Errorf("an error")
+}
+
+func (b *badSigner) SignWithAlgorithm(r io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
+	return nil, fmt.Errorf("an error")
+}
 
 func mustGenerateKey(t *testing.T) (ssh.PublicKey, ssh.Signer) {
 	t.Helper()
@@ -18,6 +37,23 @@ func mustGenerateKey(t *testing.T) (ssh.PublicKey, ssh.Signer) {
 		t.Fatal(err)
 	}
 	key, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key, signer
+}
+
+func mustGenerateRSAKey(t *testing.T) (ssh.PublicKey, ssh.Signer) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ssh.NewPublicKey(priv.Public())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,6 +318,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 
 func TestCreateCertificate(t *testing.T) {
 	key, signer := mustGenerateKey(t)
+	rsaKey, rsaSigner := mustGenerateRSAKey(t)
+
 	type args struct {
 		cert   *ssh.Certificate
 		signer ssh.Signer
@@ -303,6 +341,18 @@ func TestCreateCertificate(t *testing.T) {
 			Permissions:     ssh.Permissions{},
 			Reserved:        []byte("reserved"),
 		}, signer}, false},
+		{"ok rsa", args{&ssh.Certificate{
+			Nonce:           []byte("0123456789"),
+			Key:             rsaKey,
+			Serial:          123,
+			CertType:        ssh.UserCert,
+			KeyId:           "foo",
+			ValidPrincipals: []string{"foo.internal"},
+			ValidAfter:      1111,
+			ValidBefore:     2222,
+			Permissions:     ssh.Permissions{},
+			Reserved:        []byte("reserved"),
+		}, rsaSigner}, false},
 		{"emptyNonce", args{&ssh.Certificate{
 			Key:             key,
 			Serial:          123,
@@ -325,6 +375,30 @@ func TestCreateCertificate(t *testing.T) {
 			Permissions:     ssh.Permissions{},
 			Reserved:        []byte("reserved"),
 		}, signer}, false},
+		{"fail signer.Sign", args{&ssh.Certificate{
+			Nonce:           []byte("0123456789"),
+			Key:             key,
+			Serial:          123,
+			CertType:        ssh.HostCert,
+			KeyId:           "foo",
+			ValidPrincipals: []string{"foo.internal"},
+			ValidAfter:      1111,
+			ValidBefore:     2222,
+			Permissions:     ssh.Permissions{},
+			Reserved:        []byte("reserved"),
+		}, &badSigner{signer}}, true},
+		{"fail signer.SignWithAlgorithm", args{&ssh.Certificate{
+			Nonce:           []byte("0123456789"),
+			Key:             rsaKey,
+			Serial:          123,
+			CertType:        ssh.UserCert,
+			KeyId:           "foo",
+			ValidPrincipals: []string{"foo.internal"},
+			ValidAfter:      1111,
+			ValidBefore:     2222,
+			Permissions:     ssh.Permissions{},
+			Reserved:        []byte("reserved"),
+		}, &badSigner{rsaSigner}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -351,14 +425,24 @@ func TestCreateCertificate(t *testing.T) {
 				data := got.Marshal()
 				data = data[:len(data)-4]
 
-				sig, err := signer.Sign(rand.Reader, data)
-				if err != nil {
-					t.Errorf("signer.Sign() error = %v", err)
+				var sig *ssh.Signature
+				if got.SignatureKey.Type() == "rsa-ssh" {
+					algSigner, ok := tt.args.signer.(ssh.AlgorithmSigner)
+					if !ok {
+						t.Fatalf("signer %T is not an ssh.AlgorithmSigner", tt.args.signer)
+					}
+					if sig, err = algSigner.SignWithAlgorithm(rand.Reader, data, "rsa-sha2-256"); err != nil {
+						t.Errorf("algSigner.SignWithAlgorithm() error = %v", err)
+					}
+				} else {
+					if sig, err = tt.args.signer.Sign(rand.Reader, data); err != nil {
+						t.Errorf("signer.Sign() error = %v", err)
+					}
 				}
 
 				// Verify signature
 				got.Signature = signature
-				if err := signer.PublicKey().Verify(data, got.Signature); err != nil {
+				if err := tt.args.signer.PublicKey().Verify(data, got.Signature); err != nil {
 					t.Errorf("CreateCertificate() signature verify error = %v", err)
 				}
 				// Verify data with public key in cert
