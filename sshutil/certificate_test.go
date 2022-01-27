@@ -22,11 +22,11 @@ func (b *badSigner) PublicKey() ssh.PublicKey {
 	return b.signer.PublicKey()
 }
 
-func (b *badSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+func (b *badSigner) Sign(r io.Reader, data []byte) (*ssh.Signature, error) {
 	return nil, fmt.Errorf("an error")
 }
 
-func (b *badSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
+func (b *badSigner) SignWithAlgorithm(r io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
 	return nil, fmt.Errorf("an error")
 }
 
