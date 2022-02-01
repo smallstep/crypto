@@ -82,7 +82,7 @@ func ParseOpenSSHPrivateKey(pemBytes []byte, opts ...Options) (crypto.PrivateKey
 	if w.KdfName != "none" || w.CipherName != "none" {
 		password, err := ctx.promptPassword()
 		if err != nil {
-			return nil, errors.Errorf("error decoding %s: file is password protected", ctx.filename)
+			return nil, err
 		}
 		key, err = ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, password)
 		if err != nil {
