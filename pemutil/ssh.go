@@ -84,6 +84,11 @@ func ParseOpenSSHPrivateKey(pemBytes []byte, opts ...Options) (crypto.PrivateKey
 		var password []byte
 		if len(ctx.password) > 0 {
 			password = ctx.password
+		} else if ctx.passwordPrompter != nil {
+			password, err = ctx.passwordPrompter(ctx.passwordPrompt)
+			if err != nil {
+				return nil, err
+			}
 		} else if PromptPassword != nil {
 			password, err = PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", ctx.filename))
 			if err != nil {
