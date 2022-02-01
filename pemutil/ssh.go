@@ -15,7 +15,6 @@ import (
 	"crypto/rsa"
 	"encoding/binary"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 
 	"github.com/pkg/errors"
@@ -81,16 +80,9 @@ func ParseOpenSSHPrivateKey(pemBytes []byte, opts ...Options) (crypto.PrivateKey
 	var err error
 	var key crypto.PrivateKey
 	if w.KdfName != "none" || w.CipherName != "none" {
-		var password []byte
-		if len(ctx.password) > 0 {
-			password = ctx.password
-		} else if PromptPassword != nil {
-			password, err = PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", ctx.filename))
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, errors.Errorf("error decoding %s: file is password protected", ctx.filename)
+		password, err := ctx.promptPassword()
+		if err != nil {
+			return nil, err
 		}
 		key, err = ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, password)
 		if err != nil {
