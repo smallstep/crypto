@@ -59,6 +59,18 @@ func TestSalt(t *testing.T) {
 	}
 }
 
+func TestBytes(t *testing.T) {
+	sizes := []int{4, 8, 16, 32, 64, 128}
+	for _, size := range sizes {
+		a, err := Bytes(size)
+		assert.NoError(t, err)
+		b, err := Bytes(size)
+		assert.NoError(t, err)
+		// Most of the time
+		assert.NotEquals(t, a, b)
+	}
+}
+
 func TestString(t *testing.T) {
 	re := regexp.MustCompilePOSIX(`^[0-9世界ñçàèìòù]+$`)
 	chars := "0123456789世界ñçàèìòù"
