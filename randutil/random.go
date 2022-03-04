@@ -31,6 +31,16 @@ func Salt(size int) ([]byte, error) {
 	return salt, nil
 }
 
+// Bytes generates a new byte slice of the given size.
+func Bytes(size int) ([]byte, error) {
+	bytes := make([]byte, size)
+	_, err := io.ReadFull(rand.Reader, bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "error generating bytes")
+	}
+	return bytes, nil
+}
+
 // String returns a random string of a given length using the characters in
 // the given string. It splits the string on runes to support UTF-8
 // characters.
