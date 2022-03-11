@@ -1,4 +1,4 @@
-name: Create Release & Upload Assets
+name: Create Release
 
 on:
   push:
