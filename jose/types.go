@@ -118,6 +118,9 @@ var ErrInvalidSubject = jwt.ErrInvalidSubject
 // ErrInvalidID indicates invalid jti claim.
 var ErrInvalidID = jwt.ErrInvalidID
 
+// ErrIssuedInTheFuture indicates that the iat field is in the future.
+var ErrIssuedInTheFuture = jwt.ErrIssuedInTheFuture
+
 // Key management algorithms
 //nolint:revive // use standard names in upper-case
 const (
@@ -235,6 +238,9 @@ func UnixNumericDate(s int64) *NumericDate {
 func NewSigner(sig SigningKey, opts *SignerOptions) (Signer, error) {
 	if k, ok := sig.Key.(x25519.PrivateKey); ok {
 		sig.Key = X25519Signer(k)
+	}
+	if sig.Algorithm == "" {
+		sig.Algorithm = guessSignatureAlgorithm(sig.Key)
 	}
 	return jose.NewSigner(sig, opts)
 }
