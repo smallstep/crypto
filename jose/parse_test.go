@@ -685,3 +685,44 @@ func Test_guessKeyType(t *testing.T) {
 		})
 	}
 }
+
+func Test_guessSignatureAlgorithm(t *testing.T) {
+	must := func(args ...interface{}) crypto.PrivateKey {
+		last := len(args) - 1
+		if err := args[last]; err != nil {
+			t.Fatal(err)
+		}
+		return args[last-1]
+	}
+
+	_, x25519Key, err := x25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		key crypto.PrivateKey
+	}
+	tests := []struct {
+		name string
+		args args
+		want SignatureAlgorithm
+	}{
+		{"byte", args{[]byte("the-key")}, HS256},
+		{"ES256", args{must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))}, ES256},
+		{"ES384", args{must(ecdsa.GenerateKey(elliptic.P384(), rand.Reader))}, ES384},
+		{"ES512", args{must(ecdsa.GenerateKey(elliptic.P521(), rand.Reader))}, ES512},
+		{"RS256", args{must(rsa.GenerateKey(rand.Reader, 2048))}, RS256},
+		{"EdDSA", args{must(ed25519.GenerateKey(rand.Reader))}, EdDSA},
+		{"XEdDSA", args{x25519Key}, XEdDSA},
+		{"XEdDSA with X25519Signer", args{X25519Signer(x25519Key)}, XEdDSA},
+		{"empty", args{must(ecdsa.GenerateKey(elliptic.P224(), rand.Reader))}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := guessSignatureAlgorithm(tt.args.key); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("guessSignatureAlgorithm() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

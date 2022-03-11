@@ -2,6 +2,7 @@ package jose
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -348,6 +349,24 @@ func guessJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 		case x25519.PrivateKey, x25519.PublicKey:
 			jwk.Algorithm = XEdDSA
 		}
+	}
+}
+
+// guessSignatureAlgorithm returns the signature algorithm for a given private key.
+func guessSignatureAlgorithm(key crypto.PrivateKey) SignatureAlgorithm {
+	switch k := key.(type) {
+	case []byte:
+		return DefaultOctSigAlgorithm
+	case *ecdsa.PrivateKey:
+		return SignatureAlgorithm(getECAlgorithm(k.Curve))
+	case *rsa.PrivateKey:
+		return DefaultRSASigAlgorithm
+	case ed25519.PrivateKey:
+		return EdDSA
+	case x25519.PrivateKey, X25519Signer:
+		return XEdDSA
+	default:
+		return ""
 	}
 }
 
