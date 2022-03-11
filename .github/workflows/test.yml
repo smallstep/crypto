@@ -33,7 +33,7 @@ jobs:
       -
         name: Test, Build
         id: lintTestBuild
-        run: V=1 make ci
+        run: V=1 make
       -
         name: Codecov
         uses: codecov/codecov-action@v1.2.1
