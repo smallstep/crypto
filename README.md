@@ -61,3 +61,7 @@ utilities to parse and generate JWT, JWK and JWKSets.
 
 Package `x25519` adds support for X25519 keys and the
 [XEdDSA](https://signal.org/docs/specifications/xeddsa/) signature scheme.
+
+### minica
+
+Package `minica` implements a simple certificate authority.
