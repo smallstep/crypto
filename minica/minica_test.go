@@ -122,33 +122,33 @@ func TestNew(t *testing.T) {
 				}
 			} else {
 				if got.Root == nil {
-					t.Errorf("MiniCA.Root should not be nil")
+					t.Errorf("CA.Root should not be nil")
 				}
 				if got.Intermediate == nil {
-					t.Errorf("MiniCA.Intermediate should not be nil")
+					t.Errorf("CA.Intermediate should not be nil")
 				}
 				if got.Signer == nil {
-					t.Errorf("MiniCA.Signer should not be nil")
+					t.Errorf("CA.Signer should not be nil")
 				}
 				if got.SSHHostSigner == nil {
-					t.Errorf("MiniCA.SSHHostSigner should not be nil")
+					t.Errorf("CA.SSHHostSigner should not be nil")
 				}
 				if got.SSHUserSigner == nil {
-					t.Errorf("MiniCA.SSHUserSigner should not be nil")
+					t.Errorf("CA.SSHUserSigner should not be nil")
 				}
 
 				// Check common names
 				if cn := got.Root.Subject.CommonName; cn != tt.wantName+" Root CA" {
-					t.Errorf("MiniCA.Root.Subject.CommonName = %s, want %s Root CA", cn, tt.wantName)
+					t.Errorf("CA.Root.Subject.CommonName = %s, want %s Root CA", cn, tt.wantName)
 				}
 				if cn := got.Root.Issuer.CommonName; cn != tt.wantName+" Root CA" {
-					t.Errorf("MiniCA.Root.Issuer.CommonName = %s, want %s Root CA", cn, tt.wantName)
+					t.Errorf("CA.Root.Issuer.CommonName = %s, want %s Root CA", cn, tt.wantName)
 				}
 				if cn := got.Intermediate.Subject.CommonName; cn != tt.wantName+" Intermediate CA" {
-					t.Errorf("MiniCA.Intermediate.Subject.CommonName = %s, want %s Intermediate CA", cn, tt.wantName)
+					t.Errorf("CA.Intermediate.Subject.CommonName = %s, want %s Intermediate CA", cn, tt.wantName)
 				}
 				if cn := got.Intermediate.Issuer.CommonName; cn != tt.wantName+" Root CA" {
-					t.Errorf("MiniCA.Root.Intermediate.Issuer.CommonName = %s, want %s Root CA", cn, tt.wantName)
+					t.Errorf("CA.Root.Intermediate.Issuer.CommonName = %s, want %s Root CA", cn, tt.wantName)
 				}
 
 				// Verify intermediate
@@ -157,14 +157,14 @@ func TestNew(t *testing.T) {
 				if _, err := got.Intermediate.Verify(x509.VerifyOptions{
 					Roots: pool,
 				}); err != nil {
-					t.Errorf("MiniCA.Intermediate.Verify() error = %v", err)
+					t.Errorf("CA.Intermediate.Verify() error = %v", err)
 				}
 			}
 		})
 	}
 }
 
-func TestMiniCA_Sign(t *testing.T) {
+func TestCA_Sign(t *testing.T) {
 	signer, err := keyutil.GenerateDefaultSigner()
 	if err != nil {
 		t.Fatal(err)
@@ -198,12 +198,12 @@ func TestMiniCA_Sign(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.ca.Sign(tt.args.template)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("MiniCA.Sign() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CA.Sign() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr {
 				if got != nil {
-					t.Errorf("MiniCA.Sign() = %v, want nil", got)
+					t.Errorf("CA.Sign() = %v, want nil", got)
 				}
 			} else {
 				roots := x509.NewCertPool()
@@ -224,7 +224,65 @@ func TestMiniCA_Sign(t *testing.T) {
 	}
 }
 
-func TestMiniCA_SignCSR(t *testing.T) {
+func TestCA_Sign_mutation(t *testing.T) {
+	signer, err := keyutil.GenerateDefaultSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ca := mustCA(t)
+	template := &x509.Certificate{
+		DNSNames:  []string{"leaf.test.com"},
+		PublicKey: signer.Public(),
+	}
+	got, err := ca.Sign(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify certificate
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.Root)
+	ints := x509.NewCertPool()
+	ints.AddCert(ca.Intermediate)
+	if _, err := got.Verify(x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: ints,
+		DNSName:       "leaf.test.com",
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}); err != nil {
+		t.Errorf("Certificate.Verify() error = %v", err)
+	}
+
+	// Check mutation
+	if !template.NotBefore.IsZero() {
+		t.Errorf("CA.Sign() mutated template.NotBefore")
+	}
+	if !template.NotAfter.IsZero() {
+		t.Errorf("CA.Sign() mutated template.NotAfter")
+	}
+	if template.SerialNumber != nil {
+		t.Errorf("CA.Sign() mutated template.SerialNumber")
+	}
+	if template.SubjectKeyId != nil {
+		t.Errorf("CA.Sign() mutated template.SubjectKeyId")
+	}
+
+	if got.NotBefore.IsZero() {
+		t.Errorf("CA.Sign() got.NotBefore should not be 0")
+	}
+	if got.NotAfter.IsZero() {
+		t.Errorf("CA.Sign() got.NotAfter should not be 0")
+	}
+	if got.SerialNumber == nil {
+		t.Errorf("CA.Sign() got.SerialNumber should not be nil")
+	}
+	if got.SubjectKeyId == nil {
+		t.Errorf("CA.Sign() got.SubjectKeyId should not be nil")
+	}
+}
+
+func TestCA_SignCSR(t *testing.T) {
 	signer, err := keyutil.GenerateDefaultSigner()
 	if err != nil {
 		t.Fatal(err)
@@ -261,12 +319,12 @@ func TestMiniCA_SignCSR(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.ca.SignCSR(tt.args.csr, tt.args.opts...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("MiniCA.SignCSR() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CA.SignCSR() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr {
 				if got != nil {
-					t.Errorf("MiniCA.Sign() = %v, want nil", got)
+					t.Errorf("CA.Sign() = %v, want nil", got)
 				}
 			} else {
 				roots := x509.NewCertPool()
@@ -287,7 +345,7 @@ func TestMiniCA_SignCSR(t *testing.T) {
 	}
 }
 
-func TestMiniCA_SignSSH(t *testing.T) {
+func TestCA_SignSSH(t *testing.T) {
 	signer, err := keyutil.GenerateDefaultSigner()
 	if err != nil {
 		t.Fatal(err)
@@ -324,6 +382,14 @@ func TestMiniCA_SignSSH(t *testing.T) {
 			ValidAfter:      uint64(time.Now().Unix()),
 			ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),
 		}}, ssh.UserCert, "jane", false},
+		{"ok infinity", mustCA(t), args{&ssh.Certificate{
+			Key:             publicKey,
+			Serial:          1234,
+			CertType:        ssh.UserCert,
+			KeyId:           "jane@test.com",
+			ValidPrincipals: []string{"jane"},
+			ValidBefore:     ssh.CertTimeInfinity,
+		}}, ssh.UserCert, "jane", false},
 		{"fail type", mustCA(t), args{&ssh.Certificate{
 			Key:             publicKey,
 			Serial:          1234,
@@ -336,13 +402,13 @@ func TestMiniCA_SignSSH(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.ca.SignSSH(tt.args.cert)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("MiniCA.SignSSH() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CA.SignSSH() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if tt.wantErr {
 				if got != nil {
-					t.Errorf("MiniCA.SignSSH() = %v, want nil", got)
+					t.Errorf("CA.SignSSH() = %v, want nil", got)
 				}
 			} else {
 				checker := ssh.CertChecker{
@@ -367,5 +433,109 @@ func TestMiniCA_SignSSH(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCA_SignSSH_mutation(t *testing.T) {
+	signer, err := keyutil.GenerateDefaultSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := ssh.NewPublicKey(signer.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := &ssh.Certificate{
+		Key:             publicKey,
+		CertType:        ssh.HostCert,
+		KeyId:           "ssh.test.com",
+		ValidPrincipals: []string{"ssh.test.com"},
+	}
+
+	ca := mustCA(t)
+	got, err := ca.SignSSH(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Validate certificate
+	checker := ssh.CertChecker{
+		IsHostAuthority: func(auth ssh.PublicKey, address string) bool {
+			return reflect.DeepEqual(auth, ca.SSHHostSigner.PublicKey())
+		},
+	}
+	if err := checker.CheckHostKey("ssh.test.com:22", &net.IPAddr{IP: net.IP{1, 2, 3, 4}}, got); err != nil {
+		t.Errorf("CertChecker.CheckHostKey() error = %v", err)
+	}
+
+	// Validate mutation
+	if template.ValidAfter != 0 {
+		t.Errorf("CA.SignSSH() mutated template.ValidAfter")
+	}
+	if template.ValidBefore != 0 {
+		t.Errorf("CA.SignSSH() mutated template.ValidBefore")
+	}
+	if template.Nonce != nil {
+		t.Errorf("CA.SignSSH() mutated template.Nonce")
+	}
+	if template.Serial != 0 {
+		t.Errorf("CA.SignSSH() mutated template.Serial")
+	}
+
+	if got.ValidAfter == 0 {
+		t.Errorf("CA.SignSSH() got.ValidAfter should not be 0")
+	}
+	if got.ValidBefore == 0 {
+		t.Errorf("CA.SignSSH() got.ValidBefore should not be 0")
+	}
+	if len(got.Nonce) == 0 {
+		t.Errorf("CA.SignSSH() got.Nonce should not be empty")
+	}
+	if got.Serial == 0 {
+		t.Errorf("CA.SignSSH() got.Serial should not be 0")
+	}
+}
+
+func TestCA_SignSSH_infinity(t *testing.T) {
+	signer, err := keyutil.GenerateDefaultSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := ssh.NewPublicKey(signer.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := &ssh.Certificate{
+		Key:             publicKey,
+		Serial:          1234,
+		CertType:        ssh.UserCert,
+		KeyId:           "jane@test.com",
+		ValidPrincipals: []string{"jane"},
+		ValidBefore:     ssh.CertTimeInfinity,
+	}
+
+	ca := mustCA(t)
+	got, err := ca.SignSSH(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Validate certificate
+	checker := ssh.CertChecker{
+		IsUserAuthority: func(auth ssh.PublicKey) bool {
+			return reflect.DeepEqual(auth, ca.SSHUserSigner.PublicKey())
+		},
+	}
+	if _, err := checker.Authenticate(mockConnMetadata("jane"), got); err != nil {
+		t.Errorf("CertChecker.Authenticate() error = %v", err)
+	}
+
+	if got.ValidAfter != 0 {
+		t.Errorf("CA.SignSSH() got.ValidAfter should be 0")
+	}
+	if got.ValidBefore != ssh.CertTimeInfinity {
+		t.Errorf("CA.SignSSH() got.ValidBefore should not be ssh.CertTimInfinity")
 	}
 }

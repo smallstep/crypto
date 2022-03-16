@@ -100,17 +100,26 @@ func New(opts ...Option) (*CA, error) {
 }
 
 // Sign signs an X.509 certificate template using the intermediate certificate.
+// Sign will automatically populate the following fields if they are not
+// specified:
+//
+//   - NotBefore will be set to the current time.
+//   - NotAfter will be set to 24 hours after NotBefore.
+//   - SerialNumber will be automatically generated.
+//   - SubjectKeyId will be automatically generated.
 func (c *CA) Sign(template *x509.Certificate) (*x509.Certificate, error) {
-	if template.NotBefore.IsZero() {
-		template.NotBefore = time.Now()
+	mut := *template
+	if mut.NotBefore.IsZero() {
+		mut.NotBefore = time.Now()
 	}
-	if template.NotAfter.IsZero() {
-		template.NotAfter = template.NotBefore.Add(24 * time.Hour)
+	if mut.NotAfter.IsZero() {
+		mut.NotAfter = mut.NotBefore.Add(24 * time.Hour)
 	}
-	return x509util.CreateCertificate(template, c.Intermediate, template.PublicKey, c.Signer)
+	return x509util.CreateCertificate(&mut, c.Intermediate, mut.PublicKey, c.Signer)
 }
 
-// SignCSR signs an X.509 certificate signing request. The custom options allows to change the template used for
+// SignCSR signs an X.509 certificate signing request. The custom options allows
+// to change the template used to convert the CSR to a certificate.
 func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Certificate, error) {
 	sans := append([]string{}, csr.DNSNames...)
 	sans = append(sans, csr.EmailAddresses...)
@@ -137,20 +146,31 @@ func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Ce
 	return c.Sign(cert)
 }
 
-// SignSSH signs an SSH host or user certificate.
-func (c *CA) SignSSH(cert *ssh.Certificate) (*ssh.Certificate, error) {
-	if cert.ValidAfter == 0 {
-		cert.ValidAfter = uint64(time.Now().Unix())
+// SignSSH signs an SSH host or user certificate. SignSSH will automatically
+// populate the following fields if they are not specified:
+//
+//   - ValidAfter will be set to the current time unless ValidBefore is set to ssh.CertTimeInfinity.
+//   - ValidBefore will be set to 24 hours after ValidAfter.
+//   - Nonce will be automatically generated.
+//   - Serial will be automatically generated.
+//
+// If the SSH signer is an RSA key, it will use rsa-sha2-256 instead of the
+// default ssh-rsa (SHA-1), this method is currently deprecated and
+// rsa-sha2-256/512 are supported since OpenSSH 7.2 (2016).
+func (c *CA) SignSSH(template *ssh.Certificate) (*ssh.Certificate, error) {
+	mut := *template
+	if mut.ValidAfter == 0 && mut.ValidBefore != ssh.CertTimeInfinity {
+		mut.ValidAfter = uint64(time.Now().Unix())
 	}
-	if cert.ValidBefore == 0 {
-		cert.ValidBefore = cert.ValidAfter + 24*60*60
+	if mut.ValidBefore == 0 {
+		mut.ValidBefore = mut.ValidAfter + 24*60*60
 	}
 
-	switch cert.CertType {
+	switch mut.CertType {
 	case ssh.HostCert:
-		return sshutil.CreateCertificate(cert, c.SSHHostSigner)
+		return sshutil.CreateCertificate(&mut, c.SSHHostSigner)
 	case ssh.UserCert:
-		return sshutil.CreateCertificate(cert, c.SSHUserSigner)
+		return sshutil.CreateCertificate(&mut, c.SSHUserSigner)
 	default:
 		return nil, fmt.Errorf("unknown certificate type")
 	}
