@@ -11,8 +11,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// MiniCA is the implementation of a simple X.509 and SSH CA.
-type MiniCA struct {
+// CA is the implementation of a simple X.509 and SSH CA.
+type CA struct {
 	Root          *x509.Certificate
 	Intermediate  *x509.Certificate
 	Signer        crypto.Signer
@@ -22,7 +22,7 @@ type MiniCA struct {
 
 // New creates a new MiniCA, the custom options allows to overwrite templates,
 // signer types and certificate names.
-func New(opts ...Option) (*MiniCA, error) {
+func New(opts ...Option) (*CA, error) {
 	now := time.Now()
 	o := newOptions().apply(opts)
 
@@ -90,7 +90,7 @@ func New(opts ...Option) (*MiniCA, error) {
 		return nil, err
 	}
 
-	return &MiniCA{
+	return &CA{
 		Root:          root,
 		Intermediate:  intermediate,
 		Signer:        intSigner,
@@ -100,7 +100,7 @@ func New(opts ...Option) (*MiniCA, error) {
 }
 
 // Sign signs an X.509 certificate template using the intermediate certificate.
-func (c *MiniCA) Sign(template *x509.Certificate) (*x509.Certificate, error) {
+func (c *CA) Sign(template *x509.Certificate) (*x509.Certificate, error) {
 	if template.NotBefore.IsZero() {
 		template.NotBefore = time.Now()
 	}
@@ -111,7 +111,7 @@ func (c *MiniCA) Sign(template *x509.Certificate) (*x509.Certificate, error) {
 }
 
 // SignCSR signs an X.509 certificate signing request. The custom options allows to change the template used for
-func (c *MiniCA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Certificate, error) {
+func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Certificate, error) {
 	sans := append([]string{}, csr.DNSNames...)
 	sans = append(sans, csr.EmailAddresses...)
 	for _, ip := range csr.IPAddresses {
@@ -138,7 +138,7 @@ func (c *MiniCA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x50
 }
 
 // SignSSH signs an SSH host or user certificate.
-func (c *MiniCA) SignSSH(cert *ssh.Certificate) (*ssh.Certificate, error) {
+func (c *CA) SignSSH(cert *ssh.Certificate) (*ssh.Certificate, error) {
 	if cert.ValidAfter == 0 {
 		cert.ValidAfter = uint64(time.Now().Unix())
 	}

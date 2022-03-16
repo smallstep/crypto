@@ -48,7 +48,7 @@ func (c mockConnMetadata) LocalAddr() net.Addr {
 	return &net.IPAddr{IP: net.IP{1, 2, 3, 4}}
 }
 
-func mustCA(t *testing.T, opts ...Option) *MiniCA {
+func mustCA(t *testing.T, opts ...Option) *CA {
 	t.Helper()
 	ca, err := New(opts...)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestMiniCA_Sign(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
-		ca      *MiniCA
+		ca      *CA
 		args    args
 		wantErr bool
 	}{
@@ -240,7 +240,7 @@ func TestMiniCA_SignCSR(t *testing.T) {
 	}
 	tests := []struct {
 		name          string
-		ca            *MiniCA
+		ca            *CA
 		args          args
 		wantDNSName   string
 		wantKeyUsages []x509.ExtKeyUsage
@@ -302,7 +302,7 @@ func TestMiniCA_SignSSH(t *testing.T) {
 	}
 	tests := []struct {
 		name          string
-		ca            *MiniCA
+		ca            *CA
 		args          args
 		wantCertType  uint32
 		wantPrincipal string
