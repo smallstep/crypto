@@ -122,19 +122,19 @@ func TestNew(t *testing.T) {
 				}
 			} else {
 				if got.Root == nil {
-					t.Errorf("CA.Root should not be nil")
+					t.Error("CA.Root should not be nil")
 				}
 				if got.Intermediate == nil {
-					t.Errorf("CA.Intermediate should not be nil")
+					t.Error("CA.Intermediate should not be nil")
 				}
 				if got.Signer == nil {
-					t.Errorf("CA.Signer should not be nil")
+					t.Error("CA.Signer should not be nil")
 				}
 				if got.SSHHostSigner == nil {
-					t.Errorf("CA.SSHHostSigner should not be nil")
+					t.Error("CA.SSHHostSigner should not be nil")
 				}
 				if got.SSHUserSigner == nil {
-					t.Errorf("CA.SSHUserSigner should not be nil")
+					t.Error("CA.SSHUserSigner should not be nil")
 				}
 
 				// Check common names
@@ -256,29 +256,29 @@ func TestCA_Sign_mutation(t *testing.T) {
 
 	// Check mutation
 	if !template.NotBefore.IsZero() {
-		t.Errorf("CA.Sign() mutated template.NotBefore")
+		t.Error("CA.Sign() mutated template.NotBefore")
 	}
 	if !template.NotAfter.IsZero() {
-		t.Errorf("CA.Sign() mutated template.NotAfter")
+		t.Error("CA.Sign() mutated template.NotAfter")
 	}
 	if template.SerialNumber != nil {
-		t.Errorf("CA.Sign() mutated template.SerialNumber")
+		t.Error("CA.Sign() mutated template.SerialNumber")
 	}
 	if template.SubjectKeyId != nil {
-		t.Errorf("CA.Sign() mutated template.SubjectKeyId")
+		t.Error("CA.Sign() mutated template.SubjectKeyId")
 	}
 
 	if got.NotBefore.IsZero() {
-		t.Errorf("CA.Sign() got.NotBefore should not be 0")
+		t.Error("CA.Sign() got.NotBefore should not be 0")
 	}
 	if got.NotAfter.IsZero() {
-		t.Errorf("CA.Sign() got.NotAfter should not be 0")
+		t.Error("CA.Sign() got.NotAfter should not be 0")
 	}
 	if got.SerialNumber == nil {
-		t.Errorf("CA.Sign() got.SerialNumber should not be nil")
+		t.Error("CA.Sign() got.SerialNumber should not be nil")
 	}
 	if got.SubjectKeyId == nil {
-		t.Errorf("CA.Sign() got.SubjectKeyId should not be nil")
+		t.Error("CA.Sign() got.SubjectKeyId should not be nil")
 	}
 }
 
@@ -471,29 +471,29 @@ func TestCA_SignSSH_mutation(t *testing.T) {
 
 	// Validate mutation
 	if template.ValidAfter != 0 {
-		t.Errorf("CA.SignSSH() mutated template.ValidAfter")
+		t.Error("CA.SignSSH() mutated template.ValidAfter")
 	}
 	if template.ValidBefore != 0 {
-		t.Errorf("CA.SignSSH() mutated template.ValidBefore")
+		t.Error("CA.SignSSH() mutated template.ValidBefore")
 	}
 	if template.Nonce != nil {
-		t.Errorf("CA.SignSSH() mutated template.Nonce")
+		t.Error("CA.SignSSH() mutated template.Nonce")
 	}
 	if template.Serial != 0 {
-		t.Errorf("CA.SignSSH() mutated template.Serial")
+		t.Error("CA.SignSSH() mutated template.Serial")
 	}
 
 	if got.ValidAfter == 0 {
-		t.Errorf("CA.SignSSH() got.ValidAfter should not be 0")
+		t.Error("CA.SignSSH() got.ValidAfter should not be 0")
 	}
 	if got.ValidBefore == 0 {
-		t.Errorf("CA.SignSSH() got.ValidBefore should not be 0")
+		t.Error("CA.SignSSH() got.ValidBefore should not be 0")
 	}
 	if len(got.Nonce) == 0 {
-		t.Errorf("CA.SignSSH() got.Nonce should not be empty")
+		t.Error("CA.SignSSH() got.Nonce should not be empty")
 	}
 	if got.Serial == 0 {
-		t.Errorf("CA.SignSSH() got.Serial should not be 0")
+		t.Error("CA.SignSSH() got.Serial should not be 0")
 	}
 }
 
@@ -533,9 +533,9 @@ func TestCA_SignSSH_infinity(t *testing.T) {
 	}
 
 	if got.ValidAfter != 0 {
-		t.Errorf("CA.SignSSH() got.ValidAfter should be 0")
+		t.Error("CA.SignSSH() got.ValidAfter should be 0")
 	}
 	if got.ValidBefore != ssh.CertTimeInfinity {
-		t.Errorf("CA.SignSSH() got.ValidBefore should not be ssh.CertTimInfinity")
+		t.Error("CA.SignSSH() got.ValidBefore should not be ssh.CertTimInfinity")
 	}
 }
