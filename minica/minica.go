@@ -36,7 +36,7 @@ func New(opts ...Option) (*MiniCA, error) {
 	if err != nil {
 		return nil, err
 	}
-	cert, err := x509util.NewCertificate(rootCR, x509util.WithTemplate(x509util.DefaultRootTemplate, x509util.CreateTemplateData(rootSubject, []string{})))
+	cert, err := x509util.NewCertificate(rootCR, x509util.WithTemplate(o.RootTemplate, x509util.CreateTemplateData(rootSubject, []string{})))
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func New(opts ...Option) (*MiniCA, error) {
 	if err != nil {
 		return nil, err
 	}
-	cert, err = x509util.NewCertificate(intCR, x509util.WithTemplate(x509util.DefaultIntermediateTemplate, x509util.CreateTemplateData(intSubject, []string{})))
+	cert, err = x509util.NewCertificate(intCR, x509util.WithTemplate(o.IntermediateTemplate, x509util.CreateTemplateData(intSubject, []string{})))
 	if err != nil {
 		return nil, err
 	}
