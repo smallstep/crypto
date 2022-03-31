@@ -14,6 +14,7 @@ import (
 // CA is the implementation of a simple X.509 and SSH CA.
 type CA struct {
 	Root          *x509.Certificate
+	RootSigner    crypto.Signer
 	Intermediate  *x509.Certificate
 	Signer        crypto.Signer
 	SSHHostSigner ssh.Signer
@@ -92,6 +93,7 @@ func New(opts ...Option) (*CA, error) {
 
 	return &CA{
 		Root:          root,
+		RootSigner:    rootSigner,
 		Intermediate:  intermediate,
 		Signer:        intSigner,
 		SSHHostSigner: sshHostSigner,
