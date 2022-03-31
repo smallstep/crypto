@@ -30,6 +30,9 @@ func TestReadCertPool(t *testing.T) {
 				return
 			}
 			if got != nil {
+				// noline:staticcheck // there's no other way to compare two
+				// certpools, https://github.com/golang/go/issues/46057 might
+				// fix this.
 				subjects := got.Subjects()
 				if !reflect.DeepEqual(subjects, tt.wantSubjects) {
 					t.Errorf("x509.CertPool.Subjects() got = %v, want %v", subjects, tt.wantSubjects)
