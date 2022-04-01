@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.14
+go 1.16
 
 require (
 	filippo.io/edwards25519 v1.0.0-rc.1
