@@ -53,7 +53,7 @@ func newName(n pkix.Name) Name {
 		PostalCode:         n.PostalCode,
 		SerialNumber:       n.SerialNumber,
 		CommonName:         n.CommonName,
-		ExtraNames:         newDistinguisedNames(n.Names),
+		ExtraNames:         newExtraNames(n.Names),
 	}
 }
 
@@ -149,9 +149,9 @@ type DistinguishedName struct {
 	Value interface{}      `json:"value"`
 }
 
-// newDistinguisedNames returns a list of DistinguishedName with the attributes not
+// newExtraNames returns a list of DistinguishedName with the attributes not
 // present in attributeTypeNames.
-func newDistinguisedNames(atvs []pkix.AttributeTypeAndValue) []DistinguishedName {
+func newExtraNames(atvs []pkix.AttributeTypeAndValue) []DistinguishedName {
 	var extraNames []DistinguishedName
 	for _, atv := range atvs {
 		if _, ok := attributeTypeNames[atv.Type.String()]; !ok {
