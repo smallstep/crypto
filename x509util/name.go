@@ -10,8 +10,8 @@ import (
 )
 
 // attributeTypeNames are the subject attributes managed by Go and this package.
-// newDistinguisedNames will populate .Insecure.CR.ExtraNames with the
-// attributes not present on this map.
+// newExtraNames will populate .Insecure.CR.ExtraNames with the attributes not
+// present on this map.
 var attributeTypeNames = map[string]string{
 	"2.5.4.6":  "C",
 	"2.5.4.10": "O",
