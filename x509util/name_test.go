@@ -28,7 +28,17 @@ func Test_newName(t *testing.T) {
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
 			Names: []pkix.AttributeTypeAndValue{
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "The country"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 10}, Value: "The organization"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 2"},
 				{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "The commonName"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 5}, Value: "The serialNumber"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 2"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "The province"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 9}, Value: "The streetAddress"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 17}, Value: "The postalCode"},
 				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
 			},
 		}}, Name{
