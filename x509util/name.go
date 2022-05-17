@@ -9,6 +9,24 @@ import (
 	"github.com/pkg/errors"
 )
 
+// attributeTypeNames are the subject attributes managed by Go and this package.
+// newExtraNames will populate .Insecure.CR.ExtraNames with the attributes not
+// present on this map.
+var attributeTypeNames = map[string]string{
+	"2.5.4.6":  "C",
+	"2.5.4.10": "O",
+	"2.5.4.11": "OU",
+	"2.5.4.3":  "CN",
+	"2.5.4.5":  "SERIALNUMBER",
+	"2.5.4.7":  "L",
+	"2.5.4.8":  "ST",
+	"2.5.4.9":  "STREET",
+	"2.5.4.17": "POSTALCODE",
+}
+
+// oidEmailAddress is the oid of the deprecated emailAddress in the subject.
+var oidEmailAddress = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
+
 // Name is the JSON representation of X.501 type Name, used in the X.509 subject
 // and issuer fields.
 type Name struct {
@@ -35,7 +53,7 @@ func newName(n pkix.Name) Name {
 		PostalCode:         n.PostalCode,
 		SerialNumber:       n.SerialNumber,
 		CommonName:         n.CommonName,
-		ExtraNames:         newDistinguisedNames(n.ExtraNames),
+		ExtraNames:         newExtraNames(n.Names),
 	}
 }
 
@@ -86,7 +104,7 @@ func (s Subject) Set(c *x509.Certificate) {
 		PostalCode:         s.PostalCode,
 		SerialNumber:       s.SerialNumber,
 		CommonName:         s.CommonName,
-		ExtraNames:         fromDistinguisedNames(s.ExtraNames),
+		ExtraNames:         fromDistinguishedNames(s.ExtraNames),
 	}
 }
 
@@ -120,7 +138,7 @@ func (i Issuer) Set(c *x509.Certificate) {
 		PostalCode:         i.PostalCode,
 		SerialNumber:       i.SerialNumber,
 		CommonName:         i.CommonName,
-		ExtraNames:         fromDistinguisedNames(i.ExtraNames),
+		ExtraNames:         fromDistinguishedNames(i.ExtraNames),
 	}
 }
 
@@ -131,24 +149,44 @@ type DistinguishedName struct {
 	Value interface{}      `json:"value"`
 }
 
-func newDistinguisedNames(atvs []pkix.AttributeTypeAndValue) []DistinguishedName {
+// newExtraNames returns a list of DistinguishedName with the attributes not
+// present in attributeTypeNames.
+func newExtraNames(atvs []pkix.AttributeTypeAndValue) []DistinguishedName {
 	var extraNames []DistinguishedName
 	for _, atv := range atvs {
-		extraNames = append(extraNames, DistinguishedName{
-			Type:  ObjectIdentifier(atv.Type),
-			Value: atv.Value,
-		})
+		if _, ok := attributeTypeNames[atv.Type.String()]; !ok {
+			extraNames = append(extraNames, DistinguishedName{
+				Type:  ObjectIdentifier(atv.Type),
+				Value: atv.Value,
+			})
+		}
 	}
 	return extraNames
 }
 
-func fromDistinguisedNames(dns []DistinguishedName) []pkix.AttributeTypeAndValue {
+// fromDistinguishedNames converts a list of DistinguishedName to
+// []pkix.AttributeTypeAndValue. Note that this method has a special case to
+// encode the deprecated emailAddress field (1.2.840.113549.1.9.1).
+func fromDistinguishedNames(dns []DistinguishedName) []pkix.AttributeTypeAndValue {
 	var atvs []pkix.AttributeTypeAndValue
 	for _, dn := range dns {
-		atvs = append(atvs, pkix.AttributeTypeAndValue{
-			Type:  asn1.ObjectIdentifier(dn.Type),
-			Value: dn.Value,
-		})
+		typ := asn1.ObjectIdentifier(dn.Type)
+		v, isString := dn.Value.(string)
+		if typ.Equal(oidEmailAddress) && isString {
+			atvs = append(atvs, pkix.AttributeTypeAndValue{
+				Type: typ,
+				Value: asn1.RawValue{
+					Class: asn1.ClassUniversal,
+					Tag:   asn1.TagIA5String,
+					Bytes: []byte(v),
+				},
+			})
+		} else {
+			atvs = append(atvs, pkix.AttributeTypeAndValue{
+				Type:  typ,
+				Value: dn.Value,
+			})
+		}
 	}
 	return atvs
 }

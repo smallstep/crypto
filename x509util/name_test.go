@@ -27,8 +27,19 @@ func Test_newName(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
-			ExtraNames: []pkix.AttributeTypeAndValue{
-				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			Names: []pkix.AttributeTypeAndValue{
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "The country"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 10}, Value: "The organization"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 2"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "The commonName"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 5}, Value: "The serialNumber"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 2"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "The province"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 9}, Value: "The streetAddress"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 17}, Value: "The postalCode"},
+				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
 			},
 		}}, Name{
 			Country:            []string{"The country"},
@@ -41,7 +52,7 @@ func Test_newName(t *testing.T) {
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
 			ExtraNames: []DistinguishedName{
-				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
 			},
 		}},
 	}
@@ -127,8 +138,8 @@ func Test_newSubject(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
-			ExtraNames: []pkix.AttributeTypeAndValue{
-				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			Names: []pkix.AttributeTypeAndValue{
+				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
 			},
 		}}, Subject{
 			Country:            []string{"The country"},
@@ -141,7 +152,7 @@ func Test_newSubject(t *testing.T) {
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
 			ExtraNames: []DistinguishedName{
-				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
 			},
 		}},
 	}
@@ -405,6 +416,7 @@ func TestIssuer_Set(t *testing.T) {
 			CommonName:         "The commonName",
 			ExtraNames: []DistinguishedName{
 				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+				{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 			},
 		}, args{&x509.Certificate{}}, &x509.Certificate{
 			Issuer: pkix.Name{
@@ -418,7 +430,8 @@ func TestIssuer_Set(t *testing.T) {
 				SerialNumber:       "The serialNumber",
 				CommonName:         "The commonName",
 				ExtraNames: []pkix.AttributeTypeAndValue{
-					{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+					{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+					{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 				},
 			},
 		}},
@@ -452,7 +465,7 @@ func TestIssuer_Set(t *testing.T) {
 	}
 }
 
-func Test_newDistinguisedNames(t *testing.T) {
+func Test_newExtraNames(t *testing.T) {
 	type args struct {
 		atvs []pkix.AttributeTypeAndValue
 	}
@@ -462,15 +475,18 @@ func Test_newDistinguisedNames(t *testing.T) {
 		want []DistinguishedName
 	}{
 		{"ok", args{[]pkix.AttributeTypeAndValue{
-			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "The commonName"},
+			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 		}}, []DistinguishedName{
-			{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 		}},
 		{"ok nil", args{nil}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := newDistinguisedNames(tt.args.atvs); !reflect.DeepEqual(got, tt.want) {
+			if got := newExtraNames(tt.args.atvs); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("newDistinguisedNames() = %v, want %v", got, tt.want)
 			}
 		})
@@ -488,14 +504,16 @@ func Test_fromDistinguisedNames(t *testing.T) {
 	}{
 		{"ok", args{[]DistinguishedName{
 			{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 		}}, []pkix.AttributeTypeAndValue{
-			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
 		}},
 		{"ok nil", args{nil}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := fromDistinguisedNames(tt.args.dns); !reflect.DeepEqual(got, tt.want) {
+			if got := fromDistinguishedNames(tt.args.dns); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("fromDistinguisedNames() = %v, want %v", got, tt.want)
 			}
 		})
