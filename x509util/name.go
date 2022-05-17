@@ -104,7 +104,7 @@ func (s Subject) Set(c *x509.Certificate) {
 		PostalCode:         s.PostalCode,
 		SerialNumber:       s.SerialNumber,
 		CommonName:         s.CommonName,
-		ExtraNames:         fromDistinguisedNames(s.ExtraNames),
+		ExtraNames:         fromDistinguishedNames(s.ExtraNames),
 	}
 }
 
@@ -138,7 +138,7 @@ func (i Issuer) Set(c *x509.Certificate) {
 		PostalCode:         i.PostalCode,
 		SerialNumber:       i.SerialNumber,
 		CommonName:         i.CommonName,
-		ExtraNames:         fromDistinguisedNames(i.ExtraNames),
+		ExtraNames:         fromDistinguishedNames(i.ExtraNames),
 	}
 }
 
@@ -164,10 +164,10 @@ func newExtraNames(atvs []pkix.AttributeTypeAndValue) []DistinguishedName {
 	return extraNames
 }
 
-// fromDistinguisedNames converts a list of DistinguisedName to
+// fromDistinguishedNames converts a list of DistinguishedName to
 // []pkix.AttributeTypeAndValue. Note that this method has a special case to
-// encode the emailAddress deprecated field (1.2.840.113549.1.9.1).
-func fromDistinguisedNames(dns []DistinguishedName) []pkix.AttributeTypeAndValue {
+// encode the deprecated emailAddress field (1.2.840.113549.1.9.1).
+func fromDistinguishedNames(dns []DistinguishedName) []pkix.AttributeTypeAndValue {
 	var atvs []pkix.AttributeTypeAndValue
 	for _, dn := range dns {
 		typ := asn1.ObjectIdentifier(dn.Type)
