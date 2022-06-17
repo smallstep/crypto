@@ -3,19 +3,26 @@ module go.step.sm/crypto
 go 1.16
 
 require (
+	cloud.google.com/go/kms v1.4.0
 	filippo.io/edwards25519 v1.0.0-rc.1
+	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible
+	github.com/Azure/go-autorest/autorest v0.11.27
+	github.com/Azure/go-autorest/autorest/azure/auth v0.5.11
+	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
-	github.com/google/go-cmp v0.5.6 // indirect
-	github.com/google/uuid v1.3.0 // indirect
-	github.com/huandu/xstrings v1.3.2 // indirect
-	github.com/imdario/mergo v0.3.12 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/ThalesIgnite/crypto11 v1.2.5
+	github.com/aws/aws-sdk-go v1.44.37
+	github.com/go-piv/piv-go v1.9.0
+	github.com/golang/mock v1.6.0
+	github.com/googleapis/gax-go/v2 v2.4.0
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
-	github.com/spf13/cast v1.4.1 // indirect
+	github.com/smallstep/certificates v0.20.0
+	go.step.sm/cli-utils v0.7.3
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
-	golang.org/x/sys v0.0.0-20210915083310-ed5796bab164 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/net v0.0.0-20220607020251-c690dde0001d
+	google.golang.org/api v0.84.0
+	google.golang.org/genproto v0.0.0-20220617124728-180714bec0ad
+	google.golang.org/grpc v1.47.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
