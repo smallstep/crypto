@@ -11,7 +11,7 @@ all: lint test
 #########################################
 
 bootstrap:
-	$Q GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.33.0
+	$Q go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 .PHONY: bootstrap
 
