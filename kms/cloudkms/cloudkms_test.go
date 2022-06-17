@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	gax "github.com/googleapis/gax-go/v2"
-	"github.com/smallstep/certificates/kms/apiv1"
+	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
 	"google.golang.org/api/option"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"

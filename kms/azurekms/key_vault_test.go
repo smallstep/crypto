@@ -1,4 +1,4 @@
-//go:generate mockgen -package mock -mock_names=KeyVaultClient=KeyVaultClient -destination internal/mock/key_vault_client.go github.com/smallstep/certificates/kms/azurekms KeyVaultClient
+//go:generate mockgen -package mock -mock_names=KeyVaultClient=KeyVaultClient -destination internal/mock/key_vault_client.go go.step.sm/crypto/kms/azurekms KeyVaultClient
 package azurekms
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
-	"github.com/smallstep/certificates/kms/apiv1"
-	"github.com/smallstep/certificates/kms/azurekms/internal/mock"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/azurekms/internal/mock"
 	"gopkg.in/square/go-jose.v2"
 )
 

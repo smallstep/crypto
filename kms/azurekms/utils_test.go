@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/smallstep/certificates/kms/apiv1"
+	"go.step.sm/crypto/kms/apiv1"
 )
 
 func Test_getKeyName(t *testing.T) {

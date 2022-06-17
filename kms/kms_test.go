@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/smallstep/certificates/kms/apiv1"
-	"github.com/smallstep/certificates/kms/awskms"
-	"github.com/smallstep/certificates/kms/cloudkms"
-	"github.com/smallstep/certificates/kms/softkms"
+	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/awskms"
+	"go.step.sm/crypto/kms/cloudkms"
+	"go.step.sm/crypto/kms/softkms"
 )
 
 func TestNew(t *testing.T) {

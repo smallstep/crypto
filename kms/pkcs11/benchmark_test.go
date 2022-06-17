@@ -9,7 +9,7 @@ import (
 	"crypto/rsa"
 	"testing"
 
-	"github.com/smallstep/certificates/kms/apiv1"
+	"go.step.sm/crypto/kms/apiv1"
 )
 
 func benchmarkSign(b *testing.B, signer crypto.Signer, opts crypto.SignerOpts) {

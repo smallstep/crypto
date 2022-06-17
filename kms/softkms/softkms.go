@@ -9,9 +9,9 @@ import (
 	"crypto/x509"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/certificates/kms/apiv1"
 	"go.step.sm/cli-utils/ui"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
 )
 

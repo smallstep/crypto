@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-piv/piv-go/piv"
 	"github.com/pkg/errors"
-	"github.com/smallstep/certificates/kms/apiv1"
-	"github.com/smallstep/certificates/kms/uri"
+	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 )
 
 // Scheme is the scheme used in uris.

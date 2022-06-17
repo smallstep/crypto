@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/certificates/kms/apiv1"
+	"go.step.sm/crypto/kms/apiv1"
 
 	// Enable default implementation
-	"github.com/smallstep/certificates/kms/softkms"
+	"go.step.sm/crypto/kms/softkms"
 )
 
 // KeyManager is the interface implemented by all the KMS.

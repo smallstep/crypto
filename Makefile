@@ -39,3 +39,11 @@ lint:
 
 .PHONY: lint fmt
 
+#########################################
+# Go generate
+#########################################
+
+generate:
+	$Q go generate ./...
+
+.PHONY: generate

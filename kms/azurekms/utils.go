@@ -9,9 +9,9 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/pkg/errors"
-	"github.com/smallstep/certificates/kms/apiv1"
-	"github.com/smallstep/certificates/kms/uri"
 	"go.step.sm/crypto/jose"
+	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 )
 
 // defaultContext returns the default context used in requests to azure.

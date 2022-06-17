@@ -14,8 +14,8 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/golang/mock/gomock"
-	"github.com/smallstep/certificates/kms/apiv1"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 )

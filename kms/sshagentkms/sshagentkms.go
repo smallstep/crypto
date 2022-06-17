@@ -16,7 +16,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/certificates/kms/apiv1"
+	"go.step.sm/crypto/kms/apiv1"
 
 	"go.step.sm/crypto/pemutil"
 )
