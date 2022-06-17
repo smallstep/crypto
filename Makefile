@@ -4,7 +4,9 @@ SRC=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
 all: lint test
 
-.PHONY: all
+ci: test
+
+.PHONY: all ci
 
 #########################################
 # Bootstrapping
