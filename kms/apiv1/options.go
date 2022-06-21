@@ -3,9 +3,10 @@ package apiv1
 import (
 	"crypto"
 	"crypto/x509"
+	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
+	"go.step.sm/crypto/kms/uri"
 )
 
 // KeyManager is the interface implemented by all the KMS.
@@ -86,7 +87,7 @@ const (
 // Options are the KMS options. They represent the kms object in the ca.json.
 type Options struct {
 	// The type of the KMS to use.
-	Type string `json:"type"`
+	Type Type `json:"type"`
 
 	// Path to the credentials file used in CloudKMS and AmazonKMS.
 	CredentialsFile string `json:"credentialsFile,omitempty"`
@@ -124,14 +125,30 @@ func (o *Options) Validate() error {
 		return nil
 	}
 
-	switch Type(strings.ToLower(o.Type)) {
+	typ := strings.ToLower(string(o.Type))
+	switch Type(typ) {
 	case DefaultKMS, SoftKMS: // Go crypto based kms.
 	case CloudKMS, AmazonKMS, AzureKMS: // Cloud based kms.
 	case YubiKey, PKCS11: // Hardware based kms.
 	case SSHAgentKMS: // Others
 	default:
-		return errors.Errorf("unsupported kms type %s", o.Type)
+		return fmt.Errorf("unsupported kms type %s", o.Type)
 	}
 
 	return nil
+}
+
+// GetType returns the type in the type property or the one present in the URI.
+func (o *Options) GetType() (Type, error) {
+	if o.Type != "" {
+		return o.Type, nil
+	}
+	if o.URI != "" {
+		u, err := uri.Parse(o.URI)
+		if err != nil {
+			return DefaultKMS, err
+		}
+		return Type(strings.ToLower(u.Scheme)), nil
+	}
+	return SoftKMS, nil
 }
