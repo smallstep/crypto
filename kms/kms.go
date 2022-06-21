@@ -2,7 +2,6 @@ package kms
 
 import (
 	"context"
-	"strings"
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
@@ -30,14 +29,13 @@ func New(ctx context.Context, opts apiv1.Options) (KeyManager, error) {
 		return nil, err
 	}
 
-	t := apiv1.Type(strings.ToLower(opts.Type))
-	if t == apiv1.DefaultKMS {
-		t = apiv1.SoftKMS
+	typ, err := opts.GetType()
+	if err != nil {
+		return nil, err
 	}
-
-	fn, ok := apiv1.LoadKeyManagerNewFunc(t)
+	fn, ok := apiv1.LoadKeyManagerNewFunc(typ)
 	if !ok {
-		return nil, errors.Errorf("unsupported kms type '%s'", t)
+		return nil, errors.Errorf("unsupported kms type '%s'", typ)
 	}
 	return fn(ctx, opts)
 }
