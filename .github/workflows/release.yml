@@ -14,32 +14,28 @@ jobs:
       matrix:
         go: [ '1.17', '1.18' ]
     steps:
-      -
-        name: Checkout
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y libpcsclite-dev
+      - name: Checkout
         uses: actions/checkout@v2
-      -
-        name: Setup Go
+      - name: Setup Go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go }}
-      -
-        name: golangci-lint
+      - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          version: 'v1.45.2'
+          version: 'v1.46.2'
           args: --timeout=30m
-      -
-        name: Test, Build
-        id: lintTestBuild
-        run: V=1 make
+      - name: Test
+        run: V=1 make ci
 
   create_release:
     name: Create Release
     needs: test
     runs-on: ubuntu-20.04
     steps:
-      -
-        name: Is Pre-release
+      - name: Is Pre-release
         id: is_prerelease
         run: |
           set +e
@@ -47,8 +43,7 @@ jobs:
           OUT=$?
           if [ $OUT -eq 0 ]; then IS_PRERELEASE=true; else IS_PRERELEASE=false; fi
           echo "::set-output name=IS_PRERELEASE::${IS_PRERELEASE}"
-      -
-        name: Create Release
+      - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:

@@ -16,26 +16,22 @@ jobs:
       matrix:
         go: [ '1.17', '1.18' ]
     steps:
-      -
-        name: Checkout
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y libpcsclite-dev
+      - name: Checkout
         uses: actions/checkout@v2
-      -
-        name: Setup Go
+      - name: Setup Go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go }}
-      -
-        name: golangci-lint
+      - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          version: 'v1.45.2'
+          version: 'v1.46.2'
           args: --timeout=30m
-      -
-        name: Test, Build
-        id: lintTestBuild
-        run: V=1 make
-      -
-        name: Codecov
+      - name: Test
+        run: V=1 make ci
+      - name: Codecov
         uses: codecov/codecov-action@v1.2.1
         if: matrix.go == '1.18'
         with:
