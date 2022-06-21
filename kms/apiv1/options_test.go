@@ -27,6 +27,47 @@ func TestOptions_Validate(t *testing.T) {
 	}
 }
 
+func TestOptions_GetType(t *testing.T) {
+	type fields struct {
+		Type Type
+		URI  string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    Type
+		wantErr bool
+	}{
+		{"ok", fields{PKCS11, ""}, PKCS11, false},
+		{"ok default", fields{"", ""}, SoftKMS, false},
+		{"ok by uri", fields{"", "PKCS11:foo=bar"}, PKCS11, false},
+		{"ok by uri", fields{"", "softkms:foo=bar"}, SoftKMS, false},
+		{"ok by uri", fields{"", "cloudkms:foo=bar"}, CloudKMS, false},
+		{"ok by uri", fields{"", "awskms:foo=bar"}, AmazonKMS, false},
+		{"ok by uri", fields{"", "pkcs11:foo=bar"}, PKCS11, false},
+		{"ok by uri", fields{"", "yubikey:foo=bar"}, YubiKey, false},
+		{"ok by uri", fields{"", "sshagentkms:foo=bar"}, SSHAgentKMS, false},
+		{"ok by uri", fields{"", "azurekms:foo=bar"}, AzureKMS, false},
+		{"fail uri", fields{"", "foo=bar"}, DefaultKMS, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &Options{
+				Type: tt.fields.Type,
+				URI:  tt.fields.URI,
+			}
+			got, err := o.GetType()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Options.GetType() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Options.GetType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestErrNotImplemented_Error(t *testing.T) {
 	type fields struct {
 		msg string
