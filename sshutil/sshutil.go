@@ -56,9 +56,9 @@ func cryptoSKPublicKey(pub ssh.PublicKey) (crypto.PublicKey, error) {
 		return key, nil
 	case "sk-ssh-ed25519@openssh.com":
 		var w struct {
+			Name        string
 			KeyBytes    []byte
 			Application string
-			Rest        []byte `ssh:"rest"`
 		}
 		if err := ssh.Unmarshal(pub.Marshal(), &w); err != nil {
 			return nil, err
