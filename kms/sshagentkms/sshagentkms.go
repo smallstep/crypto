@@ -17,6 +17,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/sshutil"
 
 	"go.step.sm/crypto/pemutil"
 )
@@ -73,6 +74,16 @@ func (s *WrappedSSHSigner) Public() crypto.PublicKey {
 
 // Sign signs the given digest using the ssh agent and returns the signature.
 func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	if signer, ok := s.Sshsigner.(interface {
+		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
+	}); ok {
+		sig, err := signer.SignWithOpts(rand, digest, opts)
+		if err != nil {
+			return nil, err
+		}
+		return sig.Blob, nil
+	}
+
 	sig, err := s.Sshsigner.Sign(rand, digest)
 	if err != nil {
 		return nil, err
@@ -161,7 +172,7 @@ func (k *SSHAgentKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRe
 
 // GetPublicKey returns the public key from the file passed in the request name.
 func (k *SSHAgentKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	var v crypto.PublicKey
+	var pub crypto.PublicKey
 	if strings.HasPrefix(req.Name, "sshagentkms:") {
 		target, err := k.findKey(req.Name)
 
@@ -175,31 +186,24 @@ func (k *SSHAgentKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.Publi
 		}
 
 		sshPub := s[target].PublicKey()
-		sshPubBytes := sshPub.Marshal()
-		parsed, err := ssh.ParsePublicKey(sshPubBytes)
+		pub, err = sshutil.CryptoPublicKey(sshPub)
 		if err != nil {
 			return nil, err
 		}
-
-		parsedCryptoKey, ok := parsed.(ssh.CryptoPublicKey)
-		if !ok {
-			return nil, errors.Errorf("unsupported public key type %T", parsed)
-		}
-		v = parsedCryptoKey.CryptoPublicKey()
 	} else {
 		var err error
-		v, err = pemutil.Read(req.Name)
+		pub, err = pemutil.Read(req.Name)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	switch vv := v.(type) {
+	switch pk := pub.(type) {
 	case *x509.Certificate:
-		return vv.PublicKey, nil
+		return pk.PublicKey, nil
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
-		return vv, nil
+		return pk, nil
 	default:
-		return nil, errors.Errorf("unsupported public key type %T", v)
+		return nil, errors.Errorf("unsupported public key type %T", pk)
 	}
 }
