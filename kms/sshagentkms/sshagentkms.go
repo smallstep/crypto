@@ -175,17 +175,16 @@ func (k *SSHAgentKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.Publi
 		}
 
 		sshPub := s[target].PublicKey()
-
 		sshPubBytes := sshPub.Marshal()
-
 		parsed, err := ssh.ParsePublicKey(sshPubBytes)
 		if err != nil {
 			return nil, err
 		}
 
-		parsedCryptoKey := parsed.(ssh.CryptoPublicKey)
-
-		// Then, we can call CryptoPublicKey() to get the actual crypto.PublicKey
+		parsedCryptoKey, ok := parsed.(ssh.CryptoPublicKey)
+		if !ok {
+			return nil, errors.Errorf("unsupported public key type %T", parsed)
+		}
 		v = parsedCryptoKey.CryptoPublicKey()
 	} else {
 		var err error
