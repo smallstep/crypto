@@ -63,38 +63,46 @@ func (k *SSHAgentKMS) Close() error {
 
 // WrappedSSHSigner is a utility type to wrap a ssh.Signer as a crypto.Signer
 type WrappedSSHSigner struct {
-	Sshsigner ssh.Signer
+	Signer        ssh.Signer
+	lastSignature *ssh.Signature
+}
+
+// LastSignature returns the ssh.Signature in the last sign operation if any.
+func (s *WrappedSSHSigner) LastSignature() *ssh.Signature {
+	return s.lastSignature
 }
 
 // Public returns the agent public key. The type of this public key is
 // *agent.Key.
 func (s *WrappedSSHSigner) Public() crypto.PublicKey {
-	return s.Sshsigner.PublicKey()
+	return s.Signer.PublicKey()
 }
 
 // Sign signs the given digest using the ssh agent and returns the signature.
 func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	if signer, ok := s.Sshsigner.(interface {
+	if signer, ok := s.Signer.(interface {
 		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
 	}); ok {
 		sig, err := signer.SignWithOpts(rand, digest, opts)
 		if err != nil {
 			return nil, err
 		}
+		s.lastSignature = sig
 		return sig.Blob, nil
 	}
 
-	sig, err := s.Sshsigner.Sign(rand, digest)
+	sig, err := s.Signer.Sign(rand, digest)
 	if err != nil {
 		return nil, err
 	}
+	s.lastSignature = sig
 	return sig.Blob, nil
 }
 
 // NewWrappedSignerFromSSHSigner returns a new crypto signer wrapping the given
 // one.
 func NewWrappedSignerFromSSHSigner(signer ssh.Signer) crypto.Signer {
-	return &WrappedSSHSigner{signer}
+	return &WrappedSSHSigner{Signer: signer}
 }
 
 func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
