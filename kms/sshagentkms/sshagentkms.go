@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -64,11 +65,14 @@ func (k *SSHAgentKMS) Close() error {
 // WrappedSSHSigner is a utility type to wrap a ssh.Signer as a crypto.Signer
 type WrappedSSHSigner struct {
 	Signer        ssh.Signer
+	m             sync.RWMutex
 	lastSignature *ssh.Signature
 }
 
 // LastSignature returns the ssh.Signature in the last sign operation if any.
 func (s *WrappedSSHSigner) LastSignature() *ssh.Signature {
+	s.m.RLock()
+	defer s.m.RUnlock()
 	return s.lastSignature
 }
 
@@ -87,7 +91,9 @@ func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.Signe
 		if err != nil {
 			return nil, err
 		}
+		s.m.Lock()
 		s.lastSignature = sig
+		s.m.Unlock()
 		return sig.Blob, nil
 	}
 
@@ -95,7 +101,9 @@ func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.Signe
 	if err != nil {
 		return nil, err
 	}
+	s.m.Lock()
 	s.lastSignature = sig
+	s.m.Unlock()
 	return sig.Blob, nil
 }
 
