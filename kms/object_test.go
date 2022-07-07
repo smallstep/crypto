@@ -202,13 +202,6 @@ func Test_object_Close(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	type fields struct {
-		Path    string
-		Object  interface{}
-		once    sync.Once
-		err     error
-		pemData *bytes.Buffer
-	}
 	tests := []struct {
 		name    string
 		o       *object
