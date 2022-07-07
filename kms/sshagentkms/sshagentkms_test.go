@@ -380,7 +380,7 @@ func TestSSHAgentKMS_CreateSigner(t *testing.T) {
 				// nolint:gocritic
 				switch s := got.(type) {
 				case *WrappedSSHSigner:
-					gotPkS := s.Sshsigner.PublicKey().(*agent.Key).String() + "\n"
+					gotPkS := s.Signer.PublicKey().(*agent.Key).String() + "\n"
 					wantPkS := string(sshPubKeyStr)
 					if !reflect.DeepEqual(gotPkS, wantPkS) {
 						t.Errorf("SSHAgentKMS.CreateSigner() = %T, want %T", gotPkS, wantPkS)
