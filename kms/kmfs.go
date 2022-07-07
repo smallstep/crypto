@@ -12,7 +12,7 @@ type kmsfs struct {
 	apiv1.KeyManager
 }
 
-func new(ctx context.Context, kmsuri string) (*kmsfs, error) {
+func newFS(ctx context.Context, kmsuri string) (*kmsfs, error) {
 	if kmsuri == "" {
 		return &kmsfs{}, nil
 	}
@@ -52,7 +52,7 @@ type certFS struct {
 
 // CertFS creates a new io/fs with the given KMS URI.
 func CertFS(ctx context.Context, kmsuri string) (fs.FS, error) {
-	km, err := new(ctx, kmsuri)
+	km, err := newFS(ctx, kmsuri)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ type keyFS struct {
 
 // KeyFS creates a new KeyFS with the given KMS URI.
 func KeyFS(ctx context.Context, kmsuri string) (fs.FS, error) {
-	km, err := new(ctx, kmsuri)
+	km, err := newFS(ctx, kmsuri)
 	if err != nil {
 		return nil, err
 	}

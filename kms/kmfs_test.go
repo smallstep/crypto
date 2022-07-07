@@ -69,7 +69,7 @@ func Test_new(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := new(tt.args.ctx, tt.args.kmsuri)
+			got, err := newFS(tt.args.ctx, tt.args.kmsuri)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("new() error = %v, wantErr %v", err, tt.wantErr)
 				return

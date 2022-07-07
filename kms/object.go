@@ -58,12 +58,12 @@ func (o *object) Read(b []byte) (int, error) {
 	return o.pemData.Read(b)
 }
 
-func (p *object) Close() error {
-	p.Object = nil
-	p.pemData = nil
-	if p.err == nil {
-		p.err = io.EOF
+func (o *object) Close() error {
+	o.Object = nil
+	o.pemData = nil
+	if o.err == nil {
+		o.err = io.EOF
 		return nil
 	}
-	return p.err
+	return o.err
 }
