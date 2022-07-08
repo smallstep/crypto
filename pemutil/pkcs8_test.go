@@ -199,10 +199,20 @@ func TestDecryptPKCS8PrivateKey_ciphers(t *testing.T) {
 				t.Errorf("DecryptPKCS8PrivateKey() error = %v", err)
 				return
 			}
-			// Invalid password
-			_, err = DecryptPKCS8PrivateKey(encData.Bytes, []byte("foobar"))
+
+			// Invalid password.
+			//
+			// Because of the only way to check if the password is correct or
+			// not is checking the padding data, it's possible and probably
+			// enough to get a padding length of 1, with the data 01. If this
+			// happens the DecryptPKCS8PrivateKey will not return an error, but
+			// it will return bad data. We will check before if the data is
+			// correct before erroring.
+			badData, err := DecryptPKCS8PrivateKey(encData.Bytes, []byte("foobar"))
 			if err != x509.IncorrectPasswordError {
-				t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
+				if _, err := x509.ParsePKCS8PrivateKey(badData); err == nil {
+					t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
+				}
 			}
 
 			// Check with original key
