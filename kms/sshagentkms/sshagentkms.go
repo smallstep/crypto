@@ -83,11 +83,14 @@ func (s *WrappedSSHSigner) Public() crypto.PublicKey {
 }
 
 // Sign signs the given digest using the ssh agent and returns the signature.
-func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+// Note that because of the way an SSH agent and x509.CreateCertificate works,
+// this signer can only properly sign X509 certificates if the key type is
+// Ed25519.
+func (s *WrappedSSHSigner) Sign(rand io.Reader, data []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	if signer, ok := s.Signer.(interface {
 		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
 	}); ok {
-		sig, err := signer.SignWithOpts(rand, digest, opts)
+		sig, err := signer.SignWithOpts(rand, data, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -97,7 +100,7 @@ func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.Signe
 		return sig.Blob, nil
 	}
 
-	sig, err := s.Signer.Sign(rand, digest)
+	sig, err := s.Signer.Sign(rand, data)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +134,9 @@ func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
 	return -1, errors.Errorf("SSHAgentKMS couldn't find %s", signingKey)
 }
 
-// CreateSigner returns a new signer configured with the given signing key.
+// CreateSigner returns a new signer configured with the given signing key. Note
+// that because of the way an SSH agent and x509.CreateCertificate works, this
+// signer can only properly sign X509 certificates if the key type is Ed25519.
 func (k *SSHAgentKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
 	if req.Signer != nil {
 		return req.Signer, nil

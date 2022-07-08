@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
@@ -19,11 +20,10 @@ import (
 	"testing"
 
 	"go.step.sm/crypto/kms/apiv1"
-
+	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
-
-	"go.step.sm/crypto/pemutil"
 )
 
 // Some helpers with inspiration from crypto/ssh/agent/client_test.go
@@ -605,5 +605,74 @@ func TestSSHAgentKMS_CreateKey(t *testing.T) {
 				t.Error("SSHAgentKMS.CreateKey() didn't return a value")
 			}
 		})
+	}
+}
+
+func TestWrappedSSHSigner(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshSigner, err := ssh.NewSignerFromSigner(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := randutil.Salt(128)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws := NewWrappedSignerFromSSHSigner(sshSigner)
+	if !reflect.DeepEqual(ws.Public(), sshSigner.PublicKey()) {
+		t.Errorf("WrappedSigner.Public() = %v, want %v", ws.Public(), sshSigner.PublicKey())
+	}
+
+	sig, err := ws.Sign(rand.Reader, message, crypto.Hash(0))
+	if err != nil {
+		t.Errorf("WrappedSigner.Public() error = %v", err)
+	}
+	if !ed25519.Verify(pub, message, sig) {
+		t.Error("ed25519.Verify() = false, want true")
+	}
+	sshSig := ws.(*WrappedSSHSigner).LastSignature()
+	if err := sshSigner.PublicKey().Verify(message, sshSig); err != nil {
+		t.Errorf("ssh.PublicKey.Verify() error = %v", err)
+	}
+}
+
+func TestWrappedSSHSigner_agent(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshSigner, err := ssh.NewSignerFromSigner(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := randutil.Salt(128)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sshAgent, err := NewFromAgent(context.Background(), apiv1.Options{}, startTestKeyringAgent(t, agent.AddedKey{PrivateKey: priv, Comment: "go-test-key"}))
+	if err != nil {
+		t.Errorf("NewFromAgent() error = %v", err)
+	}
+	signer, err := sshAgent.CreateSigner(&apiv1.CreateSignerRequest{
+		SigningKey: "sshagentkms:go-test-key",
+	})
+	if err != nil {
+		t.Errorf("SSHAgentKMS.CreateSigner() error = %v", err)
+	}
+	sig, err := signer.Sign(rand.Reader, message, crypto.Hash(0))
+	if err != nil {
+		t.Errorf("WrappedSigner.Public() error = %v", err)
+	}
+	if !ed25519.Verify(pub, message, sig) {
+		t.Error("ed25519.Verify() = false, want true")
+	}
+	sshSig := signer.(*WrappedSSHSigner).LastSignature()
+	if err := sshSigner.PublicKey().Verify(message, sshSig); err != nil {
+		t.Errorf("ssh.PublicKey.Verify() error = %v", err)
 	}
 }
