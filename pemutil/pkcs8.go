@@ -87,7 +87,7 @@ var (
 
 	// encryption
 	oidAES128CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 2}
-	oidAES196CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 22}
+	oidAES192CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 22}
 	oidAES256CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 42}
 	oidDESCBC    = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 7}
 	oidD3DESCBC  = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
@@ -132,7 +132,7 @@ var rfc1423Algos = []rfc1423Algo{{
 	cipherFunc: aes.NewCipher,
 	keySize:    24,
 	blockSize:  aes.BlockSize,
-	identifier: oidAES196CBC,
+	identifier: oidAES192CBC,
 }, {
 	cipher:     x509.PEMCipherAES256,
 	name:       "AES-256-CBC",
@@ -225,7 +225,7 @@ func DecryptPKCS8PrivateKey(data, password []byte) ([]byte, error) {
 	case encParam.EncryAlgo.Equal(oidAES128CBC):
 		symkey = pbkdf2.Key(password, salt, iter, 16, keyHash)
 		block, err = aes.NewCipher(symkey)
-	case encParam.EncryAlgo.Equal(oidAES196CBC):
+	case encParam.EncryAlgo.Equal(oidAES192CBC):
 		symkey = pbkdf2.Key(password, salt, iter, 24, keyHash)
 		block, err = aes.NewCipher(symkey)
 	case encParam.EncryAlgo.Equal(oidAES256CBC):
