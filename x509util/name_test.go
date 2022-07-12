@@ -3,9 +3,67 @@ package x509util
 import (
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"reflect"
 	"testing"
 )
+
+func Test_newName(t *testing.T) {
+	type args struct {
+		n pkix.Name
+	}
+	tests := []struct {
+		name string
+		args args
+		want Name
+	}{
+		{"ok", args{pkix.Name{
+			Country:            []string{"The country"},
+			Organization:       []string{"The organization"},
+			OrganizationalUnit: []string{"The organizationalUnit 1", "The organizationalUnit 2"},
+			Locality:           []string{"The locality 1", "The locality 2"},
+			Province:           []string{"The province"},
+			StreetAddress:      []string{"The streetAddress"},
+			PostalCode:         []string{"The postalCode"},
+			SerialNumber:       "The serialNumber",
+			CommonName:         "The commonName",
+			Names: []pkix.AttributeTypeAndValue{
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "The country"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 10}, Value: "The organization"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: "The organizationalUnit 2"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "The commonName"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 5}, Value: "The serialNumber"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 1"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 7}, Value: "The locality 2"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "The province"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 9}, Value: "The streetAddress"},
+				{Type: asn1.ObjectIdentifier{2, 5, 4, 17}, Value: "The postalCode"},
+				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			},
+		}}, Name{
+			Country:            []string{"The country"},
+			Organization:       []string{"The organization"},
+			OrganizationalUnit: []string{"The organizationalUnit 1", "The organizationalUnit 2"},
+			Locality:           []string{"The locality 1", "The locality 2"},
+			Province:           []string{"The province"},
+			StreetAddress:      []string{"The streetAddress"},
+			PostalCode:         []string{"The postalCode"},
+			SerialNumber:       "The serialNumber",
+			CommonName:         "The commonName",
+			ExtraNames: []DistinguishedName{
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := newName(tt.args.n); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("newName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestName_UnmarshalJSON(t *testing.T) {
 	type args struct {
@@ -29,7 +87,8 @@ func TestName_UnmarshalJSON(t *testing.T) {
 			"streetAddress": "The streetAddress",
 			"postalCode": "The postalCode",
 			"serialNumber": "The serialNumber",
-			"commonName": "The commonName"
+			"commonName": "The commonName",
+			"extraNames": [{"type":"1.2.840.113549.1.9.1", "value":"jane@example.com"}]
 		}`)}, Name{
 			Country:            []string{"The country"},
 			Organization:       []string{"The organization"},
@@ -40,6 +99,9 @@ func TestName_UnmarshalJSON(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
+			ExtraNames: []DistinguishedName{
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			},
 		}, false},
 		{"number", args{[]byte("1234")}, Name{}, true},
 		{"badJSON", args{[]byte("'badJSON'")}, Name{}, true},
@@ -76,6 +138,9 @@ func Test_newSubject(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
+			Names: []pkix.AttributeTypeAndValue{
+				{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			},
 		}}, Subject{
 			Country:            []string{"The country"},
 			Organization:       []string{"The organization"},
@@ -86,6 +151,9 @@ func Test_newSubject(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
+			ExtraNames: []DistinguishedName{
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			},
 		}},
 	}
 	for _, tt := range tests {
@@ -282,7 +350,8 @@ func TestIssuer_UnmarshalJSON(t *testing.T) {
 			"streetAddress": "The streetAddress",
 			"postalCode": "The postalCode",
 			"serialNumber": "The serialNumber",
-			"commonName": "The commonName"
+			"commonName": "The commonName",
+			"extraNames": [{"type":"1.2.840.113549.1.9.1", "value":"jane@example.com"}]
 		}`)}, Issuer{
 			Country:            []string{"The country"},
 			Organization:       []string{"The organization"},
@@ -293,6 +362,9 @@ func TestIssuer_UnmarshalJSON(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
+			ExtraNames: []DistinguishedName{
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			},
 		}, false},
 		{"number", args{[]byte("1234")}, Issuer{}, true},
 		{"badJSON", args{[]byte("'badJSON'")}, Issuer{}, true},
@@ -321,6 +393,7 @@ func TestIssuer_Set(t *testing.T) {
 		PostalCode         MultiString
 		SerialNumber       string
 		CommonName         string
+		ExtraNames         []DistinguishedName
 	}
 	type args struct {
 		c *x509.Certificate
@@ -341,6 +414,10 @@ func TestIssuer_Set(t *testing.T) {
 			PostalCode:         []string{"The postalCode"},
 			SerialNumber:       "The serialNumber",
 			CommonName:         "The commonName",
+			ExtraNames: []DistinguishedName{
+				{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+				{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+			},
 		}, args{&x509.Certificate{}}, &x509.Certificate{
 			Issuer: pkix.Name{
 				Country:            []string{"The country"},
@@ -352,6 +429,10 @@ func TestIssuer_Set(t *testing.T) {
 				PostalCode:         []string{"The postalCode"},
 				SerialNumber:       "The serialNumber",
 				CommonName:         "The commonName",
+				ExtraNames: []pkix.AttributeTypeAndValue{
+					{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+					{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+				},
 			},
 		}},
 		{"overwrite", fields{
@@ -374,10 +455,66 @@ func TestIssuer_Set(t *testing.T) {
 				PostalCode:         tt.fields.PostalCode,
 				SerialNumber:       tt.fields.SerialNumber,
 				CommonName:         tt.fields.CommonName,
+				ExtraNames:         tt.fields.ExtraNames,
 			}
 			i.Set(tt.args.c)
 			if !reflect.DeepEqual(tt.args.c, tt.want) {
 				t.Errorf("Issuer.Set() = %v, want %v", tt.args.c, tt.want)
+			}
+		})
+	}
+}
+
+func Test_newExtraNames(t *testing.T) {
+	type args struct {
+		atvs []pkix.AttributeTypeAndValue
+	}
+	tests := []struct {
+		name string
+		args args
+		want []DistinguishedName
+	}{
+		{"ok", args{[]pkix.AttributeTypeAndValue{
+			{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "The commonName"},
+			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+		}}, []DistinguishedName{
+			{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+		}},
+		{"ok nil", args{nil}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := newExtraNames(tt.args.atvs); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("newDistinguisedNames() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_fromDistinguisedNames(t *testing.T) {
+	type args struct {
+		dns []DistinguishedName
+	}
+	tests := []struct {
+		name string
+		args args
+		want []pkix.AttributeTypeAndValue
+	}{
+		{"ok", args{[]DistinguishedName{
+			{Type: ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "jane@example.com"},
+			{Type: ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+		}}, []pkix.AttributeTypeAndValue{
+			{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagIA5String, Bytes: []byte("jane@example.com")}},
+			{Type: asn1.ObjectIdentifier{1, 2, 3, 4}, Value: "custom@example.com"},
+		}},
+		{"ok nil", args{nil}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fromDistinguishedNames(tt.args.dns); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("fromDistinguisedNames() = %v, want %v", got, tt.want)
 			}
 		})
 	}

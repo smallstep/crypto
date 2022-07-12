@@ -11,15 +11,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 const (
@@ -152,7 +153,7 @@ func TestReadKey(t *testing.T) {
 }
 
 func TestReadKey_https(t *testing.T) {
-	ok, err := ioutil.ReadFile("testdata/okp.pub.json")
+	ok, err := os.ReadFile("testdata/okp.pub.json")
 	assert.FatalError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
 	assert.FatalError(t, err)
@@ -236,7 +237,7 @@ func TestParseKey(t *testing.T) {
 		return b
 	}
 	read := func(filename string) []byte {
-		b, err := ioutil.ReadFile(filename)
+		b, err := os.ReadFile(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -397,7 +398,7 @@ func TestReadKeySet(t *testing.T) {
 }
 
 func TestReadKeySet_https(t *testing.T) {
-	ok, err := ioutil.ReadFile("testdata/jwks.json")
+	ok, err := os.ReadFile("testdata/jwks.json")
 	assert.FatalError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
 	assert.FatalError(t, err)
@@ -470,9 +471,11 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	assert.FatalError(t, err)
 	p521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	assert.FatalError(t, err)
-	rsa, err := rsa.GenerateKey(rand.Reader, 2048)
+	rsa2k, err := rsa.GenerateKey(rand.Reader, 2048)
 	assert.FatalError(t, err)
 	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
+	assert.FatalError(t, err)
+	xPub, xPriv, err := x25519.GenerateKey(rand.Reader)
 	assert.FatalError(t, err)
 
 	tests := []struct {
@@ -488,16 +491,20 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 		{&JSONWebKey{Key: p256.Public(), Use: ""}, ES256},
 		{&JSONWebKey{Key: p384.Public(), Use: "sig"}, ES384},
 		{&JSONWebKey{Key: p521.Public(), Use: "enc"}, "ECDH-ES"},
-		{&JSONWebKey{Key: rsa, Use: ""}, RS256},
-		{&JSONWebKey{Key: rsa, Use: "sig"}, RS256},
-		{&JSONWebKey{Key: rsa, Use: "enc"}, "RSA-OAEP-256"},
-		{&JSONWebKey{Key: rsa.Public(), Use: ""}, RS256},
-		{&JSONWebKey{Key: rsa.Public(), Use: "sig"}, RS256},
-		{&JSONWebKey{Key: rsa.Public(), Use: "enc"}, "RSA-OAEP-256"},
+		{&JSONWebKey{Key: rsa2k, Use: ""}, RS256},
+		{&JSONWebKey{Key: rsa2k, Use: "sig"}, RS256},
+		{&JSONWebKey{Key: rsa2k, Use: "enc"}, "RSA-OAEP-256"},
+		{&JSONWebKey{Key: rsa2k.Public(), Use: ""}, RS256},
+		{&JSONWebKey{Key: rsa2k.Public(), Use: "sig"}, RS256},
+		{&JSONWebKey{Key: rsa2k.Public(), Use: "enc"}, "RSA-OAEP-256"},
 		{&JSONWebKey{Key: edPub, Use: ""}, EdDSA},
 		{&JSONWebKey{Key: edPub, Use: "sig"}, EdDSA},
 		{&JSONWebKey{Key: edPriv, Use: ""}, EdDSA},
 		{&JSONWebKey{Key: edPriv, Use: "sig"}, EdDSA},
+		{&JSONWebKey{Key: xPub, Use: ""}, XEdDSA},
+		{&JSONWebKey{Key: xPub, Use: "sig"}, XEdDSA},
+		{&JSONWebKey{Key: xPriv, Use: ""}, XEdDSA},
+		{&JSONWebKey{Key: xPriv, Use: "sig"}, XEdDSA},
 	}
 
 	// With context
@@ -537,6 +544,14 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	guessJWKAlgorithm(ctx, &pub)
 	assert.Equals(t, EdDSA, pub.Algorithm)
 
+	jwk = &JSONWebKey{Key: xPriv, Algorithm: "", Use: "sig"}
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, XEdDSA, jwk.Algorithm)
+
+	jwk = &JSONWebKey{Key: xPub, Algorithm: "", Use: "sig"}
+	guessJWKAlgorithm(ctx, jwk)
+	assert.Equals(t, XEdDSA, jwk.Algorithm)
+
 	// Defaults
 	for _, tc := range tests {
 		guessJWKAlgorithm(new(context), tc.jwk)
@@ -545,7 +560,7 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 }
 
 func TestParseKeySet(t *testing.T) {
-	b, err := ioutil.ReadFile("testdata/jwks.json")
+	b, err := os.ReadFile("testdata/jwks.json")
 	assert.FatalError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
 	assert.FatalError(t, err)
@@ -639,7 +654,7 @@ func Test_guessKeyType(t *testing.T) {
 	octKey := mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64)
 	octHS384 := mustGenerateJWK(t, "oct", "", "HS384", "sig", "", 64)
 
-	rsaPEM, err := ioutil.ReadFile("../pemutil/testdata/openssl.p256.pem")
+	rsaPEM, err := os.ReadFile("../pemutil/testdata/openssl.p256.pem")
 	assert.FatalError(t, err)
 
 	type args struct {
@@ -666,6 +681,47 @@ func Test_guessKeyType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := guessKeyType(tt.args.ctx, tt.args.data); got != tt.want {
 				t.Errorf("guessKeyType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_guessSignatureAlgorithm(t *testing.T) {
+	must := func(args ...interface{}) crypto.PrivateKey {
+		last := len(args) - 1
+		if err := args[last]; err != nil {
+			t.Fatal(err)
+		}
+		return args[last-1]
+	}
+
+	_, x25519Key, err := x25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		key crypto.PrivateKey
+	}
+	tests := []struct {
+		name string
+		args args
+		want SignatureAlgorithm
+	}{
+		{"byte", args{[]byte("the-key")}, HS256},
+		{"ES256", args{must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))}, ES256},
+		{"ES384", args{must(ecdsa.GenerateKey(elliptic.P384(), rand.Reader))}, ES384},
+		{"ES512", args{must(ecdsa.GenerateKey(elliptic.P521(), rand.Reader))}, ES512},
+		{"RS256", args{must(rsa.GenerateKey(rand.Reader, 2048))}, RS256},
+		{"EdDSA", args{must(ed25519.GenerateKey(rand.Reader))}, EdDSA},
+		{"XEdDSA", args{x25519Key}, XEdDSA},
+		{"XEdDSA with X25519Signer", args{X25519Signer(x25519Key)}, XEdDSA},
+		{"empty", args{must(ecdsa.GenerateKey(elliptic.P224(), rand.Reader))}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := guessSignatureAlgorithm(tt.args.key); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("guessSignatureAlgorithm() = %v, want %v", got, tt.want)
 			}
 		})
 	}

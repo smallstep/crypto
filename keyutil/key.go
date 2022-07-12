@@ -13,6 +13,7 @@ import (
 	"math/big"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -40,7 +41,9 @@ func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 		return &k.PublicKey, nil
 	case ed25519.PrivateKey:
 		return k.Public(), nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case x25519.PrivateKey:
+		return k.Public(), nil
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return k, nil
 	default:
 		return nil, errors.Errorf("unrecognized key type: %T", priv)
@@ -106,7 +109,10 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 // if a x509.Certificate or x509.CertificateRequest is given.
 func ExtractKey(in interface{}) (interface{}, error) {
 	switch k := in.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
+	case *rsa.PublicKey, *rsa.PrivateKey,
+		*ecdsa.PublicKey, *ecdsa.PrivateKey,
+		ed25519.PublicKey, ed25519.PrivateKey,
+		x25519.PublicKey, x25519.PrivateKey:
 		return in, nil
 	case []byte:
 		return in, nil

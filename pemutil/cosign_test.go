@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"reflect"
 	"testing"
 
@@ -17,7 +17,7 @@ import (
 )
 
 func TestParseCosignPrivateKey(t *testing.T) {
-	b, err := ioutil.ReadFile("testdata/cosign.enc.pem")
+	b, err := os.ReadFile("testdata/cosign.enc.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,27 +97,27 @@ func TestParseCosignPrivateKey(t *testing.T) {
 		}(), []byte("mypassword")}, nil, true},
 		{"fail kdf.N", args{func() []byte {
 			key := env
-			key.KDF.Params.N += 1
+			key.KDF.Params.N++
 			return marshalEnv(key)
 		}(), []byte("mypassword")}, nil, true},
 		{"fail kdf.R", args{func() []byte {
 			key := env
-			key.KDF.Params.R += 1
+			key.KDF.Params.R++
 			return marshalEnv(key)
 		}(), []byte("mypassword")}, nil, true},
 		{"fail kdf.P", args{func() []byte {
 			key := env
-			key.KDF.Params.P += 1
+			key.KDF.Params.P++
 			return marshalEnv(key)
 		}(), []byte("mypassword")}, nil, true},
 		{"fail kdf.Salt", args{func() []byte {
 			key := env
-			key.KDF.Salt[10] += 1
+			key.KDF.Salt[10]++
 			return marshalEnv(key)
 		}(), []byte("mypassword")}, nil, true},
 		{"fail ciphertext", args{func() []byte {
 			key := env
-			key.Ciphertext[10] += 1
+			key.Ciphertext[10]++
 			return marshalEnv(key)
 		}(), []byte("mypassword")}, nil, true},
 		{"fail parsePKCS8PrivateKey", args{func() []byte {
@@ -151,7 +151,7 @@ func TestParseCosignPrivateKey(t *testing.T) {
 
 func TestParseCosignPrivateKey_equal(t *testing.T) {
 	parsePem := func(fn string) []byte {
-		b, err := ioutil.ReadFile(fn)
+		b, err := os.ReadFile(fn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +190,7 @@ func TestParseCosignPrivateKey_equal(t *testing.T) {
 }
 
 func TestParseCosignPrivateKey_IncorrectPasswordError(t *testing.T) {
-	b, err := ioutil.ReadFile("testdata/cosign.enc.pem")
+	b, err := os.ReadFile("testdata/cosign.enc.pem")
 	if err != nil {
 		t.Fatal(err)
 	}

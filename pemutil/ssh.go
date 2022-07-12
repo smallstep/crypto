@@ -15,11 +15,10 @@ import (
 	"crypto/rsa"
 	"encoding/binary"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/internal/bcrypt_pbkdf"
+	bcryptpbkdf "go.step.sm/crypto/internal/bcrypt_pbkdf"
 	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/ssh"
 )
@@ -81,16 +80,9 @@ func ParseOpenSSHPrivateKey(pemBytes []byte, opts ...Options) (crypto.PrivateKey
 	var err error
 	var key crypto.PrivateKey
 	if w.KdfName != "none" || w.CipherName != "none" {
-		var password []byte
-		if len(ctx.password) > 0 {
-			password = ctx.password
-		} else if PromptPassword != nil {
-			password, err = PromptPassword(fmt.Sprintf("Please enter the password to decrypt %s", ctx.filename))
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, errors.Errorf("error decoding %s: file is password protected", ctx.filename)
+		password, err := ctx.promptPassword()
+		if err != nil {
+			return nil, err
 		}
 		key, err = ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, password)
 		if err != nil {
@@ -271,7 +263,7 @@ func SerializeOpenSSHPrivateKey(key crypto.PrivateKey, opts ...Options) (*pem.Bl
 		w.KdfOpts = string(ssh.Marshal(kdfOpts))
 
 		// Derive key to encrypt the private key block.
-		k, err := bcrypt_pbkdf.Key(password, salt, sshDefaultRounds, sshDefaultKeyLength+aes.BlockSize)
+		k, err := bcryptpbkdf.Key(password, salt, sshDefaultRounds, sshDefaultKeyLength+aes.BlockSize)
 		if err != nil {
 			return nil, errors.Wrap(err, "error deriving decryption key")
 		}

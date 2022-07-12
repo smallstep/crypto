@@ -117,7 +117,6 @@ func newExtensions(extensions []pkix.Extension) []Extension {
 		ret[i] = newExtension(e)
 	}
 	return ret
-
 }
 
 // Set adds the extension to the given X509 certificate.

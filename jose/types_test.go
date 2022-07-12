@@ -1,13 +1,18 @@
-// Code generated (comment to force golint to ignore this file). DO NOT EDIT.
-
 package jose
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/x25519"
 )
 
 func TestNumericDate(t *testing.T) {
@@ -96,6 +101,80 @@ func TestTrimPrefix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := TrimPrefix(tt.args.err); !reflect.DeepEqual(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
 				t.Errorf("TrimPrefix() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSignVerify(t *testing.T) {
+	must := func(args ...interface{}) crypto.Signer {
+		last := len(args) - 1
+		if err := args[last]; err != nil {
+			t.Fatal(err)
+		}
+		return args[last-1].(crypto.Signer)
+	}
+
+	p224 := must(ecdsa.GenerateKey(elliptic.P224(), rand.Reader))
+	p256 := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
+	p384 := must(ecdsa.GenerateKey(elliptic.P384(), rand.Reader))
+	p521 := must(ecdsa.GenerateKey(elliptic.P521(), rand.Reader))
+	rsa2048 := must(rsa.GenerateKey(rand.Reader, 2048))
+	edKey := must(ed25519.GenerateKey(rand.Reader))
+	xKey := must(x25519.GenerateKey(rand.Reader))
+
+	type args struct {
+		sig  SigningKey
+		opts *SignerOptions
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{"byte", args{SigningKey{Key: []byte("the-key")}, nil}, false},
+		{"P256", args{SigningKey{Key: p256}, nil}, false},
+		{"P384", args{SigningKey{Key: p384}, nil}, false},
+		{"P521", args{SigningKey{Key: p521}, nil}, false},
+		{"rsa2048", args{SigningKey{Key: rsa2048}, nil}, false},
+		{"ed", args{SigningKey{Key: edKey}, nil}, false},
+		{"x25519", args{SigningKey{Key: xKey}, nil}, false},
+		{"fail P224", args{SigningKey{Key: p224}, nil}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewSigner(tt.args.sig, tt.args.opts)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewSigner() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				payload := []byte(`{"sub": "sub"}`)
+				jws, err := got.Sign(payload)
+				if err != nil {
+					t.Errorf("Signer.Sign() error = %v", err)
+					return
+				}
+				jwt, err := ParseSigned(jws.FullSerialize())
+				if err != nil {
+					t.Errorf("ParseSigned() error = %v", err)
+					return
+				}
+
+				var claims Claims
+				if signer, ok := tt.args.sig.Key.(crypto.Signer); ok {
+					err = Verify(jwt, signer.Public(), &claims)
+				} else {
+					err = Verify(jwt, tt.args.sig.Key, &claims)
+				}
+				if err != nil {
+					t.Errorf("JSONWebSignature.Verify() error = %v", err)
+					return
+				}
+				want := Claims{Subject: "sub"}
+				if !reflect.DeepEqual(claims, want) {
+					t.Errorf("JSONWebSignature.Verify() claims = %v, want %v", claims, want)
+				}
 			}
 		})
 	}

@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -316,9 +316,9 @@ func TestRenewer_GetCertificate(t *testing.T) {
 				return
 			}
 			if resp != nil && resp.Body != nil {
-				got, err := ioutil.ReadAll(resp.Body)
+				got, err := io.ReadAll(resp.Body)
 				if err != nil {
-					t.Errorf("ioutil.ReadAll() error = %v", err)
+					t.Errorf("io.ReadAll() error = %v", err)
 					return
 				}
 				if !reflect.DeepEqual(got, tt.want) {
@@ -390,9 +390,9 @@ func TestRenewer_GetClientCertificate(t *testing.T) {
 				return
 			}
 			if resp != nil && resp.Body != nil {
-				got, err := ioutil.ReadAll(resp.Body)
+				got, err := io.ReadAll(resp.Body)
 				if err != nil {
-					t.Errorf("ioutil.ReadAll() error = %v", err)
+					t.Errorf("io.ReadAll() error = %v", err)
 					return
 				}
 				if !reflect.DeepEqual(got, tt.want) {

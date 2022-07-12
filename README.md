@@ -56,3 +56,22 @@ Package `tlsutil` provides utilities to configure tls client and servers.
 
 Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
 utilities to parse and generate JWT, JWK and JWKSets.
+
+### x25519
+
+Package `x25519` adds support for X25519 keys and the
+[XEdDSA](https://signal.org/docs/specifications/xeddsa/) signature scheme.
+
+### minica
+
+Package `minica` implements a simple certificate authority.
+
+### kms
+
+Package `kms` implements interfaces to perform cryptographic operations like
+signing certificates using cloud-based key management systems, PKCS #11 modules,
+or just a YubiKey or an ssh-agent. On the cloud it supports:
+
+* [Amazon AWS KMS](https://aws.amazon.com/kms/)
+* [Google Cloud Key Management](https://cloud.google.com/security-key-management)
+* [Microsoft Azure Key Vault](https://azure.microsoft.com/en-us/services/key-vault/)

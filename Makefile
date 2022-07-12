@@ -4,14 +4,16 @@ SRC=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
 all: lint test
 
-.PHONY: all
+ci: test
+
+.PHONY: all ci
 
 #########################################
 # Bootstrapping
 #########################################
 
 bootstrap:
-	$Q GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.33.0
+	$Q go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 .PHONY: bootstrap
 
@@ -39,3 +41,11 @@ lint:
 
 .PHONY: lint fmt
 
+#########################################
+# Go generate
+#########################################
+
+generate:
+	$Q go generate ./...
+
+.PHONY: generate
