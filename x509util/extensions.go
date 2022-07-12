@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/tlsutil"
 	"math/big"
 	"net"
 	"net/url"
@@ -212,7 +211,7 @@ func (s SubjectAlternativeName) RawValue() (*asn1.RawValue, error) {
 		}
 		asnValue = asn1.RawValue{Tag: nameTypeEmail, Class: asn1.ClassContextSpecific, Bytes: []byte(s.Value)}
 	case DNSType:
-		ia5String, err := tlsutil.SanitizeName(s.Value) // use SanitizeName for DNS types because it will do some character replacement and verify that its an acceptable hostname
+		ia5String, err := SanitizeName(s.Value) // use SanitizeName for DNS types because it will do some character replacement and verify that its an acceptable hostname
 		if err != nil {
 			return nil, errors.Wrapf(err, "error converting SAN type %s value to ia5", s.Type)
 		}
