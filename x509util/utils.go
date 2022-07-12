@@ -195,7 +195,7 @@ func isNumericString(s string) bool {
 // isPrintableString reports whether the given s is a valid ASN.1 PrintableString.
 // If asterisk is allowAsterisk then '*' is also allowed, reflecting existing
 // practice. If ampersand is allowAmpersand then '&' is allowed as well.
-func isPrintableString(s string, asterisk bool, ampersand bool) bool {
+func isPrintableString(s string, asterisk, ampersand bool) bool {
 	for _, b := range s {
 		valid := 'a' <= b && b <= 'z' ||
 			'A' <= b && b <= 'Z' ||

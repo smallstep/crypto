@@ -762,7 +762,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 	// Now marshal the rawValues into the ASN1 sequence, and create an Extension object to hold the extension
 	rawBytes, err := asn1.Marshal(rawValues)
 	if err != nil {
-		return nil, errors.Wrap(err, "error marshalling SubjectAlternativeName extension to ASN1")
+		return nil, errors.Wrap(err, "error marshaling SubjectAlternativeName extension to ASN1")
 	}
 
 	subjectAltNameExtension := Extension{
