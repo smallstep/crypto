@@ -235,6 +235,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]interface{}{
 	},
 	apiv1.ECDSAWithSHA256: piv.AlgorithmEC256,
 	apiv1.ECDSAWithSHA384: piv.AlgorithmEC384,
+	apiv1.PureEd25519:     piv.AlgorithmEd25519,
 }
 
 func getSignatureAlgorithm(alg apiv1.SignatureAlgorithm, bits int) (piv.Algorithm, error) {

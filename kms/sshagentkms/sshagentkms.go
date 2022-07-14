@@ -11,12 +11,14 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/sshutil"
 
 	"go.step.sm/crypto/pemutil"
 )
@@ -62,28 +64,56 @@ func (k *SSHAgentKMS) Close() error {
 
 // WrappedSSHSigner is a utility type to wrap a ssh.Signer as a crypto.Signer
 type WrappedSSHSigner struct {
-	Sshsigner ssh.Signer
+	Signer        ssh.Signer
+	m             sync.RWMutex
+	lastSignature *ssh.Signature
+}
+
+// LastSignature returns the ssh.Signature in the last sign operation if any.
+func (s *WrappedSSHSigner) LastSignature() *ssh.Signature {
+	s.m.RLock()
+	defer s.m.RUnlock()
+	return s.lastSignature
 }
 
 // Public returns the agent public key. The type of this public key is
 // *agent.Key.
 func (s *WrappedSSHSigner) Public() crypto.PublicKey {
-	return s.Sshsigner.PublicKey()
+	return s.Signer.PublicKey()
 }
 
 // Sign signs the given digest using the ssh agent and returns the signature.
-func (s *WrappedSSHSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	sig, err := s.Sshsigner.Sign(rand, digest)
+// Note that because of the way an SSH agent and x509.CreateCertificate works,
+// this signer can only properly sign X509 certificates if the key type is
+// Ed25519.
+func (s *WrappedSSHSigner) Sign(rand io.Reader, data []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	if signer, ok := s.Signer.(interface {
+		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
+	}); ok {
+		sig, err := signer.SignWithOpts(rand, data, opts)
+		if err != nil {
+			return nil, err
+		}
+		s.m.Lock()
+		s.lastSignature = sig
+		s.m.Unlock()
+		return sig.Blob, nil
+	}
+
+	sig, err := s.Signer.Sign(rand, data)
 	if err != nil {
 		return nil, err
 	}
+	s.m.Lock()
+	s.lastSignature = sig
+	s.m.Unlock()
 	return sig.Blob, nil
 }
 
 // NewWrappedSignerFromSSHSigner returns a new crypto signer wrapping the given
 // one.
 func NewWrappedSignerFromSSHSigner(signer ssh.Signer) crypto.Signer {
-	return &WrappedSSHSigner{signer}
+	return &WrappedSSHSigner{Signer: signer}
 }
 
 func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
@@ -104,7 +134,9 @@ func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
 	return -1, errors.Errorf("SSHAgentKMS couldn't find %s", signingKey)
 }
 
-// CreateSigner returns a new signer configured with the given signing key.
+// CreateSigner returns a new signer configured with the given signing key. Note
+// that because of the way an SSH agent and x509.CreateCertificate works, this
+// signer can only properly sign X509 certificates if the key type is Ed25519.
 func (k *SSHAgentKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
 	if req.Signer != nil {
 		return req.Signer, nil
@@ -161,7 +193,7 @@ func (k *SSHAgentKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRe
 
 // GetPublicKey returns the public key from the file passed in the request name.
 func (k *SSHAgentKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	var v crypto.PublicKey
+	var pub crypto.PublicKey
 	if strings.HasPrefix(req.Name, "sshagentkms:") {
 		target, err := k.findKey(req.Name)
 
@@ -175,32 +207,24 @@ func (k *SSHAgentKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.Publi
 		}
 
 		sshPub := s[target].PublicKey()
-
-		sshPubBytes := sshPub.Marshal()
-
-		parsed, err := ssh.ParsePublicKey(sshPubBytes)
+		pub, err = sshutil.CryptoPublicKey(sshPub)
 		if err != nil {
 			return nil, err
 		}
-
-		parsedCryptoKey := parsed.(ssh.CryptoPublicKey)
-
-		// Then, we can call CryptoPublicKey() to get the actual crypto.PublicKey
-		v = parsedCryptoKey.CryptoPublicKey()
 	} else {
 		var err error
-		v, err = pemutil.Read(req.Name)
+		pub, err = pemutil.Read(req.Name)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	switch vv := v.(type) {
+	switch pk := pub.(type) {
 	case *x509.Certificate:
-		return vv.PublicKey, nil
+		return pk.PublicKey, nil
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
-		return vv, nil
+		return pk, nil
 	default:
-		return nil, errors.Errorf("unsupported public key type %T", v)
+		return nil, errors.Errorf("unsupported public key type %T", pk)
 	}
 }
