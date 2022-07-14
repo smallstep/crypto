@@ -63,7 +63,7 @@ func CertFS(ctx context.Context, kmsuri string) (fs.FS, error) {
 	return &certFS{kmsfs: km}, nil
 }
 
-// Open opens a certificate from an KMS.
+// Open returns a file representing a certificate in an KMS.
 func (f *certFS) Open(name string) (fs.File, error) {
 	km, err := f.getKMS(name)
 	if err != nil {
@@ -95,8 +95,7 @@ func KeyFS(ctx context.Context, kmsuri string) (fs.FS, error) {
 	return &keyFS{kmsfs: km}, nil
 }
 
-// Open opens a file from a regular filesystem or a public key or certificate
-// from an KMS.
+// Open returns a file representing a public key in a KMS.
 func (f *keyFS) Open(name string) (fs.File, error) {
 	km, err := f.getKMS(name)
 	if err != nil {
