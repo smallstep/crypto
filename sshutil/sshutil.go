@@ -34,7 +34,7 @@ func CryptoPublicKey(pub interface{}) (crypto.PublicKey, error) {
 	}
 }
 
-// cryptoSKPublicKey returns the crypto.Public key of an SSH SK public keys.
+// cryptoSKPublicKey returns the crypto.PublicKey of an SSH SK public keys.
 func cryptoSKPublicKey(pub ssh.PublicKey) (crypto.PublicKey, error) {
 	switch pub.Type() {
 	case "sk-ecdsa-sha2-nistp256@openssh.com":
