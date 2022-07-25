@@ -17,5 +17,3 @@ jobs:
         with:
           project-url: https://github.com/orgs/smallstep/projects/94
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          labeled: bug, needs-triage
-          label-operator: OR
