@@ -11,7 +11,7 @@ on:
 jobs:
 
   label:
-    name: Lable PR
+    name: Label PR
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request_target'
     steps:
@@ -20,7 +20,7 @@ jobs:
         repo-token: "${{ secrets.GITHUB_TOKEN }}"
 
   add-to-project:
-    name: Add to project
+    name: Add to Triage Project
     runs-on: ubuntu-latest
     steps:
       - uses: actions/add-to-project@v0.3.0
