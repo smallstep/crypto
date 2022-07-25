@@ -1,0 +1,21 @@
+name: Add new issues and pull requests to triage
+
+on:
+  pull_request:
+    types:
+      - opened
+  issues:
+    types:
+      - opened
+
+jobs:
+  add-to-project:
+    name: Add to project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v0.3.0
+        with:
+          project-url: https://github.com/orgs/smallstep/projects/94
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          labeled: bug, needs-triage
+          label-operator: OR
