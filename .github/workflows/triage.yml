@@ -1,14 +1,22 @@
-name: Add new issues and pull requests to triage
+name: Add Issues and PRs to Triage
 
 on:
-  pull_request:
-    types:
-      - opened
   issues:
     types:
       - opened
+  pull_request_target:
 
 jobs:
+
+  label:
+    name: Lable PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: actions/labeler@v3.0.2
+      with:
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
+
   add-to-project:
     name: Add to project
     runs-on: ubuntu-latest
@@ -16,4 +24,4 @@ jobs:
       - uses: actions/add-to-project@v0.3.0
         with:
           project-url: https://github.com/orgs/smallstep/projects/94
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.TRIAGE_PAT }}
