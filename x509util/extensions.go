@@ -53,15 +53,16 @@ var (
 
 // Names used and SubjectAlternativeNames types.
 const (
-	AutoType          = "auto"
-	EmailType         = "email" // also known as 'rfc822Name' in RFC 5280
-	DNSType           = "dns"
-	X400AddressType   = "x400Address"
-	DirectoryNameType = "dn"
-	EDIPartyNameType  = "ediPartyName"
-	URIType           = "uri"
-	IPType            = "ip"
-	RegisteredIDType  = "registeredID"
+	AutoType                = "auto"
+	EmailType               = "email" // also known as 'rfc822Name' in RFC 5280
+	DNSType                 = "dns"
+	X400AddressType         = "x400Address"
+	DirectoryNameType       = "dn"
+	EDIPartyNameType        = "ediPartyName"
+	URIType                 = "uri"
+	IPType                  = "ip"
+	RegisteredIDType        = "registeredID"
+	PermanentIdentifierType = "permanentIdentifier"
 )
 
 // These type ids are defined in RFC 5280 page 36
@@ -82,17 +83,33 @@ const (
 // provided.
 const sanTypeSeparator = ":"
 
-// OtherNameValue is a simple struct to ensure the ASN1 marshaller creates an
-// EXPLICIT asn1 type when creating the otherName
-type OtherNameValue struct {
-	V interface{}
+// RFC 4043 - https://datatracker.ietf.org/doc/html/rfc4043
+var oidPermanentIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
+
+// OtherName ::= SEQUENCE {
+//     type-id    OBJECT IDENTIFIER,
+//     value      [0] EXPLICIT ANY DEFINED BY type-id }
+type otherName struct {
+	TypeID asn1.ObjectIdentifier
+	Value  asn1.RawValue
 }
 
-// OtherName holds a SubjectAlternativeName type otherName as defined in RFC
-// 5280.
-type OtherName struct {
-	OID   asn1.ObjectIdentifier
-	Value OtherNameValue `asn1:"tag:0"`
+// PermanentIdentifier is defined in RFC 4043 as an optional feature that
+// may be used by a CA to indicate that two or more certificates relate to the
+// same entity.
+//
+// In device attestation this SAN will contain the UDID (Unique Device
+// IDentifier) or serial number of the device.
+//
+// See https://tools.ietf.org/html/rfc4043
+//
+//   PermanentIdentifier ::= SEQUENCE {
+//     identifierValue    UTF8String OPTIONAL,
+//     assigner           OBJECT IDENTIFIER OPTIONAL
+//   }
+type PermanentIdentifier struct {
+	IdentifierValue string                `asn1:"utf8,optional"`
+	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
 }
 
 // Extension is the JSON representation of a raw X.509 extensions.
@@ -263,9 +280,17 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		}
 		rawBytes, err := asn1.MarshalWithParams(oid, fmt.Sprintf("tag:%d", nameTypeRegisteredID))
 		if err != nil {
-			return zero, errors.Wrap(err, "unable to Marshal RegisteredID SAN")
+			return zero, errors.Wrap(err, "error marshaling RegisteredID SAN")
 		}
 		return asn1.RawValue{FullBytes: rawBytes}, nil
+	case PermanentIdentifierType:
+		otherName, err := marshalOtherName(oidPermanentIdentifier, PermanentIdentifier{
+			IdentifierValue: s.Value,
+		})
+		if err != nil {
+			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
+		}
+		return otherName, nil
 	case X400AddressType, DirectoryNameType, EDIPartyNameType:
 		return zero, fmt.Errorf("unimplemented SAN type %s", s.Type)
 	default:
@@ -283,21 +308,18 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			value = value[len(params)+1:]
 		}
 
-		rawBytes, err := marshalOtherName(value, params)
+		rawBytes, err := marshalExplicitValue(value, params)
 		if err != nil {
 			return zero, errors.Wrapf(err, "error marshaling ASN1 value %q", s.Value)
 		}
 
-		// OtherName SANs are an ASN1 sequence containing OID and Value
-		otherName := OtherName{
-			OID: oid,
-			Value: OtherNameValue{
-				V: asn1.RawValue{FullBytes: rawBytes}, //load in the raw OtherName value
-			},
+		otherName := otherName{
+			TypeID: oid,
+			Value:  asn1.RawValue{FullBytes: rawBytes},
 		}
 
 		// use MarshalWithParams so we can set the context-specific tag - in this case 0
-		otherNameBytes, err := asn1.MarshalWithParams(otherName, fmt.Sprintf("tag:%d", nameTypeOtherName))
+		otherNameBytes, err := asn1.MarshalWithParams(otherName, "tag:0")
 		if err != nil {
 			return zero, errors.Wrap(err, "unable to Marshal otherName SAN")
 		}
@@ -305,28 +327,46 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 	}
 }
 
-// marshalOtherName marshals the given value with given type and returns the raw
-// bytes to use.
+// marshalOtherName marshals an otherName field with the given oid and value and
+// returns the raw bytes to use.
+func marshalOtherName(oid asn1.ObjectIdentifier, value interface{}) (asn1.RawValue, error) {
+	valueBytes, err := asn1.MarshalWithParams(value, "explicit,tag:0")
+	if err != nil {
+		return asn1.RawValue{}, err
+	}
+	otherName := otherName{
+		TypeID: oid,
+		Value:  asn1.RawValue{FullBytes: valueBytes},
+	}
+	bytes, err := asn1.MarshalWithParams(otherName, "tag:0")
+	if err != nil {
+		return asn1.RawValue{}, err
+	}
+	return asn1.RawValue{FullBytes: bytes}, nil
+}
+
+// marshalExplicitValue marshals the given value with given type and returns the
+// raw bytes to use.
 //
-// The OtherName value can be any type depending on the OID ASN supports a great
+// The return value value can be any type depending on the OID ASN supports a great
 // number of formats, but Golang's ans1 package supports much fewer -- for now
 // support anything the golang asn1 marshaller supports.
 //
 // See https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html
-func marshalOtherName(value, typ string) ([]byte, error) {
+func marshalExplicitValue(value, typ string) ([]byte, error) {
 	switch typ {
 	case "int":
 		i, err := strconv.Atoi(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid int value")
 		}
-		return asn1.Marshal(i)
+		return asn1.MarshalWithParams(i, "explicit")
 	case "oid":
 		oid, err := parseObjectIdentifier(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid oid value")
 		}
-		return asn1.Marshal(oid)
+		return asn1.MarshalWithParams(oid, "explicit")
 	case "raw":
 		// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
 		// marshaller. By using this type users can add ASN1 data types manually into templates
@@ -336,29 +376,29 @@ func marshalOtherName(value, typ string) ([]byte, error) {
 		if !isUTF8String(value) {
 			return nil, fmt.Errorf("invalid utf8 value")
 		}
-		return asn1.MarshalWithParams(value, typ)
+		return asn1.MarshalWithParams(value, "explicit,utf8")
 	case "ia5":
 		if !isIA5String(value) {
 			return nil, fmt.Errorf("invalid ia5 value")
 		}
-		return asn1.MarshalWithParams(value, typ)
+		return asn1.MarshalWithParams(value, "explicit,ia5")
 	case "numeric":
 		if !isNumericString(value) {
 			return nil, fmt.Errorf("invalid numeric value")
 		}
-		return asn1.MarshalWithParams(value, typ)
+		return asn1.MarshalWithParams(value, "explicit,numeric")
 	case "printable":
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, typ)
+		return asn1.MarshalWithParams(value, "explicit,printable")
 	default:
 		// if it's an unknown type, default to printable - but use the entire
 		// value specified in case there is a semicolon in the value
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, "printable")
+		return asn1.MarshalWithParams(value, "explicit,printable")
 	}
 }
 
