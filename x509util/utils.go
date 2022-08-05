@@ -11,7 +11,6 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
-	"golang.org/x/net/idna"
 	"math/big"
 	"net"
 	"net/url"
@@ -20,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
+	"golang.org/x/net/idna"
 )
 
 // FingerprintEncoding defines the supported encodigns in certificate
@@ -35,6 +35,7 @@ const (
 
 var emptyASN1Subject = []byte{0x30, 0}
 
+// SanitizeName converts the given domain to its ASCII form.
 func SanitizeName(domain string) (string, error) {
 	if domain == "" {
 		return "", errors.New("empty server name")

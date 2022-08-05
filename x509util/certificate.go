@@ -6,7 +6,6 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/json"
 
 	"github.com/pkg/errors"
@@ -76,11 +75,12 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 // certificate.
 func (c *Certificate) GetCertificate() *x509.Certificate {
 	cert := new(x509.Certificate)
+
 	// Unparsed data
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
 
-	// Subject.
+	// Subject
 	c.Subject.Set(cert)
 
 	if c.hasExtendedSANs() && !c.hasExtension(oidExtensionSubjectAltName) {
@@ -90,7 +90,8 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 		}
 		subjectAltNameExtension.Set(cert)
 	} else {
-		// When we have no extended SANs, use the golang x509 lib to create the extension instead
+		// When we have no extended SANs, use the golang x509 lib to create the
+		// extension instead
 		cert.DNSNames = c.DNSNames
 		cert.EmailAddresses = c.EmailAddresses
 		cert.IPAddresses = c.IPAddresses
@@ -134,19 +135,21 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 // hasExtendedSANs returns true if the certificate contains any SAN types that
 // are not supported by the golang x509 library (i.e. RegisteredID, OtherName,
 // DirectoryName, X400Address, or EDIPartyName)
+//
 // See also https://datatracker.ietf.org/doc/html/rfc5280.html#section-4.2.1.6
 func (c *Certificate) hasExtendedSANs() bool {
 	for _, san := range c.SANs {
-		if !(san.Type == DNSType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == EmailType || san.Type == "") {
+		if !(san.Type == DNSType || san.Type == EmailType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == "") {
 			return true
 		}
 	}
 	return false
 }
 
+// hasExtension returns true if the given extension oid is in the certificate.
 func (c *Certificate) hasExtension(oid ObjectIdentifier) bool {
 	for _, e := range c.Extensions {
-		if asn1.ObjectIdentifier(e.ID).Equal(asn1.ObjectIdentifier(oid)) {
+		if e.ID.Equal(oid) {
 			return true
 		}
 	}

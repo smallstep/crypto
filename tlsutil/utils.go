@@ -1,8 +1,9 @@
 package tlsutil
 
 import (
-	"go.step.sm/crypto/x509util"
 	"net"
+
+	"go.step.sm/crypto/x509util"
 )
 
 // SanitizeName converts the given domain to its ASCII form.
