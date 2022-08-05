@@ -75,23 +75,33 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 // certificate.
 func (c *Certificate) GetCertificate() *x509.Certificate {
 	cert := new(x509.Certificate)
+
 	// Unparsed data
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
 
-	// SANs are directly converted.
-	cert.DNSNames = c.DNSNames
-	cert.EmailAddresses = c.EmailAddresses
-	cert.IPAddresses = c.IPAddresses
-	cert.URIs = c.URIs
-
-	// SANs slice.
-	for _, san := range c.SANs {
-		san.Set(cert)
-	}
-
-	// Subject.
+	// Subject
 	c.Subject.Set(cert)
+
+	if c.hasExtendedSANs() && !c.hasExtension(oidExtensionSubjectAltName) {
+		subjectAltNameExtension, err := createSubjectAltNameExtension(c, subjectIsEmpty(cert.Subject))
+		if err != nil {
+			panic(err)
+		}
+		subjectAltNameExtension.Set(cert)
+	} else {
+		// When we have no extended SANs, use the golang x509 lib to create the
+		// extension instead
+		cert.DNSNames = c.DNSNames
+		cert.EmailAddresses = c.EmailAddresses
+		cert.IPAddresses = c.IPAddresses
+		cert.URIs = c.URIs
+
+		// SANs slice.
+		for _, san := range c.SANs {
+			san.Set(cert)
+		}
+	}
 
 	// Defined extensions.
 	c.KeyUsage.Set(cert)
@@ -120,6 +130,30 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	c.SignatureAlgorithm.Set(cert)
 
 	return cert
+}
+
+// hasExtendedSANs returns true if the certificate contains any SAN types that
+// are not supported by the golang x509 library (i.e. RegisteredID, OtherName,
+// DirectoryName, X400Address, or EDIPartyName)
+//
+// See also https://datatracker.ietf.org/doc/html/rfc5280.html#section-4.2.1.6
+func (c *Certificate) hasExtendedSANs() bool {
+	for _, san := range c.SANs {
+		if !(san.Type == DNSType || san.Type == EmailType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == "") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasExtension returns true if the given extension oid is in the certificate.
+func (c *Certificate) hasExtension(oid ObjectIdentifier) bool {
+	for _, e := range c.Extensions {
+		if e.ID.Equal(oid) {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateCertificate signs the given template using the parent private key and
