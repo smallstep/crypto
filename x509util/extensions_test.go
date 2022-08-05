@@ -239,6 +239,74 @@ func TestSubjectAlternativeName_Set(t *testing.T) {
 	}
 }
 
+func TestSubjectAlternativeName_RawValue(t *testing.T) {
+	type fields struct {
+		Type  string
+		Value string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    asn1.RawValue
+		wantErr bool
+	}{
+		{"ip", fields{"auto", "1.1.1.1"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{1, 1, 1, 1}}, false},
+		{"uri", fields{"auto", "urn:smallstep:1234"}, asn1.RawValue{Class: 2, Tag: 6, Bytes: []byte("urn:smallstep:1234")}, false},
+		{"email", fields{"auto", "foo@bar.com"}, asn1.RawValue{Class: 2, Tag: 1, Bytes: []byte("foo@bar.com")}, false},
+		{"dns", fields{"auto", "bar.com"}, asn1.RawValue{Class: 2, Tag: 2, Bytes: []byte("bar.com")}, false},
+		{"registeredID", fields{"registeredID", "1.2.3.4"}, asn1.RawValue{
+			// Class 2, Type: 8
+			FullBytes: []byte{(2 << 6) | 8, 3, 0x20 | 1<<3 | 2, 3, 4},
+		}, false},
+		{"permanentIdentifier", fields{"permanentIdentifier", "0123456789"}, asn1.RawValue{
+			FullBytes: append(append(
+				[]byte{160, 26, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				[]byte{160, 14, 48, 12, 12, 10}...),
+				[]byte("0123456789")...),
+		}, false},
+		{"otherName int", fields{"1.2.3.4", "int:1024"}, asn1.RawValue{
+			FullBytes: []byte{160, 11, 6, 3, 42, 3, 4, 160, 4, 2, 2, 4, 0},
+		}, false},
+		{"otherName oid", fields{"1.2.3.4", "oid:1.2.3.4"}, asn1.RawValue{
+			FullBytes: []byte{160, 12, 6, 3, 42, 3, 4, 160, 5, 6, 3, 42, 3, 4},
+		}, false},
+		{"otherName raw", fields{"1.2.3.4", "raw:MTIzNA=="}, asn1.RawValue{
+			FullBytes: append([]byte{160, 9, 6, 3, 42, 3, 4}, []byte("1234")...),
+		}, false},
+		{"otherName utf8", fields{"1.2.3.4", "utf8:á∫ç1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 20, 6, 3, 42, 3, 4, 160, 13, 12, 11}, []byte("á∫ç1234")...),
+		}, false},
+		{"otherName ia5", fields{"1.2.3.4", "ia5:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 22, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName numeric", fields{"1.2.3.4", "numeric:1024"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 13, 6, 3, 42, 3, 4, 160, 6, 18, 4}, []byte("1024")...),
+		}, false},
+		{"otherName printable", fields{"1.2.3.4", "printable:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName default", fields{"1.2.3.4", "foo:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := SubjectAlternativeName{
+				Type:  tt.fields.Type,
+				Value: tt.fields.Value,
+			}
+			got, err := s.RawValue()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SubjectAlternativeName.RawValue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SubjectAlternativeName.RawValue() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestKeyUsage_Set(t *testing.T) {
 	type args struct {
 		c *x509.Certificate
