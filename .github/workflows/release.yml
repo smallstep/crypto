@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        go: [ '1.17', '1.18' ]
+        go: [ '1.18', '1.19' ]
     steps:
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y libpcsclite-dev
@@ -25,7 +25,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          version: 'v1.46.2'
+          version: 'v1.48'
           args: --timeout=30m
       - name: Test
         run: V=1 make ci
