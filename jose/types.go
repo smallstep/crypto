@@ -122,6 +122,7 @@ var ErrInvalidID = jwt.ErrInvalidID
 var ErrIssuedInTheFuture = jwt.ErrIssuedInTheFuture
 
 // Key management algorithms
+//
 //nolint:revive // use standard names in upper-case
 const (
 	RSA1_5             = KeyAlgorithm("RSA1_5")             // RSA-PKCS1v1.5
@@ -162,6 +163,7 @@ const (
 )
 
 // Content encryption algorithms
+//
 //nolint:revive // use standard names in upper-case
 const (
 	A128CBC_HS256 = ContentEncryption("A128CBC-HS256") // AES-CBC + HMAC-SHA256 (128)

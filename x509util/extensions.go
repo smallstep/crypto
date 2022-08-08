@@ -66,13 +66,14 @@ const (
 )
 
 // These type ids are defined in RFC 5280 page 36
+// nolint:deadcode // ignore
 const (
-	nameTypeOtherName = 0
-	nameTypeEmail     = 1
-	nameTypeDNS       = 2
-	//nameTypeX400         = 3
-	//nameTypeDirectory    = 4
-	//nameTypeEDI          = 5
+	nameTypeOtherName    = 0
+	nameTypeEmail        = 1
+	nameTypeDNS          = 2
+	nameTypeX400         = 3
+	nameTypeDirectory    = 4
+	nameTypeEDI          = 5
 	nameTypeURI          = 6
 	nameTypeIP           = 7
 	nameTypeRegisteredID = 8
@@ -86,9 +87,11 @@ const sanTypeSeparator = ":"
 // RFC 4043 - https://datatracker.ietf.org/doc/html/rfc4043
 var oidPermanentIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
 
-// OtherName ::= SEQUENCE {
-//     type-id    OBJECT IDENTIFIER,
-//     value      [0] EXPLICIT ANY DEFINED BY type-id }
+// RFC 5280 - https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+//
+//	OtherName ::= SEQUENCE {
+//	  type-id    OBJECT IDENTIFIER,
+//	  value      [0] EXPLICIT ANY DEFINED BY type-id }
 type otherName struct {
 	TypeID asn1.ObjectIdentifier
 	Value  asn1.RawValue
@@ -103,10 +106,10 @@ type otherName struct {
 //
 // See https://tools.ietf.org/html/rfc4043
 //
-//   PermanentIdentifier ::= SEQUENCE {
-//     identifierValue    UTF8String OPTIONAL,
-//     assigner           OBJECT IDENTIFIER OPTIONAL
-//   }
+//	PermanentIdentifier ::= SEQUENCE {
+//	  identifierValue    UTF8String OPTIONAL,
+//	  assigner           OBJECT IDENTIFIER OPTIONAL
+//	}
 type PermanentIdentifier struct {
 	IdentifierValue string                `asn1:"utf8,optional"`
 	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
@@ -313,13 +316,11 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			return zero, errors.Wrapf(err, "error marshaling ASN1 value %q", s.Value)
 		}
 
-		otherName := otherName{
+		// use MarshalWithParams so we can set the context-specific tag - in this case 0
+		otherNameBytes, err := asn1.MarshalWithParams(otherName{
 			TypeID: oid,
 			Value:  asn1.RawValue{FullBytes: rawBytes},
-		}
-
-		// use MarshalWithParams so we can set the context-specific tag - in this case 0
-		otherNameBytes, err := asn1.MarshalWithParams(otherName, "tag:0")
+		}, "tag:0")
 		if err != nil {
 			return zero, errors.Wrap(err, "unable to Marshal otherName SAN")
 		}
@@ -334,11 +335,10 @@ func marshalOtherName(oid asn1.ObjectIdentifier, value interface{}) (asn1.RawVal
 	if err != nil {
 		return asn1.RawValue{}, err
 	}
-	otherName := otherName{
+	bytes, err := asn1.MarshalWithParams(otherName{
 		TypeID: oid,
 		Value:  asn1.RawValue{FullBytes: valueBytes},
-	}
-	bytes, err := asn1.MarshalWithParams(otherName, "tag:0")
+	}, "tag:0")
 	if err != nil {
 		return asn1.RawValue{}, err
 	}
