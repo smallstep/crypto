@@ -278,7 +278,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if err != nil {
 			return zero, errors.Wrap(err, "error parsing OID for RegisteredID SAN")
 		}
-		rawBytes, err := asn1.MarshalWithParams(oid, fmt.Sprintf("tag:%d", nameTypeRegisteredID))
+		rawBytes, err := asn1.MarshalWithParams(oid, "tag:8")
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling RegisteredID SAN")
 		}

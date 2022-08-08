@@ -251,6 +251,7 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		wantErr bool
 	}{
 		{"ip", fields{"auto", "1.1.1.1"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{1, 1, 1, 1}}, false},
+		{"ipv6", fields{"auto", "2001:0db8:0000:0000:0000:ff00:0042:8329"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0xff, 0, 0, 0x42, 0x83, 0x29}}, false},
 		{"uri", fields{"auto", "urn:smallstep:1234"}, asn1.RawValue{Class: 2, Tag: 6, Bytes: []byte("urn:smallstep:1234")}, false},
 		{"email", fields{"auto", "foo@bar.com"}, asn1.RawValue{Class: 2, Tag: 1, Bytes: []byte("foo@bar.com")}, false},
 		{"dns", fields{"auto", "bar.com"}, asn1.RawValue{Class: 2, Tag: 2, Bytes: []byte("bar.com")}, false},
@@ -288,6 +289,32 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"otherName default", fields{"1.2.3.4", "foo:abc1234"}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
+		{"otherName no type", fields{"1.2.3.4", "abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"fail dn", fields{"dn", "1234"}, asn1.RawValue{}, true},
+		{"fail x400Address", fields{"x400Address", "1234"}, asn1.RawValue{}, true},
+		{"fail ediPartyName", fields{"ediPartyName", "1234"}, asn1.RawValue{}, true},
+		{"fail email", fields{"email", "nöt@ia5.com"}, asn1.RawValue{}, true},
+		{"fail dns", fields{"dns", "xn--bücher.example.com"}, asn1.RawValue{}, true},
+		{"fail dns empty", fields{"dns", ""}, asn1.RawValue{}, true},
+		{"fail uri", fields{"uri", "urn:nöt:ia5"}, asn1.RawValue{}, true},
+		{"fail ip", fields{"ip", "1.2.3.4.5"}, asn1.RawValue{}, true},
+		{"fail registeredID", fields{"registeredID", "4.3.2.1"}, asn1.RawValue{}, true},
+		{"fail registeredID empty", fields{"registeredID", ""}, asn1.RawValue{}, true},
+		{"fail registeredID parse", fields{"registeredID", "a.b.c.d"}, asn1.RawValue{}, true},
+		{"fail otherName parse", fields{"a.b.c.d", "foo"}, asn1.RawValue{}, true},
+		{"fail otherName marshal", fields{"1", "foo"}, asn1.RawValue{}, true},
+		{"fail otherName int", fields{"1.2.3.4", "int:abc"}, asn1.RawValue{}, true},
+		{"fail otherName oid", fields{"1.2.3.4", "oid:4.3.2.1"}, asn1.RawValue{}, true},
+		{"fail otherName oid parse", fields{"1.2.3.4", "oid:a.b.c.d"}, asn1.RawValue{}, true},
+		{"fail otherName raw", fields{"1.2.3.4", "raw:abc"}, asn1.RawValue{}, true},
+		{"fail otherName utf8", fields{"1.2.3.4", "utf8:\xff"}, asn1.RawValue{}, true},
+		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5"}, asn1.RawValue{}, true},
+		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc"}, asn1.RawValue{}, true},
+		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable"}, asn1.RawValue{}, true},
+		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable"}, asn1.RawValue{}, true},
+		{"fail otherName no type", fields{"1.2.3.4", "nötprintable"}, asn1.RawValue{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
