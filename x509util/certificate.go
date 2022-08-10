@@ -68,8 +68,8 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	cert.PublicKey = cr.PublicKey
 	cert.PublicKeyAlgorithm = cr.PublicKeyAlgorithm
 
-	// Generate the subjectAltName extension if the certificate contains 
-	// SANs that are not supported in the Go standard library.
+	// Generate the subjectAltName extension if the certificate contains SANs
+	// that are not supported in the Go standard library.
 	if cert.hasExtendedSANs() && !cert.hasExtension(oidExtensionSubjectAltName) {
 		ext, err := createSubjectAltNameExtension(&cert, cert.Subject.IsEmpty())
 		if err != nil {
