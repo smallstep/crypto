@@ -58,7 +58,7 @@ func newName(n pkix.Name) Name {
 	}
 }
 
-// goValue converts Subject to the Go representation.
+// goValue converts Name to its Go representation.
 func (n Name) goValue() pkix.Name {
 	return pkix.Name{
 		Country:            n.Country,
