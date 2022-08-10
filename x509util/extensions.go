@@ -778,14 +778,16 @@ func MarshalSubjectAlternativeName(sans ...SubjectAlternativeName) (pkix.Extensi
 //
 // TODO(mariano,unreality): X400Address, DirectoryName, and EDIPartyName types
 // are defined in RFC5280 but are currently unimplemented
-func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extension, error) {
+func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (Extension, error) {
+	var zero Extension
+
 	var rawValues []asn1.RawValue
 	for _, dnsName := range c.DNSNames {
 		rawValue, err := SubjectAlternativeName{
 			Type: DNSType, Value: dnsName,
 		}.RawValue()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 
 		rawValues = append(rawValues, rawValue)
@@ -796,7 +798,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 			Type: EmailType, Value: emailAddress,
 		}.RawValue()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 
 		rawValues = append(rawValues, rawValue)
@@ -807,7 +809,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 			Type: URIType, Value: uri.String(),
 		}.RawValue()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 
 		rawValues = append(rawValues, rawValue)
@@ -818,7 +820,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 			Type: IPType, Value: ip.String(),
 		}.RawValue()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 
 		rawValues = append(rawValues, rawValue)
@@ -827,7 +829,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 	for _, san := range c.SANs {
 		rawValue, err := san.RawValue()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 
 		rawValues = append(rawValues, rawValue)
@@ -836,14 +838,12 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (*Extens
 	// Now marshal the rawValues into the ASN1 sequence, and create an Extension object to hold the extension
 	rawBytes, err := asn1.Marshal(rawValues)
 	if err != nil {
-		return nil, errors.Wrap(err, "error marshaling SubjectAlternativeName extension to ASN1")
+		return zero, errors.Wrap(err, "error marshaling SubjectAlternativeName extension to ASN1")
 	}
 
-	subjectAltNameExtension := Extension{
+	return Extension{
 		ID:       oidExtensionSubjectAltName,
 		Critical: subjectIsEmpty,
 		Value:    rawBytes,
-	}
-
-	return &subjectAltNameExtension, nil
+	}, nil
 }
