@@ -1,6 +1,7 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -57,6 +58,22 @@ func newName(n pkix.Name) Name {
 	}
 }
 
+// goValue converts Subject to the Go representation.
+func (n Name) goValue() pkix.Name {
+	return pkix.Name{
+		Country:            n.Country,
+		Organization:       n.Organization,
+		OrganizationalUnit: n.OrganizationalUnit,
+		Locality:           n.Locality,
+		Province:           n.Province,
+		StreetAddress:      n.StreetAddress,
+		PostalCode:         n.PostalCode,
+		SerialNumber:       n.SerialNumber,
+		CommonName:         n.CommonName,
+		ExtraNames:         fromDistinguishedNames(n.ExtraNames),
+	}
+}
+
 // UnmarshalJSON implements the json.Unmarshal interface and unmarshals a JSON
 // object in the Name struct or a string as just the subject common name.
 func (n *Name) UnmarshalJSON(data []byte) error {
@@ -94,18 +111,17 @@ func (s *Subject) UnmarshalJSON(data []byte) error {
 
 // Set sets the subject in the given certificate.
 func (s Subject) Set(c *x509.Certificate) {
-	c.Subject = pkix.Name{
-		Country:            s.Country,
-		Organization:       s.Organization,
-		OrganizationalUnit: s.OrganizationalUnit,
-		Locality:           s.Locality,
-		Province:           s.Province,
-		StreetAddress:      s.StreetAddress,
-		PostalCode:         s.PostalCode,
-		SerialNumber:       s.SerialNumber,
-		CommonName:         s.CommonName,
-		ExtraNames:         fromDistinguishedNames(s.ExtraNames),
+	c.Subject = Name(s).goValue()
+}
+
+// IsEmpty returns if the subject is empty. Certificates with an empty subject
+// must have the subjectAltName extension mark as critical.
+func (s Subject) IsEmpty() bool {
+	subject := Name(s).goValue()
+	if asn1Subject, err := asn1.Marshal(subject.ToRDNSequence()); err == nil {
+		return bytes.Equal(asn1Subject, emptyASN1Subject)
 	}
+	return false
 }
 
 // Issuer is the JSON representation of the X.509 issuer field.
@@ -128,18 +144,7 @@ func (i *Issuer) UnmarshalJSON(data []byte) error {
 
 // Set sets the issuer in the given certificate.
 func (i Issuer) Set(c *x509.Certificate) {
-	c.Issuer = pkix.Name{
-		Country:            i.Country,
-		Organization:       i.Organization,
-		OrganizationalUnit: i.OrganizationalUnit,
-		Locality:           i.Locality,
-		Province:           i.Province,
-		StreetAddress:      i.StreetAddress,
-		PostalCode:         i.PostalCode,
-		SerialNumber:       i.SerialNumber,
-		CommonName:         i.CommonName,
-		ExtraNames:         fromDistinguishedNames(i.ExtraNames),
-	}
+	c.Issuer = Name(i).goValue()
 }
 
 // DistinguishedName mirrors the ASN.1 structure AttributeTypeAndValue in RFC

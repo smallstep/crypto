@@ -288,6 +288,60 @@ func TestSubject_Set(t *testing.T) {
 	}
 }
 
+func TestSubject_IsEmpty(t *testing.T) {
+	type fields struct {
+		Country            MultiString
+		Organization       MultiString
+		OrganizationalUnit MultiString
+		Locality           MultiString
+		Province           MultiString
+		StreetAddress      MultiString
+		PostalCode         MultiString
+		SerialNumber       string
+		CommonName         string
+		ExtraNames         []DistinguishedName
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{"ok", fields{}, true},
+		{"country", fields{Country: []string{"The country"}}, false},
+		{"commonName", fields{CommonName: "The commonName"}, false},
+		{"all fields", fields{
+			Country:            []string{"The country"},
+			Organization:       []string{"The organization"},
+			OrganizationalUnit: []string{"The organizationalUnit 1", "The organizationalUnit 2"},
+			Locality:           []string{"The locality 1", "The locality 2"},
+			Province:           []string{"The province"},
+			StreetAddress:      []string{"The streetAddress"},
+			PostalCode:         []string{"The postalCode"},
+			SerialNumber:       "The serialNumber",
+			CommonName:         "The commonName",
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Subject{
+				Country:            tt.fields.Country,
+				Organization:       tt.fields.Organization,
+				OrganizationalUnit: tt.fields.OrganizationalUnit,
+				Locality:           tt.fields.Locality,
+				Province:           tt.fields.Province,
+				StreetAddress:      tt.fields.StreetAddress,
+				PostalCode:         tt.fields.PostalCode,
+				SerialNumber:       tt.fields.SerialNumber,
+				CommonName:         tt.fields.CommonName,
+				ExtraNames:         tt.fields.ExtraNames,
+			}
+			if got := s.IsEmpty(); got != tt.want {
+				t.Errorf("Subject.IsEmpty() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_newIssuer(t *testing.T) {
 	type args struct {
 		n pkix.Name
