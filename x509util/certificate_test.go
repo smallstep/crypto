@@ -276,7 +276,7 @@ func TestNewCertificate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewCertificate(tt.args.cr, tt.args.opts...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewCertificate() error = %+v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewCertificate() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
@@ -412,7 +412,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				PublicKey:             tt.fields.PublicKey,
 			}
 			if got := c.GetCertificate(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Certificate.GetCertificate() = \n%+v, want \n%+v", got, tt.want)
+				t.Errorf("Certificate.GetCertificate() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -204,7 +204,7 @@ func TestNewCertificate(t *testing.T) {
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCertificate() = \n%+v, want \n%+v", got, tt.want)
+				t.Errorf("NewCertificate() = %v, want %v", got, tt.want)
 			}
 		})
 	}
