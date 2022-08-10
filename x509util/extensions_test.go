@@ -1,6 +1,7 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -1059,6 +1060,120 @@ func TestSerialNumber_UnmarshalJSON(t *testing.T) {
 			}
 			if !reflect.DeepEqual(s, tt.want) {
 				t.Errorf("SerialNumber.UnmarshalJSON() = %v, want %v", s, tt.want)
+			}
+		})
+	}
+}
+
+func Test_createSubjectAltNameExtension(t *testing.T) {
+	type args struct {
+		c              *Certificate
+		subjectIsEmpty bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    Extension
+		wantErr bool
+	}{
+		{"ok dns", args{&Certificate{
+			DNSNames: []string{"foo.com"},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
+		}, false},
+		{"ok dns critical", args{&Certificate{
+			DNSNames: []string{"foo.com"},
+		}, true}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: true,
+			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
+		}, false},
+		{"ok email", args{&Certificate{
+			EmailAddresses: []string{"bar@foo.com"},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 13, 0x80 | nameTypeEmail, 11}, []byte("bar@foo.com")...),
+		}, false},
+		{"ok uri", args{&Certificate{
+			URIs: []*url.URL{{Scheme: "urn", Opaque: "foo:bar"}},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 13, 0x80 | nameTypeURI, 11}, []byte("urn:foo:bar")...),
+		}, false},
+		{"ok ip", args{&Certificate{
+			IPAddresses: []net.IP{net.ParseIP("1.2.3.4")},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    []byte{0x30, 6, 0x80 | nameTypeIP, 4, 1, 2, 3, 4},
+		}, false},
+		{"ok sans", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "email", Value: "bar@foo.com"},
+				{Type: "uri", Value: "urn:foo:bar"},
+				{Type: "ip", Value: "1.2.3.4"},
+			},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value: bytes.Join([][]byte{
+				{0x30, (2 + 7) + (2 + 11) + (2 + 11) + (2 + 4)},
+				{0x80 | nameTypeDNS, 7}, []byte("foo.com"),
+				{0x80 | nameTypeEmail, 11}, []byte("bar@foo.com"),
+				{0x80 | nameTypeURI, 11}, []byte("urn:foo:bar"),
+				{0x80 | nameTypeIP, 4, 1, 2, 3, 4},
+			}, nil),
+		}, false},
+		{"ok otherName", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "1.2.3.4", Value: "utf8:bar@foo.com"},
+			},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value: bytes.Join([][]byte{
+				{0x30, (2 + 7) + (2 + 20)},
+				{0x80 | nameTypeDNS, 7}, []byte("foo.com"),
+				{0xA0, 20, asn1.TagOID, 3, 0x20 | 0x0A, 3, 4},
+				{0xA0, 13, asn1.TagUTF8String, 11}, []byte("bar@foo.com"),
+			}, nil),
+		}, false},
+		{"fail dns", args{&Certificate{
+			DNSNames: []string{""},
+		}, false}, Extension{}, true},
+		{"fail email", args{&Certificate{
+			EmailAddresses: []string{"nöt@ia5.com"},
+		}, false}, Extension{}, true},
+		{"fail uri", args{&Certificate{
+			URIs: []*url.URL{{Scheme: "urn", Opaque: "nöt:ia5"}},
+		}, false}, Extension{}, true},
+		{"fail ip", args{&Certificate{
+			IPAddresses: []net.IP{{1, 2, 3}},
+		}, false}, Extension{}, true},
+		{"fail otherName", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "1.2.3.4", Value: "int:bar@foo.com"},
+			},
+		}, false}, Extension{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "fail dns" {
+				t.Log("foo")
+			}
+			got, err := createSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", got, tt.want)
 			}
 		})
 	}
