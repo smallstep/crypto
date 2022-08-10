@@ -745,30 +745,6 @@ func (s *SerialNumber) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalSubjectAlternativeName marshals to a pkix.Extension the given SANs.
-// This method does not set the Critical option that must be set if the subject
-// is empty.
-func MarshalSubjectAlternativeName(sans ...SubjectAlternativeName) (pkix.Extension, error) {
-	var rawValues []asn1.RawValue
-	for _, san := range sans {
-		rawValue, err := san.RawValue()
-		if err != nil {
-			return pkix.Extension{}, err
-		}
-		rawValues = append(rawValues, rawValue)
-	}
-
-	rawBytes, err := asn1.Marshal(rawValues)
-	if err != nil {
-		return pkix.Extension{}, fmt.Errorf("error marshaling SubjectAlternativeName extension to ASN1: %w", err)
-	}
-
-	return pkix.Extension{
-		Id:    oidExtensionSubjectAltName,
-		Value: rawBytes,
-	}, nil
-}
-
 // createSubjectAltNameExtension will construct an Extension containing all
 // SubjectAlternativeNames held in a Certificate. It implements more types than
 // the golang x509 library, so it is used whenever OtherName or RegisteredID
