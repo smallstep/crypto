@@ -1,6 +1,7 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -236,6 +237,101 @@ func TestSubjectAlternativeName_Set(t *testing.T) {
 
 	if panicCount != 2 {
 		t.Errorf("SubjectAlternativeName.Set() number of panics = %d, want 2", panicCount)
+	}
+}
+
+func TestSubjectAlternativeName_RawValue(t *testing.T) {
+	type fields struct {
+		Type  string
+		Value string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    asn1.RawValue
+		wantErr bool
+	}{
+		{"ip", fields{"auto", "1.1.1.1"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{1, 1, 1, 1}}, false},
+		{"ipv6", fields{"auto", "2001:0db8:0000:0000:0000:ff00:0042:8329"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0xff, 0, 0, 0x42, 0x83, 0x29}}, false},
+		{"uri", fields{"auto", "urn:smallstep:1234"}, asn1.RawValue{Class: 2, Tag: 6, Bytes: []byte("urn:smallstep:1234")}, false},
+		{"email", fields{"auto", "foo@bar.com"}, asn1.RawValue{Class: 2, Tag: 1, Bytes: []byte("foo@bar.com")}, false},
+		{"dns", fields{"auto", "bar.com"}, asn1.RawValue{Class: 2, Tag: 2, Bytes: []byte("bar.com")}, false},
+		{"registeredID", fields{"registeredID", "1.2.3.4"}, asn1.RawValue{
+			// Class 2, Type: 8
+			FullBytes: []byte{(2 << 6) | 8, 3, 0x20 | 1<<3 | 2, 3, 4},
+		}, false},
+		{"permanentIdentifier", fields{"permanentIdentifier", "0123456789"}, asn1.RawValue{
+			FullBytes: append(append(
+				[]byte{160, 26, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				[]byte{160, 14, 48, 12, 12, 10}...),
+				[]byte("0123456789")...),
+		}, false},
+		{"otherName int", fields{"1.2.3.4", "int:1024"}, asn1.RawValue{
+			FullBytes: []byte{160, 11, 6, 3, 42, 3, 4, 160, 4, 2, 2, 4, 0},
+		}, false},
+		{"otherName oid", fields{"1.2.3.4", "oid:1.2.3.4"}, asn1.RawValue{
+			FullBytes: []byte{160, 12, 6, 3, 42, 3, 4, 160, 5, 6, 3, 42, 3, 4},
+		}, false},
+		{"otherName raw", fields{"1.2.3.4", "raw:MTIzNA=="}, asn1.RawValue{
+			FullBytes: append([]byte{160, 9, 6, 3, 42, 3, 4}, []byte("1234")...),
+		}, false},
+		{"otherName utf8", fields{"1.2.3.4", "utf8:á∫ç1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 20, 6, 3, 42, 3, 4, 160, 13, 12, 11}, []byte("á∫ç1234")...),
+		}, false},
+		{"otherName ia5", fields{"1.2.3.4", "ia5:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 22, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName numeric", fields{"1.2.3.4", "numeric:1024"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 13, 6, 3, 42, 3, 4, 160, 6, 18, 4}, []byte("1024")...),
+		}, false},
+		{"otherName printable", fields{"1.2.3.4", "printable:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName default", fields{"1.2.3.4", "foo:abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName no type", fields{"1.2.3.4", "abc1234"}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"fail dn", fields{"dn", "1234"}, asn1.RawValue{}, true},
+		{"fail x400Address", fields{"x400Address", "1234"}, asn1.RawValue{}, true},
+		{"fail ediPartyName", fields{"ediPartyName", "1234"}, asn1.RawValue{}, true},
+		{"fail email", fields{"email", "nöt@ia5.com"}, asn1.RawValue{}, true},
+		{"fail dns", fields{"dns", "xn--bücher.example.com"}, asn1.RawValue{}, true},
+		{"fail dns empty", fields{"dns", ""}, asn1.RawValue{}, true},
+		{"fail uri", fields{"uri", "urn:nöt:ia5"}, asn1.RawValue{}, true},
+		{"fail ip", fields{"ip", "1.2.3.4.5"}, asn1.RawValue{}, true},
+		{"fail registeredID", fields{"registeredID", "4.3.2.1"}, asn1.RawValue{}, true},
+		{"fail registeredID empty", fields{"registeredID", ""}, asn1.RawValue{}, true},
+		{"fail registeredID parse", fields{"registeredID", "a.b.c.d"}, asn1.RawValue{}, true},
+		{"fail otherName parse", fields{"a.b.c.d", "foo"}, asn1.RawValue{}, true},
+		{"fail otherName marshal", fields{"1", "foo"}, asn1.RawValue{}, true},
+		{"fail otherName int", fields{"1.2.3.4", "int:abc"}, asn1.RawValue{}, true},
+		{"fail otherName oid", fields{"1.2.3.4", "oid:4.3.2.1"}, asn1.RawValue{}, true},
+		{"fail otherName oid parse", fields{"1.2.3.4", "oid:a.b.c.d"}, asn1.RawValue{}, true},
+		{"fail otherName raw", fields{"1.2.3.4", "raw:abc"}, asn1.RawValue{}, true},
+		{"fail otherName utf8", fields{"1.2.3.4", "utf8:\xff"}, asn1.RawValue{}, true},
+		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5"}, asn1.RawValue{}, true},
+		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc"}, asn1.RawValue{}, true},
+		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable"}, asn1.RawValue{}, true},
+		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable"}, asn1.RawValue{}, true},
+		{"fail otherName no type", fields{"1.2.3.4", "nötprintable"}, asn1.RawValue{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := SubjectAlternativeName{
+				Type:  tt.fields.Type,
+				Value: tt.fields.Value,
+			}
+			got, err := s.RawValue()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SubjectAlternativeName.RawValue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SubjectAlternativeName.RawValue() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -964,6 +1060,120 @@ func TestSerialNumber_UnmarshalJSON(t *testing.T) {
 			}
 			if !reflect.DeepEqual(s, tt.want) {
 				t.Errorf("SerialNumber.UnmarshalJSON() = %v, want %v", s, tt.want)
+			}
+		})
+	}
+}
+
+func Test_createSubjectAltNameExtension(t *testing.T) {
+	type args struct {
+		c              *Certificate
+		subjectIsEmpty bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    Extension
+		wantErr bool
+	}{
+		{"ok dns", args{&Certificate{
+			DNSNames: []string{"foo.com"},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
+		}, false},
+		{"ok dns critical", args{&Certificate{
+			DNSNames: []string{"foo.com"},
+		}, true}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: true,
+			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
+		}, false},
+		{"ok email", args{&Certificate{
+			EmailAddresses: []string{"bar@foo.com"},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 13, 0x80 | nameTypeEmail, 11}, []byte("bar@foo.com")...),
+		}, false},
+		{"ok uri", args{&Certificate{
+			URIs: []*url.URL{{Scheme: "urn", Opaque: "foo:bar"}},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    append([]byte{0x30, 13, 0x80 | nameTypeURI, 11}, []byte("urn:foo:bar")...),
+		}, false},
+		{"ok ip", args{&Certificate{
+			IPAddresses: []net.IP{net.ParseIP("1.2.3.4")},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value:    []byte{0x30, 6, 0x80 | nameTypeIP, 4, 1, 2, 3, 4},
+		}, false},
+		{"ok sans", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "email", Value: "bar@foo.com"},
+				{Type: "uri", Value: "urn:foo:bar"},
+				{Type: "ip", Value: "1.2.3.4"},
+			},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value: bytes.Join([][]byte{
+				{0x30, (2 + 7) + (2 + 11) + (2 + 11) + (2 + 4)},
+				{0x80 | nameTypeDNS, 7}, []byte("foo.com"),
+				{0x80 | nameTypeEmail, 11}, []byte("bar@foo.com"),
+				{0x80 | nameTypeURI, 11}, []byte("urn:foo:bar"),
+				{0x80 | nameTypeIP, 4, 1, 2, 3, 4},
+			}, nil),
+		}, false},
+		{"ok otherName", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "1.2.3.4", Value: "utf8:bar@foo.com"},
+			},
+		}, false}, Extension{
+			ID:       oidExtensionSubjectAltName,
+			Critical: false,
+			Value: bytes.Join([][]byte{
+				{0x30, (2 + 7) + (2 + 20)},
+				{0x80 | nameTypeDNS, 7}, []byte("foo.com"),
+				{0xA0, 20, asn1.TagOID, 3, 0x20 | 0x0A, 3, 4},
+				{0xA0, 13, asn1.TagUTF8String, 11}, []byte("bar@foo.com"),
+			}, nil),
+		}, false},
+		{"fail dns", args{&Certificate{
+			DNSNames: []string{""},
+		}, false}, Extension{}, true},
+		{"fail email", args{&Certificate{
+			EmailAddresses: []string{"nöt@ia5.com"},
+		}, false}, Extension{}, true},
+		{"fail uri", args{&Certificate{
+			URIs: []*url.URL{{Scheme: "urn", Opaque: "nöt:ia5"}},
+		}, false}, Extension{}, true},
+		{"fail ip", args{&Certificate{
+			IPAddresses: []net.IP{{1, 2, 3}},
+		}, false}, Extension{}, true},
+		{"fail otherName", args{&Certificate{
+			SANs: []SubjectAlternativeName{
+				{Type: "1.2.3.4", Value: "int:bar@foo.com"},
+			},
+		}, false}, Extension{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "fail dns" {
+				t.Log("foo")
+			}
+			got, err := createSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", got, tt.want)
 			}
 		})
 	}

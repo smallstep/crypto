@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        go: [ '1.17', '1.18' ]
+        go: [ '1.18', '1.19' ]
     steps:
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y libpcsclite-dev
@@ -27,13 +27,13 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          version: 'v1.46.2'
+          version: 'v1.48'
           args: --timeout=30m
       - name: Test
         run: V=1 make ci
       - name: Codecov
         uses: codecov/codecov-action@v1.2.1
-        if: matrix.go == '1.18'
+        if: matrix.go == '1.19'
         with:
           file: ./coverage.out
           name: codecov-umbrella

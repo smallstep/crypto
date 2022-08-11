@@ -227,3 +227,32 @@ func Test_generateSubjectKeyID(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeName(t *testing.T) {
+	type args struct {
+		domain string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"ok", args{"smallstep.com"}, "smallstep.com", false},
+		{"ok ascii", args{"bücher.example.com"}, "xn--bcher-kva.example.com", false},
+		{"fail", args{"xn--bücher.example.com"}, "", true},
+		{"fail empty", args{""}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := SanitizeName(tt.args.domain)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SanitizeName() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("SanitizeName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

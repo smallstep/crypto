@@ -110,6 +110,16 @@ func TestNewCertificate(t *testing.T) {
 	crBadSignateure, _ := createCertificateRequest(t, "fail", []string{"foo.com"})
 	crBadSignateure.PublicKey = priv.Public()
 
+	customSANsData := CreateTemplateData("commonName", nil)
+	customSANsData.Set(SANsKey, []SubjectAlternativeName{
+		{Type: PermanentIdentifierType, Value: "123456"},
+		{Type: "1.2.3.4", Value: "utf8:otherName"},
+	})
+	badCustomSANsData := CreateTemplateData("commonName", nil)
+	badCustomSANsData.Set(SANsKey, []SubjectAlternativeName{
+		{Type: "1.2.3.4", Value: "int:not-an-int"},
+	})
+
 	ipNet := func(s string) *net.IPNet {
 		_, ipNet, err := net.ParseCIDR(s)
 		if err != nil {
@@ -145,6 +155,25 @@ func TestNewCertificate(t *testing.T) {
 		{"okDefaultTemplate", args{cr, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
 			Subject:  Subject{CommonName: "commonName"},
 			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
+			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.Ed25519,
+		}, false},
+		{"okCustomSANs", args{cr, []Option{WithTemplate(DefaultLeafTemplate, customSANsData)}}, &Certificate{
+			Subject: Subject{CommonName: "commonName"},
+			SANs: []SubjectAlternativeName{
+				{Type: PermanentIdentifierType, Value: "123456"},
+				{Type: "1.2.3.4", Value: "utf8:otherName"},
+			},
+			Extensions: []Extension{{
+				ID:       ObjectIdentifier{2, 5, 29, 17},
+				Critical: false,
+				Value:    []byte{48, 44, 160, 22, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3, 160, 10, 48, 8, 12, 6, 49, 50, 51, 52, 53, 54, 160, 18, 6, 3, 42, 3, 4, 160, 11, 12, 9, 111, 116, 104, 101, 114, 78, 97, 109, 101},
+			}},
 			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
 				x509.ExtKeyUsageServerAuth,
@@ -241,6 +270,7 @@ func TestNewCertificate(t *testing.T) {
 		{"failTemplate", args{cr, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
 		{"missingTemplate", args{cr, []Option{WithTemplateFile("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
 		{"badJson", args{cr, []Option{WithTemplate(`"this is not a json object"`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"failCustomSANs", args{cr, []Option{WithTemplate(DefaultLeafTemplate, badCustomSANsData)}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -382,7 +412,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				PublicKey:             tt.fields.PublicKey,
 			}
 			if got := c.GetCertificate(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Certificate.GetCertificate() = \n%+v, want \n%+v", got, tt.want)
+				t.Errorf("Certificate.GetCertificate() = %v, want %v", got, tt.want)
 			}
 		})
 	}

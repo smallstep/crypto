@@ -110,13 +110,13 @@ func (p PrivateKey) Sign(rand io.Reader, message []byte, opts crypto.SignerOpts)
 // It implements the XEdDSA sign method defined in
 // https://signal.org/docs/specifications/xeddsa/#xeddsa
 //
-//   xeddsa_sign(k, M, Z):
-//       A, a = calculate_key_pair(k)
-//       r = hash1(a || M || Z) (mod q)
-//       R = rB
-//       h = hash(R || A || M) (mod q)
-//       s = r + ha (mod q)
-//       return R || s
+//	xeddsa_sign(k, M, Z):
+//	    A, a = calculate_key_pair(k)
+//	    r = hash1(a || M || Z) (mod q)
+//	    R = rB
+//	    h = hash(R || A || M) (mod q)
+//	    s = r + ha (mod q)
+//	    return R || s
 func Sign(rand io.Reader, p PrivateKey, message []byte) (signature []byte, err error) {
 	if l := len(p); l != PrivateKeySize {
 		panic("x25519: bad private key length: " + strconv.Itoa(l))
@@ -184,17 +184,17 @@ func Sign(rand io.Reader, p PrivateKey, message []byte) (signature []byte, err e
 // It implements the XEdDSA verify method defined in
 // https://signal.org/docs/specifications/xeddsa/#xeddsa
 //
-//   xeddsa_verify(u, M, (R || s)):
-//       if u >= p or R.y >= 2|p| or s >= 2|q|:
-//           return false
-//       A = convert_mont(u)
-//       if not on_curve(A):
-//           return false
-//       h = hash(R || A || M) (mod q)
-//       Rcheck = sB - hA
-//       if bytes_equal(R, Rcheck):
-//           return true
-//       return false
+//	xeddsa_verify(u, M, (R || s)):
+//	    if u >= p or R.y >= 2|p| or s >= 2|q|:
+//	        return false
+//	    A = convert_mont(u)
+//	    if not on_curve(A):
+//	        return false
+//	    h = hash(R || A || M) (mod q)
+//	    Rcheck = sB - hA
+//	    if bytes_equal(R, Rcheck):
+//	        return true
+//	    return false
 func Verify(publicKey PublicKey, message, sig []byte) bool {
 	// The following code should be equivalent to:
 	//
@@ -242,15 +242,15 @@ func Verify(publicKey PublicKey, message, sig []byte) bool {
 // public key and private key (A, a) as defined in
 // https://signal.org/docs/specifications/xeddsa/#elliptic-curve-conversions
 //
-//   calculate_key_pair(k):
-//       E = kB
-//       A.y = E.y
-//       A.s = 0
-//       if E.s == 1:
-//           a = -k (mod q)
-//       else:
-//           a = k (mod q)
-//       return A, a
+//	calculate_key_pair(k):
+//	    E = kB
+//	    A.y = E.y
+//	    A.s = 0
+//	    if E.s == 1:
+//	        a = -k (mod q)
+//	    else:
+//	        a = k (mod q)
+//	    return A, a
 func (p PrivateKey) calculateKeyPair() ([]byte, *edwards25519.Scalar, error) {
 	var pA edwards25519.Point
 	var sa edwards25519.Scalar
@@ -278,11 +278,11 @@ func (p PrivateKey) calculateKeyPair() ([]byte, *edwards25519.Scalar, error) {
 // point P, according to
 // https://signal.org/docs/specifications/xeddsa/#elliptic-curve-conversions
 //
-//   convert_mont(u):
-//     umasked = u (mod 2|p|)
-//     P.y = u_to_y(umasked)
-//     P.s = 0
-//     return P
+//	convert_mont(u):
+//	  umasked = u (mod 2|p|)
+//	  P.y = u_to_y(umasked)
+//	  P.s = 0
+//	  return P
 func convertMont(u PublicKey) (*edwards25519.Point, error) {
 	um, err := (&field.Element{}).SetBytes(u)
 	if err != nil {

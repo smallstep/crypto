@@ -17,6 +17,7 @@ type RenewFunc func() (*tls.Certificate, *tls.Config, error)
 var MinCertDuration = time.Minute
 
 // Renewer automatically renews a tls certificate using a RenewFunc.
+//
 //nolint:gocritic // ignore exposedSyncMutex
 type Renewer struct {
 	sync.RWMutex

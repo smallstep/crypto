@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -67,7 +66,7 @@ func TestReadPasswordFromFile(t *testing.T) {
 }
 
 func TestWriteFile(t *testing.T) {
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "go-tests")
+	tmpDir, err := os.MkdirTemp(os.TempDir(), "go-tests")
 	if err != nil {
 		t.Fatal(err)
 	}
