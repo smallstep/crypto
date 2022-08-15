@@ -241,6 +241,7 @@ func TestSanitizeName(t *testing.T) {
 		{"ok", args{"smallstep.com"}, "smallstep.com", false},
 		{"ok ascii", args{"bücher.example.com"}, "xn--bcher-kva.example.com", false},
 		{"fail", args{"xn--bücher.example.com"}, "", true},
+		{"fail with port", args{"smallstep.com:8080"}, "", true},
 		{"fail empty", args{""}, "", true},
 	}
 	for _, tt := range tests {
