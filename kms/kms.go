@@ -20,6 +20,9 @@ type CertificateManager = apiv1.CertificateManager
 // Options are the KMS options. They represent the kms object in the ca.json.
 type Options = apiv1.Options
 
+// Type represents the KMS type used.
+type Type = apiv1.Type
+
 // Default is the implementation of the default KMS.
 var Default = &softkms.SoftKMS{}
 
