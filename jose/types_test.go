@@ -46,8 +46,8 @@ func TestIsSymmetric(t *testing.T) {
 		want bool
 	}{
 		{"EC", args{mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0)}, false},
-		{"RSA", args{mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024)}, false},
-		{"RSA", args{mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024)}, false},
+		{"RSA", args{mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048)}, false},
+		{"RSA", args{mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048)}, false},
 		{"OKP", args{mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)}, false},
 		{"oct", args{mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64)}, true},
 	}
@@ -70,8 +70,8 @@ func TestIsAsymmetric(t *testing.T) {
 		want bool
 	}{
 		{"EC", args{mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0)}, true},
-		{"RSA", args{mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024)}, true},
-		{"RSA", args{mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024)}, true},
+		{"RSA", args{mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048)}, true},
+		{"RSA", args{mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048)}, true},
 		{"OKP", args{mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)}, true},
 		{"oct", args{mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64)}, false},
 	}

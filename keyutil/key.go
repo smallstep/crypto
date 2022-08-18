@@ -184,6 +184,10 @@ func generateECKey(crv string) (crypto.Signer, error) {
 }
 
 func generateRSAKey(bits int) (crypto.Signer, error) {
+	if min := MinRSAKeyBytes * 8; bits < min {
+		return nil, errors.Errorf("the size of the RSA key should be at least %d bits", min)
+	}
+
 	key, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return nil, errors.Wrap(err, "error generating RSA key")

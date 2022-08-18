@@ -168,8 +168,8 @@ func TestEncryptJWK(t *testing.T) {
 
 func TestEncryptDecryptJWK(t *testing.T) {
 	ecKey := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0))
-	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024))
-	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024))
+	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048))
+	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048))
 	edKey := fixJWK(mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0))
 	octKey := fixJWK(mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64))
 
