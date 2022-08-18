@@ -1,6 +1,7 @@
 package x509util
 
 import (
+	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -63,20 +64,21 @@ const (
 	IPType                  = "ip"
 	RegisteredIDType        = "registeredID"
 	PermanentIdentifierType = "permanentIdentifier"
+	HardwareModuleType      = "hardwareModule"
 )
 
 // These type ids are defined in RFC 5280 page 36
 // nolint:deadcode // ignore
 const (
-	nameTypeOtherName    = 0
-	nameTypeEmail        = 1
-	nameTypeDNS          = 2
-	nameTypeX400         = 3
-	nameTypeDirectory    = 4
-	nameTypeEDI          = 5
-	nameTypeURI          = 6
-	nameTypeIP           = 7
-	nameTypeRegisteredID = 8
+	nameTypeOtherName     = 0
+	nameTypeEmail         = 1
+	nameTypeDNS           = 2
+	nameTypeX400          = 3
+	nameTypeDirectoryName = 4
+	nameTypeEDI           = 5
+	nameTypeURI           = 6
+	nameTypeIP            = 7
+	nameTypeRegisteredID  = 8
 )
 
 // sanTypeSeparator is used to set the type of otherName SANs. The format string
@@ -86,6 +88,9 @@ const sanTypeSeparator = ":"
 
 // RFC 4043 - https://datatracker.ietf.org/doc/html/rfc4043
 var oidPermanentIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
+
+// RFC 4108 - https://www.rfc-editor.org/rfc/rfc4108
+var oidHardwareModuleIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 4}
 
 // RFC 5280 - https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
 //
@@ -111,8 +116,52 @@ type otherName struct {
 //	  assigner           OBJECT IDENTIFIER OPTIONAL
 //	}
 type PermanentIdentifier struct {
-	IdentifierValue string                `asn1:"utf8,optional"`
-	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
+	IdentifierValue string                `asn1:"utf8,optional" json:"identifier"`
+	Assigner        asn1.ObjectIdentifier `asn1:"optional" json:"assigner,omitempty"`
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (p *PermanentIdentifier) UnmarshalJSON(b []byte) error {
+	v := struct {
+		Identifier string           `json:"identifier"`
+		Assigner   ObjectIdentifier `json:"assigner"`
+	}{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	p.IdentifierValue = v.Identifier
+	p.Assigner = asn1.ObjectIdentifier(v.Assigner)
+	return nil
+}
+
+// HardwareModuleName is defined in RFC 4108 as an optional feature that by be
+// used to identify a hardware module.
+//
+// The OID defined for this SAN is "1.3.6.1.5.5.7.8.4".
+//
+// See https://www.rfc-editor.org/rfc/rfc4108#section-5
+//
+//	HardwareModuleName ::= SEQUENCE {
+//	  hwType OBJECT IDENTIFIER,
+//	  hwSerialNum OCTET STRING
+//	}
+type HardwareModuleName struct {
+	Type         asn1.ObjectIdentifier `json:"type"`
+	SerialNumber []byte                `asn1:"tag:4" json:"serialNumber"`
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (hw *HardwareModuleName) UnmarshalJSON(b []byte) error {
+	v := struct {
+		Type         ObjectIdentifier `json:"type"`
+		SerialNumber []byte           `json:"serialNumber"`
+	}{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	hw.Type = asn1.ObjectIdentifier(v.Type)
+	hw.SerialNumber = v.SerialNumber
+	return nil
 }
 
 // Extension is the JSON representation of a raw X.509 extensions.
@@ -194,9 +243,13 @@ func (o *ObjectIdentifier) UnmarshalJSON(data []byte) error {
 // SubjectAlternativeName represents a X.509 subject alternative name. Types
 // supported are "dns", "email", "ip", "uri". A special type "auto" or "" can be
 // used to try to guess the type of the value.
+//
+// ASN1Value can only be used for those types where the string value cannot
+// contain enough information to encode the value.
 type SubjectAlternativeName struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
+	Type      string          `json:"type"`
+	Value     string          `json:"value"`
+	ASN1Value json.RawMessage `json:"asn1Value,omitempty"`
 }
 
 // Set sets the subject alternative name in the given x509.Certificate.
@@ -287,14 +340,51 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		}
 		return asn1.RawValue{FullBytes: rawBytes}, nil
 	case PermanentIdentifierType:
-		otherName, err := marshalOtherName(oidPermanentIdentifier, PermanentIdentifier{
-			IdentifierValue: s.Value,
-		})
+		var v PermanentIdentifier
+		switch {
+		case len(s.ASN1Value) != 0:
+			if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
+				return zero, errors.Wrap(err, "error unmarshaling PermanentIdentifier SAN")
+			}
+		case s.Value != "":
+			v.IdentifierValue = s.Value
+		default: // continue, both identifierValue and assigner are optional
+		}
+		otherName, err := marshalOtherName(oidPermanentIdentifier, v)
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
 		}
 		return otherName, nil
-	case X400AddressType, DirectoryNameType, EDIPartyNameType:
+	case HardwareModuleType:
+		if len(s.ASN1Value) == 0 {
+			return zero, errors.New("error parsing HardwareModuleName SAN: empty asn1Value is not allowed")
+		}
+		var v HardwareModuleName
+		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
+			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
+		}
+		otherName, err := marshalOtherName(oidHardwareModuleIdentifier, v)
+		if err != nil {
+			return zero, errors.Wrap(err, "error marshaling HardwareModuleName SAN")
+		}
+		return otherName, nil
+	case DirectoryNameType:
+		if len(s.ASN1Value) == 0 {
+			return zero, errors.New("error parsing DirectoryName SAN: empty asn1Value is not allowed")
+		}
+		var dn Name
+		if err := json.Unmarshal(s.ASN1Value, &dn); err != nil {
+			return zero, errors.Wrap(err, "error unmarshaling DirectoryName SAN")
+		}
+		rdn, err := asn1.Marshal(dn.goValue().ToRDNSequence())
+		if err != nil {
+			return zero, errors.Wrap(err, "error marshaling DirectoryName SAN")
+		}
+		if bytes.Equal(rdn, emptyASN1Subject) {
+			return zero, errors.Wrap(err, "error parsing DirectoryName SAN: empty or malformed ans1Value")
+		}
+		return asn1.RawValue{Tag: nameTypeDirectoryName, Class: asn1.ClassContextSpecific, Bytes: rdn}, nil
+	case X400AddressType, EDIPartyNameType:
 		return zero, fmt.Errorf("unimplemented SAN type %s", s.Type)
 	default:
 		// Assume otherName with a valid oid in type.
