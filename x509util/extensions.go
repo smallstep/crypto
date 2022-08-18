@@ -383,7 +383,12 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if bytes.Equal(rdn, emptyASN1Subject) {
 			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed ans1Value")
 		}
-		return asn1.RawValue{Tag: nameTypeDirectoryName, Class: asn1.ClassContextSpecific, Bytes: rdn}, nil
+		return asn1.RawValue{
+			Class:      asn1.ClassContextSpecific,
+			Tag:        nameTypeDirectoryName,
+			IsCompound: true,
+			Bytes:      rdn,
+		}, nil
 	case X400AddressType, EDIPartyNameType:
 		return zero, fmt.Errorf("unimplemented SAN type %s", s.Type)
 	default:

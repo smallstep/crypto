@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
@@ -603,6 +604,52 @@ func TestCreateCertificateTemplate(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateCertificateTemplate() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestCreateCertificate_debug(t *testing.T) {
+	csr, _ := createCertificateRequest(t, "rocket", nil)
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+
+	data := CreateTemplateData("rocket", nil)
+	data.Set(SANsKey, []SubjectAlternativeName{
+		{Type: DirectoryNameType, ASN1Value: []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)},
+	})
+
+	tests := []struct {
+		name string
+		sans []SubjectAlternativeName
+	}{
+		{"directoryName", []SubjectAlternativeName{
+			{Type: DirectoryNameType, ASN1Value: []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)},
+		}},
+		{"hardwareModule", []SubjectAlternativeName{
+			{Type: HardwareModuleType, ASN1Value: []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)},
+		}},
+		{"permanentIdentifier", []SubjectAlternativeName{
+			{Type: PermanentIdentifierType, ASN1Value: []byte(`{"identifier":"0123456789","assigner":"1.2.3.4"}`)},
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := CreateTemplateData("rocket", nil)
+			data.Set(SANsKey, tt.sans)
+
+			c, err := NewCertificate(csr, WithTemplate(DefaultLeafTemplate, data))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			template := c.GetCertificate()
+			cert, err := CreateCertificate(template, iss, csr.PublicKey, issPriv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("\n%s", pem.EncodeToMemory(&pem.Block{
+				Type: "CERTIFICATE", Bytes: cert.Raw,
+			}))
 		})
 	}
 }

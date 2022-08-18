@@ -297,7 +297,7 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 			}, nil),
 		}, false},
 		{"directoryName", fields{"dn", "", []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)}, asn1.RawValue{
-			Class: 2, Tag: 4,
+			Class: 2, Tag: 4, IsCompound: true,
 			Bytes: bytes.Join([][]byte{
 				{0x30, 45, 49, 11},
 				{48, 9, 6, 3, 85, 4, 6, asn1.TagPrintableString, 2}, []byte("US"),
