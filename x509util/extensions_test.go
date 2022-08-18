@@ -341,13 +341,16 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"fail uri", fields{"uri", "urn:nöt:ia5", nil}, asn1.RawValue{}, true},
 		{"fail ip", fields{"ip", "1.2.3.4.5", nil}, asn1.RawValue{}, true},
 		{"fail permanentIdentifier json", fields{"permanentIdentifier", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail permanentIdentifier unmarshalJson", fields{"permanentIdentifier", "", []byte(`{"identifier":1234}`)}, asn1.RawValue{}, true},
 		{"fail permanentIdentifier oid", fields{"permanentIdentifier", "", []byte(`{"identifier":"0123456789","assigner":"3.2.3.4"}`)}, asn1.RawValue{}, true},
 		{"fail hardwareModule empty", fields{"hardwareModule", "", nil}, asn1.RawValue{}, true},
 		{"fail hardwareModule json", fields{"hardwareModule", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModule unmarshalJSON", fields{"hardwareModule", "", []byte(`{"type":1234}`)}, asn1.RawValue{}, true},
 		{"fail hardwareModule oid", fields{"hardwareModule", "", []byte(`{"type":"3.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{}, true},
 		{"fail directoryName empty", fields{"dn", "", nil}, asn1.RawValue{}, true},
 		{"fail directoryName empty name", fields{"dn", "", []byte(`{}`)}, asn1.RawValue{}, true},
 		{"fail directoryName json", fields{"dn", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail directoryName asn1", fields{"dn", "", []byte(`{"extraNames":[{"type":"4.3.2.1","value":"oid"}]}`)}, asn1.RawValue{}, true},
 		{"fail registeredID", fields{"registeredID", "4.3.2.1", nil}, asn1.RawValue{}, true},
 		{"fail registeredID empty", fields{"registeredID", "", nil}, asn1.RawValue{}, true},
 		{"fail registeredID parse", fields{"registeredID", "a.b.c.d", nil}, asn1.RawValue{}, true},
@@ -1212,9 +1215,6 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "fail dns" {
-				t.Log("foo")
-			}
 			got, err := createSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
