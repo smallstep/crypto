@@ -381,7 +381,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			return zero, errors.Wrap(err, "error marshaling DirectoryName SAN")
 		}
 		if bytes.Equal(rdn, emptyASN1Subject) {
-			return zero, errors.Wrap(err, "error parsing DirectoryName SAN: empty or malformed ans1Value")
+			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed ans1Value")
 		}
 		return asn1.RawValue{Tag: nameTypeDirectoryName, Class: asn1.ClassContextSpecific, Bytes: rdn}, nil
 	case X400AddressType, EDIPartyNameType:
@@ -425,14 +425,14 @@ func marshalOtherName(oid asn1.ObjectIdentifier, value interface{}) (asn1.RawVal
 	if err != nil {
 		return asn1.RawValue{}, err
 	}
-	bytes, err := asn1.MarshalWithParams(otherName{
+	b, err := asn1.MarshalWithParams(otherName{
 		TypeID: oid,
 		Value:  asn1.RawValue{FullBytes: valueBytes},
 	}, "tag:0")
 	if err != nil {
 		return asn1.RawValue{}, err
 	}
-	return asn1.RawValue{FullBytes: bytes}, nil
+	return asn1.RawValue{FullBytes: b}, nil
 }
 
 // marshalExplicitValue marshals the given value with given type and returns the
