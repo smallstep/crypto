@@ -126,8 +126,8 @@ func (t TemplateData) SetCertificateRequest(cr *x509.CertificateRequest) {
 	t.SetInsecure(CertificateRequestKey, newCertificateRequest(cr))
 }
 
-// SetWebhooks sets the given webhook response in the webhooks template data.
-func (t TemplateData) SetWebhooks(webhookName string, data interface{}) {
+// SetWebhook sets the given webhook response in the webhooks template data.
+func (t TemplateData) SetWebhook(webhookName string, data interface{}) {
 	if webhooksMap, ok := t[WebhooksKey].(map[string]interface{}); ok {
 		webhooksMap[webhookName] = data
 	} else {
