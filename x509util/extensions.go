@@ -116,22 +116,20 @@ type otherName struct {
 //	  assigner           OBJECT IDENTIFIER OPTIONAL
 //	}
 type PermanentIdentifier struct {
-	IdentifierValue string                `asn1:"utf8,optional" json:"identifier"`
-	Assigner        asn1.ObjectIdentifier `asn1:"optional" json:"assigner,omitempty"`
+	Identifier string           `json:"identifier,omitempty"`
+	Assigner   ObjectIdentifier `json:"assigner,omitempty"`
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (p *PermanentIdentifier) UnmarshalJSON(b []byte) error {
-	v := struct {
-		Identifier string           `json:"identifier"`
-		Assigner   ObjectIdentifier `json:"assigner"`
-	}{}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
+type asn1PermanentIdentifier struct {
+	IdentifierValue string                `asn1:"utf8,optional"`
+	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
+}
+
+func (p *PermanentIdentifier) ans1Type() asn1PermanentIdentifier {
+	return asn1PermanentIdentifier{
+		IdentifierValue: p.Identifier,
+		Assigner:        asn1.ObjectIdentifier(p.Assigner),
 	}
-	p.IdentifierValue = v.Identifier
-	p.Assigner = asn1.ObjectIdentifier(v.Assigner)
-	return nil
 }
 
 // HardwareModuleName is defined in RFC 4108 as an optional feature that by be
@@ -146,22 +144,20 @@ func (p *PermanentIdentifier) UnmarshalJSON(b []byte) error {
 //	  hwSerialNum OCTET STRING
 //	}
 type HardwareModuleName struct {
-	Type         asn1.ObjectIdentifier `json:"type"`
-	SerialNumber []byte                `asn1:"tag:4" json:"serialNumber"`
+	Type         ObjectIdentifier `json:"type"`
+	SerialNumber []byte           `json:"serialNumber"`
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (hw *HardwareModuleName) UnmarshalJSON(b []byte) error {
-	v := struct {
-		Type         ObjectIdentifier `json:"type"`
-		SerialNumber []byte           `json:"serialNumber"`
-	}{}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
+type asn1HardwareModuleName struct {
+	Type         asn1.ObjectIdentifier
+	SerialNumber []byte `asn1:"tag:4"`
+}
+
+func (h *HardwareModuleName) ans1Type() asn1HardwareModuleName {
+	return asn1HardwareModuleName{
+		Type:         asn1.ObjectIdentifier(h.Type),
+		SerialNumber: h.SerialNumber,
 	}
-	hw.Type = asn1.ObjectIdentifier(v.Type)
-	hw.SerialNumber = v.SerialNumber
-	return nil
 }
 
 // Extension is the JSON representation of a raw X.509 extensions.
@@ -347,10 +343,10 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 				return zero, errors.Wrap(err, "error unmarshaling PermanentIdentifier SAN")
 			}
 		case s.Value != "":
-			v.IdentifierValue = s.Value
+			v.Identifier = s.Value
 		default: // continue, both identifierValue and assigner are optional
 		}
-		otherName, err := marshalOtherName(oidPermanentIdentifier, v)
+		otherName, err := marshalOtherName(oidPermanentIdentifier, v.ans1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
 		}
@@ -363,7 +359,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
 		}
-		otherName, err := marshalOtherName(oidHardwareModuleIdentifier, v)
+		otherName, err := marshalOtherName(oidHardwareModuleIdentifier, v.ans1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling HardwareModuleName SAN")
 		}
