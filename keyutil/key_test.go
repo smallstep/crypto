@@ -236,12 +236,21 @@ func TestGenerateKey_rsa(t *testing.T) {
 		wantType reflect.Type
 		wantErr  bool
 	}{
-		{"RSA1024", args{"RSA", "", 1024}, reflect.TypeOf(&rsa.PrivateKey{}), false},
 		{"RSA2048", args{"RSA", "", 2048}, reflect.TypeOf(&rsa.PrivateKey{}), false},
+		{"RSA3072", args{"RSA", "", 3072}, reflect.TypeOf(&rsa.PrivateKey{}), false},
 		{"fail", args{"RSA", "", 1}, nil, true},
+		{"fail size", args{"RSA", "", 1024}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Get rid of size validation for coverage purposes.
+			if tt.args.size == 1 {
+				tmp := MinRSAKeyBytes
+				MinRSAKeyBytes = 0
+				t.Cleanup(func() {
+					MinRSAKeyBytes = tmp
+				})
+			}
 			got, err := GenerateKey(tt.args.kty, tt.args.crv, tt.args.size)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateKey() error = %v, wantErr %v", err, tt.wantErr)
@@ -324,9 +333,9 @@ func TestGenerateKeyPair_rsa(t *testing.T) {
 		wantType1 reflect.Type
 		wantErr   bool
 	}{
-		{"RSA1024", args{"RSA", "", 1024}, pubType, privType, false},
 		{"RSA2048", args{"RSA", "", 2048}, pubType, privType, false},
-		{"fail", args{"RSA", "", 1}, nil, nil, true},
+		{"RSA3072", args{"RSA", "", 3072}, pubType, privType, false},
+		{"fail", args{"RSA", "", 1024}, nil, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

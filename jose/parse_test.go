@@ -245,8 +245,8 @@ func TestParseKey(t *testing.T) {
 	}
 
 	ecKey := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0))
-	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024))
-	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024))
+	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048))
+	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048))
 	edKey := fixJWK(mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0))
 	octKey := fixJWK(mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64))
 
@@ -648,8 +648,8 @@ func Test_guessKeyType(t *testing.T) {
 	}
 
 	ecKey := mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0)
-	rsaKey := mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 1024)
-	rsaPSSKey := mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 1024)
+	rsaKey := mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048)
+	rsaPSSKey := mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048)
 	edKey := mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)
 	octKey := mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64)
 	octHS384 := mustGenerateJWK(t, "oct", "", "HS384", "sig", "", 64)

@@ -564,12 +564,12 @@ func TestSerialize(t *testing.T) {
 		},
 		"RSA Private Key success": {
 			in: func() (interface{}, error) {
-				return keyutil.GenerateKey("RSA", "", 1024)
+				return keyutil.GenerateKey("RSA", "", 2048)
 			},
 		},
 		"RSA Public Key success": {
 			in: func() (interface{}, error) {
-				pub, _, err := keyutil.GenerateKeyPair("RSA", "", 1024)
+				pub, _, err := keyutil.GenerateKeyPair("RSA", "", 2048)
 				return pub, err
 			},
 		},
