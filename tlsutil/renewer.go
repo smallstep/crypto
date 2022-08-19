@@ -199,7 +199,7 @@ func (r *Renewer) renewCertificate() {
 	cert, config, err := r.RenewFunc()
 	if err != nil {
 		next = r.renewJitter / 2
-		next += time.Duration(rand.Int63n(int64(next)))
+		next += time.Duration(mathRandInt63n(int64(next)))
 	} else {
 		r.setCertificate(cert, config)
 		next = r.nextRenewDuration(cert.Leaf.NotAfter)
@@ -211,10 +211,15 @@ func (r *Renewer) renewCertificate() {
 
 func (r *Renewer) nextRenewDuration(notAfter time.Time) time.Duration {
 	d := time.Until(notAfter) - r.renewBefore
-	n := rand.Int63n(int64(r.renewJitter))
+	n := mathRandInt63n(int64(r.renewJitter))
 	d -= time.Duration(n)
 	if d < 0 {
 		d = 0
 	}
 	return d
+}
+
+// nolint:gosec // not used for security reasons
+func mathRandInt63n(n int64) int64 {
+	return rand.Int63n(n)
 }

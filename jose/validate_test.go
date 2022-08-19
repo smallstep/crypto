@@ -1,7 +1,7 @@
 package jose
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
 	"crypto/x509"
 	"encoding/base64"
 	"testing"
@@ -102,6 +102,7 @@ func TestValidateX5T(t *testing.T) {
 			assert.FatalError(t, err)
 			// x5t is the base64 URL encoded SHA1 thumbprint
 			// (see https://tools.ietf.org/html/rfc7515#section-4.1.7)
+			// nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
 			fp := sha1.Sum(cert.Raw)
 			return test{
 				certs: certs,

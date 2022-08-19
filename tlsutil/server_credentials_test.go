@@ -139,6 +139,7 @@ func TestServerCredentials_GetCertificate(t *testing.T) {
 		fmt.Fprintf(w, "ok")
 	}))
 	srv.TLS = &tls.Config{
+		MinVersion:     tls.VersionTLS12,
 		GetCertificate: sc.GetCertificate,
 	}
 	srv.StartTLS()
@@ -156,7 +157,8 @@ func TestServerCredentials_GetCertificate(t *testing.T) {
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{
-		RootCAs: pool,
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    pool,
 	}
 
 	tests := []struct {
@@ -204,6 +206,7 @@ func TestServerCredentials_GetConfigForClient(t *testing.T) {
 		fmt.Fprintf(w, "ok")
 	}))
 	srv.TLS = &tls.Config{
+		MinVersion:         tls.VersionTLS12,
 		GetConfigForClient: sc.GetConfigForClient,
 	}
 	srv.StartTLS()
@@ -221,7 +224,8 @@ func TestServerCredentials_GetConfigForClient(t *testing.T) {
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{
-		RootCAs: pool,
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    pool,
 	}
 
 	tests := []struct {
@@ -271,8 +275,8 @@ func TestServerCredentials_RenewFunc_error(t *testing.T) {
 		name      string
 		tlsConfig *tls.Config
 	}{
-		{"fail GetCertificate", &tls.Config{GetCertificate: sc.GetCertificate}},
-		{"fail GetConfigForClient", &tls.Config{GetConfigForClient: sc.GetConfigForClient}},
+		{"fail GetCertificate", &tls.Config{GetCertificate: sc.GetCertificate, MinVersion: tls.VersionTLS12}},
+		{"fail GetConfigForClient", &tls.Config{GetConfigForClient: sc.GetConfigForClient, MinVersion: tls.VersionTLS12}},
 	}
 
 	for _, tt := range tests {
@@ -290,7 +294,8 @@ func TestServerCredentials_RenewFunc_error(t *testing.T) {
 
 			tr := http.DefaultTransport.(*http.Transport).Clone()
 			tr.TLSClientConfig = &tls.Config{
-				RootCAs: pool,
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    pool,
 			}
 
 			c := &http.Client{Transport: tr}
@@ -312,6 +317,7 @@ func TestServerCredentials_TLSConfig(t *testing.T) {
 		want              *tls.Config
 	}{
 		{"ok", sc, &tls.Config{
+			MinVersion:         tls.VersionTLS12,
 			GetCertificate:     sc.GetCertificate,
 			GetConfigForClient: sc.GetConfigForClient,
 		}},

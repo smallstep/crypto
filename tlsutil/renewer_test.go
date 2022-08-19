@@ -295,7 +295,8 @@ func TestRenewer_GetCertificate(t *testing.T) {
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{
-		RootCAs: pool,
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    pool,
 	}
 
 	tests := []struct {
@@ -348,6 +349,7 @@ func TestRenewer_GetClientCertificate(t *testing.T) {
 		fmt.Fprintf(w, "ok")
 	}))
 	srv.TLS = &tls.Config{
+		MinVersion:     tls.VersionTLS12,
 		GetCertificate: r.GetCertificate,
 		ClientCAs:      pool,
 		ClientAuth:     tls.RequireAndVerifyClientCert,
@@ -359,16 +361,17 @@ func TestRenewer_GetClientCertificate(t *testing.T) {
 	defer srv.Close()
 
 	// Prepare valid client
-
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{
+		MinVersion:           tls.VersionTLS12,
 		GetClientCertificate: r.GetClientCertificate,
 		RootCAs:              pool,
 	}
 
 	trNoCert := http.DefaultTransport.(*http.Transport).Clone()
 	trNoCert.TLSClientConfig = &tls.Config{
-		RootCAs: pool,
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    pool,
 	}
 
 	tests := []struct {
@@ -453,32 +456,38 @@ func TestRenewer_RenewFunc_error(t *testing.T) {
 		clientConfig *tls.Config
 	}{
 		{"fail GetCertificate", &tls.Config{
+			MinVersion:     tls.VersionTLS12,
 			GetCertificate: r.GetCertificate,
 			ClientAuth:     tls.RequireAndVerifyClientCert,
 			ClientCAs:      pool,
 		}, &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 				return tlsCert, nil
 			},
 			RootCAs: pool,
 		}},
 		{"fail GetConfigForClient", &tls.Config{
+			MinVersion:         tls.VersionTLS12,
 			GetConfigForClient: r.GetConfigForClient,
 			ClientAuth:         tls.RequireAndVerifyClientCert,
 			ClientCAs:          pool,
 		}, &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 				return tlsCert, nil
 			},
 			RootCAs: pool,
 		}},
 		{"fail GetClientCertificate", &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 				return tlsCert, nil
 			},
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			ClientCAs:  pool,
 		}, &tls.Config{
+			MinVersion:           tls.VersionTLS12,
 			GetClientCertificate: r.GetClientCertificate,
 			RootCAs:              pool,
 		}},
@@ -505,13 +514,15 @@ func TestRenewer_RenewFunc_error(t *testing.T) {
 			tr := http.DefaultTransport.(*http.Transport).Clone()
 			tr.TLSClientConfig = tt.clientConfig
 			tr.TLSClientConfig = &tls.Config{
+				MinVersion:           tls.VersionTLS12,
 				GetClientCertificate: r.GetClientCertificate,
 				RootCAs:              pool,
 			}
 
 			trNoCert := http.DefaultTransport.(*http.Transport).Clone()
 			trNoCert.TLSClientConfig = &tls.Config{
-				RootCAs: pool,
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    pool,
 			}
 			c := &http.Client{Transport: tr}
 			if _, err := c.Get(dnsURL); err == nil {
