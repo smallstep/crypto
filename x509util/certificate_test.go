@@ -624,8 +624,8 @@ func TestCreateCertificate_debug(t *testing.T) {
 		{"directoryName", []SubjectAlternativeName{
 			{Type: DirectoryNameType, ASN1Value: []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)},
 		}},
-		{"hardwareModule", []SubjectAlternativeName{
-			{Type: HardwareModuleType, ASN1Value: []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)},
+		{"hardwareModuleName", []SubjectAlternativeName{
+			{Type: HardwareModuleNameType, ASN1Value: []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)},
 		}},
 		{"permanentIdentifier", []SubjectAlternativeName{
 			{Type: PermanentIdentifierType, ASN1Value: []byte(`{"identifier":"0123456789","assigner":"1.2.3.4"}`)},

@@ -289,7 +289,7 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 				{160, 2, 0x30, 0},
 			}, nil),
 		}, false},
-		{"hardwareModule", fields{"hardwareModule", "", []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{
+		{"hardwareModuleName", fields{"hardwareModuleName", "", []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{
 			FullBytes: bytes.Join([][]byte{
 				{160, 31, 6, 8, 43, 6, 1, 5, 5, 7, 8, 4},
 				{160, 19, 0x30, 17, asn1.TagOID, 3, 0x20 | 0x0A, 3, 4},
@@ -343,10 +343,10 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"fail permanentIdentifier json", fields{"permanentIdentifier", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
 		{"fail permanentIdentifier unmarshalJson", fields{"permanentIdentifier", "", []byte(`{"identifier":1234}`)}, asn1.RawValue{}, true},
 		{"fail permanentIdentifier oid", fields{"permanentIdentifier", "", []byte(`{"identifier":"0123456789","assigner":"3.2.3.4"}`)}, asn1.RawValue{}, true},
-		{"fail hardwareModule empty", fields{"hardwareModule", "", nil}, asn1.RawValue{}, true},
-		{"fail hardwareModule json", fields{"hardwareModule", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
-		{"fail hardwareModule unmarshalJSON", fields{"hardwareModule", "", []byte(`{"type":1234}`)}, asn1.RawValue{}, true},
-		{"fail hardwareModule oid", fields{"hardwareModule", "", []byte(`{"type":"3.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName empty", fields{"hardwareModuleName", "", nil}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName json", fields{"hardwareModuleName", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName unmarshalJSON", fields{"hardwareModuleName", "", []byte(`{"type":1234}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName oid", fields{"hardwareModuleName", "", []byte(`{"type":"3.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{}, true},
 		{"fail directoryName empty", fields{"dn", "", nil}, asn1.RawValue{}, true},
 		{"fail directoryName empty name", fields{"dn", "", []byte(`{}`)}, asn1.RawValue{}, true},
 		{"fail directoryName json", fields{"dn", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},

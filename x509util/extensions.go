@@ -64,7 +64,7 @@ const (
 	IPType                  = "ip"
 	RegisteredIDType        = "registeredID"
 	PermanentIdentifierType = "permanentIdentifier"
-	HardwareModuleType      = "hardwareModule"
+	HardwareModuleNameType  = "hardwareModuleName"
 )
 
 // These type ids are defined in RFC 5280 page 36
@@ -90,7 +90,7 @@ const sanTypeSeparator = ":"
 var oidPermanentIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
 
 // RFC 4108 - https://www.rfc-editor.org/rfc/rfc4108
-var oidHardwareModuleIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 4}
+var oidHardwareModuleNameIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 4}
 
 // RFC 5280 - https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
 //
@@ -351,7 +351,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
 		}
 		return otherName, nil
-	case HardwareModuleType:
+	case HardwareModuleNameType:
 		if len(s.ASN1Value) == 0 {
 			return zero, errors.New("error parsing HardwareModuleName SAN: empty asn1Value is not allowed")
 		}
@@ -359,7 +359,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
 		}
-		otherName, err := marshalOtherName(oidHardwareModuleIdentifier, v.ans1Type())
+		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.ans1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling HardwareModuleName SAN")
 		}
