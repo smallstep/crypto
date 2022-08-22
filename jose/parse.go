@@ -33,7 +33,7 @@ const (
 // the prefix https://
 func read(filename string) ([]byte, error) {
 	if strings.HasPrefix(filename, "https://") {
-		resp, err := http.Get(filename)
+		resp, err := http.Get(filename) // nolint:gosec // no SSRF
 		if err != nil {
 			return nil, errors.Wrapf(err, "error retrieving %s", filename)
 		}

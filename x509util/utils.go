@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // nolint:gosec // SubjectKeyIdentifier by RFC 5280
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -152,6 +152,7 @@ func generateSubjectKeyID(pub crypto.PublicKey) ([]byte, error) {
 	if _, err = asn1.Unmarshal(b, &info); err != nil {
 		return nil, errors.Wrap(err, "error unmarshaling public key")
 	}
+	// nolint:gosec // SubjectKeyIdentifier by RFC 5280
 	hash := sha1.Sum(info.SubjectPublicKey.Bytes)
 	return hash[:], nil
 }

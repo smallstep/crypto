@@ -44,7 +44,9 @@ func NewServerCredentialsFromFile(certFile, keyFile string) (*ServerCredentials,
 				return nil, nil, errors.Wrap(err, "error parsing certificate")
 			}
 		}
-		return &cert, &tls.Config{}, nil
+		return &cert, &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}, nil
 	})
 }
 
@@ -52,6 +54,7 @@ func NewServerCredentialsFromFile(certFile, keyFile string) (*ServerCredentials,
 // set.
 func (c *ServerCredentials) TLSConfig() *tls.Config {
 	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
 		GetCertificate:     c.GetCertificate,
 		GetConfigForClient: c.GetConfigForClient,
 	}
