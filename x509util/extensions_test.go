@@ -242,8 +242,9 @@ func TestSubjectAlternativeName_Set(t *testing.T) {
 
 func TestSubjectAlternativeName_RawValue(t *testing.T) {
 	type fields struct {
-		Type  string
-		Value string
+		Type      string
+		Value     string
+		ASN1Value json.RawMessage
 	}
 	tests := []struct {
 		name    string
@@ -251,77 +252,127 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		want    asn1.RawValue
 		wantErr bool
 	}{
-		{"ip", fields{"auto", "1.1.1.1"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{1, 1, 1, 1}}, false},
-		{"ipv6", fields{"auto", "2001:0db8:0000:0000:0000:ff00:0042:8329"}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0xff, 0, 0, 0x42, 0x83, 0x29}}, false},
-		{"uri", fields{"auto", "urn:smallstep:1234"}, asn1.RawValue{Class: 2, Tag: 6, Bytes: []byte("urn:smallstep:1234")}, false},
-		{"email", fields{"auto", "foo@bar.com"}, asn1.RawValue{Class: 2, Tag: 1, Bytes: []byte("foo@bar.com")}, false},
-		{"dns", fields{"auto", "bar.com"}, asn1.RawValue{Class: 2, Tag: 2, Bytes: []byte("bar.com")}, false},
-		{"registeredID", fields{"registeredID", "1.2.3.4"}, asn1.RawValue{
+		{"ip", fields{"auto", "1.1.1.1", nil}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{1, 1, 1, 1}}, false},
+		{"ipv6", fields{"auto", "2001:0db8:0000:0000:0000:ff00:0042:8329", nil}, asn1.RawValue{Class: 2, Tag: 7, Bytes: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0xff, 0, 0, 0x42, 0x83, 0x29}}, false},
+		{"uri", fields{"auto", "urn:smallstep:1234", nil}, asn1.RawValue{Class: 2, Tag: 6, Bytes: []byte("urn:smallstep:1234")}, false},
+		{"email", fields{"auto", "foo@bar.com", nil}, asn1.RawValue{Class: 2, Tag: 1, Bytes: []byte("foo@bar.com")}, false},
+		{"dns", fields{"auto", "bar.com", nil}, asn1.RawValue{Class: 2, Tag: 2, Bytes: []byte("bar.com")}, false},
+		{"registeredID", fields{"registeredID", "1.2.3.4", nil}, asn1.RawValue{
 			// Class 2, Type: 8
 			FullBytes: []byte{(2 << 6) | 8, 3, 0x20 | 1<<3 | 2, 3, 4},
 		}, false},
-		{"permanentIdentifier", fields{"permanentIdentifier", "0123456789"}, asn1.RawValue{
-			FullBytes: append(append(
-				[]byte{160, 26, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
-				[]byte{160, 14, 48, 12, 12, 10}...),
-				[]byte("0123456789")...),
+		{"permanentIdentifier", fields{"permanentIdentifier", "0123456789", nil}, asn1.RawValue{
+			FullBytes: bytes.Join([][]byte{
+				{160, 26, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				{160, 14, 0x30, 12, 12, 10},
+				[]byte("0123456789"),
+			}, nil),
 		}, false},
-		{"otherName int", fields{"1.2.3.4", "int:1024"}, asn1.RawValue{
+		{"permanentIdentifier with identifier", fields{"permanentIdentifier", "", []byte(`{"identifier":"0123456789"}`)}, asn1.RawValue{
+			FullBytes: bytes.Join([][]byte{
+				{160, 26, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				{160, 14, 0x30, 12, 12, 10},
+				[]byte("0123456789"),
+			}, nil),
+		}, false},
+		{"permanentIdentifier with assigner", fields{"permanentIdentifier", "", []byte(`{"identifier":"0123456789","assigner":"1.2.3.4"}`)}, asn1.RawValue{
+			FullBytes: bytes.Join([][]byte{
+				{160, 31, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				{160, 19, 0x30, 17, 12, 10},
+				[]byte("0123456789"),
+				{asn1.TagOID, 3, 0x20 | 0x0A, 0x03, 0x04},
+			}, nil),
+		}, false},
+		{"permanentIdentifier empty", fields{"permanentIdentifier", "", nil}, asn1.RawValue{
+			FullBytes: bytes.Join([][]byte{
+				{160, 14, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3},
+				{160, 2, 0x30, 0},
+			}, nil),
+		}, false},
+		{"hardwareModuleName", fields{"hardwareModuleName", "", []byte(`{"type":"1.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{
+			FullBytes: bytes.Join([][]byte{
+				{160, 31, 6, 8, 43, 6, 1, 5, 5, 7, 8, 4},
+				{160, 19, 0x30, 17, asn1.TagOID, 3, 0x20 | 0x0A, 3, 4},
+				{0x80 | asn1.TagOctetString, 10}, []byte("0123456789"),
+			}, nil),
+		}, false},
+		{"directoryName", fields{"dn", "", []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)}, asn1.RawValue{
+			Class: 2, Tag: 4, IsCompound: true,
+			Bytes: bytes.Join([][]byte{
+				{0x30, 45, 49, 11},
+				{48, 9, 6, 3, 85, 4, 6, asn1.TagPrintableString, 2}, []byte("US"),
+				{49, 13, 48, 11, 6, 3, 85, 4, 10, asn1.TagPrintableString, 4}, []byte("ACME"),
+				{49, 15, 48, 13, 6, 3, 85, 4, 3, asn1.TagPrintableString, 6}, []byte("rocket"),
+			}, nil),
+		}, false},
+		{"otherName int", fields{"1.2.3.4", "int:1024", nil}, asn1.RawValue{
 			FullBytes: []byte{160, 11, 6, 3, 42, 3, 4, 160, 4, 2, 2, 4, 0},
 		}, false},
-		{"otherName oid", fields{"1.2.3.4", "oid:1.2.3.4"}, asn1.RawValue{
+		{"otherName oid", fields{"1.2.3.4", "oid:1.2.3.4", nil}, asn1.RawValue{
 			FullBytes: []byte{160, 12, 6, 3, 42, 3, 4, 160, 5, 6, 3, 42, 3, 4},
 		}, false},
-		{"otherName raw", fields{"1.2.3.4", "raw:MTIzNA=="}, asn1.RawValue{
+		{"otherName raw", fields{"1.2.3.4", "raw:MTIzNA==", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 9, 6, 3, 42, 3, 4}, []byte("1234")...),
 		}, false},
-		{"otherName utf8", fields{"1.2.3.4", "utf8:á∫ç1234"}, asn1.RawValue{
+		{"otherName utf8", fields{"1.2.3.4", "utf8:á∫ç1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 20, 6, 3, 42, 3, 4, 160, 13, 12, 11}, []byte("á∫ç1234")...),
 		}, false},
-		{"otherName ia5", fields{"1.2.3.4", "ia5:abc1234"}, asn1.RawValue{
+		{"otherName ia5", fields{"1.2.3.4", "ia5:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 22, 7}, []byte("abc1234")...),
 		}, false},
-		{"otherName numeric", fields{"1.2.3.4", "numeric:1024"}, asn1.RawValue{
+		{"otherName numeric", fields{"1.2.3.4", "numeric:1024", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 13, 6, 3, 42, 3, 4, 160, 6, 18, 4}, []byte("1024")...),
 		}, false},
-		{"otherName printable", fields{"1.2.3.4", "printable:abc1234"}, asn1.RawValue{
+		{"otherName printable", fields{"1.2.3.4", "printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
-		{"otherName default", fields{"1.2.3.4", "foo:abc1234"}, asn1.RawValue{
+		{"otherName default", fields{"1.2.3.4", "foo:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
-		{"otherName no type", fields{"1.2.3.4", "abc1234"}, asn1.RawValue{
+		{"otherName no type", fields{"1.2.3.4", "abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
-		{"fail dn", fields{"dn", "1234"}, asn1.RawValue{}, true},
-		{"fail x400Address", fields{"x400Address", "1234"}, asn1.RawValue{}, true},
-		{"fail ediPartyName", fields{"ediPartyName", "1234"}, asn1.RawValue{}, true},
-		{"fail email", fields{"email", "nöt@ia5.com"}, asn1.RawValue{}, true},
-		{"fail dns", fields{"dns", "xn--bücher.example.com"}, asn1.RawValue{}, true},
-		{"fail dns empty", fields{"dns", ""}, asn1.RawValue{}, true},
-		{"fail uri", fields{"uri", "urn:nöt:ia5"}, asn1.RawValue{}, true},
-		{"fail ip", fields{"ip", "1.2.3.4.5"}, asn1.RawValue{}, true},
-		{"fail registeredID", fields{"registeredID", "4.3.2.1"}, asn1.RawValue{}, true},
-		{"fail registeredID empty", fields{"registeredID", ""}, asn1.RawValue{}, true},
-		{"fail registeredID parse", fields{"registeredID", "a.b.c.d"}, asn1.RawValue{}, true},
-		{"fail otherName parse", fields{"a.b.c.d", "foo"}, asn1.RawValue{}, true},
-		{"fail otherName marshal", fields{"1", "foo"}, asn1.RawValue{}, true},
-		{"fail otherName int", fields{"1.2.3.4", "int:abc"}, asn1.RawValue{}, true},
-		{"fail otherName oid", fields{"1.2.3.4", "oid:4.3.2.1"}, asn1.RawValue{}, true},
-		{"fail otherName oid parse", fields{"1.2.3.4", "oid:a.b.c.d"}, asn1.RawValue{}, true},
-		{"fail otherName raw", fields{"1.2.3.4", "raw:abc"}, asn1.RawValue{}, true},
-		{"fail otherName utf8", fields{"1.2.3.4", "utf8:\xff"}, asn1.RawValue{}, true},
-		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5"}, asn1.RawValue{}, true},
-		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc"}, asn1.RawValue{}, true},
-		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable"}, asn1.RawValue{}, true},
-		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable"}, asn1.RawValue{}, true},
-		{"fail otherName no type", fields{"1.2.3.4", "nötprintable"}, asn1.RawValue{}, true},
+		{"fail dn", fields{"dn", "1234", nil}, asn1.RawValue{}, true},
+		{"fail x400Address", fields{"x400Address", "1234", nil}, asn1.RawValue{}, true},
+		{"fail ediPartyName", fields{"ediPartyName", "1234", nil}, asn1.RawValue{}, true},
+		{"fail email", fields{"email", "nöt@ia5.com", nil}, asn1.RawValue{}, true},
+		{"fail dns", fields{"dns", "xn--bücher.example.com", nil}, asn1.RawValue{}, true},
+		{"fail dns empty", fields{"dns", "", nil}, asn1.RawValue{}, true},
+		{"fail uri", fields{"uri", "urn:nöt:ia5", nil}, asn1.RawValue{}, true},
+		{"fail ip", fields{"ip", "1.2.3.4.5", nil}, asn1.RawValue{}, true},
+		{"fail permanentIdentifier json", fields{"permanentIdentifier", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail permanentIdentifier unmarshalJson", fields{"permanentIdentifier", "", []byte(`{"identifier":1234}`)}, asn1.RawValue{}, true},
+		{"fail permanentIdentifier oid", fields{"permanentIdentifier", "", []byte(`{"identifier":"0123456789","assigner":"3.2.3.4"}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName empty", fields{"hardwareModuleName", "", nil}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName json", fields{"hardwareModuleName", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName unmarshalJSON", fields{"hardwareModuleName", "", []byte(`{"type":1234}`)}, asn1.RawValue{}, true},
+		{"fail hardwareModuleName oid", fields{"hardwareModuleName", "", []byte(`{"type":"3.2.3.4","serialNumber":"MDEyMzQ1Njc4OQ=="}`)}, asn1.RawValue{}, true},
+		{"fail directoryName empty", fields{"dn", "", nil}, asn1.RawValue{}, true},
+		{"fail directoryName empty name", fields{"dn", "", []byte(`{}`)}, asn1.RawValue{}, true},
+		{"fail directoryName json", fields{"dn", "", []byte(`{"bad-json"}`)}, asn1.RawValue{}, true},
+		{"fail directoryName asn1", fields{"dn", "", []byte(`{"extraNames":[{"type":"4.3.2.1","value":"oid"}]}`)}, asn1.RawValue{}, true},
+		{"fail registeredID", fields{"registeredID", "4.3.2.1", nil}, asn1.RawValue{}, true},
+		{"fail registeredID empty", fields{"registeredID", "", nil}, asn1.RawValue{}, true},
+		{"fail registeredID parse", fields{"registeredID", "a.b.c.d", nil}, asn1.RawValue{}, true},
+		{"fail otherName parse", fields{"a.b.c.d", "foo", nil}, asn1.RawValue{}, true},
+		{"fail otherName marshal", fields{"1", "foo", nil}, asn1.RawValue{}, true},
+		{"fail otherName int", fields{"1.2.3.4", "int:abc", nil}, asn1.RawValue{}, true},
+		{"fail otherName oid", fields{"1.2.3.4", "oid:4.3.2.1", nil}, asn1.RawValue{}, true},
+		{"fail otherName oid parse", fields{"1.2.3.4", "oid:a.b.c.d", nil}, asn1.RawValue{}, true},
+		{"fail otherName raw", fields{"1.2.3.4", "raw:abc", nil}, asn1.RawValue{}, true},
+		{"fail otherName utf8", fields{"1.2.3.4", "utf8:\xff", nil}, asn1.RawValue{}, true},
+		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5", nil}, asn1.RawValue{}, true},
+		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc", nil}, asn1.RawValue{}, true},
+		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable", nil}, asn1.RawValue{}, true},
+		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable", nil}, asn1.RawValue{}, true},
+		{"fail otherName no type", fields{"1.2.3.4", "nötprintable", nil}, asn1.RawValue{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := SubjectAlternativeName{
-				Type:  tt.fields.Type,
-				Value: tt.fields.Value,
+				Type:      tt.fields.Type,
+				Value:     tt.fields.Value,
+				ASN1Value: tt.fields.ASN1Value,
 			}
 			got, err := s.RawValue()
 			if (err != nil) != tt.wantErr {
@@ -1164,9 +1215,6 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "fail dns" {
-				t.Log("foo")
-			}
 			got, err := createSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
