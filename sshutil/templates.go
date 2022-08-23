@@ -1,5 +1,7 @@
 package sshutil
 
+import "go.step.sm/crypto/internal/templates"
+
 // Variables used to hold template data.
 const (
 	TypeKey               = "Type"
@@ -25,6 +27,15 @@ type TemplateError struct {
 // template executes the `fail "message"` function.
 func (e *TemplateError) Error() string {
 	return e.Message
+}
+
+// ValidateTemplate validates a text template to result in valid JSON
+// when it's executed with empty template data. If template execution
+// results in invalid JSON, the template is invalid. When the template
+// is valid, it can be used safely. A valid template can still in
+// invalid JSON when non-empty template data is provided.
+func ValidateTemplate(text string) error {
+	return templates.ValidateTemplate(text)
 }
 
 // TemplateData is an alias for map[string]interface{}. It represents the data

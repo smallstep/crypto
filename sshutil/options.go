@@ -6,28 +6,11 @@ import (
 	"os"
 	"text/template"
 
-	"github.com/Masterminds/sprig/v3"
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/internal/step"
-)
 
-// getFuncMap returns the list of functions provided by sprig. It changes the
-// function "fail" to set the given string, this way we can report template
-// errors directly to the template without having the wrapper that text/template
-// adds.
-//
-// sprig "env" and "expandenv" functions are removed to avoid the leak of
-// information.
-func getFuncMap(failMessage *string) template.FuncMap {
-	m := sprig.TxtFuncMap()
-	delete(m, "env")
-	delete(m, "expandenv")
-	m["fail"] = func(msg string) (string, error) {
-		*failMessage = msg
-		return "", errors.New(msg)
-	}
-	return m
-}
+	"go.step.sm/crypto/internal/step"
+	"go.step.sm/crypto/internal/templates"
+)
 
 // Options are the options that can be passed to NewCertificate.
 type Options struct {
@@ -51,7 +34,7 @@ type Option func(cr CertificateRequest, o *Options) error
 func WithTemplate(text string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
-		funcMap := getFuncMap(&terr.Message)
+		funcMap := templates.GetFuncMap(&terr.Message)
 
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {
