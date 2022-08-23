@@ -553,3 +553,29 @@ func TestTemplateData_SetCertificateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTemplate(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		wantErr bool
+	}{
+		{
+			name:    "ok",
+			text:    DefaultTemplate,
+			wantErr: false,
+		},
+		{
+			name:    "fail",
+			text:    "{!?}",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateTemplate(tt.text); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateTemplate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
