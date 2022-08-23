@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"text/template"
 )
+
+var errForceFail = errors.New("force fail")
 
 // ValidateTemplate validates a text template results in valid JSON
 // when it's executed with empty template data. If template execution
@@ -14,8 +17,18 @@ import (
 // is valid, it can be used safely. A valid template can still result
 // in invalid JSON when non-empty template data is provided.
 func ValidateTemplate(text string) error {
+
+	// return early on empty template strings
+	if text == "" {
+		return nil
+	}
+
+	// get the default functions; override the `fail` function to return the `errForceFail` error
 	var failMessage string
 	funcMap := GetFuncMap(&failMessage)
+	funcMap["fail"] = func(msg string) (string, error) {
+		return "", errForceFail
+	}
 
 	// prepare the template with our template functions
 	tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
@@ -27,7 +40,21 @@ func ValidateTemplate(text string) error {
 	// that aren't filled in the template
 	buf := new(bytes.Buffer)
 	if err := tmpl.Execute(buf, nil); err != nil {
+		// the `fail` function can return an error when a template is executed
+		// that contains a call to it. If the error is an `errForceFail`, the
+		// `fail` function was called and we'll silence the error.
+		if errors.Is(err, errForceFail) {
+			return nil
+		}
 		return fmt.Errorf("error validating template execution: %w", err)
+	}
+
+	// trim all whitespace after template execution
+	trimmed := strings.TrimSpace(buf.String())
+	if trimmed == "" {
+		// TODO(hs): does it make sense to return no error if the template effectively results in no template?
+		// I think we may want to return an error here instead
+		return nil
 	}
 
 	// resulting JSON should be valid; if not, the template was not formatted correctly
