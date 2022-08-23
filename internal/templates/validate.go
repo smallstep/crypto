@@ -11,8 +11,8 @@ import (
 // ValidateTemplate validates a text template results in valid JSON
 // when it's executed with empty template data. If template execution
 // results in invalid JSON, the template is invalid. When the template
-// is valid, it can be used safely. A valid template can still in
-// invalid JSON when non-empty template data is provided.
+// is valid, it can be used safely. A valid template can still result
+// in invalid JSON when non-empty template data is provided.
 func ValidateTemplate(text string) error {
 	failMessage := "fail"
 	funcMap := GetFuncMap(&failMessage)
