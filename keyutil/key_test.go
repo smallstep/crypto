@@ -540,3 +540,41 @@ func TestVerifyPair(t *testing.T) {
 		})
 	}
 }
+
+func TestInsecure(t *testing.T) {
+	tests := []struct {
+		name    string
+		run     func(t *testing.T) error
+		wantErr bool
+	}{
+		{"ok RSA 2048", func(t *testing.T) (err error) {
+			_, err = GenerateKey("RSA", "", 2048)
+			return
+		}, false},
+		{"fail RSA 1024", func(t *testing.T) (err error) {
+			_, err = GenerateKey("RSA", "", 1024)
+			return
+		}, true},
+		{"ok RSA 2048 insecure", func(t *testing.T) (err error) {
+			revert := Insecure()
+			t.Cleanup(revert)
+			_, err = GenerateKey("RSA", "", 2048)
+			return
+		}, false},
+		{"ok RSA 1024 insecure", func(t *testing.T) (err error) {
+			revert := Insecure()
+			t.Cleanup(revert)
+			_, err = GenerateKey("RSA", "", 1024)
+			return
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run(t)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Insecure() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}
