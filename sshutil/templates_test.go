@@ -579,3 +579,29 @@ func TestValidateTemplate(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTemplateData(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		wantErr bool
+	}{
+		{
+			name:    "ok",
+			text:    "{}",
+			wantErr: false,
+		},
+		{
+			name:    "fail",
+			text:    "{!?}",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateTemplateData(tt.text); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateTemplateData() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

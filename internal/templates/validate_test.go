@@ -2,7 +2,6 @@ package templates
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,8 +54,6 @@ func TestValidateTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateTemplate(tt.text)
-			fmt.Println(err)
-
 			if tt.err != nil {
 				assert.Error(t, err)
 				assert.EqualError(t, err, tt.err.Error())
@@ -65,6 +62,43 @@ func TestValidateTemplate(t *testing.T) {
 
 			assert.Nil(t, err)
 
+		})
+	}
+}
+
+func TestValidateTemplateData(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		err  error
+	}{
+		{
+			name: "ok",
+			text: `{
+				"x": 1,
+				"y": 2
+			}`,
+			err: nil,
+		},
+		{
+			name: "fail/missing-comma-trailing-comma",
+			text: `{
+				"x": 1
+				"y": 2
+			}`,
+			err: errors.New("invalid JSON: invalid character '\"' after object key:value pair"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTemplateData(tt.text)
+			if tt.err != nil {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tt.err.Error())
+				return
+			}
+
+			assert.Nil(t, err)
 		})
 	}
 }

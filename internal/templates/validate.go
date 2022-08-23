@@ -8,7 +8,7 @@ import (
 	"text/template"
 )
 
-// ValidateTemplate validates a text template to result in valid JSON
+// ValidateTemplate validates a text template results in valid JSON
 // when it's executed with empty template data. If template execution
 // results in invalid JSON, the template is invalid. When the template
 // is valid, it can be used safely. A valid template can still in
@@ -35,6 +35,19 @@ func ValidateTemplate(text string) error {
 		// determine what's wrong with the JSON exactly; the `Valid` method doesn't return that
 		var m map[string]interface{}
 		if err := json.NewDecoder(buf).Decode(&m); err != nil {
+			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
+		}
+	}
+
+	return nil
+}
+
+// ValidateTemplateData validates that template data is
+// valid JSON.
+func ValidateTemplateData(text string) error {
+	if ok := json.Valid([]byte(text)); !ok {
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
 		}
 	}

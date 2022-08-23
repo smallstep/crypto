@@ -29,13 +29,15 @@ func (e *TemplateError) Error() string {
 	return e.Message
 }
 
-// ValidateTemplate validates a text template to result in valid JSON
-// when it's executed with empty template data. If template execution
-// results in invalid JSON, the template is invalid. When the template
-// is valid, it can be used safely. A valid template can still in
-// invalid JSON when non-empty template data is provided.
+// ValidateTemplate validates a text template.
 func ValidateTemplate(text string) error {
 	return templates.ValidateTemplate(text)
+}
+
+// ValidateTemplateData validates that template data is
+// valid JSON.
+func ValidateTemplateData(text string) error {
+	return templates.ValidateTemplateData(text)
 }
 
 // TemplateData is an alias for map[string]interface{}. It represents the data
