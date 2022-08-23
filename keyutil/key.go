@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"math/big"
+	"sync/atomic"
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/x25519"
@@ -32,13 +33,21 @@ var (
 	MinRSAKeyBytes = 256
 )
 
-// Insecure removes minimum limits on on the RSA key size and returns a function
-// to revert the configuration.
+type atomicBool int32
+
+func (b *atomicBool) isSet() bool { return atomic.LoadInt32((*int32)(b)) != 0 }
+func (b *atomicBool) setTrue()    { atomic.StoreInt32((*int32)(b), 1) }
+func (b *atomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
+
+var insecureMode atomicBool
+
+// Insecure enables the insecure mode in this package and returns a function to
+// revert the configuration. The insecure mode removes the minimum limits when
+// generating RSA keys.
 func Insecure() (revert func()) {
-	minRSAKeyBytes := MinRSAKeyBytes
-	MinRSAKeyBytes = 0
+	insecureMode.setTrue()
 	return func() {
-		MinRSAKeyBytes = minRSAKeyBytes
+		insecureMode.setFalse()
 	}
 }
 
@@ -194,7 +203,7 @@ func generateECKey(crv string) (crypto.Signer, error) {
 }
 
 func generateRSAKey(bits int) (crypto.Signer, error) {
-	if min := MinRSAKeyBytes * 8; bits < min {
+	if min := MinRSAKeyBytes * 8; !insecureMode.isSet() && bits < min {
 		return nil, errors.Errorf("the size of the RSA key should be at least %d bits", min)
 	}
 
