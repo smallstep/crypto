@@ -32,6 +32,16 @@ var (
 	MinRSAKeyBytes = 256
 )
 
+// Insecure removes minimum limits on on the RSA key size and returns a function
+// to revert the configuration.
+func Insecure() (revert func()) {
+	minRSAKeyBytes := MinRSAKeyBytes
+	MinRSAKeyBytes = 0
+	return func() {
+		MinRSAKeyBytes = minRSAKeyBytes
+	}
+}
+
 // PublicKey extracts a public key from a private key.
 func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 	switch k := priv.(type) {
