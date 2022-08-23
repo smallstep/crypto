@@ -14,7 +14,7 @@ import (
 // is valid, it can be used safely. A valid template can still result
 // in invalid JSON when non-empty template data is provided.
 func ValidateTemplate(text string) error {
-	failMessage := "fail"
+	var failMessage string
 	funcMap := GetFuncMap(&failMessage)
 
 	// prepare the template with our template functions
@@ -37,6 +37,12 @@ func ValidateTemplate(text string) error {
 		if err := json.NewDecoder(buf).Decode(&m); err != nil {
 			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
 		}
+
+		// TODO(hs): json.Valid() returns NOK, but decoding doesn't result in error with trailing brace.
+		// Results in `map[subject:<nil>]`. This is kind of a curious case to me. I think Valid() checks
+		// the entire JSON; Decode() does not and sees the trailing brace as the final closing one, and
+		// thus finishes the decoding. Shouldn't the behavior of the Decode be the same as Valid?
+		return errors.New("invalid JSON: early decoder termination suspected")
 	}
 
 	return nil

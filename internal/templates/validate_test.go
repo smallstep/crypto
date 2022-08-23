@@ -28,14 +28,24 @@ func TestValidateTemplate(t *testing.T) {
 			err: nil,
 		},
 		{
-			name: "fail/template-parsing",
-			text: `{
-				"subject": {{ nonExistingFunction .Subject }}
-			}`,
-			err: errors.New("error parsing template: template: template:2: function \"nonExistingFunction\" not defined"),
+			name: "fail/template-parsing-trailing-brace",
+			text: `
+				{
+					"subject": {{ toJson .Subject }}},
+					"issuer": {{ toJson .Subject }}
+				}
+			`,
+			err: errors.New("invalid JSON: early decoder termination suspected"),
 		},
 		{
-			name: "fail/missing-closing-braces",
+			name: "fail/template-parsing-unknown-function",
+			text: `{
+				"subject": {{ unknownFunction .Subject }}
+			}`,
+			err: errors.New("error parsing template: template: template:2: function \"unknownFunction\" not defined"),
+		},
+		{
+			name: "fail/template-parsing-missing-closing-braces",
 			text: `{
 				"subject": {{ toJson .Subject }},
 				"sans": {{ toJson .SANs }
@@ -43,7 +53,7 @@ func TestValidateTemplate(t *testing.T) {
 			err: errors.New("error parsing template: template: template:3: unexpected \"}\" in operand"),
 		},
 		{
-			name: "fail/missing-comma-trailing-comma",
+			name: "fail/json-missing-trailing-comma",
 			text: `{
 				"subject": {{ toJson .Subject }}
 				"sans": {{ toJson .SANs }}
