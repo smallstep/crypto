@@ -51,6 +51,7 @@ func TestValidateTemplate(t *testing.T) {
 		{
 			name: "ok/default-x509-adobe",
 			text: `{
+				"test:": "default-x509-adobe",
 				"subject": {{ toJson .Token.email }},
 				"sans": {{ toJson .SANs }},
 			{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
@@ -151,7 +152,7 @@ func TestValidateTemplate(t *testing.T) {
 			name: "ok/template-with-nested-if",
 			text: `
 			{{ if not .Token.ghu.foo }}
-				{{ toJson "token has not a github user" }}
+				{{ toJson "token has no GitHub username" }}
 			{{ end }}
 		  `,
 			err: nil,
@@ -160,7 +161,7 @@ func TestValidateTemplate(t *testing.T) {
 			name: "fail/template-parsing-unterminated-quoted-string",
 			text: `
 			{{ if not .Token.ghu }} 
-				{{ fail "token has not a github user }}
+				{{ fail "token has no GitHub username }}
 			{{ end }}
 			`,
 			err: errors.New("error parsing template: template: template:3: unterminated quoted string"),

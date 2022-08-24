@@ -40,13 +40,13 @@ func ValidateTemplate(text string) error {
 	// that aren't filled in the template
 	buf := new(bytes.Buffer)
 	if err := tmpl.Execute(buf, nil); err != nil {
-		// the `fail` function can return an error when a template is executed
+		// the `fail` function returns an error when a template is executed
 		// that contains a call to it. If the error is an `errForceFail`, the
-		// `fail` function was called and we'll silence the error.
-		if errors.Is(err, errForceFail) {
-			return nil
+		// `fail` function was called and we'll continue validation. Other
+		// template execution errors are returned.
+		if !errors.Is(err, errForceFail) {
+			return fmt.Errorf("error validating template execution: %w", err)
 		}
-		return fmt.Errorf("error validating template execution: %w", err)
 	}
 
 	// trim all whitespace after template execution
@@ -83,6 +83,9 @@ func ValidateTemplateData(text string) error {
 		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
 		}
+
+		// see comment in `ValidateTemplate` why this case is necessary
+		return errors.New("invalid JSON: early decoder termination suspected")
 	}
 
 	return nil
