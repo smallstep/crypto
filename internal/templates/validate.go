@@ -38,37 +38,8 @@ func ValidateTemplateData(data []byte) error {
 	}
 
 	if ok := json.Valid(data); !ok {
-		var m map[string]interface{}
-		if err := json.Unmarshal(data, &m); err != nil {
-			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
-		}
-
-		// json.Valid() returns NOK, but decoding doesn't result in error with trailing brace.
-		// It results in `map[subject:<nil>]`, instead. The Valid() function checks the entire JSON;
-		// Decode() does not and sees the trailing brace as the final closing one, and thus stops
-		// decoding.
-		return errors.New("invalid JSON: early decoder termination")
+		return errors.New("error validating json template data")
 	}
 
 	return nil
-}
-
-// enrichJSONError tries to extract more information about the cause of
-// an error related to a malformed JSON template and adds this to the
-// error message.
-func enrichJSONError(err error) error {
-	var (
-		syntaxError *json.SyntaxError
-	)
-	// TODO(hs): extracting additional info doesn't always work as expected, as the provided template is
-	// first transformed by executing it. After transformation, the offsets in the error are not the offsets
-	// for the original, user-provided template. If we want this to work, we should revert the transformation
-	// somehow and then find the correct offset to use. This doesn't seem trivial to do.
-	switch {
-	case errors.As(err, &syntaxError):
-		//return fmt.Errorf("%s at offset %d", err.Error(), syntaxError.Offset)
-		return err
-	default:
-		return err
-	}
 }

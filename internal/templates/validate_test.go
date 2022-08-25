@@ -235,7 +235,7 @@ func TestValidateTemplateData(t *testing.T) {
 				"x": 1
 				"y": 2
 			}`),
-			err: errors.New("invalid JSON: invalid character '\"' after object key:value pair"),
+			err: errors.New("error validating json template data"),
 		},
 	}
 	for _, tt := range tests {
