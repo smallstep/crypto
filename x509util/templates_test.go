@@ -332,3 +332,60 @@ func TestTemplateData_SetCertificateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTemplate(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    []byte
+		wantErr bool
+	}{
+		{
+			name:    "ok",
+			text:    []byte(DefaultLeafTemplate),
+			wantErr: false,
+		},
+		{
+			name:    "ok/invalid-json",
+			text:    []byte("{!?}"),
+			wantErr: false,
+		},
+		{
+			name:    "fail/unknown-function",
+			text:    []byte("{{ unknownFunction }}"),
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateTemplate(tt.text); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateTemplate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateTemplateData(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		wantErr bool
+	}{
+		{
+			name:    "ok",
+			data:    []byte("{}"),
+			wantErr: false,
+		},
+		{
+			name:    "fail",
+			data:    []byte("{!?}"),
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateTemplateData(tt.data); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateTemplateData() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
