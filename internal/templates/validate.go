@@ -12,9 +12,8 @@ import (
 // results in invalid JSON, the template is invalid. When the template
 // is valid, it can be used safely. A valid template can still result
 // in invalid JSON when non-empty template data is provided.
-func ValidateTemplate(text string) error {
-	// return early on empty template strings
-	if text == "" {
+func ValidateTemplate(data []byte) error {
+	if len(data) == 0 {
 		return nil
 	}
 
@@ -23,7 +22,7 @@ func ValidateTemplate(text string) error {
 	funcMap := GetFuncMap(&failMessage)
 
 	// prepare the template with our template functions
-	_, err := template.New("template").Funcs(funcMap).Parse(text)
+	_, err := template.New("template").Funcs(funcMap).Parse(string(data))
 	if err != nil {
 		return fmt.Errorf("error parsing template: %w", err)
 	}
@@ -33,10 +32,14 @@ func ValidateTemplate(text string) error {
 
 // ValidateTemplateData validates that template data is
 // valid JSON.
-func ValidateTemplateData(text string) error {
-	if ok := json.Valid([]byte(text)); !ok {
+func ValidateTemplateData(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	if ok := json.Valid(data); !ok {
 		var m map[string]interface{}
-		if err := json.Unmarshal([]byte(text), &m); err != nil {
+		if err := json.Unmarshal(data, &m); err != nil {
 			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
 		}
 

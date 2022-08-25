@@ -31,14 +31,14 @@ func (e *TemplateError) Error() string {
 }
 
 // ValidateTemplate validates a text template.
-func ValidateTemplate(text string) error {
+func ValidateTemplate(text []byte) error {
 	return templates.ValidateTemplate(text)
 }
 
 // ValidateTemplateData validates that template data is
 // valid JSON.
-func ValidateTemplateData(text string) error {
-	return templates.ValidateTemplateData(text)
+func ValidateTemplateData(data []byte) error {
+	return templates.ValidateTemplateData(data)
 }
 
 // TemplateData is an alias for map[string]interface{}. It represents the data
