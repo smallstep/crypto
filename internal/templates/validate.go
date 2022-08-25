@@ -13,7 +13,6 @@ import (
 // is valid, it can be used safely. A valid template can still result
 // in invalid JSON when non-empty template data is provided.
 func ValidateTemplate(text string) error {
-
 	// return early on empty template strings
 	if text == "" {
 		return nil
