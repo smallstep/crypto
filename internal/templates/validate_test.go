@@ -2,6 +2,7 @@ package templates
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ func TestValidateTemplate(t *testing.T) {
 		err  error
 	}{
 		{
-			name: "ok",
+			name: "ok/default-leaf-template",
 			text: `{
 				"subject": {{ toJson .Subject }},
 				"sans": {{ toJson .SANs }},
@@ -129,27 +130,11 @@ func TestValidateTemplate(t *testing.T) {
 		},
 		{
 			name: "ok/empty-template",
-			text: ``,
+			text: "",
 			err:  nil,
 		},
 		{
-			name: "ok/empty-after-template-execution",
-			text: `
-				{{ if not .Token.ghu }}{{ end }}
-		  	`,
-			err: nil,
-		},
-		{
-			name: "ok/template-with-fail",
-			text: `
-			{{ if not .Token.ghu }}
-				{{ fail "token has no GitHub username" }}
-		  	{{ end }}
-		  `,
-			err: nil,
-		},
-		{
-			name: "ok/template-with-nested-if",
+			name: "ok/template-with-nested-property",
 			text: `
 			{{ if not .Token.ghu.foo }}
 				{{ toJson "token has no GitHub username" }}
@@ -182,26 +167,27 @@ func TestValidateTemplate(t *testing.T) {
 			err: errors.New("error parsing template: template: template:3: unexpected \"}\" in operand"),
 		},
 		{
-			name: "fail/json-extraneous-trailing-brace",
+			name: "ok/json-extraneous-trailing-brace",
 			text: `
 				{
 					"subject": {{ toJson .Subject }}},
 					"issuer": {{ toJson .Subject }}
 				}
 			`,
-			err: errors.New("invalid JSON: early decoder termination suspected"),
+			err: nil, // NOTE: ideally we would like to catch this, but without validating the JSON, this seems hard
 		},
 		{
-			name: "fail/json-missing-trailing-comma",
+			name: "ok/json-missing-trailing-comma",
 			text: `{
 				"subject": {{ toJson .Subject }}
 				"sans": {{ toJson .SANs }}
 			}`,
-			err: errors.New("invalid JSON: invalid character '\"' after object key:value pair"),
+			err: nil, // NOTE: ideally we would like to catch this, but without validating the JSON, this seems hard
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			fmt.Println(tt.name)
 			err := ValidateTemplate(tt.text)
 			if tt.err != nil {
 				assert.Error(t, err)

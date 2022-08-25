@@ -345,8 +345,13 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "fail",
+			name:    "ok/invalid-json",
 			text:    "{!?}",
+			wantErr: false,
+		},
+		{
+			name:    "fail/unknown-function",
+			text:    "{{ unknownFunction }}",
 			wantErr: true,
 		},
 	}

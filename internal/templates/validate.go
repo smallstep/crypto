@@ -1,15 +1,11 @@
 package templates
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"text/template"
 )
-
-var errForceFail = errors.New("force fail")
 
 // ValidateTemplate validates a text template results in valid JSON
 // when it's executed with empty template data. If template execution
@@ -23,53 +19,14 @@ func ValidateTemplate(text string) error {
 		return nil
 	}
 
-	// get the default functions; override the `fail` function to return the `errForceFail` error
+	// get the default supported functions
 	var failMessage string
 	funcMap := GetFuncMap(&failMessage)
-	funcMap["fail"] = func(msg string) (string, error) {
-		return "", errForceFail
-	}
 
 	// prepare the template with our template functions
-	tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
+	_, err := template.New("template").Funcs(funcMap).Parse(text)
 	if err != nil {
 		return fmt.Errorf("error parsing template: %w", err)
-	}
-
-	// execute the template with empty data, resulting in nulls for fields
-	// that aren't filled in the template
-	buf := new(bytes.Buffer)
-	if err := tmpl.Execute(buf, nil); err != nil {
-		// the `fail` function returns an error when a template is executed
-		// that contains a call to it. If the error is an `errForceFail`, the
-		// `fail` function was called and we'll continue validation. Other
-		// template execution errors are returned.
-		if !errors.Is(err, errForceFail) {
-			return fmt.Errorf("error validating template execution: %w", err)
-		}
-	}
-
-	// trim all whitespace after template execution
-	trimmed := strings.TrimSpace(buf.String())
-	if trimmed == "" {
-		// TODO(hs): does it make sense to return no error if the template effectively results in no template?
-		// I think we may want to return an error here instead
-		return nil
-	}
-
-	// resulting JSON should be valid; if not, the template was not formatted correctly
-	if ok := json.Valid(buf.Bytes()); !ok {
-		// determine what's wrong with the JSON exactly; the `Valid` method doesn't return that
-		var m map[string]interface{}
-		if err := json.NewDecoder(buf).Decode(&m); err != nil {
-			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
-		}
-
-		// TODO(hs): json.Valid() returns NOK, but decoding doesn't result in error with trailing brace.
-		// Results in `map[subject:<nil>]`. This is kind of a curious case to me. I think Valid() checks
-		// the entire JSON; Decode() does not and sees the trailing brace as the final closing one, and
-		// thus finishes the decoding. Shouldn't the behavior of the Decode be the same as Valid?
-		return errors.New("invalid JSON: early decoder termination suspected")
 	}
 
 	return nil
@@ -84,8 +41,11 @@ func ValidateTemplateData(text string) error {
 			return fmt.Errorf("invalid JSON: %w", enrichJSONError(err))
 		}
 
-		// see comment in `ValidateTemplate` why this case is necessary
-		return errors.New("invalid JSON: early decoder termination suspected")
+		// json.Valid() returns NOK, but decoding doesn't result in error with trailing brace.
+		// It results in `map[subject:<nil>]`, instead. The Valid() function checks the entire JSON;
+		// Decode() does not and sees the trailing brace as the final closing one, and thus stops
+		// decoding.
+		return errors.New("invalid JSON: early decoder termination")
 	}
 
 	return nil
