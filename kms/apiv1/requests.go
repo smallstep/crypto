@@ -165,3 +165,16 @@ type StoreCertificateRequest struct {
 	// Used by: pkcs11
 	Extractable bool
 }
+
+// CreateAttestationRequest is the parameter used in the kms.CreateAttestation
+// method.
+type CreateAttestationRequest struct {
+	Name string
+}
+
+// CreateAttestationResponse is the response value of the kms.CreateAttestation
+// method.
+type CreateAttestationResponse struct {
+	Certificate *x509.Certificate
+	PublicKey   crypto.PublicKey
+}

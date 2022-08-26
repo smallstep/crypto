@@ -190,6 +190,24 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	return signer, nil
 }
 
+// CreateAttestation creates an attestation certificate from a YubiKey slot.
+func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
+	slot, err := getSlot(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err := k.yk.Attest(slot)
+	if err != nil {
+		return nil, errors.Wrap(err, "error attesting slot")
+	}
+
+	return &apiv1.CreateAttestationResponse{
+		Certificate: cert,
+		PublicKey:   cert.PublicKey,
+	}, nil
+}
+
 // Close releases the connection to the YubiKey.
 func (k *YubiKey) Close() error {
 	return errors.Wrap(k.yk.Close(), "error closing yubikey")

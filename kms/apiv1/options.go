@@ -36,6 +36,12 @@ type NameValidator interface {
 	ValidateName(s string) error
 }
 
+// Attester is the interface implemented by the KMS that can respond with an
+// attestation certificate or key.
+type Attester interface {
+	CreateAttestation(req *CreateAttestationRequest) (*CreateAttestationResponse, error)
+}
+
 // ErrNotImplemented is the type of error returned if an operation is not
 // implemented.
 type ErrNotImplemented struct {
