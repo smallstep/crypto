@@ -120,6 +120,100 @@ func (s *stubPivKey) Close() error {
 	return nil
 }
 
+func TestYubiKey_LoadCertificate(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.LoadCertificateRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *x509.Certificate
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.LoadCertificateRequest{
+			Name: "yubikey:slot-id=9c",
+		}}, yk.certMap[piv.SlotSignature], false},
+		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.LoadCertificateRequest{
+			Name: "slot-id=9c",
+		}}, nil, true},
+		{"fail certificate", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.LoadCertificateRequest{
+			Name: "yubikey:slot-id=85",
+		}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			got, err := k.LoadCertificate(tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.LoadCertificate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("YubiKey.LoadCertificate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestYubiKey_GetPublicKey(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.GetPublicKeyRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    crypto.PublicKey
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "yubikey:slot-id=9c",
+		}}, yk.certMap[piv.SlotSignature].PublicKey, false},
+		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "slot-id=9c",
+		}}, nil, true},
+		{"fail getPublicKey", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "yubikey:slot-id=85",
+		}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			got, err := k.GetPublicKey(tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.GetPublicKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("YubiKey.GetPublicKey() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestYubiKey_CreateSigner(t *testing.T) {
 	yk := newStubPivKey(t)
 
@@ -231,6 +325,35 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("YubiKey.CreateAttestation() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestYubiKey_Close(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			if err := k.Close(); (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.Close() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
