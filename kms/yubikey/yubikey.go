@@ -170,13 +170,21 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		return nil, err
 	}
 
+	pin := k.pin
+	if pin == "" {
+		// Attempt to get the pin from the uri
+		if u, err := uri.ParseWithScheme(Scheme, req.SigningKey); err == nil {
+			pin = u.Pin()
+		}
+	}
+
 	pub, err := k.getPublicKey(slot)
 	if err != nil {
 		return nil, err
 	}
 
 	priv, err := k.yk.PrivateKey(slot, pub, piv.KeyAuth{
-		PIN:       k.pin,
+		PIN:       pin,
 		PINPolicy: piv.PINPolicyAlways,
 	})
 	if err != nil {
