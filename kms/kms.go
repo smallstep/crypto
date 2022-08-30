@@ -19,6 +19,11 @@ type CertificateManager = apiv1.CertificateManager
 
 // Attester is the interface implemented by the KMS that can respond with an
 // attestation certificate or key.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type Attester = apiv1.Attester
 
 // Options are the KMS options. They represent the kms object in the ca.json.

@@ -38,6 +38,11 @@ type NameValidator interface {
 
 // Attester is the interface implemented by the KMS that can respond with an
 // attestation certificate or key.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type Attester interface {
 	CreateAttestation(req *CreateAttestationRequest) (*CreateAttestationResponse, error)
 }

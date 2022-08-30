@@ -168,12 +168,22 @@ type StoreCertificateRequest struct {
 
 // CreateAttestationRequest is the parameter used in the kms.CreateAttestation
 // method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type CreateAttestationRequest struct {
 	Name string
 }
 
 // CreateAttestationResponse is the response value of the kms.CreateAttestation
 // method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type CreateAttestationResponse struct {
 	Certificate      *x509.Certificate
 	CertificateChain []*x509.Certificate

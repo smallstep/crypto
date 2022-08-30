@@ -199,6 +199,11 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 }
 
 // CreateAttestation creates an attestation certificate from a YubiKey slot.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
 	slot, err := getSlot(req.Name)
 	if err != nil {
