@@ -5,6 +5,7 @@ package yubikey
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -166,6 +167,106 @@ func (s *stubPivKey) Attest(slot piv.Slot) (*x509.Certificate, error) {
 
 func (s *stubPivKey) Close() error {
 	return nil
+}
+
+func TestNew(t *testing.T) {
+	ctx := context.Background()
+	pOpen := pivOpen
+	pCards := pivCards
+	t.Cleanup(func() {
+		pivOpen = pOpen
+		pivCards = pCards
+	})
+
+	yk := newStubPivKey(t)
+
+	okPivCards := func() ([]string, error) {
+		return []string{"Yubico YubiKey OTP+FIDO+CCID"}, nil
+	}
+	failPivCards := func() ([]string, error) {
+		return nil, errors.New("error reading cards")
+	}
+	failNoPivCards := func() ([]string, error) {
+		return []string{}, nil
+	}
+
+	okPivOpen := func(card string) (pivKey, error) {
+		return yk, nil
+	}
+	failPivOpen := func(card string) (pivKey, error) {
+		return nil, errors.New("error opening card")
+	}
+
+	type args struct {
+		ctx  context.Context
+		opts apiv1.Options
+	}
+	tests := []struct {
+		name    string
+		args    args
+		setup   func()
+		want    *YubiKey
+		wantErr bool
+	}{
+		{"ok", args{ctx, apiv1.Options{}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with uri", args{ctx, apiv1.Options{
+			URI: "yubikey:pin-value=111111;management-key=001122334455667788990011223344556677889900112233",
+		}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "111111", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		{"ok with Pin", args{ctx, apiv1.Options{Pin: "222222"}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "222222", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with ManagementKey", args{ctx, apiv1.Options{ManagementKey: "001122334455667788990011223344556677889900112233"}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		{"fail uri", args{ctx, apiv1.Options{URI: "badschema:"}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, nil, true},
+		{"fail management key", args{ctx, apiv1.Options{URI: "yubikey:management-key=xxyyzz"}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, nil, true},
+		{"fail management key size", args{ctx, apiv1.Options{URI: "yubikey:management-key=00112233"}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, nil, true},
+		{"fail pivCards", args{ctx, apiv1.Options{}}, func() {
+			pivCards = failPivCards
+			pivOpen = okPivOpen
+
+		}, nil, true},
+		{"fail no pivCards", args{ctx, apiv1.Options{}}, func() {
+			pivCards = failNoPivCards
+			pivOpen = okPivOpen
+
+		}, nil, true},
+		{"fail pivOpen", args{ctx, apiv1.Options{}}, func() {
+			pivCards = okPivCards
+			pivOpen = failPivOpen
+		}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+
+			got, err := New(tt.args.ctx, tt.args.opts)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("New() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestYubiKey_LoadCertificate(t *testing.T) {

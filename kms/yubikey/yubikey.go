@@ -36,9 +36,16 @@ type pivKey interface {
 	Close() error
 }
 
+var pivCards = piv.Cards
+
+var pivOpen = func(card string) (pivKey, error) {
+	return piv.Open(card)
+}
+
 // New initializes a new YubiKey.
 // TODO(mariano): only one card is currently supported.
 func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
+	pin := "123456"
 	managementKey := piv.DefaultManagementKey
 
 	if opts.URI != "" {
@@ -66,7 +73,11 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		copy(managementKey[:], b[:24])
 	}
 
-	cards, err := piv.Cards()
+	if opts.Pin != "" {
+		pin = opts.Pin
+	}
+
+	cards, err := pivCards()
 	if err != nil {
 		return nil, err
 	}
@@ -74,14 +85,14 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		return nil, errors.New("error detecting yubikey: try removing and reconnecting the device")
 	}
 
-	yk, err := piv.Open(cards[0])
+	yk, err := pivOpen(cards[0])
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening yubikey")
 	}
 
 	return &YubiKey{
 		yk:            yk,
-		pin:           opts.Pin,
+		pin:           pin,
 		managementKey: managementKey,
 	}, nil
 }
