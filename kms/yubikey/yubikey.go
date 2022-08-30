@@ -22,9 +22,18 @@ const Scheme = "yubikey"
 
 // YubiKey implements the KMS interface on a YubiKey.
 type YubiKey struct {
-	yk            *piv.YubiKey
+	yk            pivKey
 	pin           string
 	managementKey [24]byte
+}
+
+type pivKey interface {
+	Certificate(slot piv.Slot) (*x509.Certificate, error)
+	SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Certificate) error
+	GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
+	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
+	Attest(slot piv.Slot) (*x509.Certificate, error)
+	Close() error
 }
 
 // New initializes a new YubiKey.
