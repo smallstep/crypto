@@ -4,10 +4,13 @@
 package yubikey
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"reflect"
@@ -90,11 +93,56 @@ func (s *stubPivKey) Certificate(slot piv.Slot) (*x509.Certificate, error) {
 }
 
 func (s *stubPivKey) SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Certificate) error {
-	return apiv1.ErrNotImplemented{}
+	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
+		return errors.New("missing or invalid management key")
+	}
+	s.certMap[slot] = cert
+	return nil
 }
 
 func (s *stubPivKey) GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error) {
-	return nil, apiv1.ErrNotImplemented{}
+	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
+		return nil, errors.New("missing or invalid management key")
+	}
+
+	var signer crypto.Signer
+	switch opts.Algorithm {
+	case piv.AlgorithmEC256:
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	case piv.AlgorithmEC384:
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	case piv.AlgorithmEd25519:
+		_, key, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	case piv.AlgorithmRSA1024:
+		key, err := rsa.GenerateKey(rand.Reader, 1024)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	case piv.AlgorithmRSA2048:
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	default:
+		return nil, errors.New("unsupported algorithm")
+	}
+
+	s.signerMap[slot] = signer
+	return signer.Public(), nil
 }
 
 func (s *stubPivKey) PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error) {
@@ -167,6 +215,66 @@ func TestYubiKey_LoadCertificate(t *testing.T) {
 	}
 }
 
+func TestYubiKey_StoreCertificate(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := yk.userCA.Sign(&x509.Certificate{
+		Subject:   pkix.Name{CommonName: "foo.example.org"},
+		DNSNames:  []string{"foo.example.org"},
+		PublicKey: signer.Public(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.StoreCertificateRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.StoreCertificateRequest{
+			Name:        "yubikey:slot-id=9c",
+			Certificate: cert,
+		}}, false},
+		{"fail nil", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.StoreCertificateRequest{
+			Name: "yubikey:slot-id=9c",
+		}}, true},
+		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.StoreCertificateRequest{
+			Name:        "slot-id=9c",
+			Certificate: cert,
+		}}, true},
+		{"fail setCertificate", fields{yk, "123456", [24]byte{}}, args{&apiv1.StoreCertificateRequest{
+			Name:        "yubikey:slot-id=9c",
+			Certificate: cert,
+		}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			if err := k.StoreCertificate(tt.args.req); (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.StoreCertificate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestYubiKey_GetPublicKey(t *testing.T) {
 	yk := newStubPivKey(t)
 
@@ -214,6 +322,162 @@ func TestYubiKey_GetPublicKey(t *testing.T) {
 	}
 }
 
+func TestYubiKey_CreateKey(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.CreateKeyRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantFn  func() *apiv1.CreateKeyResponse
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok default", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=9c",
+				PublicKey: yk.signerMap[slotMapping["9c"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=9c",
+				},
+			}
+		}, false},
+		{"ok p256", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok p384", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA384,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok ed25519", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.PureEd25519,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok rsa", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA256WithRSA,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok rsa 1024", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA256WithRSA,
+			Bits:               1024,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok rsa 2048", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA256WithRSA,
+			Bits:               2048,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"fail rsa 4096", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA256WithRSA,
+			Bits:               4096,
+		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
+		{"fail getSignatureAlgorithm", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SignatureAlgorithm(100),
+		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
+		{"fail getSlotAndName", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:foo=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
+		{"fail generateKey", fields{yk, "123456", [24]byte{}}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "fail getSlotAndName" {
+				t.Log(tt.name)
+			}
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			got, err := k.CreateKey(tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.CreateKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			want := tt.wantFn()
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("YubiKey.CreateKey() = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestYubiKey_CreateSigner(t *testing.T) {
 	yk := newStubPivKey(t)
 
@@ -242,7 +506,7 @@ func TestYubiKey_CreateSigner(t *testing.T) {
 			SigningKey: "yubikey:slot-id=9c?pin-value=123456",
 		}}, yk.signerMap[piv.SlotSignature].(crypto.Signer), false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateSignerRequest{
-			SigningKey: "slot-id=9c",
+			SigningKey: "yubikey:slot-id=%%FF",
 		}}, nil, true},
 		{"fail getPublicKey", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateSignerRequest{
 			SigningKey: "yubikey:slot-id=85",
@@ -302,7 +566,7 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 			PublicKey:        yk.attestMap[piv.SlotAuthentication].PublicKey,
 		}, false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateAttestationRequest{
-			Name: "slot-id=9a",
+			Name: "yubikey://:slot-id=9a",
 		}}, nil, true},
 		{"fail attest", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateAttestationRequest{
 			Name: "yubikey:slot-id=85",

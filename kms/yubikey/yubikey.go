@@ -355,7 +355,7 @@ func getSlotAndName(name string) (piv.Slot, string, error) {
 			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s'", name)
 		}
 		if slotID = v.Get("slot-id"); slotID == "" {
-			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s': slot-id is missing", name)
+			return piv.Slot{}, "", errors.Errorf("error parsing '%s': slot-id is missing", name)
 		}
 	} else {
 		slotID = name
