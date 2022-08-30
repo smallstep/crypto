@@ -175,6 +175,7 @@ type CreateAttestationRequest struct {
 // CreateAttestationResponse is the response value of the kms.CreateAttestation
 // method.
 type CreateAttestationResponse struct {
-	Certificate *x509.Certificate
-	PublicKey   crypto.PublicKey
+	Certificate      *x509.Certificate
+	CertificateChain []*x509.Certificate
+	PublicKey        crypto.PublicKey
 }

@@ -202,9 +202,15 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 		return nil, errors.Wrap(err, "error attesting slot")
 	}
 
+	intermediate, err := k.yk.Certificate(slotAttestation)
+	if err != nil {
+		return nil, errors.Wrap(err, "error retrieving attestation certificate")
+	}
+
 	return &apiv1.CreateAttestationResponse{
-		Certificate: cert,
-		PublicKey:   cert.PublicKey,
+		Certificate:      cert,
+		CertificateChain: []*x509.Certificate{intermediate},
+		PublicKey:        cert.PublicKey,
 	}, nil
 }
 
@@ -275,6 +281,8 @@ func getSignatureAlgorithm(alg apiv1.SignatureAlgorithm, bits int) (piv.Algorith
 		return 0, errors.Errorf("unexpected error: this should not happen")
 	}
 }
+
+var slotAttestation = piv.Slot{Key: 0xf9, Object: 0x5fff01}
 
 var slotMapping = map[string]piv.Slot{
 	"9a": piv.SlotAuthentication,
