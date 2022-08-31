@@ -22,14 +22,30 @@ const Scheme = "yubikey"
 
 // YubiKey implements the KMS interface on a YubiKey.
 type YubiKey struct {
-	yk            *piv.YubiKey
+	yk            pivKey
 	pin           string
 	managementKey [24]byte
+}
+
+type pivKey interface {
+	Certificate(slot piv.Slot) (*x509.Certificate, error)
+	SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Certificate) error
+	GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
+	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
+	Attest(slot piv.Slot) (*x509.Certificate, error)
+	Close() error
+}
+
+var pivCards = piv.Cards
+
+var pivOpen = func(card string) (pivKey, error) {
+	return piv.Open(card)
 }
 
 // New initializes a new YubiKey.
 // TODO(mariano): only one card is currently supported.
 func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
+	pin := "123456"
 	managementKey := piv.DefaultManagementKey
 
 	if opts.URI != "" {
@@ -57,7 +73,11 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		copy(managementKey[:], b[:24])
 	}
 
-	cards, err := piv.Cards()
+	if opts.Pin != "" {
+		pin = opts.Pin
+	}
+
+	cards, err := pivCards()
 	if err != nil {
 		return nil, err
 	}
@@ -65,14 +85,14 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		return nil, errors.New("error detecting yubikey: try removing and reconnecting the device")
 	}
 
-	yk, err := piv.Open(cards[0])
+	yk, err := pivOpen(cards[0])
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening yubikey")
 	}
 
 	return &YubiKey{
 		yk:            yk,
-		pin:           opts.Pin,
+		pin:           pin,
 		managementKey: managementKey,
 	}, nil
 }
@@ -170,13 +190,21 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		return nil, err
 	}
 
+	pin := k.pin
+	if pin == "" {
+		// Attempt to get the pin from the uri
+		if u, err := uri.ParseWithScheme(Scheme, req.SigningKey); err == nil {
+			pin = u.Pin()
+		}
+	}
+
 	pub, err := k.getPublicKey(slot)
 	if err != nil {
 		return nil, err
 	}
 
 	priv, err := k.yk.PrivateKey(slot, pub, piv.KeyAuth{
-		PIN:       k.pin,
+		PIN:       pin,
 		PINPolicy: piv.PINPolicyAlways,
 	})
 	if err != nil {
@@ -188,6 +216,35 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		return nil, errors.New("private key is not a crypto.Signer")
 	}
 	return signer, nil
+}
+
+// CreateAttestation creates an attestation certificate from a YubiKey slot.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
+	slot, err := getSlot(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err := k.yk.Attest(slot)
+	if err != nil {
+		return nil, errors.Wrap(err, "error attesting slot")
+	}
+
+	intermediate, err := k.yk.Certificate(slotAttestation)
+	if err != nil {
+		return nil, errors.Wrap(err, "error retrieving attestation certificate")
+	}
+
+	return &apiv1.CreateAttestationResponse{
+		Certificate:      cert,
+		CertificateChain: []*x509.Certificate{intermediate},
+		PublicKey:        cert.PublicKey,
+	}, nil
 }
 
 // Close releases the connection to the YubiKey.
@@ -258,6 +315,8 @@ func getSignatureAlgorithm(alg apiv1.SignatureAlgorithm, bits int) (piv.Algorith
 	}
 }
 
+var slotAttestation = piv.Slot{Key: 0xf9, Object: 0x5fff01}
+
 var slotMapping = map[string]piv.Slot{
 	"9a": piv.SlotAuthentication,
 	"9c": piv.SlotSignature,
@@ -307,7 +366,7 @@ func getSlotAndName(name string) (piv.Slot, string, error) {
 			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s'", name)
 		}
 		if slotID = v.Get("slot-id"); slotID == "" {
-			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s': slot-id is missing", name)
+			return piv.Slot{}, "", errors.Errorf("error parsing '%s': slot-id is missing", name)
 		}
 	} else {
 		slotID = name

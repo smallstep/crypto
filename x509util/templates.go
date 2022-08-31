@@ -91,6 +91,11 @@ func (t TemplateData) SetSANs(sans []string) {
 	t.Set(SANsKey, CreateSANs(sans))
 }
 
+// SetSubjectAlternativeNames sets the given sans in the template data.
+func (t TemplateData) SetSubjectAlternativeNames(sans ...SubjectAlternativeName) {
+	t.Set(SANsKey, sans)
+}
+
 // SetToken sets the given token in the template data.
 func (t TemplateData) SetToken(v interface{}) {
 	t.Set(TokenKey, v)
@@ -205,4 +210,19 @@ const CertificateRequestTemplate = `{{ toJson .Insecure.CR }}`
 const DefaultCertificateRequestTemplate = `{
 	"subject": {{ toJson .Subject }},
 	"sans": {{ toJson .SANs }}
+}`
+
+// DefaultAttestedLeafTemplate is the default template used to generate a leaf
+// certificate from an attestation certificate. The main difference with
+// "DefaultLeafTemplate" is that the extended key usage is limited to
+// "clientAuth".
+const DefaultAttestedLeafTemplate = `{
+	"subject": {{ toJson .Subject }},
+	"sans": {{ toJson .SANs }},
+{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+	"keyUsage": ["keyEncipherment", "digitalSignature"],
+{{- else }}
+	"keyUsage": ["digitalSignature"],
+{{- end }}
+	"extKeyUsage": ["clientAuth"]
 }`

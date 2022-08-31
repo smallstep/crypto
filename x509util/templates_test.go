@@ -163,7 +163,11 @@ func TestTemplateData_SetSANs(t *testing.T) {
 				{Type: URIType, Value: "mailto:jane@doe.com"},
 			}},
 		},
-		{"overwrite", TemplateData{}, args{[]string{"jane.doe.com"}}, TemplateData{
+		{"overwrite", TemplateData{
+			SubjectKey: Subject{CommonName: "foo", Province: []string{"CA"}},
+			SANsKey:    []SubjectAlternativeName{{Type: DNSType, Value: "john.doe.com"}},
+		}, args{[]string{"jane.doe.com"}}, TemplateData{
+			SubjectKey: Subject{CommonName: "foo", Province: []string{"CA"}},
 			SANsKey: []SubjectAlternativeName{
 				{Type: DNSType, Value: "jane.doe.com"},
 			}},
@@ -174,6 +178,50 @@ func TestTemplateData_SetSANs(t *testing.T) {
 			tt.td.SetSANs(tt.args.sans)
 			if !reflect.DeepEqual(tt.td, tt.want) {
 				t.Errorf("TemplateData.SetSANs() = %v, want %v", tt.td, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateData_SetSubjectAlternativeNames(t *testing.T) {
+	type args struct {
+		sans []SubjectAlternativeName
+	}
+	tests := []struct {
+		name string
+		td   TemplateData
+		args args
+		want TemplateData
+	}{
+		{"ok", TemplateData{}, args{[]SubjectAlternativeName{
+			{Type: "dns", Value: "jane.doe.com"},
+			{Type: "permanentIdentifier", Value: "123456789"},
+		}}, TemplateData{
+			SANsKey: []SubjectAlternativeName{
+				{Type: DNSType, Value: "jane.doe.com"},
+				{Type: "permanentIdentifier", Value: "123456789"},
+			}},
+		},
+		{"overwrite", TemplateData{
+			SubjectKey: Subject{CommonName: "foo", Province: []string{"CA"}},
+			SANsKey: []SubjectAlternativeName{
+				{Type: DNSType, Value: "jane.doe.com"},
+				{Type: "permanentIdentifier", Value: "123456789"},
+			},
+		}, args{[]SubjectAlternativeName{
+			{Type: "email", Value: "jane@doe.com"},
+		}}, TemplateData{
+			SubjectKey: Subject{CommonName: "foo", Province: []string{"CA"}},
+			SANsKey: []SubjectAlternativeName{
+				{Type: "email", Value: "jane@doe.com"},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.td.SetSubjectAlternativeNames(tt.args.sans...)
+			if !reflect.DeepEqual(tt.td, tt.want) {
+				t.Errorf("TemplateData.SetSubjectAlternativeNames() = %v, want %v", tt.td, tt.want)
 			}
 		})
 	}
