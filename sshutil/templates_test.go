@@ -554,6 +554,31 @@ func TestTemplateData_SetCertificateRequest(t *testing.T) {
 	}
 }
 
+func TestTemplateData_SetWebhook(t *testing.T) {
+	type args struct {
+		name string
+		v    interface{}
+	}
+	tests := []struct {
+		name string
+		td   TemplateData
+		args args
+		want TemplateData
+	}{
+		{"empty", TemplateData{}, args{"foo", "bar"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}},
+		{"overwrite", TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}, args{"foo", "zar"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "zar"}}},
+		{"existing", TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}, args{"bar", "foo"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar", "bar": "foo"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.td.SetWebhook(tt.args.name, tt.args.v)
+			if !reflect.DeepEqual(tt.td, tt.want) {
+				t.Errorf("TemplateData.SetWebhook() = %v, want %v", tt.td, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateTemplate(t *testing.T) {
 	tests := []struct {
 		name    string
