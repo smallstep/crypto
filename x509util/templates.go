@@ -16,6 +16,7 @@ const (
 	CertificateRequestKey = "CR"
 	AuthorizationCrtKey   = "AuthorizationCrt"
 	AuthorizationChainKey = "AuthorizationChain"
+	WebhooksKey           = "Webhooks"
 )
 
 // TemplateError represents an error in a template produced by the fail
@@ -123,6 +124,17 @@ func (t TemplateData) SetAuthorizationCertificateChain(chain interface{}) {
 // template data.
 func (t TemplateData) SetCertificateRequest(cr *x509.CertificateRequest) {
 	t.SetInsecure(CertificateRequestKey, newCertificateRequest(cr))
+}
+
+// SetWebhook sets the given webhook response in the webhooks template data.
+func (t TemplateData) SetWebhook(webhookName string, data interface{}) {
+	if webhooksMap, ok := t[WebhooksKey].(map[string]interface{}); ok {
+		webhooksMap[webhookName] = data
+	} else {
+		t[WebhooksKey] = map[string]interface{}{
+			webhookName: data,
+		}
+	}
 }
 
 // DefaultLeafTemplate is the default template used to generate a leaf
