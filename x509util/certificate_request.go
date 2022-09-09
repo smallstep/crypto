@@ -60,15 +60,15 @@ func NewCertificateRequest(signer crypto.Signer, opts ...Option) (*CertificateRe
 	return &cr, nil
 }
 
-// newCertificateRequest is an internal method that creates a CertificateRequest
-// from an x509.CertificateRequest.
+// NewCertificateRequestFromX509 creates a CertificateRequest from an
+// x509.CertificateRequest.
 //
 // This method is used to create the template variable .Insecure.CR or to
-// initialize the Certificate when no templates are used. newCertificateRequest
-// will always ignore the SignatureAlgorithm because we cannot guarantee that
-// the signer will be able to sign a certificate template if
-// Certificate.SignatureAlgorithm is set.
-func newCertificateRequest(cr *x509.CertificateRequest) *CertificateRequest {
+// initialize the Certificate when no templates are used.
+// NewCertificateRequestFromX509 will always ignore the SignatureAlgorithm
+// because we cannot guarantee that the signer will be able to sign a
+// certificate template if Certificate.SignatureAlgorithm is set.
+func NewCertificateRequestFromX509(cr *x509.CertificateRequest) *CertificateRequest {
 	// Set SubjectAltName extension as critical if Subject is empty.
 	fixSubjectAltName(cr)
 	return &CertificateRequest{

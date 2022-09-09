@@ -545,6 +545,46 @@ func (k *KeyUsage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON implements the json.Marshaler interface and converts a key usage
+// into a list of strings.
+func (k KeyUsage) MarshalJSON() ([]byte, error) {
+	var usages []string
+
+	if x509.KeyUsage(k)&x509.KeyUsageDigitalSignature != 0 {
+		usages = append(usages, KeyUsageDigitalSignature)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageContentCommitment != 0 {
+		usages = append(usages, KeyUsageContentCommitment)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageKeyEncipherment != 0 {
+		usages = append(usages, KeyUsageKeyEncipherment)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageDataEncipherment != 0 {
+		usages = append(usages, KeyUsageDataEncipherment)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageKeyAgreement != 0 {
+		usages = append(usages, KeyUsageKeyAgreement)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageCertSign != 0 {
+		usages = append(usages, KeyUsageCertSign)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageCRLSign != 0 {
+		usages = append(usages, KeyUsageCRLSign)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageEncipherOnly != 0 {
+		usages = append(usages, KeyUsageEncipherOnly)
+	}
+	if x509.KeyUsage(k)&x509.KeyUsageDecipherOnly != 0 {
+		usages = append(usages, KeyUsageDecipherOnly)
+	}
+
+	if len(usages) == 0 && k != 0 {
+		return nil, fmt.Errorf("cannot marshal key usage %v", k)
+	}
+
+	return json.Marshal(usages)
+}
+
 // ExtKeyUsage represents a JSON array of extended key usages.
 type ExtKeyUsage []x509.ExtKeyUsage
 
@@ -601,6 +641,49 @@ func (k *ExtKeyUsage) UnmarshalJSON(data []byte) error {
 
 	*k = ExtKeyUsage(eku)
 	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface and converts a list of
+// extended key usages to a list of strings
+func (k ExtKeyUsage) MarshalJSON() ([]byte, error) {
+	usages := make([]string, len(k))
+
+	for i, eku := range k {
+		switch eku {
+		case x509.ExtKeyUsageAny:
+			usages[i] = ExtKeyUsageAny
+		case x509.ExtKeyUsageServerAuth:
+			usages[i] = ExtKeyUsageServerAuth
+		case x509.ExtKeyUsageClientAuth:
+			usages[i] = ExtKeyUsageClientAuth
+		case x509.ExtKeyUsageCodeSigning:
+			usages[i] = ExtKeyUsageCodeSigning
+		case x509.ExtKeyUsageEmailProtection:
+			usages[i] = ExtKeyUsageEmailProtection
+		case x509.ExtKeyUsageIPSECEndSystem:
+			usages[i] = ExtKeyUsageIPSECEndSystem
+		case x509.ExtKeyUsageIPSECTunnel:
+			usages[i] = ExtKeyUsageIPSECTunnel
+		case x509.ExtKeyUsageIPSECUser:
+			usages[i] = ExtKeyUsageIPSECUser
+		case x509.ExtKeyUsageTimeStamping:
+			usages[i] = ExtKeyUsageTimeStamping
+		case x509.ExtKeyUsageOCSPSigning:
+			usages[i] = ExtKeyUsageOCSPSigning
+		case x509.ExtKeyUsageMicrosoftServerGatedCrypto:
+			usages[i] = ExtKeyUsageMicrosoftServerGatedCrypto
+		case x509.ExtKeyUsageNetscapeServerGatedCrypto:
+			usages[i] = ExtKeyUsageNetscapeServerGatedCrypto
+		case x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+			usages[i] = ExtKeyUsageMicrosoftCommercialCodeSigning
+		case x509.ExtKeyUsageMicrosoftKernelCodeSigning:
+			usages[i] = ExtKeyUsageMicrosoftKernelCodeSigning
+		default:
+			return nil, fmt.Errorf("unsupported extKeyUsage %v", eku)
+		}
+	}
+
+	return json.Marshal(usages)
 }
 
 // UnknownExtKeyUsage represents the list of OIDs of extended key usages unknown

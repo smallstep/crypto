@@ -55,7 +55,7 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	// If no template use only the certificate request with the default leaf key
 	// usages.
 	if o.CertBuffer == nil {
-		return newCertificateRequest(cr).GetLeafCertificate(), nil
+		return NewCertificateRequestFromX509(cr).GetLeafCertificate(), nil
 	}
 
 	// With templates
