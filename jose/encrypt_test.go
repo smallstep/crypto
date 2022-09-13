@@ -167,6 +167,7 @@ func TestEncryptJWK(t *testing.T) {
 }
 
 func TestEncryptDecryptJWK(t *testing.T) {
+	t.Parallel()
 	ecKey := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "enc", "", 0))
 	rsaKey := fixJWK(mustGenerateJWK(t, "RSA", "", "RS256", "sig", "", 2048))
 	rsaPSSKey := fixJWK(mustGenerateJWK(t, "RSA", "", "PS256", "enc", "", 2048))

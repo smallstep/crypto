@@ -113,7 +113,7 @@ func Test_maybeUnwrap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := maybeUnwrap(tt.args.err)
-			if !reflect.DeepEqual(err, tt.wantErr) {
+			if !reflect.DeepEqual(err, tt.wantErr) { //nolint:govet // legacy deep equal error check
 				t.Errorf("maybeUnwrap() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

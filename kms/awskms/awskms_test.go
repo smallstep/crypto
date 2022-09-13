@@ -34,12 +34,12 @@ func TestNew(t *testing.T) {
 	forceError := func(t *testing.T) {
 		key := "AWS_CA_BUNDLE"
 		value := os.Getenv(key)
-		os.Setenv(key, filepath.Join(os.TempDir(), "missing-ca.crt"))
+		t.Setenv(key, filepath.Join(os.TempDir(), "missing-ca.crt"))
 		t.Cleanup(func() {
 			if value == "" {
 				os.Unsetenv(key)
 			} else {
-				os.Setenv(key, value)
+				t.Setenv(key, value)
 			}
 		})
 	}
@@ -81,7 +81,7 @@ func TestNew(t *testing.T) {
 				return
 			}
 			if err != nil {
-				if !reflect.DeepEqual(got, tt.want) {
+				if !reflect.DeepEqual(got, tt.want) { //nolint:govet // variable names match crypto formulae docs
 					t.Errorf("New() = %#v, want %#v", got, tt.want)
 				}
 			} else {

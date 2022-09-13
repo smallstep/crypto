@@ -76,7 +76,7 @@ func startOpenSSHAgent(t *testing.T) (client agent.Agent, socket string, cleanup
 		t.Fatalf("Atoi(%q): %v", pidStr, err)
 	}
 
-	conn, err := net.Dial("unix", string(socket))
+	conn, err := net.Dial("unix", socket)
 	if err != nil {
 		t.Fatalf("net.Dial: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestNew(t *testing.T) {
 
 	sshagent, socket, cleanup := startOpenSSHAgent(t)
 
-	os.Setenv("SSH_AUTH_SOCK", socket)
+	t.Setenv("SSH_AUTH_SOCK", socket)
 	t.Cleanup(func() {
 		os.Unsetenv("SSH_AUTH_SOCK")
 		cleanup()

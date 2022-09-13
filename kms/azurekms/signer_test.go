@@ -143,11 +143,11 @@ func TestSigner_Sign(t *testing.T) {
 				keyBytes++
 			}
 			rBytes := r.Bytes()
-			rBytesPadded := make([]byte, keyBytes)
+			rBytesPadded := make([]byte, 0, keyBytes)
 			copy(rBytesPadded[keyBytes-len(rBytes):], rBytes)
 
 			sBytes := s.Bytes()
-			sBytesPadded := make([]byte, keyBytes)
+			sBytesPadded := make([]byte, 0, keyBytes)
 			copy(sBytesPadded[keyBytes-len(sBytes):], sBytes)
 			// nolint:gocritic
 			resultSig = append(rBytesPadded, sBytesPadded...)
@@ -375,11 +375,11 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 				keyBytes++
 			}
 			rBytes := r.Bytes()
-			rBytesPadded := make([]byte, keyBytes)
+			rBytesPadded := make([]byte, 0, keyBytes)
 			copy(rBytesPadded[keyBytes-len(rBytes):], rBytes)
 
 			sBytes := s.Bytes()
-			sBytesPadded := make([]byte, keyBytes)
+			sBytesPadded := make([]byte, 0, keyBytes)
 			copy(sBytesPadded[keyBytes-len(sBytes):], sBytes)
 			// nolint:gocritic
 			resultSig = append(rBytesPadded, sBytesPadded...)

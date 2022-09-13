@@ -7,33 +7,13 @@ on:
     - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
-  test:
-    name: Lint, Test, Build
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        go: [ '1.18', '1.19' ]
-    steps:
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install -y libpcsclite-dev
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: ${{ matrix.go }}
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: 'v1.48'
-          args: --timeout=30m
-      - name: Test
-        run: V=1 make ci
+  ci:
+    uses: smallstep/workflows/.github/workflows/goCI.yml@main
 
   create_release:
     name: Create Release
-    needs: test
-    runs-on: ubuntu-20.04
+    needs: ci
+    runs-on: ubuntu-latest
     steps:
       - name: Is Pre-release
         id: is_prerelease

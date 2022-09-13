@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestEncryptDecryptPKCS8(t *testing.T) {
+	t.Parallel()
 	password := []byte("mypassword")
 	for fn, td := range files {
 		// skip encrypted and public keys
@@ -164,7 +166,7 @@ func TestDecryptPKCS8PrivateKey(t *testing.T) {
 			}
 			// Invalid password
 			_, err = DecryptPKCS8PrivateKey(block.Bytes, []byte("foobar"))
-			if err != x509.IncorrectPasswordError {
+			if errors.Is(err, x509.IncorrectPasswordError) {
 				t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
 			}
 			_, err = x509.ParsePKCS8PrivateKey(data)
@@ -209,7 +211,7 @@ func TestDecryptPKCS8PrivateKey_ciphers(t *testing.T) {
 			// it will return bad data. We will check before if the data is
 			// correct before erroring.
 			badData, err := DecryptPKCS8PrivateKey(encData.Bytes, []byte("foobar"))
-			if err != x509.IncorrectPasswordError {
+			if errors.Is(err, x509.IncorrectPasswordError) {
 				if _, err := x509.ParsePKCS8PrivateKey(badData); err == nil {
 					t.Errorf("DecryptPKCS8PrivateKey() error=%v, wantErr=%v", err, x509.IncorrectPasswordError)
 				}

@@ -176,5 +176,4 @@ func (c *CA) SignSSH(template *ssh.Certificate) (*ssh.Certificate, error) {
 	default:
 		return nil, fmt.Errorf("unknown certificate type")
 	}
-
 }

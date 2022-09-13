@@ -60,6 +60,7 @@ func TestThumbprint(t *testing.T) {
 }
 
 func TestGenerateJWK(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		kty, crv, alg, use, kid string
 		size                    int
@@ -197,6 +198,7 @@ func TestKeyUsageForCert(t *testing.T) {
 }
 
 func TestGenerateJWKFromPEM(t *testing.T) {
+	t.Parallel()
 	mustKey := func(filename string) interface{} {
 		key, err := pemutil.Read(filename)
 		assert.FatalError(t, err)

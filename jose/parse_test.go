@@ -229,6 +229,7 @@ func TestReadKeyPasswordFile(t *testing.T) {
 }
 
 func TestParseKey(t *testing.T) {
+	t.Parallel()
 	marshal := func(i interface{}) []byte {
 		b, err := json.Marshal(i)
 		if err != nil {

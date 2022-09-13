@@ -219,7 +219,7 @@ func (r *Renewer) nextRenewDuration(notAfter time.Time) time.Duration {
 	return d
 }
 
-// nolint:gosec // not used for security reasons
+//nolint:gosec // not used for security reasons
 func mathRandInt63n(n int64) int64 {
 	return rand.Int63n(n)
 }

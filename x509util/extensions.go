@@ -67,9 +67,9 @@ const (
 	HardwareModuleNameType  = "hardwareModuleName"
 )
 
-// These type ids are defined in RFC 5280 page 36
-// nolint:deadcode // ignore
+//nolint:deadcode // ignore
 const (
+	// These type ids are defined in RFC 5280 page 36.
 	nameTypeOtherName     = 0
 	nameTypeEmail         = 1
 	nameTypeDNS           = 2
@@ -283,13 +283,16 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 	switch s.Type {
 	case "", AutoType:
 		// autotype requires us to find out what the type is.
-		if ip := net.ParseIP(s.Value); ip != nil {
+		ip := net.ParseIP(s.Value)
+		u, err := url.Parse(s.Value)
+		switch {
+		case ip != nil:
 			return SubjectAlternativeName{Type: IPType, Value: s.Value}.RawValue()
-		} else if u, err := url.Parse(s.Value); err == nil && u.Scheme != "" {
+		case err == nil && u.Scheme != "":
 			return SubjectAlternativeName{Type: URIType, Value: s.Value}.RawValue()
-		} else if strings.Contains(s.Value, "@") {
+		case strings.Contains(s.Value, "@"):
 			return SubjectAlternativeName{Type: EmailType, Value: s.Value}.RawValue()
-		} else {
+		default:
 			return SubjectAlternativeName{Type: DNSType, Value: s.Value}.RawValue()
 		}
 	case EmailType:
