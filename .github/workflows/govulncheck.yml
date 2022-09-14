@@ -1,5 +1,12 @@
+name: govulncheck
+
 on:
-  workflow_call:
+  push:
+    tags-ignore:
+    - 'v*'
+    branches:
+    - "**"
+  pull_request:
 
 jobs:
   govulncheck:
@@ -19,3 +26,4 @@ jobs:
         uses: mxschmitt/action-tmate@v3
       - name: Run govulncheck
         run: govulncheck ./...
+
