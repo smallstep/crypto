@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/rand"
-	"crypto/sha1" // nolint:gosec // SubjectKeyIdentifier by RFC 5280
+	"crypto/sha1" //nolint:gosec // SubjectKeyIdentifier by RFC 5280
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -66,13 +66,16 @@ func SplitSANs(sans []string) (dnsNames []string, ips []net.IP, emails []string,
 	emails = []string{}
 	uris = []*url.URL{}
 	for _, san := range sans {
-		if ip := net.ParseIP(san); ip != nil {
+		ip := net.ParseIP(san)
+		u, err := url.Parse(san)
+		switch {
+		case ip != nil:
 			ips = append(ips, ip)
-		} else if u, err := url.Parse(san); err == nil && u.Scheme != "" {
+		case err == nil && u.Scheme != "":
 			uris = append(uris, u)
-		} else if strings.Contains(san, "@") {
+		case strings.Contains(san, "@"):
 			emails = append(emails, san)
-		} else {
+		default:
 			dnsNames = append(dnsNames, san)
 		}
 	}
@@ -152,7 +155,7 @@ func generateSubjectKeyID(pub crypto.PublicKey) ([]byte, error) {
 	if _, err = asn1.Unmarshal(b, &info); err != nil {
 		return nil, errors.Wrap(err, "error unmarshaling public key")
 	}
-	// nolint:gosec // SubjectKeyIdentifier by RFC 5280
+	//nolint:gosec // SubjectKeyIdentifier by RFC 5280
 	hash := sha1.Sum(info.SubjectPublicKey.Bytes)
 	return hash[:], nil
 }
@@ -211,12 +214,12 @@ func isPrintableString(s string, asterisk, ampersand bool) bool {
 			// This is technically not allowed in a PrintableString.
 			// However, x509 certificates with wildcard strings don't
 			// always use the correct string type so we permit it.
-			(bool(asterisk) && b == '*') ||
+			(asterisk && b == '*') ||
 			// This is not technically allowed either. However, not
 			// only is it relatively common, but there are also a
 			// handful of CA certificates that contain it. At least
 			// one of which will not expire until 2027.
-			(bool(ampersand) && b == '&')
+			(ampersand && b == '&')
 
 		if !valid {
 			return false

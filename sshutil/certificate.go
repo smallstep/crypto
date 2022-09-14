@@ -106,7 +106,7 @@ func CreateCertificate(cert *ssh.Certificate, signer ssh.Signer) (*ssh.Certifica
 	// SHA256.
 	if cert.SignatureKey.Type() == "ssh-rsa" {
 		if algSigner, ok := signer.(ssh.AlgorithmSigner); ok {
-			sig, err := algSigner.SignWithAlgorithm(rand.Reader, data, ssh.SigAlgoRSASHA2256)
+			sig, err := algSigner.SignWithAlgorithm(rand.Reader, data, ssh.KeyAlgoRSASHA256)
 			if err != nil {
 				return nil, errors.Wrap(err, "error signing certificate")
 			}

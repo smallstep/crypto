@@ -30,7 +30,7 @@ type CertificateManager interface {
 	StoreCertificate(req *StoreCertificateRequest) error
 }
 
-// ValidateName is an interface that KeyManager can implement to validate a
+// NameValidator is an interface that KeyManager can implement to validate a
 // given name or URI.
 type NameValidator interface {
 	ValidateName(s string) error
@@ -47,26 +47,26 @@ type Attester interface {
 	CreateAttestation(req *CreateAttestationRequest) (*CreateAttestationResponse, error)
 }
 
-// ErrNotImplemented is the type of error returned if an operation is not
+// NotImplementedError is the type of error returned if an operation is not
 // implemented.
-type ErrNotImplemented struct {
+type NotImplementedError struct {
 	Message string
 }
 
-func (e ErrNotImplemented) Error() string {
+func (e NotImplementedError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
 	return "not implemented"
 }
 
-// ErrAlreadyExists is the type of error returned if a key already exists. This
+// AlreadyExistsError is the type of error returned if a key already exists. This
 // is currently only implmented on pkcs11.
-type ErrAlreadyExists struct {
+type AlreadyExistsError struct {
 	Message string
 }
 
-func (e ErrAlreadyExists) Error() string {
+func (e AlreadyExistsError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}

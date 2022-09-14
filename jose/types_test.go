@@ -99,7 +99,7 @@ func TestTrimPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := TrimPrefix(tt.args.err); !reflect.DeepEqual(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
+			if err := TrimPrefix(tt.args.err); !reflect.DeepEqual(err, tt.wantErr) && err.Error() != tt.wantErr.Error() { //nolint:govet // variable names match crypto formulae docs
 				t.Errorf("TrimPrefix() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

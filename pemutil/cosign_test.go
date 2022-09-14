@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"reflect"
@@ -205,7 +206,7 @@ func TestParseCosignPrivateKey_IncorrectPasswordError(t *testing.T) {
 	}
 
 	_, err = ParseCosignPrivateKey(block.Bytes, []byte("foobar"))
-	if err != x509.IncorrectPasswordError {
+	if !errors.Is(err, x509.IncorrectPasswordError) {
 		t.Errorf("ParseCosignPrivateKey() error = %v, wantErr = %v", err, x509.IncorrectPasswordError)
 	}
 }

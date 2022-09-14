@@ -148,7 +148,6 @@ func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 
 // CreateDecrypter creates a new crypto.Decrypter backed by disk/software
 func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Decrypter, error) {
-
 	var opts []pemutil.Options
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))

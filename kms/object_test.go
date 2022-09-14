@@ -228,7 +228,7 @@ func Test_object_Close(t *testing.T) {
 			}
 			// Normalize
 			tt.o.once = sync.Once{}
-			if !reflect.DeepEqual(tt.o, tt.want) {
+			if !reflect.DeepEqual(tt.o, tt.want) { //nolint:govet // variable names match crypto formulae docs
 				t.Errorf("object.Close() = %v, want %v", tt.o, tt.want)
 			}
 		})

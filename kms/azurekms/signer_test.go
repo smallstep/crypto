@@ -149,7 +149,7 @@ func TestSigner_Sign(t *testing.T) {
 			sBytes := s.Bytes()
 			sBytesPadded := make([]byte, keyBytes)
 			copy(sBytesPadded[keyBytes-len(sBytes):], sBytes)
-			// nolint:gocritic
+			//nolint:gocritic,makezero // rBytesPadded is initialized
 			resultSig = append(rBytesPadded, sBytesPadded...)
 
 			var b cryptobyte.Builder
@@ -381,7 +381,7 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 			sBytes := s.Bytes()
 			sBytesPadded := make([]byte, keyBytes)
 			copy(sBytesPadded[keyBytes-len(sBytes):], sBytes)
-			// nolint:gocritic
+			//nolint:gocritic,makezero // rBytesPadded is initialized
 			resultSig = append(rBytesPadded, sBytesPadded...)
 
 			var b cryptobyte.Builder

@@ -4,7 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
-	"crypto/sha1" // nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
+	"crypto/sha1" //nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
@@ -81,7 +81,7 @@ func ValidateX5T(certs []*x509.Certificate, key interface{}) (string, error) {
 	}
 	// x5t is the base64 URL encoded SHA1 thumbprint
 	// (see https://tools.ietf.org/html/rfc7515#section-4.1.7)
-	// nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
+	//nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
 	fingerprint := sha1.Sum(certs[0].Raw)
 	return base64.URLEncoding.EncodeToString(fingerprint[:]), nil
 }

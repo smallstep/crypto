@@ -163,7 +163,7 @@ func Test_openError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := openError(tt.args.name, tt.args.err); !reflect.DeepEqual(got, tt.want) {
+			if got := openError(tt.args.name, tt.args.err); !reflect.DeepEqual(got, tt.want) { //nolint:govet // variable names match crypto formulae docs
 				t.Errorf("openError() = %v, want %v", got, tt.want)
 			}
 		})

@@ -299,10 +299,14 @@ func (k *CloudKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKe
 	return pk, nil
 }
 
+// ErrTooManyRetries is the type of error when a method attempts too many
+// retries.
+var ErrTooManyRetries = errors.New("too many retries")
+
 // getPublicKeyWithRetries retries the request if the error is
 // FailedPrecondition, caused because the key is in the PENDING_GENERATION
 // status.
-func (k *CloudKMS) getPublicKeyWithRetries(name string, retries int) (response *kmspb.PublicKey, err error) {
+func (k *CloudKMS) getPublicKeyWithRetries(name string, retries int) (*kmspb.PublicKey, error) {
 	workFn := func() (*kmspb.PublicKey, error) {
 		ctx, cancel := defaultContext()
 		defer cancel()
@@ -311,16 +315,19 @@ func (k *CloudKMS) getPublicKeyWithRetries(name string, retries int) (response *
 		})
 	}
 	for i := 0; i < retries; i++ {
-		if response, err = workFn(); err == nil {
-			return
-		}
-		if status.Code(err) == codes.FailedPrecondition {
+		response, err := workFn()
+		switch {
+		case err == nil:
+			return response, nil
+		case status.Code(err) == codes.FailedPrecondition:
 			log.Println("Waiting for key generation ...")
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
+		default:
+			return nil, err
 		}
 	}
-	return
+	return nil, ErrTooManyRetries
 }
 
 func defaultContext() (context.Context, context.CancelFunc) {

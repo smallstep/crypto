@@ -31,6 +31,7 @@ type stubPivKey struct {
 	signerMap map[piv.Slot]interface{}
 }
 
+//nolint:typecheck // ignore deadcode warnings
 func newStubPivKey(t *testing.T) *stubPivKey {
 	t.Helper()
 

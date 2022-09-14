@@ -65,10 +65,9 @@ func Decrypt(data []byte, opts ...Option) ([]byte, error) {
 		return nil, err
 	}
 
-	// Return the given data if we cannot parse it as encrypted.
 	enc, err := ParseEncrypted(string(data))
 	if err != nil {
-		return data, nil
+		return data, nil //nolint:nilerr // Return the given data if we cannot parse it as encrypted.
 	}
 
 	// Try with the given password.

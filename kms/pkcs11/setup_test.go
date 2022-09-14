@@ -80,7 +80,7 @@ func setup(t TBTesting, k *PKCS11) {
 			SignatureAlgorithm: tk.SignatureAlgorithm,
 			Bits:               tk.Bits,
 		})
-		if err != nil && !errors.Is(errors.Cause(err), apiv1.ErrAlreadyExists{
+		if err != nil && !errors.Is(errors.Cause(err), apiv1.AlreadyExistsError{
 			Message: tk.Name + " already exists",
 		}) {
 			t.Errorf("PKCS11.GetPublicKey() error = %v", err)
@@ -103,7 +103,7 @@ func setup(t TBTesting, k *PKCS11) {
 		if err := k.StoreCertificate(&apiv1.StoreCertificateRequest{
 			Name:        c.Name,
 			Certificate: cert,
-		}); err != nil && !errors.Is(errors.Cause(err), apiv1.ErrAlreadyExists{
+		}); err != nil && !errors.Is(errors.Cause(err), apiv1.AlreadyExistsError{
 			Message: c.Name + " already exists",
 		}) {
 			t.Errorf("PKCS1.StoreCertificate() error = %v", err)

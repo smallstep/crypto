@@ -217,7 +217,7 @@ func (k *PKCS11) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return errors.Wrap(err, "storeCertificate failed")
 	}
 	if cert != nil {
-		return errors.Wrap(apiv1.ErrAlreadyExists{
+		return errors.Wrap(apiv1.AlreadyExistsError{
 			Message: req.Name + " already exists",
 		}, "storeCertificate failed")
 	}
@@ -308,7 +308,7 @@ func generateKey(ctx P11, req *apiv1.CreateKeyRequest) (crypto11.Signer, error) 
 		return nil, err
 	}
 	if signer != nil {
-		return nil, apiv1.ErrAlreadyExists{
+		return nil, apiv1.AlreadyExistsError{
 			Message: req.Name + " already exists",
 		}
 	}
