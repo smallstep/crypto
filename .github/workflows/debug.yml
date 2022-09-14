@@ -1,0 +1,51 @@
+name: Continuous Integration
+
+on:
+  push:
+    tags-ignore:
+    - 'v*'
+    branches:
+    - "**"
+  pull_request:
+
+jobs:
+   test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.18', '1.19']
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+      - name: Install gotestsum
+        run: |
+          go install gotest.tools/gotestsum@v1.8.1
+      - name: Install libpcsclite-dev # Some dependencies require this package
+        run: |
+          sudo apt-get install libpcsclite-dev
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+      - name: Run Test Suite
+        run: |
+          gotestsum -- -coverprofile=coverage.out -covermode=atomic ./...
+        env:
+          GOTESTSUM_JSONFILE: gotestsum.json
+      - name: Annotate Test Suite Results
+        if: ${{ (success() || failure()) && hashFiles('gotestsum.json') != '' }}
+        uses: guyarb/golang-test-annotations@v0.5.1
+        with:
+          test-results: gotestsum.json
+      - name: Codecov
+        uses: codecov/codecov-action@v1.2.1
+        if: matrix.go == '1.19'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.out # optional
+          name: codecov-umbrella # optional
+          fail_ci_if_error: true # optional (default = false)
+
