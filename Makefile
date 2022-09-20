@@ -42,7 +42,7 @@ race:
 #########################################
 
 fmt:
-	$Q goimports -local github.com/golangci/golangci-lint -l -w $(SRC)
+	$Q goimports -l -w $(SRC)
 
 lint: SHELL:=/bin/bash
 lint:
