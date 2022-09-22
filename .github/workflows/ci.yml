@@ -11,4 +11,6 @@ on:
 jobs:
   ci:
     uses: smallstep/workflows/.github/workflows/goCI.yml@main
+    with:
+      os-dependencies: "libpcsclite-dev"
 
