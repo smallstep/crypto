@@ -15,23 +15,23 @@ jobs:
       os-dependencies: "libpcsclite-dev"
 
   static-code-analysis:
-    #  name: Analyze
-    #  runs-on: ubuntu-latest
-    #  permissions:
-    #    actions: read
-    #    contents: read
-    #    security-events: write
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
-    #  strategy:
-    #    fail-fast: false
-    #    matrix:
-    #      language: [ 'go' ]
-    #      # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
-    #      # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go' ]
+        # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
+        # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
 
-    #  steps:
-    #  - name: Checkout repository
-    #    uses: actions/checkout@v3
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
     #  # Initializes the CodeQL tools for scanning.
     #  - name: Initialize CodeQL
