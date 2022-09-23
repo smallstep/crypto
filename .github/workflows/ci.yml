@@ -101,6 +101,7 @@ jobs:
         GITLEAKS_ENABLE_COMMENTS: true
 
     - name: Setup tmate session
+      if: always()
       uses: mxschmitt/action-tmate@v3
 
     - uses: actions/download-artifact@v3
