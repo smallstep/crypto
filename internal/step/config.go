@@ -22,7 +22,7 @@ var stepPath string
 // homePath will be populated in init() with the proper HOME.
 var homePath string
 
-var testToken = "abc123passwordalskdfjla"
+var defaultDeviceAuthzClientNotSoSecret = "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"
 
 // Path returns the path for the step configuration directory, this is
 // defined by the environment variable STEPPATH or if this is not set it will
