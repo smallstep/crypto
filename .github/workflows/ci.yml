@@ -7,7 +7,7 @@ on:
     branches:
     - "master"
   pull_request:
-  workflow:
+  workflow_call:
     secrets:
       GITLEAKS_LICENSE_KEY:
         required: true
