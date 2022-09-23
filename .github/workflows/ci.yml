@@ -5,12 +5,20 @@ on:
     tags-ignore:
     - 'v*'
     branches:
-    - "**"
+    - "master"
   pull_request:
+  workflow_call:
+    secrets:
+      GITLEAKS_LICENSE_KEY:
+        required: true
 
 jobs:
   ci:
     uses: smallstep/workflows/.github/workflows/goCI.yml@main
     with:
       os-dependencies: "libpcsclite-dev"
+      gitleaks: true
+      codeql: true
+    secrets:
+      GITLEAKS_LICENSE_KEY: ${{ secrets.GITLEAKS_LICENSE_KEY }}
 
