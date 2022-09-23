@@ -92,7 +92,7 @@ jobs:
     - name: Configure GitLeaks
       if:  hashFiles('.gitleaks.toml') == ''
       run: |
-        curl -o ./gitleaks.toml https://raw.githubusercontent.com/smallstep/workflows/master/.gitleaks.toml
+        curl -O https://raw.githubusercontent.com/smallstep/workflows/master/.gitleaks.toml
 
     - uses: gitleaks/gitleaks-action@v2
       env:
@@ -103,11 +103,6 @@ jobs:
     - name: Setup tmate session
       if: always()
       uses: mxschmitt/action-tmate@v3
-
-    - uses: actions/download-artifact@v3
-      if: always()
-      with:
-        name: gitleaks-results.sarif
 
     - uses: github/codeql-action/upload-sarif@v2
       if: always()
