@@ -10,11 +10,13 @@ on:
 
 jobs:
   ci:
+    if: false
     uses: smallstep/workflows/.github/workflows/goCI.yml@main
     with:
       os-dependencies: "libpcsclite-dev"
 
   static-code-analysis:
+    if: false
     name: Analyze
     runs-on: ubuntu-latest
     permissions:
@@ -74,5 +76,36 @@ jobs:
         name: gitleaks-results.sarif
 
     - uses: github/codeql-action/upload-sarif@v1
+      with:
+        sarif_file: gitleaks-results.sarif
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Configure GitLeaks
+      if:  hashFiles('.gitleaks.toml') == ''
+      run: |
+        curl -o ./gitleaks.toml https://raw.githubusercontent.com/smallstep/workflows/master/.gitleaks.toml
+
+    - uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE_KEY }}
+        GITLEAKS_ENABLE_COMMENTS: true
+
+    - uses: actions/download-artifact@v3
+      if: always()
+      with:
+        name: gitleaks-results.sarif
+
+    - uses: github/codeql-action/upload-sarif@v1
+      if: always()
       with:
         sarif_file: gitleaks-results.sarif
