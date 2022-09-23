@@ -14,6 +14,7 @@ jobs:
     with:
       os-dependencies: "libpcsclite-dev"
       gitleaks: true
+      codeql: true
     secrets:
       GITLEAKS_LICENSE_KEY: ${{ secrets.GITLEAKS_LICENSE_KEY }}
 
