@@ -14,4 +14,6 @@ jobs:
     with:
       os-dependencies: "libpcsclite-dev"
       gitleaks: true
+    secrets:
+      GITLEAKS_LICENSE_KEY: secrets.GITLEAKS_LICENSE_KEY
 
