@@ -1,0 +1,9 @@
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  gitleaks:
+    uses: smallstep/workflows/.github/workflows/gitleaks.yml@max/gitleaks
+    secrets:
+      GITLEAKS_LICENSE_KEY: ${{ secrets.GITLEAKS_LICENSE_KEY }}
