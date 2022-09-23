@@ -7,6 +7,10 @@ on:
     branches:
     - "master"
   pull_request:
+  workflow:
+    secrets:
+      GITLEAKS_LICENSE_KEY:
+        required: true
 
 jobs:
   ci:
