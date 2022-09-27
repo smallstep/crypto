@@ -22,6 +22,8 @@ var stepPath string
 // homePath will be populated in init() with the proper HOME.
 var homePath string
 
+var defaultClientNotSoSecret = "udTrOT3gzrO7W9fDPgZQLfYJ"
+
 // Path returns the path for the step configuration directory, this is
 // defined by the environment variable STEPPATH or if this is not set it will
 // default to '$HOME/.step'.
