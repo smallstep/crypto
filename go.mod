@@ -14,7 +14,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.37
 	github.com/go-piv/piv-go v1.10.0
 	github.com/golang/mock v1.6.0
-	github.com/googleapis/gax-go/v2 v2.4.0
+	github.com/googleapis/gax-go/v2 v2.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
 	github.com/stretchr/testify v1.7.1
@@ -22,8 +22,8 @@ require (
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 	golang.org/x/net v0.0.0-20220909164309-bea034e7d591
 	google.golang.org/api v0.97.0
-	google.golang.org/genproto v0.0.0-20220624142145-8cd45d7dbd1f
-	google.golang.org/grpc v1.47.0
+	google.golang.org/genproto v0.0.0-20220722212130-b98a9ff5e252
+	google.golang.org/grpc v1.48.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
@@ -66,7 +66,7 @@ require (
 	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
 	golang.org/x/text v0.3.8-0.20211004125949-5bd84dd9b33b // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.28.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
