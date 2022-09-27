@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 
 	"github.com/pkg/errors"
-	"go.step.sm/cli-utils/ui"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
@@ -54,9 +53,6 @@ func New(ctx context.Context, opts apiv1.Options) (*SoftKMS, error) {
 }
 
 func init() {
-	pemutil.PromptPassword = func(msg string) ([]byte, error) {
-		return ui.PromptPassword(msg)
-	}
 	apiv1.Register(apiv1.SoftKMS, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		return New(ctx, opts)
 	})
