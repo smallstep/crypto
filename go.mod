@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/kms v1.4.0
 	filippo.io/edwards25519 v1.0.0-rc.1
 	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible
-	github.com/Azure/go-autorest/autorest v0.11.27
+	github.com/Azure/go-autorest/autorest v0.11.28
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.11
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
