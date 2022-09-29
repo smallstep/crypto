@@ -123,7 +123,7 @@ func (t TemplateData) SetAuthorizationCertificateChain(chain interface{}) {
 // SetCertificateRequest sets the given certificate request in the insecure
 // template data.
 func (t TemplateData) SetCertificateRequest(cr *x509.CertificateRequest) {
-	t.SetInsecure(CertificateRequestKey, newCertificateRequest(cr))
+	t.SetInsecure(CertificateRequestKey, NewCertificateRequestFromX509(cr))
 }
 
 // SetWebhook sets the given webhook response in the webhooks template data.

@@ -438,23 +438,23 @@ func TestCreateCertificate(t *testing.T) {
 	}
 
 	cr1, priv1 := createCertificateRequest(t, "commonName", []string{"foo.com"})
-	crt1 := newCertificateRequest(cr1).GetLeafCertificate().GetCertificate()
+	crt1 := NewCertificateRequestFromX509(cr1).GetLeafCertificate().GetCertificate()
 	crt1.SerialNumber = mustSerialNumber()
 	crt1.SubjectKeyId = mustSubjectKeyID(priv1.Public())
 
 	cr2, priv2 := createCertificateRequest(t, "commonName", []string{"foo.com"})
-	crt2 := newCertificateRequest(cr2).GetLeafCertificate().GetCertificate()
+	crt2 := NewCertificateRequestFromX509(cr2).GetLeafCertificate().GetCertificate()
 	crt2.SerialNumber = mustSerialNumber()
 
 	cr3, priv3 := createCertificateRequest(t, "commonName", []string{"foo.com"})
-	crt3 := newCertificateRequest(cr3).GetLeafCertificate().GetCertificate()
+	crt3 := NewCertificateRequestFromX509(cr3).GetLeafCertificate().GetCertificate()
 	crt3.SubjectKeyId = mustSubjectKeyID(priv1.Public())
 
 	cr4, priv4 := createCertificateRequest(t, "commonName", []string{"foo.com"})
-	crt4 := newCertificateRequest(cr4).GetLeafCertificate().GetCertificate()
+	crt4 := NewCertificateRequestFromX509(cr4).GetLeafCertificate().GetCertificate()
 
 	cr5, _ := createCertificateRequest(t, "commonName", []string{"foo.com"})
-	crt5 := newCertificateRequest(cr5).GetLeafCertificate().GetCertificate()
+	crt5 := NewCertificateRequestFromX509(cr5).GetLeafCertificate().GetCertificate()
 
 	badSigner := createBadSigner(t)
 

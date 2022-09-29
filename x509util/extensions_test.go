@@ -409,6 +409,46 @@ func TestKeyUsage_Set(t *testing.T) {
 	}
 }
 
+func TestKeyUsage_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		k       KeyUsage
+		want    string
+		wantErr bool
+	}{
+		{"DigitalSignature", KeyUsage(x509.KeyUsageDigitalSignature), `["digitalsignature"]`, false},
+		{"ContentCommitment", KeyUsage(x509.KeyUsageContentCommitment), `["contentcommitment"]`, false},
+		{"KeyEncipherment", KeyUsage(x509.KeyUsageKeyEncipherment), `["keyencipherment"]`, false},
+		{"DataEncipherment", KeyUsage(x509.KeyUsageDataEncipherment), `["dataencipherment"]`, false},
+		{"KeyAgreement", KeyUsage(x509.KeyUsageKeyAgreement), `["keyagreement"]`, false},
+		{"CertSign", KeyUsage(x509.KeyUsageCertSign), `["certsign"]`, false},
+		{"CRLSign", KeyUsage(x509.KeyUsageCRLSign), `["crlsign"]`, false},
+		{"EncipherOnly", KeyUsage(x509.KeyUsageEncipherOnly), `["encipheronly"]`, false},
+		{"DecipherOnly", KeyUsage(x509.KeyUsageDecipherOnly), `["decipheronly"]`, false},
+		{"DigitalSignature + KeyEncipherment", KeyUsage(x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment), `["digitalsignature","keyencipherment"]`, false},
+		{"Error", KeyUsage(x509.KeyUsageDecipherOnly << 1), "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.k.MarshalJSON()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("KeyUsage.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.want != string(got) {
+				t.Errorf("KeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
+			}
+			var unmarshaled KeyUsage
+			unmarshaled.UnmarshalJSON(got)
+			if unmarshaled != tt.k {
+				t.Errorf("KeyUsage.UnmarshalJSON(keyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.k)
+			}
+		})
+	}
+}
+
 func TestKeyUsage_UnmarshalJSON(t *testing.T) {
 	type args struct {
 		data []byte
@@ -486,6 +526,51 @@ func TestExtKeyUsage_Set(t *testing.T) {
 			tt.k.Set(tt.args.c)
 			if !reflect.DeepEqual(tt.args.c, tt.want) {
 				t.Errorf("ExtKeyUsage.Set() = %v, want %v", tt.args.c, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtKeyUsage_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		eku     ExtKeyUsage
+		want    string
+		wantErr bool
+	}{
+		{"Any", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageAny}), `["any"]`, false},
+		{"ServerAuth", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}), `["serverauth"]`, false},
+		{"ClientAuth", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}), `["clientauth"]`, false},
+		{"CodeSigning", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}), `["codesigning"]`, false},
+		{"EmailProtection", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageEmailProtection}), `["emailprotection"]`, false},
+		{"IPSECEndSystem", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageIPSECEndSystem}), `["ipsecendsystem"]`, false},
+		{"IPSECTunnel", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageIPSECTunnel}), `["ipsectunnel"]`, false},
+		{"IPSECUser", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageIPSECUser}), `["ipsecuser"]`, false},
+		{"TimeStamping", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageTimeStamping}), `["timestamping"]`, false},
+		{"OCSPSigning", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}), `["ocspsigning"]`, false},
+		{"MicrosoftServerGatedCrypto", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageMicrosoftServerGatedCrypto}), `["microsoftservergatedcrypto"]`, false},
+		{"NetscapeServerGatedCrypto", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageNetscapeServerGatedCrypto}), `["netscapeservergatedcrypto"]`, false},
+		{"MicrosoftCommercialCodeSigning", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageMicrosoftCommercialCodeSigning}), `["microsoftcommercialcodesigning"]`, false},
+		{"MicrosoftKernelCodeSigning", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageMicrosoftKernelCodeSigning}), `["microsoftkernelcodesigning"]`, false},
+		{"ServerAuth + ClientAuth", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}), `["serverauth","clientauth"]`, false},
+		{"Error", ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageMicrosoftKernelCodeSigning + 1}), "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.eku.MarshalJSON()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ExtKeyUsage.MarshalJSON() = error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.want != string(got) {
+				t.Errorf("ExtKeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
+			}
+			var unmarshaled ExtKeyUsage
+			unmarshaled.UnmarshalJSON(got)
+			if !reflect.DeepEqual(unmarshaled, tt.eku) {
+				t.Errorf("ExtKeyUsage.UnmarshalJSON(ExtKeyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.eku)
 			}
 		})
 	}
