@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// FingerprintEncoding defines the supported encodigns in certificate
+// FingerprintEncoding defines the supported encodings in certificate
 // fingerprints.
 type FingerprintEncoding int
 
