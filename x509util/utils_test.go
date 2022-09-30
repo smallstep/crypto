@@ -184,6 +184,9 @@ func TestEncodedFingerprint(t *testing.T) {
 		{"HexFingerprint", args{ecdsaCrt, HexFingerprint}, "38011621ecdcc2172e933a1ef2317efc535a161c00333aee3f84abfab4e640bf"},
 		{"Base64Fingerprint", args{ecdsaCrt, Base64Fingerprint}, "OAEWIezcwhcukzoe8jF+/FNaFhwAMzruP4Sr+rTmQL8="},
 		{"Base64UrlFingerprint", args{ecdsaCrt, Base64UrlFingerprint}, "OAEWIezcwhcukzoe8jF-_FNaFhwAMzruP4Sr-rTmQL8="},
+		{"Base64RawFingerprint", args{ecdsaCrt, Base64RawFingerprint}, "OAEWIezcwhcukzoe8jF+/FNaFhwAMzruP4Sr+rTmQL8"},
+		{"Base64RawURLFingerprint", args{ecdsaCrt, Base64RawURLFingerprint}, "OAEWIezcwhcukzoe8jF-_FNaFhwAMzruP4Sr-rTmQL8"},
+		{"EmojiFingerprint", args{ecdsaCrt, EmojiFingerprint}, "💨🎱🌼📆🎠🎉🎿🚙🍪🌊♦️💡✌️🐮🔒❌🖕😬🌼👦👍👑♦️🇬🇧👂🔬📌♿🚀🚜🍆🐑"},
 		{"Unknown", args{ecdsaCrt, 100}, ""},
 	}
 	for _, tt := range tests {

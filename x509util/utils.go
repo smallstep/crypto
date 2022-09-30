@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/internal/emoji"
 	"golang.org/x/net/idna"
 )
 
@@ -28,9 +29,18 @@ type FingerprintEncoding int
 
 // Supported fingerprint encodings.
 const (
+	// HexFingerprint represents the hex encoding of the fingerprint.
 	HexFingerprint FingerprintEncoding = iota
+	// Base64Fingerprint represents the base64 encoding of the fingerprint.
 	Base64Fingerprint
+	// Base64UrlFingerprint represents the base64URL encoding of the fingerprint.
 	Base64UrlFingerprint
+	// Base64RawFingerprint represents the base64RawStd encoding of the fingerprint.
+	Base64RawFingerprint
+	// Base64RawURLFingerprint represents the base64RawURL encoding of the fingerprint.
+	Base64RawURLFingerprint
+	// EmojiFingerprint represents the emoji encoding of the fingerprint.
+	EmojiFingerprint
 )
 
 var emptyASN1Subject = []byte{0x30, 0}
@@ -119,6 +129,12 @@ func EncodedFingerprint(cert *x509.Certificate, encoding FingerprintEncoding) st
 		return base64.StdEncoding.EncodeToString(sum[:])
 	case Base64UrlFingerprint:
 		return base64.URLEncoding.EncodeToString(sum[:])
+	case Base64RawFingerprint:
+		return base64.RawStdEncoding.EncodeToString(sum[:])
+	case Base64RawURLFingerprint:
+		return base64.RawURLEncoding.EncodeToString(sum[:])
+	case EmojiFingerprint:
+		return emoji.Emoji(sum[:])
 	default:
 		return ""
 	}
