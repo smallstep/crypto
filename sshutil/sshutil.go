@@ -2,7 +2,7 @@ package sshutil
 
 import (
 	"crypto"
-	"crypto/dsa"
+	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"

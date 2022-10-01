@@ -3,7 +3,7 @@ package sshutil
 import (
 	"bytes"
 	"crypto"
-	"crypto/dsa"
+	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
