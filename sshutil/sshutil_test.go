@@ -43,7 +43,7 @@ func generateFakeSKKey(t *testing.T, pub crypto.PublicKey) ssh.PublicKey {
 			ID          string
 			Key         []byte
 			Application string
-		}{"name", "id", elliptic.Marshal(k.Curve, k.X, k.Y), "ssh"}
+		}{"sk-ecdsa-sha2-nistp256@openssh.com", "nistp256", elliptic.Marshal(k.Curve, k.X, k.Y), "ssh"}
 		return &skKey{
 			typ:   "sk-ecdsa-sha2-nistp256@openssh.com",
 			bytes: ssh.Marshal(w),
@@ -53,7 +53,7 @@ func generateFakeSKKey(t *testing.T, pub crypto.PublicKey) ssh.PublicKey {
 			Name        string
 			KeyBytes    []byte
 			Application string
-		}{"name", []byte(k), "ssh"}
+		}{"sk-ssh-ed25519@openssh.com", []byte(k), "ssh"}
 		return &skKey{
 			typ:   "sk-ssh-ed25519@openssh.com",
 			bytes: ssh.Marshal(w),
