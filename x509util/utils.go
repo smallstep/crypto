@@ -29,7 +29,8 @@ type FingerprintEncoding int
 
 // Supported fingerprint encodings.
 const (
-	// HexFingerprint represents the hex encoding of the fingerprint.
+	// HexFingerprint represents the hex encoding of the fingerprint. This is
+	// the default encoding for an X.509 certificate.
 	HexFingerprint FingerprintEncoding = iota
 	// Base64Fingerprint represents the base64 encoding of the fingerprint.
 	Base64Fingerprint
