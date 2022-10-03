@@ -118,9 +118,9 @@ func Fingerprint(cert *x509.Certificate) string {
 	return EncodedFingerprint(cert, HexFingerprint)
 }
 
-// EncodedFingerprint returns an encoded the SHA-256 fingerprint of the
-// certificate using the specified encoding. In an invalid encoding is passed,
-// the return value will be an empty string.
+// EncodedFingerprint returns the SHA-256 hash of the certificate using the
+// specified encoding. If an invalid encoding is passed, the return value will
+// be an empty string.
 func EncodedFingerprint(cert *x509.Certificate, encoding FingerprintEncoding) string {
 	sum := sha256.Sum256(cert.Raw)
 	switch encoding {

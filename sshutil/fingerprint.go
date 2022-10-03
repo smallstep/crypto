@@ -14,7 +14,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// FingerprintEncoding defines the supported encodings in SSH key and
+// FingerprintEncoding defines the supported encodings for SSH key and
 // certificate fingerprints.
 type FingerprintEncoding int
 
@@ -43,9 +43,9 @@ func Fingerprint(pub ssh.PublicKey) string {
 	return EncodedFingerprint(pub, Base64RawFingerprint)
 }
 
-// EncodedFingerprint returns an encoded the SHA-256 fingerprint of an ssh
-// public key or certificate using the specified encoding. In an invalid
-// encoding is passed, the return value will be an empty string.
+// EncodedFingerprint returns the SHA-256 hash of an ssh public key or
+// certificate using the specified encoding. If an invalid encoding is passed,
+// the return value will be an empty string.
 func EncodedFingerprint(pub ssh.PublicKey, encoding FingerprintEncoding) string {
 	const prefix = "SHA256:"
 
@@ -68,8 +68,8 @@ func EncodedFingerprint(pub ssh.PublicKey, encoding FingerprintEncoding) string 
 	}
 }
 
-// FormatFingerprint gets a public key from an authorized_keys file used in
-// OpenSSH and returns the fingerprint in the following format:
+// FormatFingerprint parses a public key from an authorized_keys file used in
+// OpenSSH and returns a public key fingerprint in the following format:
 //
 //	<size> SHA256:<base64-raw-fingerprint> <comment> (<type)
 func FormatFingerprint(in []byte, encoding FingerprintEncoding) (string, error) {
@@ -135,7 +135,7 @@ func publicKeyTypeAndSize(key ssh.PublicKey) (string, int, error) {
 		}
 		k, ok := cpk.(*dsa.PublicKey)
 		if !ok {
-			return "", 0, errors.New("unsupported key: not an DSA public key")
+			return "", 0, errors.New("unsupported key: not a DSA public key")
 		}
 		size = k.Parameters.P.BitLen()
 	default:
