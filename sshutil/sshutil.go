@@ -2,6 +2,7 @@ package sshutil
 
 import (
 	"crypto"
+	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -16,7 +17,7 @@ import (
 // *agent.Key.
 func CryptoPublicKey(pub interface{}) (crypto.PublicKey, error) {
 	switch p := pub.(type) {
-	case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey:
+	case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey, *dsa.PublicKey:
 		return pub, nil
 	case ssh.CryptoPublicKey:
 		return p.CryptoPublicKey(), nil

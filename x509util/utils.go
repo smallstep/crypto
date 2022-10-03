@@ -19,18 +19,29 @@ import (
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/internal/emoji"
 	"golang.org/x/net/idna"
 )
 
-// FingerprintEncoding defines the supported encodigns in certificate
+// FingerprintEncoding defines the supported encodings in certificate
 // fingerprints.
 type FingerprintEncoding int
 
 // Supported fingerprint encodings.
 const (
+	// HexFingerprint represents the hex encoding of the fingerprint. This is
+	// the default encoding for an X.509 certificate.
 	HexFingerprint FingerprintEncoding = iota
+	// Base64Fingerprint represents the base64 encoding of the fingerprint.
 	Base64Fingerprint
+	// Base64UrlFingerprint represents the base64URL encoding of the fingerprint.
 	Base64UrlFingerprint
+	// Base64RawFingerprint represents the base64RawStd encoding of the fingerprint.
+	Base64RawFingerprint
+	// Base64RawURLFingerprint represents the base64RawURL encoding of the fingerprint.
+	Base64RawURLFingerprint
+	// EmojiFingerprint represents the emoji encoding of the fingerprint.
+	EmojiFingerprint
 )
 
 var emptyASN1Subject = []byte{0x30, 0}
@@ -107,9 +118,9 @@ func Fingerprint(cert *x509.Certificate) string {
 	return EncodedFingerprint(cert, HexFingerprint)
 }
 
-// EncodedFingerprint returns an encoded the SHA-256 fingerprint of the
-// certificate using the specified encoding. In an invalid encoding is passed,
-// the return value will be an empty string.
+// EncodedFingerprint returns the SHA-256 hash of the certificate using the
+// specified encoding. If an invalid encoding is passed, the return value will
+// be an empty string.
 func EncodedFingerprint(cert *x509.Certificate, encoding FingerprintEncoding) string {
 	sum := sha256.Sum256(cert.Raw)
 	switch encoding {
@@ -119,6 +130,12 @@ func EncodedFingerprint(cert *x509.Certificate, encoding FingerprintEncoding) st
 		return base64.StdEncoding.EncodeToString(sum[:])
 	case Base64UrlFingerprint:
 		return base64.URLEncoding.EncodeToString(sum[:])
+	case Base64RawFingerprint:
+		return base64.RawStdEncoding.EncodeToString(sum[:])
+	case Base64RawURLFingerprint:
+		return base64.RawURLEncoding.EncodeToString(sum[:])
+	case EmojiFingerprint:
+		return emoji.Emoji(sum[:])
 	default:
 		return ""
 	}
