@@ -17,7 +17,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.8.0
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 	golang.org/x/net v0.0.0-20220909164309-bea034e7d591
 	google.golang.org/api v0.97.0
@@ -65,5 +65,5 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
