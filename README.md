@@ -78,5 +78,5 @@ or just a YubiKey or an ssh-agent. On the cloud it supports:
 
 ### fingerprint
 
-Package `fingerprint` adds raw support for creating an encoding fingerprints
-using hash functions.
+Package `fingerprint` provides methods for creating and encoding X.509
+certificate, SSH certificate and SSH key fingerprints.

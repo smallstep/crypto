@@ -39,11 +39,11 @@ const (
 	EmojiFingerprint
 )
 
-// New creates a fingerprint of the given data using the hash and returns it
-// encoded with the given encoding format.
+// New creates a fingerprint of the given data by hashing it and returns it in
+// the encoding format.
 func New(data []byte, h crypto.Hash, encoding Encoding) (string, error) {
 	if !h.Available() {
-		return "", fmt.Errorf("hash function %s is not available", h.String())
+		return "", fmt.Errorf("hash function %q is not available", h.String())
 	}
 	hash := h.New()
 	if _, err := hash.Write(data); err != nil {
@@ -56,8 +56,8 @@ func New(data []byte, h crypto.Hash, encoding Encoding) (string, error) {
 	return fp, nil
 }
 
-// Fingerprint encoding the given digest using the given encoding format. If an
-// invalid encoding is passed, the return value will be an empty string.
+// Fingerprint encodes the given digest using the encoding format. If an invalid
+// encoding is passed, the return value will be an empty string.
 func Fingerprint(digest []byte, encoding Encoding) string {
 	switch encoding {
 	case HexFingerprint:
