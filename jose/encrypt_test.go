@@ -114,6 +114,112 @@ func rsaEqual(priv *rsa.PrivateKey, x crypto.PrivateKey) bool {
 	return true
 }
 
+func TestEncrypt(t *testing.T) {
+	jwk := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "", "", 0))
+	data, err := json.Marshal(jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		data []byte
+		opts []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantFn  func(t *testing.T) *JSONWebEncryption
+		wantErr bool
+	}{
+		{"ok", args{data, []Option{WithPassword([]byte("password")), WithContentType("jwk+json")}},
+			func(t *testing.T) *JSONWebEncryption {
+				reader := mustTeeReader(t)
+				jwe := mustEncryptJWK(t, jwk, []byte("password"))
+				rand.Reader = reader
+				jose.RandReader = reader
+				return jwe
+			}, false},
+		{"ok WithPasswordPrompter", args{data, []Option{
+			WithContentType("jwk+json"),
+			WithPasswordPrompter("Enter the password", func(s string) ([]byte, error) {
+				return []byte("password"), nil
+			})}},
+			func(t *testing.T) *JSONWebEncryption {
+				reader := mustTeeReader(t)
+				jwe := mustEncryptJWK(t, jwk, []byte("password"))
+				rand.Reader = reader
+				jose.RandReader = reader
+				return jwe
+			}, false},
+		{"ok with PromptPassword", args{data, []Option{WithContentType("jwk+json")}},
+			func(t *testing.T) *JSONWebEncryption {
+				tmp := PromptPassword
+				t.Cleanup(func() { PromptPassword = tmp })
+				PromptPassword = func(s string) ([]byte, error) {
+					return []byte("password"), nil
+				}
+				reader := mustTeeReader(t)
+				jwe := mustEncryptJWK(t, jwk, []byte("password"))
+				rand.Reader = reader
+				jose.RandReader = reader
+				return jwe
+			}, false},
+		{"fail apply", args{data, []Option{WithPasswordFile("testdata/missing.txt")}},
+			func(t *testing.T) *JSONWebEncryption {
+				return nil
+			}, true},
+		{"fail WithPasswordPrompter", args{data, []Option{
+			WithContentType("jwk+json"),
+			WithPasswordPrompter("Enter the password", func(s string) ([]byte, error) {
+				return nil, errors.New("test error")
+			})}},
+			func(t *testing.T) *JSONWebEncryption {
+				return nil
+			}, true},
+		{"fail with PromptPassword", args{data, []Option{WithContentType("jwk+json")}},
+			func(t *testing.T) *JSONWebEncryption {
+				tmp := PromptPassword
+				t.Cleanup(func() { PromptPassword = tmp })
+				PromptPassword = func(s string) ([]byte, error) {
+					return nil, errors.New("test error")
+				}
+				return nil
+			}, true},
+		{"fail no passowrd", args{data, nil},
+			func(t *testing.T) *JSONWebEncryption {
+				return nil
+			}, true},
+		{"fail encrypt", args{data, []Option{WithPassword([]byte("password"))}},
+			func(t *testing.T) *JSONWebEncryption {
+				reader := mustTeeReader(t)
+				_, _ = randutil.Salt(PBKDF2SaltSize)
+				rand.Reader = reader
+				jose.RandReader = reader
+				return nil
+			}, true},
+		{"fail salt", args{data, []Option{WithPassword([]byte("password"))}},
+			func(t *testing.T) *JSONWebEncryption {
+				reader := mustTeeReader(t)
+				rand.Reader = reader
+				jose.RandReader = reader
+				return nil
+			}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := tt.wantFn(t)
+			got, err := Encrypt(tt.args.data, tt.args.opts...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Encrypt() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Encrypt() = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestEncryptJWK(t *testing.T) {
 	jwk := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "", "", 0))
 
@@ -266,35 +372,47 @@ func TestDecrypt(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-		{"okNotEncrypted", args{[]byte("foobar"), nil, nil}, []byte("foobar"), false},
-		{"okWithPassword", args{encryptedData, []Option{WithPassword(testPassword)}, nil}, data, false},
-		{"okWithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/passphrase.txt")}, nil}, data, false},
-		{"okWithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
+		{"ok not encrypted", args{[]byte("foobar"), nil, nil}, []byte("foobar"), false},
+		{"ok WithPassword", args{encryptedData, []Option{WithPassword(testPassword)}, nil}, data, false},
+		{"ok WithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/passphrase.txt")}, nil}, data, false},
+		{"ok WithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
 			return testPassword, nil
 		})}, nil}, data, false},
-		{"okGlobalPasswordPrompter", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
+		{"ok PasswordPrompter", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
 			return testPassword, nil
 		}}, data, false},
-		{"failBadData", args{badEncryptedData, []Option{WithPassword(testPassword)}, nil}, nil, true},
-		{"failWithPassword", args{encryptedData, []Option{WithPassword([]byte("bad-password"))}, nil}, nil, true},
-		{"failWithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/oct.txt")}, nil}, nil, true},
-		{"failWithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
+		{"ok WithFilename and PasswordPrompter", args{encryptedData, []Option{WithFilename("test.jwk")}, func(s string) ([]byte, error) {
+			return testPassword, nil
+		}}, data, false},
+		{"fail bad data", args{badEncryptedData, []Option{WithPassword(testPassword)}, nil}, nil, true},
+		{"fail WithPassword", args{encryptedData, []Option{WithPassword([]byte("bad-password"))}, nil}, nil, true},
+		{"fail WithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/oct.txt")}, nil}, nil, true},
+		{"fail WithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
 			return []byte("bad-password"), nil
 		})}, nil}, nil, true},
-		{"failGlobalPasswordPrompter", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
+		{"fail PasswordPrompter", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
 			return []byte("bad-password"), nil
 		}}, nil, true},
-		{"failApplyWithPassword", args{encryptedData, []Option{WithPasswordFile("testdata/missing.txt")}, nil}, nil, true},
-		{"failApplyWithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
+		{"fail apply WithPassword", args{encryptedData, []Option{WithPasswordFile("testdata/missing.txt")}, nil}, nil, true},
+		{"fail apply WithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
 			return nil, errors.New("unexpected error")
 		})}, nil}, nil, true},
-		{"failGlobalPasswordPrompterError", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
+		{"fail PasswordPrompter", args{encryptedData, []Option{}, func(s string) ([]byte, error) {
+			return nil, errors.New("unexpected error")
+		}}, nil, true},
+		{"fail WithFilename and PasswordPrompter", args{encryptedData, []Option{WithFilename("test.jwk")}, func(s string) ([]byte, error) {
 			return nil, errors.New("unexpected error")
 		}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "okGlobalPasswordPrompter" {
+				t.Log("foo")
+			}
+			tmp := PromptPassword
+			t.Cleanup(func() { PromptPassword = tmp })
 			PromptPassword = tt.args.passwordPrompter
+
 			got, err := Decrypt(tt.args.data, tt.args.opts...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Decrypt() error = %v, wantErr %v", err, tt.wantErr)
