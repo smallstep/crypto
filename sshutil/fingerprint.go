@@ -4,68 +4,58 @@ import (
 	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
 	"crypto/rsa"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/internal/emoji"
+	"go.step.sm/crypto/fingerprint"
 	"golang.org/x/crypto/ssh"
 )
 
 // FingerprintEncoding defines the supported encodings for SSH key and
 // certificate fingerprints.
-type FingerprintEncoding int
+type FingerprintEncoding = fingerprint.Encoding
 
 // Supported fingerprint encodings.
 const (
-	// Base64RawFingerprint represents the base64RawStd encoding of the
-	// fingerprint. This is the default encoding for an SSH key.
-	Base64RawFingerprint FingerprintEncoding = iota
-	// Base64RawURLFingerprint represents the base64RawURL encoding of the
-	// fingerprint.
-	Base64RawURLFingerprint
-	// Base64Fingerprint represents the base64 encoding of the fingerprint.
-	Base64Fingerprint
-	// Base64UrlFingerprint represents the base64URL encoding of the
-	// fingerprint.
-	Base64UrlFingerprint FingerprintEncoding = iota
+	// DefaultFingerprint represents base64RawStd encoding of the fingerprint.
+	DefaultFingerprint = FingerprintEncoding(0)
 	// HexFingerprint represents the hex encoding of the fingerprint.
-	HexFingerprint
+	HexFingerprint = fingerprint.HexFingerprint
+	// Base64Fingerprint represents the base64 encoding of the fingerprint.
+	Base64Fingerprint = fingerprint.Base64Fingerprint
+	// Base64URLFingerprint represents the base64URL encoding of the fingerprint.
+	Base64URLFingerprint = fingerprint.Base64URLFingerprint
+	// Base64RawFingerprint represents the base64RawStd encoding of the fingerprint.
+	Base64RawFingerprint = fingerprint.Base64RawFingerprint
+	// Base64RawURLFingerprint represents the base64RawURL encoding of the fingerprint.
+	Base64RawURLFingerprint = fingerprint.Base64RawURLFingerprint
 	// EmojiFingerprint represents the emoji encoding of the fingerprint.
-	EmojiFingerprint
+	EmojiFingerprint = fingerprint.EmojiFingerprint
 )
 
 // Fingerprint returns the SHA-256 fingerprint of an ssh public key or
 // certificate.
 func Fingerprint(pub ssh.PublicKey) string {
-	return EncodedFingerprint(pub, Base64RawFingerprint)
+	return EncodedFingerprint(pub, DefaultFingerprint)
 }
 
 // EncodedFingerprint returns the SHA-256 hash of an ssh public key or
 // certificate using the specified encoding. If an invalid encoding is passed,
 // the return value will be an empty string.
 func EncodedFingerprint(pub ssh.PublicKey, encoding FingerprintEncoding) string {
-	const prefix = "SHA256:"
+	var fp string
 
 	sum := sha256.Sum256(pub.Marshal())
 	switch encoding {
-	case Base64RawFingerprint:
-		return prefix + base64.RawStdEncoding.EncodeToString(sum[:])
-	case Base64RawURLFingerprint:
-		return prefix + base64.RawURLEncoding.EncodeToString(sum[:])
-	case Base64Fingerprint:
-		return prefix + base64.StdEncoding.EncodeToString(sum[:])
-	case Base64UrlFingerprint:
-		return prefix + base64.URLEncoding.EncodeToString(sum[:])
-	case HexFingerprint:
-		return prefix + strings.ToLower(hex.EncodeToString(sum[:]))
-	case EmojiFingerprint:
-		return prefix + emoji.Emoji(sum[:])
+	case DefaultFingerprint:
+		fp = fingerprint.Fingerprint(sum[:], Base64RawFingerprint)
 	default:
+		fp = fingerprint.Fingerprint(sum[:], encoding)
+	}
+	if fp == "" {
 		return ""
 	}
+	return "SHA256:" + fp
 }
 
 // FormatFingerprint parses a public key from an authorized_keys file used in
