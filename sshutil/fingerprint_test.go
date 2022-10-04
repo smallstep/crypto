@@ -86,11 +86,11 @@ func TestEncodedFingerprint(t *testing.T) {
 		args args
 		want string
 	}{
-		{"ok", args{sshECKey, 0}, ssh.FingerprintSHA256(sshECKey)},
+		{"default", args{sshECKey, 0}, ssh.FingerprintSHA256(sshECKey)},
 		{"Base64RawFingerprint", args{sshECKey, Base64RawFingerprint}, expected},
 		{"Base64RawURLFingerprint", args{sshECKey, Base64RawURLFingerprint}, "SHA256:" + base64.RawURLEncoding.EncodeToString(b)},
 		{"Base64Fingerprint", args{sshECKey, Base64Fingerprint}, "SHA256:" + base64.StdEncoding.EncodeToString(b)},
-		{"Base64UrlFingerprint", args{sshECKey, Base64UrlFingerprint}, "SHA256:" + base64.URLEncoding.EncodeToString(b)},
+		{"Base64URLFingerprint", args{sshECKey, Base64URLFingerprint}, "SHA256:" + base64.URLEncoding.EncodeToString(b)},
 		{"HexFingerprint", args{sshECKey, HexFingerprint}, "SHA256:" + hex.EncodeToString(b)},
 		{"EmojiFingerprint", args{sshECKey, EmojiFingerprint}, "SHA256:" + emoji.Emoji(b)},
 		{"fail", args{sshECKey, 100}, ""},
@@ -169,7 +169,7 @@ func TestFormatFingerprint(t *testing.T) {
 		{"Base64RawFingerprint", args{marshal(sshECKey, ""), Base64RawFingerprint}, "256 " + ssh.FingerprintSHA256(sshECKey) + " no comment (ECDSA)", false},
 		{"Base64RawURLFingerprint", args{marshal(sshECKey, ""), Base64RawURLFingerprint}, "256 SHA256:" + base64.RawURLEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
 		{"Base64Fingerprint", args{marshal(sshECKey, ""), Base64Fingerprint}, "256 SHA256:" + base64.StdEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
-		{"Base64UrlFingerprint", args{marshal(sshECKey, ""), Base64UrlFingerprint}, "256 SHA256:" + base64.URLEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
+		{"Base64UrlFingerprint", args{marshal(sshECKey, ""), Base64URLFingerprint}, "256 SHA256:" + base64.URLEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
 		{"HexFingerprint", args{marshal(sshECKey, ""), HexFingerprint}, "256 SHA256:" + hex.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
 		{"EmojiFingerprint", args{marshal(sshECKey, ""), EmojiFingerprint}, "256 SHA256:" + emoji.Emoji(ec256Bytes) + " no comment (ECDSA)", false},
 		{"fail input", args{marshal(sshECKey, "")[:50], EmojiFingerprint}, "", true},

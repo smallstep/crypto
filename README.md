@@ -75,3 +75,8 @@ or just a YubiKey or an ssh-agent. On the cloud it supports:
 * [Amazon AWS KMS](https://aws.amazon.com/kms/)
 * [Google Cloud Key Management](https://cloud.google.com/security-key-management)
 * [Microsoft Azure Key Vault](https://azure.microsoft.com/en-us/services/key-vault/)
+
+### fingerprint
+
+Package `fingerprint` provides methods for creating and encoding X.509
+certificate, SSH certificate and SSH key fingerprints.
