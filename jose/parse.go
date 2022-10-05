@@ -73,6 +73,9 @@ func ParseKey(b []byte, opts ...Option) (*JSONWebKey, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ctx.filename == "" {
+		ctx.filename = "key"
+	}
 
 	jwk := new(JSONWebKey)
 	switch guessKeyType(ctx, b) {
