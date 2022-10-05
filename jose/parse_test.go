@@ -371,6 +371,54 @@ func TestParseKey(t *testing.T) {
 	}
 }
 
+func TestParseKeyPemutilPromptPassword(t *testing.T) {
+	pemKey, err := pemutil.Read("../pemutil/testdata/pkcs8/openssl.ed25519.pem")
+	assert.FatalError(t, err)
+
+	pemBytes, err := os.ReadFile("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem")
+	assert.FatalError(t, err)
+
+	tmp0 := pemutil.PromptPassword
+	tmp1 := PromptPassword
+	t.Cleanup(func() {
+		pemutil.PromptPassword = tmp0
+		PromptPassword = tmp1
+	})
+
+	tests := []struct {
+		name           string
+		promptPassword PasswordPrompter
+		want           *JSONWebKey
+		wantErr        bool
+	}{
+		{"ok", func(s string) ([]byte, error) {
+			return []byte("mypassword"), nil
+		}, &JSONWebKey{
+			Key:       pemKey,
+			KeyID:     "vEk4UARa85PrW0eea2zeVLqGBF-n5Jzd9GVmKAc0AHQ",
+			Algorithm: "EdDSA",
+		}, false},
+		{"fail", func(s string) ([]byte, error) {
+			return []byte("not-mypassword"), nil
+		}, nil, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			PromptPassword = tt.promptPassword
+			pemutil.PromptPassword = nil
+			got, err := ParseKey(pemBytes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ParseKey() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestReadKeySet(t *testing.T) {
 	jwk, err := ReadKeySet("testdata/jwks.json", WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"))
 	assert.NoError(t, err)
