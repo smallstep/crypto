@@ -31,15 +31,13 @@ func Encrypt(data []byte, opts ...Option) (*JSONWebEncryption, error) {
 	switch {
 	case len(ctx.password) > 0:
 		passphrase = ctx.password
-	case ctx.passwordPrompter != nil || PromptPassword != nil:
-		if ctx.passwordPrompter != nil {
-			if passphrase, err = ctx.passwordPrompter(ctx.passwordPrompt); err != nil {
-				return nil, err
-			}
-		} else {
-			if passphrase, err = PromptPassword("Please enter the password to encrypt the data"); err != nil {
-				return nil, err
-			}
+	case ctx.passwordPrompter != nil:
+		if passphrase, err = ctx.passwordPrompter(ctx.passwordPrompt); err != nil {
+			return nil, err
+		}
+	case PromptPassword != nil:
+		if passphrase, err = PromptPassword("Please enter the password to encrypt the data"); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, errors.New("failed to encrypt the data: missing password")
