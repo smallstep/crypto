@@ -22,7 +22,7 @@ require (
 	golang.org/x/net v0.0.0-20220909164309-bea034e7d591
 	google.golang.org/api v0.98.0
 	google.golang.org/genproto v0.0.0-20220722212130-b98a9ff5e252
-	google.golang.org/grpc v1.48.0
+	google.golang.org/grpc v1.49.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
