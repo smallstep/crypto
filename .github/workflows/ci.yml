@@ -8,9 +8,6 @@ on:
     - "master"
   pull_request:
   workflow_call:
-    secrets:
-      GITLEAKS_LICENSE_KEY:
-        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -21,6 +18,7 @@ jobs:
     uses: smallstep/workflows/.github/workflows/goCI.yml@main
     with:
       os-dependencies: "libpcsclite-dev"
+      run-build: false
       run-gitleaks: true
       run-codeql: true
     secrets: inherit
