@@ -164,11 +164,12 @@ func (k *YubiKey) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	if err != nil {
 		return nil, err
 	}
+	pinPolicy, touchPolicy := getPolicies(req)
 
 	pub, err := k.yk.GenerateKey(k.managementKey, slot, piv.Key{
 		Algorithm:   alg,
-		PINPolicy:   piv.PINPolicyAlways,
-		TouchPolicy: piv.TouchPolicyNever,
+		PINPolicy:   pinPolicy,
+		TouchPolicy: touchPolicy,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error generating key")
@@ -379,4 +380,18 @@ func getSlotAndName(name string) (piv.Slot, string, error) {
 
 	name = "yubikey:slot-id=" + url.QueryEscape(slotID)
 	return s, name, nil
+}
+
+// getPolicies returns the pin and touch policies from the request. If they are
+// not set the defaults are piv.PINPolicyAlways and piv.TouchPolicyNever.
+func getPolicies(req *apiv1.CreateKeyRequest) (piv.PINPolicy, piv.TouchPolicy) {
+	pin := piv.PINPolicy(req.PINPolicy)
+	touch := piv.TouchPolicy(req.TouchPolicy)
+	if pin == 0 {
+		pin = piv.PINPolicyAlways
+	}
+	if touch == 0 {
+		touch = piv.TouchPolicyNever
+	}
+	return pin, touch
 }
