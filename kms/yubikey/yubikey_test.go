@@ -24,11 +24,12 @@ import (
 )
 
 type stubPivKey struct {
-	attestCA  *minica.CA
-	userCA    *minica.CA
-	attestMap map[piv.Slot]*x509.Certificate
-	certMap   map[piv.Slot]*x509.Certificate
-	signerMap map[piv.Slot]interface{}
+	attestCA      *minica.CA
+	userCA        *minica.CA
+	attestMap     map[piv.Slot]*x509.Certificate
+	certMap       map[piv.Slot]*x509.Certificate
+	signerMap     map[piv.Slot]interface{}
+	keyOptionsMap map[piv.Slot]piv.Key
 }
 
 //nolint:typecheck // ignore deadcode warnings
@@ -83,6 +84,7 @@ func newStubPivKey(t *testing.T) *stubPivKey {
 			piv.SlotAuthentication: attSigner,  // 9a
 			piv.SlotSignature:      userSigner, // 9c
 		},
+		keyOptionsMap: map[piv.Slot]piv.Key{},
 	}
 }
 
@@ -144,6 +146,7 @@ func (s *stubPivKey) GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (cry
 	}
 
 	s.signerMap[slot] = signer
+	s.keyOptionsMap[slot] = opts
 	return signer.Public(), nil
 }
 
@@ -539,6 +542,20 @@ func TestYubiKey_CreateKey(t *testing.T) {
 				},
 			}
 		}, false},
+		{"ok with policies", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			PINPolicy:          apiv1.PINPolicyNever,
+			TouchPolicy:        apiv1.TouchPolicyAlways,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
 		{"fail rsa 4096", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
 			Name:               "yubikey:slot-id=82",
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
@@ -559,9 +576,6 @@ func TestYubiKey_CreateKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "fail getSlotAndName" {
-				t.Log(tt.name)
-			}
 			k := &YubiKey{
 				yk:            tt.fields.yk,
 				pin:           tt.fields.pin,
@@ -576,6 +590,159 @@ func TestYubiKey_CreateKey(t *testing.T) {
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("YubiKey.CreateKey() = %v, want %v", got, want)
 			}
+		})
+	}
+}
+
+func TestYubiKey_CreateKey_policies(t *testing.T) {
+	yk := newStubPivKey(t)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.CreateKeyRequest
+	}
+	tests := []struct {
+		name            string
+		fields          fields
+		args            args
+		wantSlot        piv.Slot
+		wantPinPolicy   piv.PINPolicy
+		wantTouchPolicy piv.TouchPolicy
+		wantFn          func() *apiv1.CreateKeyResponse
+		wantErr         bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, slotMapping["82"], piv.PINPolicyAlways, piv.TouchPolicyNever, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok PINPolicyNever", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			PINPolicy:          apiv1.PINPolicyNever,
+		}}, slotMapping["82"], piv.PINPolicyNever, piv.TouchPolicyNever, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok PINPolicyOnce", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			PINPolicy:          apiv1.PINPolicyOnce,
+		}}, slotMapping["82"], piv.PINPolicyOnce, piv.TouchPolicyNever, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok PINPolicyAlways", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			PINPolicy:          apiv1.PINPolicyAlways,
+		}}, slotMapping["82"], piv.PINPolicyAlways, piv.TouchPolicyNever, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok TouchPolicyNever", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			TouchPolicy:        apiv1.TouchPolicyNever,
+		}}, slotMapping["82"], piv.PINPolicyAlways, piv.TouchPolicyNever, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok TouchPolicyAlways", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			TouchPolicy:        apiv1.TouchPolicyAlways,
+		}}, slotMapping["82"], piv.PINPolicyAlways, piv.TouchPolicyAlways, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok TouchPolicyCached", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			TouchPolicy:        apiv1.TouchPolicyCached,
+		}}, slotMapping["82"], piv.PINPolicyAlways, piv.TouchPolicyCached, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok both policies", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+			PINPolicy:          apiv1.PINPolicyNever,
+			TouchPolicy:        apiv1.TouchPolicyAlways,
+		}}, slotMapping["82"], piv.PINPolicyNever, piv.TouchPolicyAlways, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			got, err := k.CreateKey(tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.CreateKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if v := yk.keyOptionsMap[tt.wantSlot].PINPolicy; !reflect.DeepEqual(v, tt.wantPinPolicy) {
+				t.Errorf("YubiKey.CreateKey() PINPolicy = %v, want %v", v, tt.wantPinPolicy)
+			}
+			if v := yk.keyOptionsMap[tt.wantSlot].TouchPolicy; !reflect.DeepEqual(v, tt.wantTouchPolicy) {
+				t.Errorf("YubiKey.CreateKey() TouchPolicy = %v, want %v", v, tt.wantTouchPolicy)
+			}
+			want := tt.wantFn()
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("YubiKey.CreateKey() = %v, want %v", got, want)
+			}
+
 		})
 	}
 }

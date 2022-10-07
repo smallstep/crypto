@@ -19,6 +19,35 @@ const (
 	HSM
 )
 
+// PINPolicy represents PIN requirements when signing or decrypting with an
+// asymmetric key in a given slot. PINPolicy is used by the YubiKey KMS.
+type PINPolicy int
+
+// PIN policies supported by this package. The values must match the ones in
+// github.com/go-piv/piv-go/piv.
+//
+// Caching for PINPolicyOnce isn't supported on YubiKey
+// versions older than 4.3.0 due to issues with verifying if a PIN is needed.
+// If specified, a PIN will be required for every operation.
+const (
+	PINPolicyNever PINPolicy = iota + 1
+	PINPolicyOnce
+	PINPolicyAlways
+)
+
+// TouchPolicy represents proof-of-presence requirements when signing or
+// decrypting with asymmetric key in a given slot. TouchPolicy is used by the
+// YubiKey KMS.
+type TouchPolicy int
+
+// Touch policies supported by this package. The values must match the ones in
+// github.com/go-piv/piv-go/piv.
+const (
+	TouchPolicyNever TouchPolicy = iota + 1
+	TouchPolicyAlways
+	TouchPolicyCached
+)
+
 // String returns a string representation of p.
 func (p ProtectionLevel) String() string {
 	switch p {
@@ -118,6 +147,18 @@ type CreateKeyRequest struct {
 	//
 	// Used by: pkcs11
 	Extractable bool
+
+	// PINPolicy defines PIN requirements when signing or decrypting with an
+	// asymmetric key.
+	//
+	// Used by: yubikey
+	PINPolicy PINPolicy
+
+	// TouchPolicy represents proof-of-presence requirements when signing or
+	// decrypting with asymmetric key in a given slot.
+	//
+	// Used by: yubikey
+	TouchPolicy TouchPolicy
 }
 
 // CreateKeyResponse is the response value of the kms.CreateKey method.
