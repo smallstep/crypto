@@ -36,7 +36,7 @@ const (
 )
 
 // TouchPolicy represents proof-of-presence requirements when signing or
-// decrypting with asymmetric key in a given slot. PINPolicy is used by the
+// decrypting with asymmetric key in a given slot. TouchPolicy is used by the
 // YubiKey KMS.
 type TouchPolicy int
 
