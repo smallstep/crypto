@@ -11,7 +11,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/ThalesIgnite/crypto11 v1.2.5
-	github.com/aws/aws-sdk-go v1.44.114
+	github.com/aws/aws-sdk-go v1.44.117
 	github.com/go-piv/piv-go v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/googleapis/gax-go/v2 v2.5.1
