@@ -14,12 +14,14 @@ require (
 	github.com/aws/aws-sdk-go v1.44.114
 	github.com/go-piv/piv-go v1.10.0
 	github.com/golang/mock v1.6.0
+	github.com/google/uuid v1.3.0
 	github.com/googleapis/gax-go/v2 v2.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 	golang.org/x/net v0.0.0-20220909164309-bea034e7d591
+	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10
 	google.golang.org/api v0.98.0
 	google.golang.org/genproto v0.0.0-20220722212130-b98a9ff5e252
 	google.golang.org/grpc v1.50.0
@@ -45,7 +47,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
@@ -60,7 +61,6 @@ require (
 	github.com/thales-e-security/pool v0.0.2 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094 // indirect
-	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
 	golang.org/x/text v0.3.8-0.20211004125949-5bd84dd9b33b // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect

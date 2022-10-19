@@ -93,6 +93,8 @@ const (
 	SSHAgentKMS Type = "sshagentkms"
 	// AzureKMS is a KMS implementation using Azure Key Vault.
 	AzureKMS Type = "azurekms"
+	// CAPIKMS
+	CAPIKMS Type = "capi"
 )
 
 // Options are the KMS options. They represent the kms object in the ca.json.
@@ -141,7 +143,7 @@ func (o *Options) Validate() error {
 	case DefaultKMS, SoftKMS: // Go crypto based kms.
 	case CloudKMS, AmazonKMS, AzureKMS: // Cloud based kms.
 	case YubiKey, PKCS11: // Hardware based kms.
-	case SSHAgentKMS: // Others
+	case SSHAgentKMS, CAPIKMS: // Others
 	default:
 		return fmt.Errorf("unsupported kms type %s", o.Type)
 	}
