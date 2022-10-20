@@ -49,6 +49,31 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 	apiv1.ECDSAWithSHA512:          "ECDSA_P521",
 }
 
+// CAPIKMS implements a KMS using Windows CryptoAPI (CAPI) and Next-Gen CryptoAPI (CNG).
+//
+// The URI format used in CAPIKMS is the following:
+//
+//   - capi:provider=STORAGE-PROVIDER;key=KEY-NAME
+//
+// For certificates:
+//   - capi:store-location=[machine|user];store=My;sha1=THUMBPRINT
+//
+// The scheme is "capi";
+//
+// "provider" is the provider name and can be one of:
+// - "Microsoft Software Key Storage Provider"
+// - "Microsoft Smart Card Key Storage Provider"
+// - "Microsoft Platform Crypto Provider"
+// if not set it defaults to "Microsoft Software Key Storage Provider"
+//
+// "key" is the key container name. If not set one is generated.
+//
+// "store-location" specifies the certificate store location - "user" or "machine"
+//
+// "store" is the certificate store name - "My", "Root", and "CA" are some examples
+//
+// "sha1" is the sha1 thumbprint of the certificate to load
+//
 type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
@@ -156,7 +181,7 @@ func unmarshalECC(buf []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 }
 
 func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
-	algGroup, err := NCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
+	algGroup, err := nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
 	if err != nil {
 		return nil, errors.Wrap(err, "GetPublicKey unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY")
 	}
@@ -164,11 +189,11 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 	var pub crypto.PublicKey
 	switch algGroup {
 	case "ECDSA":
-		buf, err := NCryptExportKey(kh, BCRYPT_ECCPUBLIC_BLOB)
+		buf, err := nCryptExportKey(kh, BCRYPT_ECCPUBLIC_BLOB)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export ECC public key: %w", err)
 		}
-		curveName, err := NCryptGetPropertyStr(kh, NCRYPT_ECC_CURVE_NAME_PROPERTY)
+		curveName, err := nCryptGetPropertyStr(kh, NCRYPT_ECC_CURVE_NAME_PROPERTY)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve ECC curve name: %w", err)
 		}
@@ -177,7 +202,7 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 			return nil, fmt.Errorf("failed to unmarshal ECC public key: %w", err)
 		}
 	case "RSA":
-		buf, err := NCryptExportKey(kh, BCRYPT_RSAPUBLIC_BLOB)
+		buf, err := nCryptExportKey(kh, BCRYPT_RSAPUBLIC_BLOB)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export %v public key: %w", algGroup, err)
 		}
@@ -216,7 +241,8 @@ func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 		pin = u.Pin()
 	}
 
-	ph, err := NCryptOpenStorage(providerName)
+	// TODO: a provider is not necessary for certificate functions, should we move this to the key and signing functions?
+	ph, err := nCryptOpenStorage(providerName)
 
 	if err != nil {
 		return nil, fmt.Errorf("could not open nCrypt provider: %w", err)
@@ -238,7 +264,7 @@ func init() {
 
 func (k *CAPIKMS) Close() error {
 	if k.providerHandle != 0 {
-		return NCryptFreeObject(k.providerHandle)
+		return nCryptFreeObject(k.providerHandle)
 	}
 
 	return nil
@@ -292,15 +318,15 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unsupported algorithm %v", req.SignatureAlgorithm)
 	}
 
-	kh, err := NCryptCreatePersistedKey(k.providerHandle, k.containerName, alg, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, k.containerName, alg, AT_KEYEXCHANGE, 0)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create persisted key")
 	}
 
-	defer NCryptFreeObject(kh)
+	defer nCryptFreeObject(kh)
 
 	if alg == "RSA" {
-		err = NCryptSetProperty(kh, NCRYPT_LENGTH_PROPERTY, uint32(req.Bits), 0)
+		err = nCryptSetProperty(kh, NCRYPT_LENGTH_PROPERTY, uint32(req.Bits), 0)
 
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_LENGTH_PROPERTY: %w", err)
@@ -312,7 +338,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	storeLocation := u.Get(StoreLocationArg)
 
 	if storeLocation == "machine" {
-		err = NCryptSetProperty(kh, NCRYPT_KEY_TYPE_PROPERTY, NCRYPT_MACHINE_KEY_FLAG, 0)
+		err = nCryptSetProperty(kh, NCRYPT_KEY_TYPE_PROPERTY, NCRYPT_MACHINE_KEY_FLAG, 0)
 
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_KEY_TYPE_PROPERTY: %w", err)
@@ -330,19 +356,19 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	if scPIN != "" {
-		err = NCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, scPIN, 0)
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, scPIN, 0)
 
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
 	}
 
-	err = NCryptFinalizeKey(kh, 0)
+	err = nCryptFinalizeKey(kh, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to finalize key: %w", err)
 	}
 
-	uc, err := NCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
+	uc, err := nCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve NCRYPT_UNIQUE_NAME_PROPERTY: %w", err)
 	}
@@ -374,12 +400,12 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, fmt.Errorf("GetPublicKey %v not specified", ContainerNameArg)
 	}
 
-	kh, err := NCryptOpenKey(k.providerHandle, k.containerName, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptOpenKey(k.providerHandle, k.containerName, AT_KEYEXCHANGE, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
 
-	defer NCryptFreeObject(kh)
+	defer nCryptFreeObject(kh)
 
 	return getPublicKey(kh)
 }
@@ -442,7 +468,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		hash: uintptr(unsafe.Pointer(&sha1Bytes[0])),
 	}
 
-	certHandle, err := FindCertificateInStore(st,
+	certHandle, err := findCertificateInStore(st,
 		encodingX509ASN|encodingPKCS7,
 		0,
 		findHash,
@@ -507,7 +533,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	}
 	defer windows.CertFreeCertificateContext(certContext)
 
-	CryptFindCertificateKeyProvInfo(certContext) // TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
+	cryptFindCertificateKeyProvInfo(certContext) // TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
 
 	st, err := windows.CertOpenStore(
 		certStoreProvSystem,
@@ -536,13 +562,13 @@ type CAPISigner struct {
 }
 
 func newCAPISigner(providerHandle uintptr, containerName string, pin string) (crypto.Signer, error) {
-	kh, err := NCryptOpenKey(providerHandle, containerName, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptOpenKey(providerHandle, containerName, AT_KEYEXCHANGE, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
 
 	if pin != "" {
-		err = NCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pin, 0)
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pin, 0)
 
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
@@ -554,7 +580,7 @@ func newCAPISigner(providerHandle uintptr, containerName string, pin string) (cr
 		return nil, fmt.Errorf("unable to get public key: %w", err)
 	}
 
-	algGroup, err := NCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
+	algGroup, err := nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY: %w", err)
 	}
@@ -578,7 +604,7 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 
 	switch s.algorithmGroup {
 	case "ECDSA":
-		signatureBytes, err := NCryptSignHash(s.keyHandle, digest, "")
+		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, "")
 
 		if err != nil {
 			return nil, err
@@ -603,7 +629,7 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 		if !ok {
 			return nil, fmt.Errorf("unsupported RSA hash algorithm %v", hf)
 		}
-		signatureBytes, err := NCryptSignHash(s.keyHandle, digest, hashAlg)
+		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, hashAlg)
 
 		if err != nil {
 			return nil, fmt.Errorf("NCryptSignHash failed: %w", err)

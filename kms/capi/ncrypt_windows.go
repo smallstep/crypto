@@ -105,17 +105,17 @@ var (
 	crypt32 = windows.MustLoadDLL("crypt32.dll")
 	nCrypt  = windows.MustLoadDLL("ncrypt.dll")
 
-	certFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
-	cryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
-	nCryptCreatePersistedKey        = nCrypt.MustFindProc("NCryptCreatePersistedKey")
-	nCryptExportKey                 = nCrypt.MustFindProc("NCryptExportKey")
-	nCryptFinalizeKey               = nCrypt.MustFindProc("NCryptFinalizeKey")
-	nCryptFreeObject                = nCrypt.MustFindProc("NCryptFreeObject")
-	nCryptOpenKey                   = nCrypt.MustFindProc("NCryptOpenKey")
-	nCryptOpenStorageProvider       = nCrypt.MustFindProc("NCryptOpenStorageProvider")
-	nCryptGetProperty               = nCrypt.MustFindProc("NCryptGetProperty")
-	nCryptSetProperty               = nCrypt.MustFindProc("NCryptSetProperty")
-	nCryptSignHash                  = nCrypt.MustFindProc("NCryptSignHash")
+	procCertFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
+	procCryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
+	procNCryptCreatePersistedKey        = nCrypt.MustFindProc("NCryptCreatePersistedKey")
+	procNCryptExportKey                 = nCrypt.MustFindProc("NCryptExportKey")
+	procNCryptFinalizeKey               = nCrypt.MustFindProc("NCryptFinalizeKey")
+	procNCryptFreeObject                = nCrypt.MustFindProc("NCryptFreeObject")
+	procNCryptOpenKey                   = nCrypt.MustFindProc("NCryptOpenKey")
+	procNCryptOpenStorageProvider       = nCrypt.MustFindProc("NCryptOpenStorageProvider")
+	procNCryptGetProperty               = nCrypt.MustFindProc("NCryptGetProperty")
+	procNCryptSetProperty               = nCrypt.MustFindProc("NCryptSetProperty")
+	procNCryptSignHash                  = nCrypt.MustFindProc("NCryptSignHash")
 )
 
 type BCRYPT_PKCS1_PADDING_INFO struct {
@@ -148,10 +148,10 @@ func wide(s string) *uint16 {
 	return w
 }
 
-func NCryptOpenStorage(provider string) (uintptr, error) {
+func nCryptOpenStorage(provider string) (uintptr, error) {
 	var hProv uintptr
 	// Open the provider, the last parameter is not used
-	r, _, err := nCryptOpenStorageProvider.Call(
+	r, _, err := procNCryptOpenStorageProvider.Call(
 		uintptr(unsafe.Pointer(&hProv)),
 		uintptr(unsafe.Pointer(wide(provider))),
 		0)
@@ -161,15 +161,15 @@ func NCryptOpenStorage(provider string) (uintptr, error) {
 	return hProv, fmt.Errorf("NCryptOpenStorageProvider returned %v: %v", errNoToStr(uint32(r)), err)
 }
 
-func NCryptFreeObject(h uintptr) error {
-	r, _, err := nCryptFreeObject.Call(h)
+func nCryptFreeObject(h uintptr) error {
+	r, _, err := procNCryptFreeObject.Call(h)
 	if r == 0 {
 		return nil
 	}
 	return fmt.Errorf("NCryptFreeObject returned %v: %v", errNoToStr(uint32(r)), err)
 }
 
-func NCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, algorithmName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
+func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, algorithmName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
 
 	var kh uintptr
 	var kn uintptr = 0
@@ -178,7 +178,7 @@ func NCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, a
 		kn = uintptr(unsafe.Pointer(wide(containerName)))
 	}
 
-	r, _, err := nCryptCreatePersistedKey.Call(
+	r, _, err := procNCryptCreatePersistedKey.Call(
 		provisionerHandle,
 		uintptr(unsafe.Pointer(&kh)),
 		uintptr(unsafe.Pointer(wide(algorithmName))),
@@ -192,9 +192,9 @@ func NCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, a
 	return kh, nil
 }
 
-func NCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
+func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
 	var kh uintptr
-	r, _, err := nCryptOpenKey.Call(
+	r, _, err := procNCryptOpenKey.Call(
 		provisionerHandle,
 		uintptr(unsafe.Pointer(&kh)),
 		uintptr(unsafe.Pointer(wide(containerName))),
@@ -207,8 +207,8 @@ func NCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 	return kh, nil
 }
 
-func NCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
-	r, _, err := nCryptFinalizeKey.Call(keyHandle, uintptr(flags))
+func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
+	r, _, err := procNCryptFinalizeKey.Call(keyHandle, uintptr(flags))
 	if r != 0 {
 		return fmt.Errorf("NCryptFinalizeKey returned %v: %v", errNoToStr(uint32(r)), err)
 	}
@@ -216,12 +216,12 @@ func NCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
 	return nil
 }
 
-func NCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue interface{}, flags uint32) error {
+func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue interface{}, flags uint32) error {
 
 	intVal, isInt := propertyValue.(uint32)
 
 	if isInt {
-		r, _, err := nCryptSetProperty.Call(
+		r, _, err := procNCryptSetProperty.Call(
 			keyHandle,
 			uintptr(unsafe.Pointer(wide(propertyName))),
 			uintptr(unsafe.Pointer(&intVal)),
@@ -239,7 +239,7 @@ func NCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 	if isStr {
 		l := len(strVal)
 
-		r, _, err := nCryptSetProperty.Call(
+		r, _, err := procNCryptSetProperty.Call(
 			keyHandle,
 			uintptr(unsafe.Pointer(wide(propertyName))),
 			uintptr(unsafe.Pointer(wide(strVal))),
@@ -255,7 +255,7 @@ func NCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 	return fmt.Errorf("NCryptSetProperty %v invalid value", propertyName)
 }
 
-func NCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
+func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 	var size uint32
 	var padInfoPtr uintptr
 	var flags uint32
@@ -269,7 +269,7 @@ func NCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 	}
 
 	// Obtain the size of the signature
-	r, _, err := nCryptSignHash.Call(
+	r, _, err := procNCryptSignHash.Call(
 		kh,
 		padInfoPtr,
 		uintptr(unsafe.Pointer(&digest[0])),
@@ -284,7 +284,7 @@ func NCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 
 	// Obtain the signature data
 	buf := make([]byte, size)
-	r, _, err = nCryptSignHash.Call(
+	r, _, err = procNCryptSignHash.Call(
 		kh,
 		padInfoPtr,
 		uintptr(unsafe.Pointer(&digest[0])),
@@ -303,7 +303,7 @@ func NCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 
 func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 	var strSize uint32
-	r, _, err := nCryptGetProperty.Call(
+	r, _, err := procNCryptGetProperty.Call(
 		kh,
 		uintptr(unsafe.Pointer(property)),
 		0,
@@ -316,7 +316,7 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 	}
 
 	buf := make([]byte, strSize)
-	r, _, err = nCryptGetProperty.Call(
+	r, _, err = procNCryptGetProperty.Call(
 		kh,
 		uintptr(unsafe.Pointer(property)),
 		uintptr(unsafe.Pointer(&buf[0])),
@@ -331,7 +331,7 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 	return buf, nil
 }
 
-func NCryptGetPropertyHandle(kh uintptr, property *uint16) (uintptr, error) {
+func nCryptGetPropertyHandle(kh uintptr, property *uint16) (uintptr, error) {
 	buf, err := getProperty(kh, property)
 	if err != nil {
 		return 0, err
@@ -342,7 +342,7 @@ func NCryptGetPropertyHandle(kh uintptr, property *uint16) (uintptr, error) {
 	return **(**uintptr)(unsafe.Pointer(&buf)), nil
 }
 
-func NCryptGetPropertyInt(kh uintptr, property *uint16) (int, error) {
+func nCryptGetPropertyInt(kh uintptr, property *uint16) (int, error) {
 	buf, err := getProperty(kh, property)
 	if err != nil {
 		return 0, err
@@ -353,7 +353,7 @@ func NCryptGetPropertyInt(kh uintptr, property *uint16) (int, error) {
 	return **(**int)(unsafe.Pointer(&buf)), nil
 }
 
-func NCryptGetPropertyStr(kh uintptr, property string) (string, error) {
+func nCryptGetPropertyStr(kh uintptr, property string) (string, error) {
 	buf, err := getProperty(kh, wide(property))
 	if err != nil {
 		return "", err
@@ -362,10 +362,10 @@ func NCryptGetPropertyStr(kh uintptr, property string) (string, error) {
 	return string(uc), nil
 }
 
-func NCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
+func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 	var size uint32
 	// When obtaining the size of a public key, most parameters are not required
-	r, _, err := nCryptExportKey.Call(
+	r, _, err := procNCryptExportKey.Call(
 		kh,
 		0,
 		uintptr(unsafe.Pointer(wide(blobType))),
@@ -380,7 +380,7 @@ func NCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 
 	// Place the exported key in buf now that we know the size required
 	buf := make([]byte, size)
-	r, _, err = nCryptExportKey.Call(
+	r, _, err = procNCryptExportKey.Call(
 		kh,
 		0,
 		uintptr(unsafe.Pointer(wide(blobType))),
@@ -395,8 +395,8 @@ func NCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 	return buf, nil
 }
 
-func FindCertificateInStore(store windows.Handle, enc, findFlags, findType uint32, para uintptr, prev *windows.CertContext) (*windows.CertContext, error) {
-	h, _, err := certFindCertificateInStore.Call(
+func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint32, para uintptr, prev *windows.CertContext) (*windows.CertContext, error) {
+	h, _, err := procCertFindCertificateInStore.Call(
 		uintptr(store),
 		uintptr(enc),
 		uintptr(findFlags),
@@ -414,13 +414,13 @@ func FindCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	return (*windows.CertContext)(unsafe.Pointer(h)), nil
 }
 
-func FreeCertContext(ctx *windows.CertContext) error {
+func freeCertContext(ctx *windows.CertContext) error {
 	return windows.CertFreeCertificateContext(ctx)
 }
 
-func CryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
+func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 
-	r, _, err := cryptFindCertificateKeyProvInfo.Call(
+	r, _, err := procCryptFindCertificateKeyProvInfo.Call(
 		uintptr(unsafe.Pointer(certContext)),
 		uintptr(CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG),
 		0,
