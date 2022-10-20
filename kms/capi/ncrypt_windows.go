@@ -52,11 +52,11 @@ const (
 	infoIssuerFlag          = 4                                               // CERT_INFO_ISSUER_FLAG
 	compareNameStrW         = 8                                               // CERT_COMPARE_NAME_STR_A
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
-	compareSHA1Hash         = 1
-	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag // CERT_FIND_ISSUER_STR_W
-	findHash                = compareSHA1Hash << compareShift                // CERT_FIND_HASH
-	signatureKeyUsage       = 0x80                                           // CERT_DIGITAL_SIGNATURE_KEY_USAGE
-	ncryptKeySpec           = 0xFFFFFFFF                                     // CERT_NCRYPT_KEY_SPEC
+	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
+	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
+	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
+	signatureKeyUsage       = 0x80                                            // CERT_DIGITAL_SIGNATURE_KEY_USAGE
+	ncryptKeySpec           = 0xFFFFFFFF                                      // CERT_NCRYPT_KEY_SPEC
 
 	BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 	BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB"
@@ -86,6 +86,12 @@ var (
 		"nistP256": elliptic.P256(), // BCRYPT_ECC_CURVE_NISTP256
 		"nistP384": elliptic.P384(), // BCRYPT_ECC_CURVE_NISTP384
 		"nistP521": elliptic.P521(), // BCRYPT_ECC_CURVE_NISTP521
+	}
+
+	curveMagicMap = map[string]uint32{
+		"P-256": ecs1Magic,
+		"P-384": ecs3Magic,
+		"P-521": ecs5Magic,
 	}
 
 	// algIDs maps crypto.Hash values to bcrypt.h constants.

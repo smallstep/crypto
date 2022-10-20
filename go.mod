@@ -14,7 +14,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.114
 	github.com/go-piv/piv-go v1.10.0
 	github.com/golang/mock v1.6.0
-	github.com/google/uuid v1.3.0
 	github.com/googleapis/gax-go/v2 v2.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
@@ -47,6 +46,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect

@@ -14,10 +14,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/sys/windows"
@@ -36,7 +36,6 @@ const (
 	HashArg          = "sha1"
 	StoreLocationArg = "store-location" // 'machine', 'user', etc
 	StoreNameArg     = "store"          // 'MY', 'CA', 'ROOT', etc
-	PINArg           = "pin"
 )
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
@@ -54,10 +53,11 @@ type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
 	containerName  string
+	pin            string
 }
 
 func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
-	// BCRYPT_RSA_BLOB from bcrypt.h
+	// BCRYPT_RSA_BLOB -- https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/ns-bcrypt-bcrypt_rsakey_blob
 	header := struct {
 		Magic         uint32
 		BitLength     uint32
@@ -81,13 +81,25 @@ func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
 	}
 
 	exp := make([]byte, 8)
-	if n, err := r.Read(exp[8-header.PublicExpSize:]); n != int(header.PublicExpSize) || err != nil {
-		return nil, fmt.Errorf("failed to read public exponent (%d, %v)", n, err)
+	n, err := r.Read(exp[8-header.PublicExpSize:])
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read public exponent %w", err)
+	}
+
+	if n != int(header.PublicExpSize) {
+		return nil, fmt.Errorf("failed to read correct public exponent size, read %d expected %d", n, int(header.PublicExpSize))
 	}
 
 	mod := make([]byte, header.ModulusSize)
-	if n, err := r.Read(mod); n != int(header.ModulusSize) || err != nil {
-		return nil, fmt.Errorf("failed to read modulus (%d, %v)", n, err)
+	n, err = r.Read(mod)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read modulus %w", err)
+	}
+
+	if n != int(header.ModulusSize) {
+		return nil, fmt.Errorf("failed to read correct modulus size, read %d expected %d", n, int(header.ModulusSize))
 	}
 
 	pub := &rsa.PublicKey{
@@ -98,7 +110,7 @@ func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
 }
 
 func unmarshalECC(buf []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
-	// BCRYPT_ECCKEY_BLOB from bcrypt.h
+	// BCRYPT_ECCKEY_BLOB -- https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/ns-bcrypt-bcrypt_ecckey_blob
 	header := struct {
 		Magic uint32
 		Key   uint32
@@ -109,14 +121,30 @@ func unmarshalECC(buf []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 
+	if expectedMagic, ok := curveMagicMap[curve.Params().Name]; ok {
+		if expectedMagic != header.Magic {
+			return nil, fmt.Errorf("elliptic curve bloc did not contain expected magic")
+		}
+	}
+
 	keyX := make([]byte, header.Key)
-	if n, err := r.Read(keyX); n != int(header.Key) || err != nil {
-		return nil, fmt.Errorf("failed to read key X (%d, %v)", n, err)
+	n, err := r.Read(keyX)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key X %w", err)
+	}
+
+	if n != int(header.Key) {
+		return nil, fmt.Errorf("failed to read key X size, read %d expected %d", n, int(header.Key))
 	}
 
 	keyY := make([]byte, header.Key)
-	if n, err := r.Read(keyY); n != int(header.Key) || err != nil {
-		return nil, fmt.Errorf("failed to read key Y (%d, %v)", n, err)
+	n, err = r.Read(keyY)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key Y %w", err)
+	}
+
+	if n != int(header.Key) {
+		return nil, fmt.Errorf("failed to read key Y size, read %d expected %d", n, int(header.Key))
 	}
 
 	pub := &ecdsa.PublicKey{
@@ -138,25 +166,27 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 	case "ECDSA":
 		buf, err := NCryptExportKey(kh, BCRYPT_ECCPUBLIC_BLOB)
 		if err != nil {
-			return nil, fmt.Errorf("failed to export ECC public key: %v", err)
+			return nil, fmt.Errorf("failed to export ECC public key: %w", err)
 		}
 		curveName, err := NCryptGetPropertyStr(kh, NCRYPT_ECC_CURVE_NAME_PROPERTY)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve ECC curve name: %v", err)
+			return nil, fmt.Errorf("failed to retrieve ECC curve name: %w", err)
 		}
 		pub, err = unmarshalECC(buf, curveNames[curveName])
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal ECC public key: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal ECC public key: %w", err)
 		}
-	default:
+	case "RSA":
 		buf, err := NCryptExportKey(kh, BCRYPT_RSAPUBLIC_BLOB)
 		if err != nil {
-			return nil, fmt.Errorf("failed to export %v public key: %v", algGroup, err)
+			return nil, fmt.Errorf("failed to export %v public key: %w", algGroup, err)
 		}
 		pub, err = unmarshalRSA(buf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal %v public key: %v", algGroup, err)
+			return nil, fmt.Errorf("failed to unmarshal %v public key: %w", algGroup, err)
 		}
+	default:
+		return nil, fmt.Errorf("unhandled algorithm group %v retrieved from key", algGroup)
 	}
 
 	return pub, nil
@@ -165,8 +195,13 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 // New returns a new CAPIKMS.
 func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 	var providerName string
-	containerUUID, _ := uuid.NewRandom()
-	containerName := containerUUID.String()
+	containerName, err := randutil.UUIDv4()
+	providerName = "Microsoft Software Key Storage Provider"
+	pin := ""
+
+	if err != nil {
+		return nil, fmt.Errorf("could not generate UUIDv4: %w", err)
+	}
 
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
@@ -176,21 +211,22 @@ func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 
 		if v := u.Get(ProviderNameArg); v != "" {
 			providerName = v
-		} else {
-			providerName = "Microsoft Software Key Storage Provider"
 		}
+
+		pin = u.Pin()
 	}
 
 	ph, err := NCryptOpenStorage(providerName)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not open nCrypt provider: %w", err)
 	}
 
 	return &CAPIKMS{
 		providerName:   providerName,
 		providerHandle: ph,
 		containerName:  containerName,
+		pin:            pin,
 	}, nil
 }
 
@@ -221,9 +257,13 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		return nil, errors.Errorf("CreateSigner %v not specified", ContainerNameArg)
 	}
 
-	scPIN := u.Get(PINArg)
+	scPIN := u.Pin()
 
-	return NewCAPISigner(k.providerHandle, k.containerName, scPIN)
+	if scPIN == "" {
+		scPIN = k.pin
+	}
+
+	return newCAPISigner(k.providerHandle, k.containerName, scPIN)
 }
 
 // CreateKey generates a new key using Golang crypto and returns both public and
@@ -234,26 +274,22 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, errors.Errorf("capi signing request must have a name")
 	}
 
-	var u *uri.URI
-
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse URI")
+		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
 	if k.containerName = u.Get(ContainerNameArg); k.containerName == "" {
 		// generate a uuid for the container name
-		containerUUID, err := uuid.NewRandom()
+		k.containerName, err = randutil.UUIDv4()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to generate uuid")
+			return nil, fmt.Errorf("failed to generate uuid: %w", err)
 		}
-		k.containerName = containerUUID.String()
 	}
 
 	alg, ok := signatureAlgorithmMapping[req.SignatureAlgorithm]
-
 	if !ok {
-		return nil, errors.Errorf("unsupported algorithm %v", req.SignatureAlgorithm)
+		return nil, fmt.Errorf("unsupported algorithm %v", req.SignatureAlgorithm)
 	}
 
 	kh, err := NCryptCreatePersistedKey(k.providerHandle, k.containerName, alg, AT_KEYEXCHANGE, 0)
@@ -267,41 +303,53 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		err = NCryptSetProperty(kh, NCRYPT_LENGTH_PROPERTY, uint32(req.Bits), 0)
 
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to set key NCRYPT_LENGTH_PROPERTY")
+			return nil, fmt.Errorf("unable to set key NCRYPT_LENGTH_PROPERTY: %w", err)
 		}
 	}
 
 	// users can store the key as a machine key by passing in storelocation = machine
-	if storeLocation := u.Get(StoreLocationArg); storeLocation == "machine" {
+	// 'machine' is the only valid location, otherwise the key is stored as a 'user' key
+	storeLocation := u.Get(StoreLocationArg)
+
+	if storeLocation == "machine" {
 		err = NCryptSetProperty(kh, NCRYPT_KEY_TYPE_PROPERTY, NCRYPT_MACHINE_KEY_FLAG, 0)
 
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to set key NCRYPT_KEY_TYPE_PROPERTY")
+			return nil, fmt.Errorf("unable to set key NCRYPT_KEY_TYPE_PROPERTY: %w", err)
 		}
+	} else if storeLocation != "" && storeLocation != "user" {
+		return nil, fmt.Errorf("invalid storeLocation %v", storeLocation)
 	}
 
 	// if supplied, set the smart card pin
-	if scPIN := u.Get(PINArg); scPIN != "" {
+	scPIN := u.Pin()
+
+	//failover to pin set in kms instantiation
+	if scPIN == "" {
+		scPIN = k.pin
+	}
+
+	if scPIN != "" {
 		err = NCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, scPIN, 0)
 
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to set key NCRYPT_PIN_PROPERTY")
+			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
 	}
 
 	err = NCryptFinalizeKey(kh, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to finalize key")
+		return nil, fmt.Errorf("unable to finalize key: %w", err)
 	}
 
 	uc, err := NCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to retrieve key container")
+		return nil, fmt.Errorf("unable to retrieve NCRYPT_UNIQUE_NAME_PROPERTY: %w", err)
 	}
 
 	pub, err := getPublicKey(kh)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to retrieve public key")
+		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
 	}
 
 	return &apiv1.CreateKeyResponse{
@@ -319,16 +367,16 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
-		return nil, errors.Wrap(err, "GetPublicKey failed to parse URI")
+		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
 	if k.containerName = u.Get(ContainerNameArg); k.containerName == "" {
-		return nil, errors.Errorf("GetPublicKey %v not specified", ContainerNameArg)
+		return nil, fmt.Errorf("GetPublicKey %v not specified", ContainerNameArg)
 	}
 
 	kh, err := NCryptOpenKey(k.providerHandle, k.containerName, AT_KEYEXCHANGE, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "GetPublicKey unable to open key")
+		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
 
 	defer NCryptFreeObject(kh)
@@ -339,12 +387,12 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse URI")
+		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
 	var sha1Hash string
 	if sha1Hash = u.Get(HashArg); sha1Hash == "" {
-		return nil, errors.Errorf("%v is required", HashArg)
+		return nil, fmt.Errorf("%v is required", HashArg)
 	}
 
 	// default to the user store
@@ -360,7 +408,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 	case "machine":
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return nil, errors.Errorf("invalid cert store location %v", storeLocation)
+		return nil, fmt.Errorf("invalid cert store location %v", storeLocation)
 	}
 
 	var storeName string
@@ -377,12 +425,12 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		certStoreLocation,
 		uintptr(unsafe.Pointer(wide(storeName))))
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %v store %v returned: %v", storeLocation, storeName, err)
+		return nil, fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
 	}
 
 	sha1Bytes, err := hex.DecodeString(sha1Hash)
 	if err != nil {
-		return nil, fmt.Errorf("sha1 must be in hex format: %v", err)
+		return nil, fmt.Errorf("sha1 must be in hex format: %w", err)
 	}
 
 	// create a CRYPT_INTEGER_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
@@ -405,8 +453,10 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 	}
 
 	if certHandle == nil {
-		return nil, errors.Errorf("certificate with %v=%s not found", HashArg, sha1Hash)
+		return nil, fmt.Errorf("certificate with %v=%s not found", HashArg, sha1Hash)
 	}
+
+	defer windows.CertFreeCertificateContext(certHandle)
 
 	var der []byte
 	slice := (*reflect.SliceHeader)(unsafe.Pointer(&der))
@@ -425,7 +475,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
-		return errors.Wrap(err, "failed to parse URI")
+		return fmt.Errorf("failed to parse URI: %w", err)
 	}
 
 	var storeLocation string
@@ -440,7 +490,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	case "machine":
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return errors.Errorf("invalid cert store location %v", storeLocation)
+		return fmt.Errorf("invalid cert store location %v", storeLocation)
 	}
 
 	var storeName string
@@ -453,7 +503,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		&req.Certificate.Raw[0],
 		uint32(len(req.Certificate.Raw)))
 	if err != nil {
-		return fmt.Errorf("CertCreateCertificateContext returned: %v", err)
+		return fmt.Errorf("CertCreateCertificateContext returned: %w", err)
 	}
 	defer windows.CertFreeCertificateContext(certContext)
 
@@ -466,12 +516,12 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		certStoreLocation,
 		uintptr(unsafe.Pointer(wide(storeName))))
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %v store %v returned: %v", storeLocation, storeName, err)
+		return fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
 	}
 
 	// Add the cert context to the system certificate store
 	if err = windows.CertAddCertificateContextToStore(st, certContext, windows.CERT_STORE_ADD_ALWAYS, nil); err != nil {
-		return fmt.Errorf("CertAddCertificateContextToStore returned: %v", err)
+		return fmt.Errorf("CertAddCertificateContextToStore returned: %w", err)
 	}
 
 	return nil
@@ -485,28 +535,28 @@ type CAPISigner struct {
 	PublicKey      crypto.PublicKey
 }
 
-func NewCAPISigner(providerHandle uintptr, containerName string, pin string) (crypto.Signer, error) {
+func newCAPISigner(providerHandle uintptr, containerName string, pin string) (crypto.Signer, error) {
 	kh, err := NCryptOpenKey(providerHandle, containerName, AT_KEYEXCHANGE, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to open key")
+		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
 
 	if pin != "" {
 		err = NCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pin, 0)
 
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to set key NCRYPT_PIN_PROPERTY")
+			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
 	}
 
 	pub, err := getPublicKey(kh)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get public key")
+		return nil, fmt.Errorf("unable to get public key: %w", err)
 	}
 
 	algGroup, err := NCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY")
+		return nil, fmt.Errorf("unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY: %w", err)
 	}
 
 	signer := CAPISigner{
@@ -521,6 +571,11 @@ func NewCAPISigner(providerHandle uintptr, containerName string, pin string) (cr
 }
 
 func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+
+	if _, isRSAPSS := opts.(*rsa.PSSOptions); isRSAPSS {
+		return nil, fmt.Errorf("RSA-PSS signing is not supported")
+	}
+
 	switch s.algorithmGroup {
 	case "ECDSA":
 		signatureBytes, err := NCryptSignHash(s.keyHandle, digest, "")
@@ -551,7 +606,7 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 		signatureBytes, err := NCryptSignHash(s.keyHandle, digest, hashAlg)
 
 		if err != nil {
-			return nil, errors.Wrap(err, "NCryptSignHash failed")
+			return nil, fmt.Errorf("NCryptSignHash failed: %w", err)
 		}
 
 		return signatureBytes, nil
