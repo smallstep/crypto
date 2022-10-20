@@ -382,7 +382,7 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 	switch {
 	case block == nil:
 		return nil, errors.Errorf("error decoding %s: not a valid PEM encoded block", ctx.filename)
-	case len(rest) > 0 && !ctx.firstBlock:
+	case len(bytes.TrimSpace(rest)) > 0 && !ctx.firstBlock:
 		return nil, errors.Errorf("error decoding %s: contains more than one PEM encoded block", ctx.filename)
 	}
 

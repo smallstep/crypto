@@ -466,6 +466,16 @@ func TestParse(t *testing.T) {
 				cmpType: &x509.Certificate{},
 			}
 		},
+		"success-x509-crt-trim-spaces": func(t *testing.T) *ParseTest {
+			b, err := os.ReadFile("testdata/ca.crt")
+			assert.FatalError(t, err)
+			b = append(b, []byte(" \n \n ")...)
+			return &ParseTest{
+				in:      b,
+				opts:    nil,
+				cmpType: &x509.Certificate{},
+			}
+		},
 		"fail-options": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/ca.crt")
 			assert.FatalError(t, err)
