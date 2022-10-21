@@ -53,10 +53,13 @@ const (
 	compareNameStrW         = 8                                               // CERT_COMPARE_NAME_STR_A
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
+	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
-	signatureKeyUsage       = 0x80                                            // CERT_DIGITAL_SIGNATURE_KEY_USAGE
-	ncryptKeySpec           = 0xFFFFFFFF                                      // CERT_NCRYPT_KEY_SPEC
+	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
+
+	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
+	ncryptKeySpec     = 0xFFFFFFFF // CERT_NCRYPT_KEY_SPEC
 
 	BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 	BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB"
@@ -66,6 +69,14 @@ const (
 	CRYPT_ACQUIRE_ALLOW_NCRYPT_KEY_FLAG  = uint32(0x00010000)
 	CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG = uint32(0x00020000)
 	CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   = uint32(0x00040000)
+
+	CERT_ID_ISSUER_SERIAL_NUMBER = uint32(1)
+	CERT_ID_KEY_IDENTIFIER       = uint32(2)
+	CERT_ID_SHA1_HASH            = uint32(3)
+
+	CERT_NAME_STR_COMMA_FLAG = uint32(0x04000000)
+	CERT_SIMPLE_NAME_STR     = uint32(1)
+	CERT_X500_NAME_STR       = uint32(3)
 
 	AT_KEYEXCHANGE = uint32(1)
 	AT_SIGNATURE   = uint32(2)
@@ -107,6 +118,7 @@ var (
 
 	procCertFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
 	procCryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
+	procCertStrToName                   = crypt32.MustFindProc("CertStrToNameW")
 	procNCryptCreatePersistedKey        = nCrypt.MustFindProc("NCryptCreatePersistedKey")
 	procNCryptExportKey                 = nCrypt.MustFindProc("NCryptExportKey")
 	procNCryptFinalizeKey               = nCrypt.MustFindProc("NCryptFinalizeKey")
@@ -120,6 +132,30 @@ var (
 
 type BCRYPT_PKCS1_PADDING_INFO struct {
 	pszAlgID *uint16
+}
+
+//CRYPTOAPI_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
+type CRYPTOAPI_BLOB struct {
+	len  uint32
+	data uintptr
+}
+
+// CERT_ISSUER_SERIAL_NUMBER -- https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
+type CERT_ISSUER_SERIAL_NUMBER struct {
+	Issuer       CRYPTOAPI_BLOB
+	SerialNumber CRYPTOAPI_BLOB
+}
+
+// CERT_ID - https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
+// TODO: might be able to merge these two types into one that uses interface{} instead
+type CERT_ID_KEYIDORHASH struct {
+	idChoice    uint32
+	KeyIDOrHash CRYPTOAPI_BLOB
+}
+
+type CERT_ID_SERIAL struct {
+	idChoice uint32
+	Serial   CERT_ISSUER_SERIAL_NUMBER
 }
 
 func errNoToStr(e uint32) string {
@@ -431,4 +467,39 @@ func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 	}
 
 	return nil
+}
+
+func certStrToName(x500Str string) ([]byte, error) {
+	var size uint32
+
+	// Get the size of the data to be returned
+	r, _, err := procCertStrToName.Call(
+		uintptr(encodingX509ASN),
+		uintptr(unsafe.Pointer(wide(x500Str))),
+		uintptr(CERT_X500_NAME_STR|CERT_NAME_STR_COMMA_FLAG),
+		0, // pvReserved
+		0, // pbEncoded
+		uintptr(unsafe.Pointer(&size)),
+		0,
+	)
+	if r != 1 {
+		return nil, fmt.Errorf("CertStrToName returned %v during size check: %w", errNoToStr(uint32(r)), err)
+	}
+
+	fmt.Printf("certStrToName size was %d\n", size)
+	// Place the data in buf now that we know the size required
+	buf := make([]byte, size)
+	r, _, err = procCertStrToName.Call(
+		uintptr(encodingX509ASN),
+		uintptr(unsafe.Pointer(wide(x500Str))),
+		uintptr(CERT_SIMPLE_NAME_STR),
+		0, // pvReserved
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&size)),
+		0,
+	)
+	if r != 1 {
+		return nil, fmt.Errorf("CertStrToName returned %v during convert: %w", errNoToStr(uint32(r)), err)
+	}
+	return buf, nil
 }

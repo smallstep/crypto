@@ -36,6 +36,9 @@ const (
 	HashArg          = "sha1"
 	StoreLocationArg = "store-location" // 'machine', 'user', etc
 	StoreNameArg     = "store"          // 'MY', 'CA', 'ROOT', etc
+	KeyIDArg         = "key-id"
+	SerialNumberArg  = "serial"
+	IssuerNameArg    = "issuer"
 )
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
@@ -56,7 +59,9 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 //   - capi:provider=STORAGE-PROVIDER;key=KEY-NAME
 //
 // For certificates:
-//   - capi:store-location=[machine|user];store=My;sha1=THUMBPRINT
+//   - capi:store-location=[machine|user];store=My;sha1=<THUMBPRINT>
+//   - capi:store-location=[machine|user];store=My;key-id=<X509v3 Subject Key Identifier>
+//   - capi:store-location=[machine|user];store=My;issuer=<Issuer CN>;serial=<Certificate SN>
 //
 // The scheme is "capi";
 //
@@ -66,18 +71,27 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 // - "Microsoft Platform Crypto Provider"
 // if not set it defaults to "Microsoft Software Key Storage Provider"
 //
-// "key" is the key container name. If not set one is generated.
-//
-// "store-location" specifies the certificate store location - "user" or "machine"
-//
-// "store" is the certificate store name - "My", "Root", and "CA" are some examples
-//
-// "sha1" is the sha1 thumbprint of the certificate to load
+// "key"              key container name. If not set one is generated.
+// "store-location"   specifies the certificate store location - "user" or "machine"
+// "store"            certificate store name - "My", "Root", and "CA" are some examples
+// "sha1"             sha1 thumbprint of the certificate to load in hex format
+// "key-id"           X509v3 Subject Key Identifier of the certificate to load in hex format
+// "serial"           serial number of the certificate to load in hex format
+// "issuer"           Common Name of the certificate issuer
 //
 type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
 	pin            string
+}
+
+func certContextToX509(certHandle *windows.CertContext) (*x509.Certificate, error) {
+	var der []byte
+	slice := (*reflect.SliceHeader)(unsafe.Pointer(&der))
+	slice.Data = uintptr(unsafe.Pointer(certHandle.EncodedCert))
+	slice.Len = int(certHandle.Length)
+	slice.Cap = int(certHandle.Length)
+	return x509.ParseCertificate(der)
 }
 
 func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
@@ -403,17 +417,18 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 	return getPublicKey(kh)
 }
 
-// LoadCertificate will return an x509.Certificate if passed a URI containing a serial or sha1 hash.
+// LoadCertificate will return an x509.Certificate if passed a URI containing a subject key
+// identifier (key-id) or sha1 hash
 func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	var sha1Hash string
-	if sha1Hash = u.Get(HashArg); sha1Hash == "" {
-		return nil, fmt.Errorf("%v is required", HashArg)
-	}
+	sha1Hash := u.Get(HashArg)
+	keyID := u.Get(KeyIDArg)
+	issuerName := u.Get(IssuerNameArg)
+	serialNumber := u.Get(SerialNumberArg)
 
 	// default to the user store
 	var storeLocation string
@@ -448,48 +463,108 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		return nil, fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
 	}
 
-	sha1Bytes, err := hex.DecodeString(sha1Hash)
-	if err != nil {
-		return nil, fmt.Errorf("sha1 must be in hex format: %w", err)
+	var certHandle *windows.CertContext
+
+	if sha1Hash != "" {
+		sha1Bytes, err := hex.DecodeString(sha1Hash)
+		if err != nil {
+			return nil, fmt.Errorf("%s must be in hex format: %w", HashArg, err)
+		}
+
+		searchData := CERT_ID_KEYIDORHASH{
+			idChoice: CERT_ID_SHA1_HASH,
+			KeyIDOrHash: CRYPTOAPI_BLOB{
+				len:  uint32(len(sha1Bytes)),
+				data: uintptr(unsafe.Pointer(&sha1Bytes[0])),
+			},
+		}
+
+		certHandle, err = findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findCertID,
+			uintptr(unsafe.Pointer(&searchData)), nil)
+
+		if err != nil {
+			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+
+		if certHandle == nil {
+			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
+		}
+
+		defer windows.CertFreeCertificateContext(certHandle)
+		return certContextToX509(certHandle)
+	} else if keyID != "" {
+		keyIDBytes, err := hex.DecodeString(keyID)
+		if err != nil {
+			return nil, fmt.Errorf("%v must be in hex format: %w", KeyIDArg, err)
+		}
+
+		searchData := CERT_ID_KEYIDORHASH{
+			idChoice: CERT_ID_KEY_IDENTIFIER,
+			KeyIDOrHash: CRYPTOAPI_BLOB{
+				len:  uint32(len(keyIDBytes)),
+				data: uintptr(unsafe.Pointer(&keyIDBytes[0])),
+			},
+		}
+
+		certHandle, err = findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findCertID,
+			uintptr(unsafe.Pointer(&searchData)), nil)
+
+		if err != nil {
+			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+
+		if certHandle == nil {
+			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
+		}
+
+		defer windows.CertFreeCertificateContext(certHandle)
+		return certContextToX509(certHandle)
+	} else if issuerName != "" && serialNumber != "" {
+		serialBytes, err := hex.DecodeString(serialNumber)
+		if err != nil {
+			return nil, fmt.Errorf("%v must be in hex format: %w", SerialNumberArg, err)
+		}
+
+		// iterate over all certificates from issuer, and check the SN
+		var prevCert *windows.CertContext = nil
+		for {
+			certHandle, err = findCertificateInStore(st,
+				encodingX509ASN|encodingPKCS7,
+				0,
+				findIssuerStr,
+				uintptr(unsafe.Pointer(wide(issuerName))), prevCert)
+
+			if err != nil {
+				return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+			}
+
+			if certHandle == nil {
+				return nil, fmt.Errorf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)
+			}
+
+			x509Cert, err := certContextToX509(certHandle)
+
+			if err != nil {
+				return nil, fmt.Errorf("could not unmarshal certificate to DER: %w", err)
+			}
+
+			if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
+				windows.CertFreeCertificateContext(certHandle)
+				return x509Cert, nil
+			}
+
+			prevCert = certHandle
+
+		}
+	} else {
+		return nil, fmt.Errorf("%s, %s, or %s and %s is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
-
-	// create a CRYPT_INTEGER_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
-	hashBlob := struct {
-		len  uint32
-		hash uintptr
-	}{
-		len:  uint32(len(sha1Bytes)),
-		hash: uintptr(unsafe.Pointer(&sha1Bytes[0])),
-	}
-
-	certHandle, err := findCertificateInStore(st,
-		encodingX509ASN|encodingPKCS7,
-		0,
-		findHash,
-		uintptr(unsafe.Pointer(&hashBlob)), nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if certHandle == nil {
-		return nil, fmt.Errorf("certificate with %v=%s not found", HashArg, sha1Hash)
-	}
-
-	defer windows.CertFreeCertificateContext(certHandle)
-
-	var der []byte
-	slice := (*reflect.SliceHeader)(unsafe.Pointer(&der))
-	slice.Data = uintptr(unsafe.Pointer(certHandle.EncodedCert))
-	slice.Len = int(certHandle.Length)
-	slice.Cap = int(certHandle.Length)
-	x509Cert, err := x509.ParseCertificate(der)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return x509Cert, nil
 }
 
 func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
