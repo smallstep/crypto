@@ -77,7 +77,6 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
-	containerName  string
 	pin            string
 }
 
@@ -105,6 +104,7 @@ func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
 		return nil, fmt.Errorf("unsupported public exponent size (%d bits)", header.PublicExpSize*8)
 	}
 
+	// the exponent is in BigEndian format, so read the data into the right place in the buffer
 	exp := make([]byte, 8)
 	n, err := r.Read(exp[8-header.PublicExpSize:])
 
@@ -148,7 +148,7 @@ func unmarshalECC(buf []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 
 	if expectedMagic, ok := curveMagicMap[curve.Params().Name]; ok {
 		if expectedMagic != header.Magic {
-			return nil, fmt.Errorf("elliptic curve bloc did not contain expected magic")
+			return nil, fmt.Errorf("elliptic curve blob did not contain expected magic")
 		}
 	}
 
@@ -183,7 +183,7 @@ func unmarshalECC(buf []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 	algGroup, err := nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_GROUP_PROPERTY)
 	if err != nil {
-		return nil, errors.Wrap(err, "GetPublicKey unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY")
+		return nil, fmt.Errorf("unable to get NCRYPT_ALGORITHM_GROUP_PROPERTY: %w", err)
 	}
 
 	var pub crypto.PublicKey
@@ -219,14 +219,8 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 
 // New returns a new CAPIKMS.
 func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
-	var providerName string
-	containerName, err := randutil.UUIDv4()
-	providerName = "Microsoft Software Key Storage Provider"
+	providerName := "Microsoft Software Key Storage Provider"
 	pin := ""
-
-	if err != nil {
-		return nil, fmt.Errorf("could not generate UUIDv4: %w", err)
-	}
 
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
@@ -243,7 +237,6 @@ func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 
 	// TODO: a provider is not necessary for certificate functions, should we move this to the key and signing functions?
 	ph, err := nCryptOpenStorage(providerName)
-
 	if err != nil {
 		return nil, fmt.Errorf("could not open nCrypt provider: %w", err)
 	}
@@ -251,7 +244,6 @@ func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 	return &CAPIKMS{
 		providerName:   providerName,
 		providerHandle: ph,
-		containerName:  containerName,
 		pin:            pin,
 	}, nil
 }
@@ -270,34 +262,34 @@ func (k *CAPIKMS) Close() error {
 	return nil
 }
 
-// CreateSigner returns a new signer configured with the given signing key.
+// CreateSigner returns a nce crypto.Signer that will sign using the key passed in via the URI.
 func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
-	var u *uri.URI
-
 	u, err := uri.ParseWithScheme(Scheme, req.SigningKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "CreateSigner failed to parse URI")
+		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	if k.containerName = u.Get(ContainerNameArg); k.containerName == "" {
-		return nil, errors.Errorf("CreateSigner %v not specified", ContainerNameArg)
+	var containerName string
+	if containerName = u.Get(ContainerNameArg); containerName == "" {
+		// generate a uuid for the container name
+		containerName, err = randutil.UUIDv4()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate uuid: %w", err)
+		}
 	}
 
 	scPIN := u.Pin()
-
 	if scPIN == "" {
 		scPIN = k.pin
 	}
 
-	return newCAPISigner(k.providerHandle, k.containerName, scPIN)
+	return newCAPISigner(k.providerHandle, containerName, scPIN)
 }
 
-// CreateKey generates a new key using Golang crypto and returns both public and
-// private key.
+// CreateKey generates a new key in the storage provider using nCryptCreatePersistedKey
 func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
-
 	if req.Name == "" {
-		return nil, errors.Errorf("capi signing request must have a name")
+		return nil, errors.New("createKeyRequest 'name' cannot be empty")
 	}
 
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
@@ -305,9 +297,10 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	if k.containerName = u.Get(ContainerNameArg); k.containerName == "" {
+	var containerName string
+	if containerName = u.Get(ContainerNameArg); containerName == "" {
 		// generate a uuid for the container name
-		k.containerName, err = randutil.UUIDv4()
+		containerName, err = randutil.UUIDv4()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate uuid: %w", err)
 		}
@@ -318,9 +311,9 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unsupported algorithm %v", req.SignatureAlgorithm)
 	}
 
-	kh, err := nCryptCreatePersistedKey(k.providerHandle, k.containerName, alg, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, AT_KEYEXCHANGE, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to create persisted key")
+		return nil, fmt.Errorf("unable to create persisted key: %w", err)
 	}
 
 	defer nCryptFreeObject(kh)
@@ -357,7 +350,6 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 	if scPIN != "" {
 		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, scPIN, 0)
-
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
@@ -378,29 +370,30 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
 	}
 
+	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
+
 	return &apiv1.CreateKeyResponse{
-		Name:      uc,
+		Name:      createdKeyURI,
 		PublicKey: pub,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
-			SigningKey: uc,
+			SigningKey: createdKeyURI,
 		},
 	}, nil
 }
 
-// GetPublicKey returns the public key from the file passed in the request name.
+// GetPublicKey returns the public key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
 func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	var u *uri.URI
-
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	if k.containerName = u.Get(ContainerNameArg); k.containerName == "" {
-		return nil, fmt.Errorf("GetPublicKey %v not specified", ContainerNameArg)
+	var containerName string
+	if containerName = u.Get(ContainerNameArg); containerName == "" {
+		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, k.containerName, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, AT_KEYEXCHANGE, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -410,6 +403,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 	return getPublicKey(kh)
 }
 
+// LoadCertificate will return an x509.Certificate if passed a URI containing a serial or sha1 hash.
 func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
@@ -439,7 +433,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 
 	var storeName string
 
-	// default to storing in the 'My' store
+	// default to the 'My' store
 	if storeName = u.Get(StoreNameArg); storeName == "" {
 		storeName = "My"
 	}
