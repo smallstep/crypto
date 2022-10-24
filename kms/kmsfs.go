@@ -19,13 +19,6 @@ type kmsfs struct {
 	apiv1.KeyManager
 }
 
-func (k *kmsfs) Close() error {
-	if k != nil && k.KeyManager != nil {
-		return k.KeyManager.Close()
-	}
-	return nil
-}
-
 func newFS(ctx context.Context, kmsuri string) (*kmsfs, error) {
 	if kmsuri == "" {
 		return &kmsfs{}, nil
@@ -35,6 +28,13 @@ func newFS(ctx context.Context, kmsuri string) (*kmsfs, error) {
 		return nil, err
 	}
 	return &kmsfs{KeyManager: km}, nil
+}
+
+func (f *kmsfs) Close() error {
+	if f != nil && f.KeyManager != nil {
+		return f.KeyManager.Close()
+	}
+	return nil
 }
 
 func (f *kmsfs) getKMS(kmsuri string) (apiv1.KeyManager, error) {
