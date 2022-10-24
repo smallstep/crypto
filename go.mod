@@ -17,7 +17,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 	golang.org/x/net v0.0.0-20221012135044-0b7e1fb9d458
 	google.golang.org/api v0.99.0
