@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"gopkg.in/square/go-jose.v2"
 	"os"
 
 	"github.com/pkg/errors"
@@ -49,8 +50,12 @@ func validateX5(certs []*x509.Certificate, key interface{}) error {
 		return errors.New("certs cannot be empty")
 	}
 
-	if err := keyutil.VerifyPair(certs[0].PublicKey, key); err != nil {
-		return errors.Wrap(err, "error verifying certificate and key")
+	// We cant get the private key data to directly compare, so don't actually check the keys match if we have
+	// an OpaqueSigner. Perhaps the public key can be derived from the OpaqueSigner and matched?
+	if _, isOpaqueSigner := key.(jose.OpaqueSigner); !isOpaqueSigner {
+		if err := keyutil.VerifyPair(certs[0].PublicKey, key); err != nil {
+			return errors.Wrap(err, "error verifying certificate and key")
+		}
 	}
 
 	if certs[0].KeyUsage&x509.KeyUsageDigitalSignature == 0 {
