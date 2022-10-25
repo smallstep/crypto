@@ -8,6 +8,13 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 )
 
+// FS adds a close method to the fs.FS interface. This new method allows to
+// properly close the underlying KMS.
+type FS interface {
+	fs.FS
+	Close() error
+}
+
 type kmsfs struct {
 	apiv1.KeyManager
 }
@@ -16,12 +23,18 @@ func newFS(ctx context.Context, kmsuri string) (*kmsfs, error) {
 	if kmsuri == "" {
 		return &kmsfs{}, nil
 	}
-
 	km, err := loadKMS(ctx, kmsuri)
 	if err != nil {
 		return nil, err
 	}
 	return &kmsfs{KeyManager: km}, nil
+}
+
+func (f *kmsfs) Close() error {
+	if f != nil && f.KeyManager != nil {
+		return f.KeyManager.Close()
+	}
+	return nil
 }
 
 func (f *kmsfs) getKMS(kmsuri string) (apiv1.KeyManager, error) {
@@ -51,7 +64,7 @@ type certFS struct {
 }
 
 // CertFS creates a new io/fs with the given KMS URI.
-func CertFS(ctx context.Context, kmsuri string) (fs.FS, error) {
+func CertFS(ctx context.Context, kmsuri string) (FS, error) {
 	km, err := newFS(ctx, kmsuri)
 	if err != nil {
 		return nil, err
@@ -87,7 +100,7 @@ type keyFS struct {
 }
 
 // KeyFS creates a new KeyFS with the given KMS URI.
-func KeyFS(ctx context.Context, kmsuri string) (fs.FS, error) {
+func KeyFS(ctx context.Context, kmsuri string) (FS, error) {
 	km, err := newFS(ctx, kmsuri)
 	if err != nil {
 		return nil, err

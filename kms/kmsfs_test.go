@@ -77,6 +77,9 @@ func Test_new(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("new() = %v, want %v", got, tt.want)
 			}
+			if err := got.Close(); err != nil {
+				t.Errorf("Close() error = %v, wantErr false", err)
+			}
 		})
 	}
 }
