@@ -19,9 +19,9 @@ require (
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
-	golang.org/x/net v0.0.0-20221012135044-0b7e1fb9d458
-	google.golang.org/api v0.99.0
-	google.golang.org/genproto v0.0.0-20221010155953-15ba04fc1c0e
+	golang.org/x/net v0.0.0-20221014081412-f15817d10f9b
+	google.golang.org/api v0.100.0
+	google.golang.org/genproto v0.0.0-20221014213838-99cd37c6964a
 	google.golang.org/grpc v1.50.1
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
@@ -59,7 +59,7 @@ require (
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/thales-e-security/pool v0.0.2 // indirect
 	go.opencensus.io v0.23.0 // indirect
-	golang.org/x/oauth2 v0.0.0-20221006150949-b44042a4b9c1 // indirect
+	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
 	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
 	golang.org/x/text v0.3.8-0.20211004125949-5bd84dd9b33b // indirect
 	google.golang.org/appengine v1.6.7 // indirect
