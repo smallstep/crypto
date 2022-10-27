@@ -24,6 +24,7 @@ import (
 	"io"
 	"math/big"
 	"reflect"
+	"strings"
 	"unsafe"
 )
 
@@ -44,9 +45,8 @@ const (
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 	apiv1.UnspecifiedSignAlgorithm: "ECDSA_P256",
 	apiv1.SHA256WithRSA:            "RSA",
+	apiv1.SHA384WithRSA:            "RSA",
 	apiv1.SHA512WithRSA:            "RSA",
-	apiv1.SHA256WithRSAPSS:         "RSA",
-	apiv1.SHA512WithRSAPSS:         "RSA",
 	apiv1.ECDSAWithSHA256:          "ECDSA_P256",
 	apiv1.ECDSAWithSHA384:          "ECDSA_P384",
 	apiv1.ECDSAWithSHA512:          "ECDSA_P521",
@@ -526,9 +526,20 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
 	} else if issuerName != "" && serialNumber != "" {
-		serialBytes, err := hex.DecodeString(serialNumber)
-		if err != nil {
-			return nil, fmt.Errorf("%v must be in hex format: %w", SerialNumberArg, err)
+		var serialBytes []byte
+
+		if strings.HasPrefix(serialNumber, "0x") {
+			serialBytes, err = hex.DecodeString(serialNumber)
+			if err != nil {
+				return nil, fmt.Errorf("invalid hex format for %v: %w", SerialNumberArg, err)
+			}
+		} else {
+			bi := new(big.Int)
+			bi, ok := bi.SetString(serialNumber, 10)
+			if !ok {
+				return nil, fmt.Errorf("invalid %v - must be in hex or integer format", SerialNumberArg)
+			}
+			serialBytes = bi.Bytes()
 		}
 
 		// iterate over all certificates from issuer, and check the SN

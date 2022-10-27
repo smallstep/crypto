@@ -486,7 +486,6 @@ func certStrToName(x500Str string) ([]byte, error) {
 		return nil, fmt.Errorf("CertStrToName returned %v during size check: %w", errNoToStr(uint32(r)), err)
 	}
 
-	fmt.Printf("certStrToName size was %d\n", size)
 	// Place the data in buf now that we know the size required
 	buf := make([]byte, size)
 	r, _, err = procCertStrToName.Call(
