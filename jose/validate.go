@@ -1,6 +1,7 @@
 package jose
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
@@ -8,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"gopkg.in/square/go-jose.v2"
 	"os"
 
 	"github.com/pkg/errors"
@@ -50,9 +50,30 @@ func validateX5(certs []*x509.Certificate, key interface{}) error {
 		return errors.New("certs cannot be empty")
 	}
 
-	// We cant get the private key data to directly compare, so don't actually check the keys match if we have
-	// an OpaqueSigner. Perhaps the public key can be derived from the OpaqueSigner and matched?
-	if _, isOpaqueSigner := key.(jose.OpaqueSigner); !isOpaqueSigner {
+	// Compare public keys if we have an opaque signer, otherwise check that private/public match
+	if opaqueSigner, isOpaqueSigner := key.(OpaqueSigner); isOpaqueSigner {
+		signerPub, ok := opaqueSigner.Public().Key.(crypto.PublicKey)
+		var publicKeysMatch = true
+		if !ok {
+			return errors.Errorf("opaqueSigner public key type %T is not supported", signerPub)
+		}
+
+		//crypto.PublicKey is actually an empty interface?! So we have to explicitly check each type?! Annoying!
+		switch pub := certs[0].PublicKey.(type) {
+		case *rsa.PublicKey:
+			publicKeysMatch = pub.Equal(signerPub)
+		case *ecdsa.PublicKey:
+			publicKeysMatch = pub.Equal(signerPub)
+		case ed25519.PublicKey:
+			publicKeysMatch = pub.Equal(signerPub)
+		default:
+			return errors.Errorf("unsupported public key type %T", pub)
+		}
+
+		if !publicKeysMatch {
+			return fmt.Errorf("public keys do not match on certificate and key")
+		}
+	} else {
 		if err := keyutil.VerifyPair(certs[0].PublicKey, key); err != nil {
 			return errors.Wrap(err, "error verifying certificate and key")
 		}
