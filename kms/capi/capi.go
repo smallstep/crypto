@@ -207,11 +207,11 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to export ECC public key: %w", err)
 		}
-		curveName, err := nCryptGetPropertyStr(kh, NCRYPT_ECC_CURVE_NAME_PROPERTY)
+		algorithmName, err := nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_PROPERTY)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve ECC curve name: %w", err)
 		}
-		pub, err = unmarshalECC(buf, curveNames[curveName])
+		pub, err = unmarshalECC(buf, curveNames[algorithmName])
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal ECC public key: %w", err)
 		}
@@ -325,7 +325,8 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unsupported algorithm %v", req.SignatureAlgorithm)
 	}
 
-	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, AT_KEYEXCHANGE, 0)
+	//TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create persisted key: %w", err)
 	}
@@ -407,7 +408,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, containerName, AT_KEYEXCHANGE, 0)
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -436,7 +437,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		storeLocation = "user"
 	}
 
-	certStoreLocation := certStoreCurrentUser
+	var certStoreLocation uint32
 	switch storeLocation {
 	case "user":
 		certStoreLocation = certStoreCurrentUser
@@ -543,7 +544,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		}
 
 		// iterate over all certificates from issuer, and check the SN
-		var prevCert *windows.CertContext = nil
+		var prevCert *windows.CertContext
 		for {
 			certHandle, err = findCertificateInStore(st,
 				encodingX509ASN|encodingPKCS7,
@@ -571,7 +572,6 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			}
 
 			prevCert = certHandle
-
 		}
 	} else {
 		return nil, fmt.Errorf("%s, %s, or %s and %s is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
@@ -589,7 +589,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		storeLocation = "user"
 	}
 
-	certStoreLocation := certStoreCurrentUser
+	var certStoreLocation uint32
 	switch storeLocation {
 	case "user":
 		certStoreLocation = certStoreCurrentUser
@@ -641,8 +641,8 @@ type CAPISigner struct {
 	PublicKey      crypto.PublicKey
 }
 
-func newCAPISigner(providerHandle uintptr, containerName string, pin string) (crypto.Signer, error) {
-	kh, err := nCryptOpenKey(providerHandle, containerName, AT_KEYEXCHANGE, 0)
+func newCAPISigner(providerHandle uintptr, containerName, pin string) (crypto.Signer, error) {
+	kh, err := nCryptOpenKey(providerHandle, containerName, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -677,7 +677,6 @@ func newCAPISigner(providerHandle uintptr, containerName string, pin string) (cr
 }
 
 func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-
 	if _, isRSAPSS := opts.(*rsa.PSSOptions); isRSAPSS {
 		return nil, fmt.Errorf("RSA-PSS signing is not supported")
 	}

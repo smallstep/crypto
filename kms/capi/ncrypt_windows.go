@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/elliptic"
+	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
 	"syscall"
@@ -26,6 +27,7 @@ const (
 	NCRYPT_PIN_PROPERTY             = "SmartCardPin"
 	NCRYPT_SECURE_PIN_PROPERTY      = "SmartCardSecurePin"
 	NCRYPT_READER_PROPERTY          = "SmartCardReader"
+	NCRYPT_ALGORITHM_PROPERTY       = "Algorithm Name"
 
 	// Key Storage Flags
 	NCRYPT_MACHINE_KEY_FLAG = 0x00000001
@@ -89,14 +91,18 @@ const (
 	ecs1Magic = 0x31534345 // "ECS1" BCRYPT_ECDSA_PUBLIC_P256_MAGIC
 	ecs3Magic = 0x33534345 // "ECS3" BCRYPT_ECDSA_PUBLIC_P384_MAGIC
 	ecs5Magic = 0x35534345 // "ECS5" BCRYPT_ECDSA_PUBLIC_P521_MAGIC
+
+	ALG_ECDSA_P256 = "ECDSA_P256"
+	ALG_ECDSA_P384 = "ECDSA_P384"
+	ALG_ECDSA_P521 = "ECDSA_P521"
 )
 
 var (
 	// curveNames maps bcrypt.h curve names to elliptic curves.
 	curveNames = map[string]elliptic.Curve{
-		"nistP256": elliptic.P256(), // BCRYPT_ECC_CURVE_NISTP256
-		"nistP384": elliptic.P384(), // BCRYPT_ECC_CURVE_NISTP384
-		"nistP521": elliptic.P521(), // BCRYPT_ECC_CURVE_NISTP521
+		ALG_ECDSA_P256: elliptic.P256(),
+		ALG_ECDSA_P384: elliptic.P384(),
+		ALG_ECDSA_P521: elliptic.P521(),
 	}
 
 	curveMagicMap = map[string]uint32{
@@ -191,24 +197,29 @@ func nCryptOpenStorage(provider string) (uintptr, error) {
 		uintptr(unsafe.Pointer(&hProv)),
 		uintptr(unsafe.Pointer(wide(provider))),
 		0)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return 0, fmt.Errorf("NCryptOpenStorageProvider returned %w", err)
+	}
 	if r == 0 {
 		return hProv, nil
 	}
-	return hProv, fmt.Errorf("NCryptOpenStorageProvider returned %v: %v", errNoToStr(uint32(r)), err)
+	return hProv, fmt.Errorf("NCryptOpenStorageProvider returned %v", errNoToStr(uint32(r)))
 }
 
 func nCryptFreeObject(h uintptr) error {
 	r, _, err := procNCryptFreeObject.Call(h)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return fmt.Errorf("NCryptFreeObject returned %w", err)
+	}
 	if r == 0 {
 		return nil
 	}
-	return fmt.Errorf("NCryptFreeObject returned %v: %v", errNoToStr(uint32(r)), err)
+	return fmt.Errorf("NCryptFreeObject returned %v", errNoToStr(uint32(r)))
 }
 
-func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, algorithmName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
-
+func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName, algorithmName string, legacyKeySpec, flags uint32) (uintptr, error) {
 	var kh uintptr
-	var kn uintptr = 0
+	var kn uintptr
 
 	if containerName != "" {
 		kn = uintptr(unsafe.Pointer(wide(containerName)))
@@ -221,14 +232,17 @@ func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName string, a
 		kn,
 		uintptr(legacyKeySpec),
 		uintptr(flags))
+	if !errors.Is(err, syscall.Errno(0)) {
+		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %w", err)
+	}
 	if r != 0 {
-		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %v: %v", errNoToStr(uint32(r)), err)
+		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %v", errNoToStr(uint32(r)))
 	}
 
 	return kh, nil
 }
 
-func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpec uint32, flags uint32) (uintptr, error) {
+func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpec, flags uint32) (uintptr, error) {
 	var kh uintptr
 	r, _, err := procNCryptOpenKey.Call(
 		provisionerHandle,
@@ -236,8 +250,12 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 		uintptr(unsafe.Pointer(wide(containerName))),
 		uintptr(legacyKeySpec),
 		uintptr(flags))
+	// nCrypt sometimes returns error 1008 for keys that actually exist
+	if !errors.Is(err, syscall.Errno(0)) && !errors.Is(err, syscall.Errno(1008)) {
+		return 0, fmt.Errorf("NCryptOpenKey returned %w %d", err, err)
+	}
 	if r != 0 {
-		return 0, fmt.Errorf("NCryptOpenKey for container %q returned %v: %v", containerName, errNoToStr(uint32(r)), err)
+		return 0, fmt.Errorf("NCryptOpenKey for container %q returned %v", containerName, errNoToStr(uint32(r)))
 	}
 
 	return kh, nil
@@ -245,15 +263,17 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 
 func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
 	r, _, err := procNCryptFinalizeKey.Call(keyHandle, uintptr(flags))
+	if !errors.Is(err, syscall.Errno(0)) {
+		return fmt.Errorf("NCryptFinalizeKey returned %w", err)
+	}
 	if r != 0 {
-		return fmt.Errorf("NCryptFinalizeKey returned %v: %v", errNoToStr(uint32(r)), err)
+		return fmt.Errorf("NCryptFinalizeKey returned %v", errNoToStr(uint32(r)))
 	}
 
 	return nil
 }
 
 func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue interface{}, flags uint32) error {
-
 	intVal, isInt := propertyValue.(uint32)
 
 	if isInt {
@@ -263,8 +283,11 @@ func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 			uintptr(unsafe.Pointer(&intVal)),
 			unsafe.Sizeof(intVal),
 			uintptr(flags))
+		if !errors.Is(err, syscall.Errno(0)) {
+			return fmt.Errorf("NCryptSetProperty returned %w", err)
+		}
 		if r != 0 {
-			return fmt.Errorf("NCryptSetProperty \"%v\" returned %v: %v", propertyName, errNoToStr(uint32(r)), err)
+			return fmt.Errorf("NCryptSetProperty \"%v\" returned %v", propertyName, errNoToStr(uint32(r)))
 		}
 
 		return nil
@@ -281,8 +304,11 @@ func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 			uintptr(unsafe.Pointer(wide(strVal))),
 			uintptr(l),
 			uintptr(flags))
+		if !errors.Is(err, syscall.Errno(0)) {
+			return fmt.Errorf("NCryptSetProperty returned %w", err)
+		}
 		if r != 0 {
-			return fmt.Errorf("NCryptSetProperty \"%v\" returned %X: %v", propertyName, errNoToStr(uint32(r)), err)
+			return fmt.Errorf("NCryptSetProperty \"%v\" returned %X", propertyName, errNoToStr(uint32(r)))
 		}
 
 		return nil
@@ -314,8 +340,11 @@ func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 		0,
 		uintptr(unsafe.Pointer(&size)),
 		uintptr(flags))
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("NCryptSignHash returned %w", err)
+	}
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptSignHash returned %v during size check: %v", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptSignHash returned %v during size check", errNoToStr(uint32(r)))
 	}
 
 	// Obtain the signature data
@@ -330,8 +359,11 @@ func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		uintptr(flags),
 	)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("NCryptSignHash returned %w", err)
+	}
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptSignHash returned %v during signing: %v", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptSignHash returned %v during signing", errNoToStr(uint32(r)))
 	}
 
 	return buf[:size], nil
@@ -347,8 +379,13 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 		uintptr(unsafe.Pointer(&strSize)),
 		0,
 		0)
+
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %w", property, err)
+	}
+
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %v during size check: %v", property, errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %v during size check", property, errNoToStr(uint32(r)))
 	}
 
 	buf := make([]byte, strSize)
@@ -360,8 +397,13 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 		uintptr(unsafe.Pointer(&strSize)),
 		0,
 		0)
+
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %w", property, err)
+	}
+
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptGetProperty %v returned %v during export: %v", property, errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptGetProperty %v returned %v during export", property, errNoToStr(uint32(r)))
 	}
 
 	return buf, nil
@@ -410,8 +452,11 @@ func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 		0,
 		uintptr(unsafe.Pointer(&size)),
 		0)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("nCryptExportKey returned %w", err)
+	}
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptExportKey returned %v during size check: %v", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptExportKey returned %v during size check", errNoToStr(uint32(r)))
 	}
 
 	// Place the exported key in buf now that we know the size required
@@ -425,8 +470,11 @@ func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 		uintptr(size),
 		uintptr(unsafe.Pointer(&size)),
 		0)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("nCryptExportKey returned %w", err)
+	}
 	if r != 0 {
-		return nil, fmt.Errorf("NCryptExportKey returned %v during export: %v", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("NCryptExportKey returned %v during export", errNoToStr(uint32(r)))
 	}
 	return buf, nil
 }
@@ -455,15 +503,18 @@ func freeCertContext(ctx *windows.CertContext) error {
 }
 
 func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
-
 	r, _, err := procCryptFindCertificateKeyProvInfo.Call(
 		uintptr(unsafe.Pointer(certContext)),
 		uintptr(CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG),
 		0,
 	)
 
+	if !errors.Is(err, syscall.Errno(0)) {
+		return fmt.Errorf("CryptFindCertificateKeyProvInfo returned %w", err)
+	}
+
 	if r == 0 {
-		return fmt.Errorf("private key association failed: %v", err)
+		return fmt.Errorf("private key association failed: %v", errNoToStr(uint32(r)))
 	}
 
 	return nil
@@ -482,8 +533,13 @@ func certStrToName(x500Str string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		0,
 	)
+
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("CertStrToName returned %w", err)
+	}
+
 	if r != 1 {
-		return nil, fmt.Errorf("CertStrToName returned %v during size check: %w", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("CertStrToName returned %v during size check", errNoToStr(uint32(r)))
 	}
 
 	// Place the data in buf now that we know the size required
@@ -497,8 +553,12 @@ func certStrToName(x500Str string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		0,
 	)
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("CertStrToName returned %w", err)
+	}
+
 	if r != 1 {
-		return nil, fmt.Errorf("CertStrToName returned %v during convert: %w", errNoToStr(uint32(r)), err)
+		return nil, fmt.Errorf("CertStrToName returned %v during convert", errNoToStr(uint32(r)))
 	}
 	return buf, nil
 }
