@@ -53,25 +53,18 @@ func validateX5(certs []*x509.Certificate, key interface{}) error {
 	// Compare public keys if we have an opaque signer, otherwise check that private/public match
 	if opaqueSigner, isOpaqueSigner := key.(OpaqueSigner); isOpaqueSigner {
 		signerPub, ok := opaqueSigner.Public().Key.(crypto.PublicKey)
-		var publicKeysMatch = true
+
 		if !ok {
 			return errors.Errorf("opaqueSigner public key type %T is not supported", signerPub)
 		}
 
-		//crypto.PublicKey is actually an empty interface?! So we have to explicitly check each type?! Annoying!
-		switch pub := certs[0].PublicKey.(type) {
-		case *rsa.PublicKey:
-			publicKeysMatch = pub.Equal(signerPub)
-		case *ecdsa.PublicKey:
-			publicKeysMatch = pub.Equal(signerPub)
-		case ed25519.PublicKey:
-			publicKeysMatch = pub.Equal(signerPub)
-		default:
-			return errors.Errorf("unsupported public key type %T", pub)
-		}
-
-		if !publicKeysMatch {
-			return fmt.Errorf("public keys do not match on certificate and key")
+		pub, ok := certs[0].PublicKey.(interface{ Equal(crypto.PublicKey) bool })
+		if ok {
+			if !pub.Equal(signerPub) {
+				return fmt.Errorf("public keys do not match on certificate and key")
+			}
+		} else {
+			return errors.Errorf("unsupported public key type %T", certs[0].PublicKey)
 		}
 	} else {
 		if err := keyutil.VerifyPair(certs[0].PublicKey, key); err != nil {
