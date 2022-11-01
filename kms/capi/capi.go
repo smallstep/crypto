@@ -207,11 +207,20 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to export ECC public key: %w", err)
 		}
-		algorithmName, err := nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_PROPERTY)
+		curveName, err := nCryptGetPropertyStr(kh, NCRYPT_ECC_CURVE_NAME_PROPERTY)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve ECC curve name: %w", err)
+			// The smart card provider doesn't have the curve name property set, attempt to get it from
+			// algorithm property
+			curveName, err = nCryptGetPropertyStr(kh, NCRYPT_ALGORITHM_PROPERTY)
+			if err != nil {
+				return nil, fmt.Errorf("failed to retrieve ECC curve name: %w", err)
+			}
 		}
-		pub, err = unmarshalECC(buf, curveNames[algorithmName])
+
+		if _, ok := curveNames[curveName]; !ok {
+			return nil, fmt.Errorf("curveName %s not found in curvenames map", curveName)
+		}
+		pub, err = unmarshalECC(buf, curveNames[curveName])
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal ECC public key: %w", err)
 		}
@@ -250,7 +259,7 @@ func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 	}
 
 	// TODO: a provider is not necessary for certificate functions, should we move this to the key and signing functions?
-	ph, err := nCryptOpenStorage(providerName)
+	ph, err := nCryptOpenStorageProvider(providerName)
 	if err != nil {
 		return nil, fmt.Errorf("could not open nCrypt provider: %w", err)
 	}
@@ -292,18 +301,48 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 	}
 
-	scPIN := u.Pin()
-	if scPIN == "" {
-		scPIN = k.pin
+	pinOrPass := u.Pin()
+	if pinOrPass == "" {
+		pinOrPass = k.pin
 	}
 
-	return newCAPISigner(k.providerHandle, containerName, scPIN)
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open key: %w", err)
+	}
+
+	if pinOrPass != "" && k.providerName == ProviderMSSC {
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pinOrPass, 0)
+
+		if err != nil {
+			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
+		}
+	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
+		passHash, err := hashPasswordUTF16(pinOrPass)
+		if err != nil {
+			return nil, fmt.Errorf("unable to hash password: %w", err)
+		}
+
+		err = nCryptSetProperty(kh, NCRYPT_PCP_USAGE_AUTH_PROPERTY, passHash, 0)
+
+		if err != nil {
+			return nil, fmt.Errorf("unable to set key NCRYPT_PCP_USAGE_AUTH_PROPERTY: %w", err)
+		}
+	}
+
+	return newCAPISigner(kh, containerName, pinOrPass)
 }
 
 // CreateKey generates a new key in the storage provider using nCryptCreatePersistedKey
 func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
 	if req.Name == "" {
 		return nil, errors.New("createKeyRequest 'name' cannot be empty")
+	}
+
+	// The MSSC provider allows you to create keys without a certificate attached, but they seem to
+	// be lost if the smartcard is removed, so refuse to create keys as a precaution
+	if k.providerName == ProviderMSSC {
+		return nil, fmt.Errorf("cannot create keys on %s", ProviderMSSC)
 	}
 
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
@@ -355,16 +394,27 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("invalid storeLocation %v", storeLocation)
 	}
 
-	// if supplied, set the smart card pin
-	scPIN := u.Pin()
+	// if supplied, set the smart card pin/or PCP pass
+	pinOrPass := u.Pin()
 
 	//failover to pin set in kms instantiation
-	if scPIN == "" {
-		scPIN = k.pin
+	if pinOrPass == "" {
+		pinOrPass = k.pin
 	}
 
-	if scPIN != "" {
-		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, scPIN, 0)
+	// TODO: investigate if there is a similar property for software backed keys
+	if pinOrPass != "" && k.providerName == ProviderMSSC {
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pinOrPass, 0)
+		if err != nil {
+			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
+		}
+	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
+		pwHash, err := hashPasswordUTF16(pinOrPass) // we have to SHA1 hash over the utf16 string with sha1
+
+		if err != nil {
+			return nil, fmt.Errorf("unable to hash pin: %w", err)
+		}
+		err = nCryptSetProperty(kh, NCRYPT_PCP_USAGE_AUTH_PROPERTY, pwHash, 0)
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
@@ -466,12 +516,14 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 
 	var certHandle *windows.CertContext
 
-	if sha1Hash != "" {
+	switch {
+	case sha1Hash != "":
+		sha1Hash = strings.TrimPrefix(sha1Hash, "0x") // Support specifying the hash as 0x like with serial
+
 		sha1Bytes, err := hex.DecodeString(sha1Hash)
 		if err != nil {
 			return nil, fmt.Errorf("%s must be in hex format: %w", HashArg, err)
 		}
-
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_SHA1_HASH,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
@@ -479,29 +531,26 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 				data: uintptr(unsafe.Pointer(&sha1Bytes[0])),
 			},
 		}
-
 		certHandle, err = findCertificateInStore(st,
 			encodingX509ASN|encodingPKCS7,
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-
 		if err != nil {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
-
 		if certHandle == nil {
-			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
+			return nil, fmt.Errorf("certificate with %v=%s not found", HashArg, keyID)
 		}
-
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
-	} else if keyID != "" {
+	case keyID != "":
+		keyID = strings.TrimPrefix(keyID, "0x") // Support specifying the hash as 0x like with serial
+
 		keyIDBytes, err := hex.DecodeString(keyID)
 		if err != nil {
 			return nil, fmt.Errorf("%v must be in hex format: %w", KeyIDArg, err)
 		}
-
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
@@ -509,27 +558,24 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 				data: uintptr(unsafe.Pointer(&keyIDBytes[0])),
 			},
 		}
-
 		certHandle, err = findCertificateInStore(st,
 			encodingX509ASN|encodingPKCS7,
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-
 		if err != nil {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
-
 		if certHandle == nil {
 			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
 		}
-
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
-	} else if issuerName != "" && serialNumber != "" {
+	case issuerName != "" && serialNumber != "":
 		var serialBytes []byte
-
 		if strings.HasPrefix(serialNumber, "0x") {
+			serialNumber = strings.TrimPrefix(serialNumber, "0x")
+			serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
 			serialBytes, err = hex.DecodeString(serialNumber)
 			if err != nil {
 				return nil, fmt.Errorf("invalid hex format for %v: %w", SerialNumberArg, err)
@@ -542,8 +588,6 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			}
 			serialBytes = bi.Bytes()
 		}
-
-		// iterate over all certificates from issuer, and check the SN
 		var prevCert *windows.CertContext
 		for {
 			certHandle, err = findCertificateInStore(st,
@@ -573,7 +617,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 
 			prevCert = certHandle
 		}
-	} else {
+	default:
 		return nil, fmt.Errorf("%s, %s, or %s and %s is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
 }
@@ -635,26 +679,12 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 type CAPISigner struct {
 	algorithmGroup string
-	providerHandle uintptr
 	keyHandle      uintptr
 	containerName  string
 	PublicKey      crypto.PublicKey
 }
 
-func newCAPISigner(providerHandle uintptr, containerName, pin string) (crypto.Signer, error) {
-	kh, err := nCryptOpenKey(providerHandle, containerName, 0, 0)
-	if err != nil {
-		return nil, fmt.Errorf("unable to open key: %w", err)
-	}
-
-	if pin != "" {
-		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pin, 0)
-
-		if err != nil {
-			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
-		}
-	}
-
+func newCAPISigner(kh uintptr, containerName, pin string) (crypto.Signer, error) {
 	pub, err := getPublicKey(kh)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get public key: %w", err)
@@ -667,7 +697,6 @@ func newCAPISigner(providerHandle uintptr, containerName, pin string) (crypto.Si
 
 	signer := CAPISigner{
 		algorithmGroup: algGroup,
-		providerHandle: providerHandle,
 		keyHandle:      kh,
 		containerName:  containerName,
 		PublicKey:      pub,

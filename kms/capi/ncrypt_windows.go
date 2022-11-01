@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/elliptic"
+	"crypto/sha1"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
@@ -28,6 +30,7 @@ const (
 	NCRYPT_SECURE_PIN_PROPERTY      = "SmartCardSecurePin"
 	NCRYPT_READER_PROPERTY          = "SmartCardReader"
 	NCRYPT_ALGORITHM_PROPERTY       = "Algorithm Name"
+	NCRYPT_PCP_USAGE_AUTH_PROPERTY  = "PCP_USAGEAUTH"
 
 	// Key Storage Flags
 	NCRYPT_MACHINE_KEY_FLAG = 0x00000001
@@ -52,11 +55,13 @@ const (
 	certStoreCurrentUserID  = 1                                               // CERT_SYSTEM_STORE_CURRENT_USER_ID
 	certStoreLocalMachineID = 2                                               // CERT_SYSTEM_STORE_LOCAL_MACHINE_ID
 	infoIssuerFlag          = 4                                               // CERT_INFO_ISSUER_FLAG
+	compareName             = 2                                               // CERT_COMPARE_NAME
 	compareNameStrW         = 8                                               // CERT_COMPARE_NAME_STR_A
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
 	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
+	findIssuerName          = compareName<<compareShift | infoIssuerFlag      // CERT_FIND_ISSUER_NAME
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
@@ -95,6 +100,10 @@ const (
 	ALG_ECDSA_P256 = "ECDSA_P256"
 	ALG_ECDSA_P384 = "ECDSA_P384"
 	ALG_ECDSA_P521 = "ECDSA_P521"
+
+	ProviderMSKSP = "Microsoft Software Key Storage Provider"
+	ProviderMSSC  = "Microsoft Smart Card Key Storage Provider"
+	ProviderMSPCP = "Microsoft Platform Crypto Provider"
 )
 
 var (
@@ -103,6 +112,9 @@ var (
 		ALG_ECDSA_P256: elliptic.P256(),
 		ALG_ECDSA_P384: elliptic.P384(),
 		ALG_ECDSA_P521: elliptic.P521(),
+		"nistP256":     elliptic.P256(), // BCRYPT_ECC_CURVE_NISTP256
+		"nistP384":     elliptic.P384(), // BCRYPT_ECC_CURVE_NISTP384
+		"nistP521":     elliptic.P521(), // BCRYPT_ECC_CURVE_NISTP521
 	}
 
 	curveMagicMap = map[string]uint32{
@@ -119,21 +131,21 @@ var (
 		crypto.SHA512: "SHA512", // BCRYPT_SHA512_ALGORITHM
 	}
 
-	crypt32 = windows.MustLoadDLL("crypt32.dll")
-	nCrypt  = windows.MustLoadDLL("ncrypt.dll")
+	nCrypt                        = windows.MustLoadDLL("ncrypt.dll")
+	procNCryptCreatePersistedKey  = nCrypt.MustFindProc("NCryptCreatePersistedKey")
+	procNCryptExportKey           = nCrypt.MustFindProc("NCryptExportKey")
+	procNCryptFinalizeKey         = nCrypt.MustFindProc("NCryptFinalizeKey")
+	procNCryptFreeObject          = nCrypt.MustFindProc("NCryptFreeObject")
+	procNCryptOpenKey             = nCrypt.MustFindProc("NCryptOpenKey")
+	procNCryptOpenStorageProvider = nCrypt.MustFindProc("NCryptOpenStorageProvider")
+	procNCryptGetProperty         = nCrypt.MustFindProc("NCryptGetProperty")
+	procNCryptSetProperty         = nCrypt.MustFindProc("NCryptSetProperty")
+	procNCryptSignHash            = nCrypt.MustFindProc("NCryptSignHash")
 
+	crypt32                             = windows.MustLoadDLL("crypt32.dll")
 	procCertFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
 	procCryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
 	procCertStrToName                   = crypt32.MustFindProc("CertStrToNameW")
-	procNCryptCreatePersistedKey        = nCrypt.MustFindProc("NCryptCreatePersistedKey")
-	procNCryptExportKey                 = nCrypt.MustFindProc("NCryptExportKey")
-	procNCryptFinalizeKey               = nCrypt.MustFindProc("NCryptFinalizeKey")
-	procNCryptFreeObject                = nCrypt.MustFindProc("NCryptFreeObject")
-	procNCryptOpenKey                   = nCrypt.MustFindProc("NCryptOpenKey")
-	procNCryptOpenStorageProvider       = nCrypt.MustFindProc("NCryptOpenStorageProvider")
-	procNCryptGetProperty               = nCrypt.MustFindProc("NCryptGetProperty")
-	procNCryptSetProperty               = nCrypt.MustFindProc("NCryptSetProperty")
-	procNCryptSignHash                  = nCrypt.MustFindProc("NCryptSignHash")
 )
 
 type BCRYPT_PKCS1_PADDING_INFO struct {
@@ -151,6 +163,11 @@ type CERT_ISSUER_SERIAL_NUMBER struct {
 	Issuer       CRYPTOAPI_BLOB
 	SerialNumber CRYPTOAPI_BLOB
 }
+
+//type CERT_ISSUER_SERIAL_NUMBER struct {
+//	Issuer       uintptr
+//	SerialNumber uintptr
+//}
 
 // CERT_ID - https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 // TODO: might be able to merge these two types into one that uses interface{} instead
@@ -183,23 +200,21 @@ func errNoToStr(e uint32) string {
 	}
 }
 
-// wide returns a pointer to a a uint16 representing the equivalent
+// wide returns a pointer to a uint16 representing the equivalent
 // to a Windows LPCWSTR.
 func wide(s string) *uint16 {
 	w, _ := syscall.UTF16PtrFromString(s)
 	return w
 }
 
-func nCryptOpenStorage(provider string) (uintptr, error) {
+func nCryptOpenStorageProvider(provider string) (uintptr, error) {
 	var hProv uintptr
 	// Open the provider, the last parameter is not used
-	r, _, err := procNCryptOpenStorageProvider.Call(
+	r, _, _ := procNCryptOpenStorageProvider.Call(
 		uintptr(unsafe.Pointer(&hProv)),
 		uintptr(unsafe.Pointer(wide(provider))),
 		0)
-	if !errors.Is(err, syscall.Errno(0)) {
-		return 0, fmt.Errorf("NCryptOpenStorageProvider returned %w", err)
-	}
+
 	if r == 0 {
 		return hProv, nil
 	}
@@ -225,16 +240,14 @@ func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName, algorith
 		kn = uintptr(unsafe.Pointer(wide(containerName)))
 	}
 
-	r, _, err := procNCryptCreatePersistedKey.Call(
+	r, _, _ := procNCryptCreatePersistedKey.Call(
 		provisionerHandle,
 		uintptr(unsafe.Pointer(&kh)),
 		uintptr(unsafe.Pointer(wide(algorithmName))),
 		kn,
 		uintptr(legacyKeySpec),
 		uintptr(flags))
-	if !errors.Is(err, syscall.Errno(0)) {
-		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %w", err)
-	}
+
 	if r != 0 {
 		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %v", errNoToStr(uint32(r)))
 	}
@@ -274,47 +287,36 @@ func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
 }
 
 func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue interface{}, flags uint32) error {
-	intVal, isInt := propertyValue.(uint32)
+	var valLen int
+	var valPtr uintptr
 
-	if isInt {
-		r, _, err := procNCryptSetProperty.Call(
-			keyHandle,
-			uintptr(unsafe.Pointer(wide(propertyName))),
-			uintptr(unsafe.Pointer(&intVal)),
-			unsafe.Sizeof(intVal),
-			uintptr(flags))
-		if !errors.Is(err, syscall.Errno(0)) {
-			return fmt.Errorf("NCryptSetProperty returned %w", err)
-		}
-		if r != 0 {
-			return fmt.Errorf("NCryptSetProperty \"%v\" returned %v", propertyName, errNoToStr(uint32(r)))
-		}
-
-		return nil
+	if intVal, isInt := propertyValue.(uint32); isInt {
+		valLen = 4
+		valPtr = uintptr(unsafe.Pointer(&intVal))
+	} else if strVal, isStr := propertyValue.(string); isStr {
+		valPtr = uintptr(unsafe.Pointer(wide(strVal)))
+		valLen = len(strVal)
+	} else if bytesVal, isBytes := propertyValue.([]byte); isBytes {
+		valPtr = uintptr(unsafe.Pointer(&bytesVal[0]))
+		valLen = len(bytesVal)
+	} else {
+		return fmt.Errorf("NCryptSetProperty %v invalid value type %T", propertyName, propertyValue)
 	}
 
-	strVal, isStr := propertyValue.(string)
-
-	if isStr {
-		l := len(strVal)
-
-		r, _, err := procNCryptSetProperty.Call(
-			keyHandle,
-			uintptr(unsafe.Pointer(wide(propertyName))),
-			uintptr(unsafe.Pointer(wide(strVal))),
-			uintptr(l),
-			uintptr(flags))
-		if !errors.Is(err, syscall.Errno(0)) {
-			return fmt.Errorf("NCryptSetProperty returned %w", err)
-		}
-		if r != 0 {
-			return fmt.Errorf("NCryptSetProperty \"%v\" returned %X", propertyName, errNoToStr(uint32(r)))
-		}
-
-		return nil
+	r, _, err := procNCryptSetProperty.Call(
+		keyHandle,
+		uintptr(unsafe.Pointer(wide(propertyName))),
+		valPtr,
+		uintptr(valLen),
+		uintptr(flags))
+	if !errors.Is(err, syscall.Errno(0)) {
+		return fmt.Errorf("NCryptSetProperty returned %w", err)
+	}
+	if r != 0 {
+		return fmt.Errorf("NCryptSetProperty \"%v\" returned %X", propertyName, errNoToStr(uint32(r)))
 	}
 
-	return fmt.Errorf("NCryptSetProperty %v invalid value", propertyName)
+	return nil
 }
 
 func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
@@ -498,10 +500,6 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	return (*windows.CertContext)(unsafe.Pointer(h)), nil
 }
 
-func freeCertContext(ctx *windows.CertContext) error {
-	return windows.CertFreeCertificateContext(ctx)
-}
-
 func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 	r, _, err := procCryptFindCertificateKeyProvInfo.Call(
 		uintptr(unsafe.Pointer(certContext)),
@@ -534,12 +532,12 @@ func certStrToName(x500Str string) ([]byte, error) {
 		0,
 	)
 
-	if !errors.Is(err, syscall.Errno(0)) {
-		return nil, fmt.Errorf("CertStrToName returned %w", err)
-	}
+	//if !errors.Is(err, syscall.Errno(0)) {
+	//	return nil, fmt.Errorf("CertStrToName returned %w", err)
+	//}
 
 	if r != 1 {
-		return nil, fmt.Errorf("CertStrToName returned %v during size check", errNoToStr(uint32(r)))
+		return nil, fmt.Errorf("CertStrToName returned %v during size check (%w)", errNoToStr(uint32(r)), err)
 	}
 
 	// Place the data in buf now that we know the size required
@@ -547,18 +545,33 @@ func certStrToName(x500Str string) ([]byte, error) {
 	r, _, err = procCertStrToName.Call(
 		uintptr(encodingX509ASN),
 		uintptr(unsafe.Pointer(wide(x500Str))),
-		uintptr(CERT_SIMPLE_NAME_STR),
+		uintptr(CERT_X500_NAME_STR|CERT_NAME_STR_COMMA_FLAG),
 		0, // pvReserved
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(unsafe.Pointer(&size)),
 		0,
 	)
-	if !errors.Is(err, syscall.Errno(0)) {
-		return nil, fmt.Errorf("CertStrToName returned %w", err)
-	}
+	//if !errors.Is(err, syscall.Errno(0)) {
+	//	return nil, fmt.Errorf("CertStrToName returned %w", err)
+	//}
 
 	if r != 1 {
-		return nil, fmt.Errorf("CertStrToName returned %v during convert", errNoToStr(uint32(r)))
+		return nil, fmt.Errorf("CertStrToName returned %v during convert (%w)", errNoToStr(uint32(r)), err)
 	}
 	return buf, nil
+}
+
+func hashPasswordUTF16(s string) ([]byte, error) {
+	utf16Str, err := syscall.UTF16FromString(s)
+	if err != nil {
+		return nil, err
+	}
+	bytesStr := make([]byte, len(utf16Str)*2)
+	for i, utf16 := range utf16Str {
+		// LPCSTR (Windows' representation of utf16) is always little endian.
+		binary.LittleEndian.PutUint16(bytesStr[i*2:i*2+2], utf16)
+	}
+
+	digest := sha1.Sum(bytesStr[:len(bytesStr)-2]) // TODO: SHA256 is supported, but if used wont show the UI
+	return digest[:], nil
 }
