@@ -164,11 +164,6 @@ type CERT_ISSUER_SERIAL_NUMBER struct {
 	SerialNumber CRYPTOAPI_BLOB
 }
 
-//type CERT_ISSUER_SERIAL_NUMBER struct {
-//	Issuer       uintptr
-//	SerialNumber uintptr
-//}
-
 // CERT_ID - https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 // TODO: might be able to merge these two types into one that uses interface{} instead
 type CERT_ID_KEYIDORHASH struct {
@@ -532,9 +527,9 @@ func certStrToName(x500Str string) ([]byte, error) {
 		0,
 	)
 
-	//if !errors.Is(err, syscall.Errno(0)) {
-	//	return nil, fmt.Errorf("CertStrToName returned %w", err)
-	//}
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("CertStrToName returned %w", err)
+	}
 
 	if r != 1 {
 		return nil, fmt.Errorf("CertStrToName returned %v during size check (%w)", errNoToStr(uint32(r)), err)
@@ -551,9 +546,9 @@ func certStrToName(x500Str string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		0,
 	)
-	//if !errors.Is(err, syscall.Errno(0)) {
-	//	return nil, fmt.Errorf("CertStrToName returned %w", err)
-	//}
+	if !errors.Is(err, syscall.Errno(0)) {
+		return nil, fmt.Errorf("CertStrToName returned %w", err)
+	}
 
 	if r != 1 {
 		return nil, fmt.Errorf("CertStrToName returned %v during convert (%w)", errNoToStr(uint32(r)), err)

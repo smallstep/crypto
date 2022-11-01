@@ -409,7 +409,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
 	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
-		pwHash, err := hashPasswordUTF16(pinOrPass) // we have to SHA1 hash over the utf16 string with sha1
+		pwHash, err := hashPasswordUTF16(pinOrPass) // we have to SHA1 hash over the utf16 string
 
 		if err != nil {
 			return nil, fmt.Errorf("unable to hash pin: %w", err)
