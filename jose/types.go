@@ -3,7 +3,9 @@
 package jose
 
 import (
+	"crypto"
 	"errors"
+	"gopkg.in/square/go-jose.v2/cryptosigner"
 	"strings"
 	"time"
 
@@ -86,6 +88,9 @@ type Expected = jwt.Expected
 
 // Signer represents a signer which takes a payload and produces a signed JWS object.
 type Signer = jose.Signer
+
+// OpaqueSigner represents a jose.Signer that wraps a crypto.Signer
+type OpaqueSigner = jose.OpaqueSigner
 
 // SigningKey represents an algorithm/key used to sign a message.
 type SigningKey = jose.SigningKey
@@ -245,6 +250,11 @@ func NewSigner(sig SigningKey, opts *SignerOptions) (Signer, error) {
 		sig.Algorithm = guessSignatureAlgorithm(sig.Key)
 	}
 	return jose.NewSigner(sig, opts)
+}
+
+// NewOpaqueSigner creates a new OpaqueSigner for JWT signing from a crypto.Signer
+func NewOpaqueSigner(signer *crypto.Signer) OpaqueSigner {
+	return cryptosigner.Opaque(*signer)
 }
 
 // Verify validates the token payload with the given public key and deserializes
