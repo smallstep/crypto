@@ -116,6 +116,8 @@ func (r *Renewer) RunContext(ctx context.Context) {
 
 // Stop prevents the renew timer from firing.
 func (r *Renewer) Stop() bool {
+	r.Lock()
+	defer r.Unlock()
 	if r.timer != nil {
 		return r.timer.Stop()
 	}

@@ -25,6 +25,7 @@ import (
 var (
 	issuerCert *x509.Certificate
 	issuerKey  crypto.Signer
+	leafCsr    *x509.CertificateRequest
 	leafCert   *x509.Certificate
 	leafKey    crypto.Signer
 	tlsCert    *tls.Certificate
@@ -60,7 +61,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	leafCsr, err := x509util.CreateCertificateRequest("Leaf", []string{"127.0.0.1", "localhost"}, leafKey)
+	leafCsr, err = x509util.CreateCertificateRequest("Leaf", []string{"127.0.0.1", "localhost"}, leafKey)
 	if err != nil {
 		panic(err)
 	}
@@ -97,18 +98,23 @@ func TestMain(m *testing.M) {
 }
 
 func testRenewFunc() (*tls.Certificate, *tls.Config, error) {
-	var err error
-	leafCert.NotBefore = time.Now()
-	leafCert.NotAfter = leafCert.NotBefore.Add(time.Hour)
-	leafCert.SerialNumber = leafCert.SerialNumber.Add(leafCert.SerialNumber, big.NewInt(1))
-	leafCert, err = x509util.CreateCertificate(leafCert, issuerCert, leafKey.Public(), issuerKey)
+	cert, err := x509util.NewCertificate(leafCsr,
+		x509util.WithTemplate(x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
+	if err != nil {
+		return nil, nil, err
+	}
+	template := cert.GetCertificate()
+	template.NotBefore = time.Now()
+	template.NotAfter = template.NotBefore.Add(time.Hour)
+	template.SerialNumber = big.NewInt(1)
+	leaf, err := x509util.CreateCertificate(template, issuerCert, leafKey.Public(), issuerKey)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &tls.Certificate{
 		Certificate: [][]byte{leafCert.Raw},
 		PrivateKey:  leafKey,
-		Leaf:        leafCert,
+		Leaf:        leaf,
 	}, tlsConfig, nil
 }
 
