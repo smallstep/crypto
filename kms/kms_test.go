@@ -40,7 +40,6 @@ func TestNew(t *testing.T) {
 		{"uri", false, args{ctx, apiv1.Options{URI: "softkms:foo=bar"}}, &softkms.SoftKMS{}, false},
 		{"awskms", false, args{ctx, apiv1.Options{Type: "awskms"}}, &awskms.KMS{}, false},
 		{"cloudkms", true, args{ctx, apiv1.Options{Type: "cloudkms"}}, &cloudkms.CloudKMS{}, failCloudKMS},
-		{"fail not enabled", false, args{ctx, apiv1.Options{Type: "pkcs11"}}, nil, true}, // not enabled
 		{"fail validation", false, args{ctx, apiv1.Options{Type: "foobar"}}, nil, true},
 	}
 	for _, tt := range tests {
