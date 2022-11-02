@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Report Card](https://goreportcard.com/badge/github.com/smallstep/crypto)](https://goreportcard.com/report/github.com/smallstep/crypto)
-[![Build Status](https://github.com/smallstep/crypto/actions/workflows/test.yml/badge.svg)](https://github.com/smallstep/crypto)
+[![CI](https://github.com/smallstep/crypto/actions/workflows/ci.yml/badge.svg)](https://github.com/smallstep/crypto/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/smallstep/crypto/branch/master/graph/badge.svg)](https://codecov.io/gh/smallstep/crypto)
 [![Documentation](https://godoc.org/go.step.sm/crypto?status.svg)](https://pkg.go.dev/mod/go.step.sm/crypto)
 
