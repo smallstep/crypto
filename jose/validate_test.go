@@ -1,6 +1,7 @@
 package jose
 
 import (
+	"crypto"
 	"crypto/sha1" // nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
 	"crypto/x509"
 	"encoding/base64"
@@ -148,6 +149,19 @@ func TestValidateX5C(t *testing.T) {
 			return test{
 				certs: certs,
 				key:   k,
+			}
+		},
+		"ok/opaque": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
+			k, err := pemutil.Read(keyFile)
+			assert.FatalError(t, err)
+			sig, ok := k.(crypto.Signer)
+			assert.True(t, ok)
+			op := NewOpaqueSigner(&sig)
+			return test{
+				certs: certs,
+				key:   op,
 			}
 		},
 	}
