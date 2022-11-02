@@ -5,12 +5,12 @@ package jose
 import (
 	"crypto"
 	"errors"
-	"gopkg.in/square/go-jose.v2/cryptosigner"
 	"strings"
 	"time"
 
 	"go.step.sm/crypto/x25519"
 	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/cryptosigner"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -253,8 +253,8 @@ func NewSigner(sig SigningKey, opts *SignerOptions) (Signer, error) {
 }
 
 // NewOpaqueSigner creates a new OpaqueSigner for JWT signing from a crypto.Signer
-func NewOpaqueSigner(signer *crypto.Signer) OpaqueSigner {
-	return cryptosigner.Opaque(*signer)
+func NewOpaqueSigner(signer crypto.Signer) OpaqueSigner {
+	return cryptosigner.Opaque(signer)
 }
 
 // Verify validates the token payload with the given public key and deserializes

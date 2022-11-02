@@ -158,7 +158,7 @@ func TestValidateX5C(t *testing.T) {
 			assert.FatalError(t, err)
 			sig, ok := k.(crypto.Signer)
 			assert.True(t, ok)
-			op := NewOpaqueSigner(&sig)
+			op := NewOpaqueSigner(sig)
 			return test{
 				certs: certs,
 				key:   op,
