@@ -43,13 +43,13 @@ const (
 )
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
-	apiv1.UnspecifiedSignAlgorithm: "ECDSA_P256",
-	apiv1.SHA256WithRSA:            "RSA",
-	apiv1.SHA384WithRSA:            "RSA",
-	apiv1.SHA512WithRSA:            "RSA",
-	apiv1.ECDSAWithSHA256:          "ECDSA_P256",
-	apiv1.ECDSAWithSHA384:          "ECDSA_P384",
-	apiv1.ECDSAWithSHA512:          "ECDSA_P521",
+	apiv1.UnspecifiedSignAlgorithm: ALG_ECDSA_P256,
+	apiv1.SHA256WithRSA:            ALG_RSA,
+	apiv1.SHA384WithRSA:            ALG_RSA,
+	apiv1.SHA512WithRSA:            ALG_RSA,
+	apiv1.ECDSAWithSHA256:          ALG_ECDSA_P256,
+	apiv1.ECDSAWithSHA384:          ALG_ECDSA_P384,
+	apiv1.ECDSAWithSHA512:          ALG_ECDSA_P521,
 }
 
 // CAPIKMS implements a KMS using Windows CryptoAPI (CAPI) and Next-Gen CryptoAPI (CNG).
@@ -572,6 +572,9 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
 	case issuerName != "" && serialNumber != "":
+		//TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
+		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
+		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
 		var serialBytes []byte
 		if strings.HasPrefix(serialNumber, "0x") {
 			serialNumber = strings.TrimPrefix(serialNumber, "0x")

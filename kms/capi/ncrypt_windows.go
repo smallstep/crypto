@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
-	"syscall"
 	"unsafe"
 )
 
@@ -97,6 +96,7 @@ const (
 	ecs3Magic = 0x33534345 // "ECS3" BCRYPT_ECDSA_PUBLIC_P384_MAGIC
 	ecs5Magic = 0x35534345 // "ECS5" BCRYPT_ECDSA_PUBLIC_P521_MAGIC
 
+	ALG_RSA        = "RSA"
 	ALG_ECDSA_P256 = "ECDSA_P256"
 	ALG_ECDSA_P384 = "ECDSA_P384"
 	ALG_ECDSA_P521 = "ECDSA_P521"
@@ -198,7 +198,7 @@ func errNoToStr(e uint32) string {
 // wide returns a pointer to a uint16 representing the equivalent
 // to a Windows LPCWSTR.
 func wide(s string) *uint16 {
-	w, _ := syscall.UTF16PtrFromString(s)
+	w, _ := windows.UTF16PtrFromString(s)
 	return w
 }
 
@@ -218,7 +218,7 @@ func nCryptOpenStorageProvider(provider string) (uintptr, error) {
 
 func nCryptFreeObject(h uintptr) error {
 	r, _, err := procNCryptFreeObject.Call(h)
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return fmt.Errorf("NCryptFreeObject returned %w", err)
 	}
 	if r == 0 {
@@ -259,7 +259,7 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 		uintptr(legacyKeySpec),
 		uintptr(flags))
 	// nCrypt sometimes returns error 1008 for keys that actually exist
-	if !errors.Is(err, syscall.Errno(0)) && !errors.Is(err, syscall.Errno(1008)) {
+	if !errors.Is(err, windows.Errno(0)) && !errors.Is(err, windows.Errno(1008)) {
 		return 0, fmt.Errorf("NCryptOpenKey returned %w %d", err, err)
 	}
 	if r != 0 {
@@ -271,7 +271,7 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 
 func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
 	r, _, err := procNCryptFinalizeKey.Call(keyHandle, uintptr(flags))
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return fmt.Errorf("NCryptFinalizeKey returned %w", err)
 	}
 	if r != 0 {
@@ -304,7 +304,7 @@ func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 		valPtr,
 		uintptr(valLen),
 		uintptr(flags))
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return fmt.Errorf("NCryptSetProperty returned %w", err)
 	}
 	if r != 0 {
@@ -337,7 +337,7 @@ func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 		0,
 		uintptr(unsafe.Pointer(&size)),
 		uintptr(flags))
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("NCryptSignHash returned %w", err)
 	}
 	if r != 0 {
@@ -356,7 +356,7 @@ func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		uintptr(flags),
 	)
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("NCryptSignHash returned %w", err)
 	}
 	if r != 0 {
@@ -377,7 +377,7 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 		0,
 		0)
 
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %w", property, err)
 	}
 
@@ -395,7 +395,7 @@ func getProperty(kh uintptr, property *uint16) ([]byte, error) {
 		0,
 		0)
 
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("NCryptGetProperty(%v) returned %w", property, err)
 	}
 
@@ -449,7 +449,7 @@ func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 		0,
 		uintptr(unsafe.Pointer(&size)),
 		0)
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("nCryptExportKey returned %w", err)
 	}
 	if r != 0 {
@@ -467,7 +467,7 @@ func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 		uintptr(size),
 		uintptr(unsafe.Pointer(&size)),
 		0)
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("nCryptExportKey returned %w", err)
 	}
 	if r != 0 {
@@ -487,7 +487,7 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	)
 	if h == 0 {
 		// Actual error, or simply not found?
-		if errno, ok := err.(syscall.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
 			return nil, nil
 		}
 		return nil, err
@@ -502,7 +502,7 @@ func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 		0,
 	)
 
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return fmt.Errorf("CryptFindCertificateKeyProvInfo returned %w", err)
 	}
 
@@ -527,7 +527,7 @@ func certStrToName(x500Str string) ([]byte, error) {
 		0,
 	)
 
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("CertStrToName returned %w", err)
 	}
 
@@ -546,7 +546,7 @@ func certStrToName(x500Str string) ([]byte, error) {
 		uintptr(unsafe.Pointer(&size)),
 		0,
 	)
-	if !errors.Is(err, syscall.Errno(0)) {
+	if !errors.Is(err, windows.Errno(0)) {
 		return nil, fmt.Errorf("CertStrToName returned %w", err)
 	}
 
@@ -557,7 +557,7 @@ func certStrToName(x500Str string) ([]byte, error) {
 }
 
 func hashPasswordUTF16(s string) ([]byte, error) {
-	utf16Str, err := syscall.UTF16FromString(s)
+	utf16Str, err := windows.UTF16FromString(s)
 	if err != nil {
 		return nil, err
 	}
