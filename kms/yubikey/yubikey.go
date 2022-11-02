@@ -219,6 +219,42 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	return signer, nil
 }
 
+// CreateDecrypter creates a crypto.Decrypter using the key present in the configured
+// Yubikey slot.
+func (k *YubiKey) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Decrypter, error) {
+	slot, err := getSlot(req.DecryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	pin := k.pin
+	if pin == "" {
+		// Attempt to get the pin from the uri
+		if u, err := uri.ParseWithScheme(Scheme, req.DecryptionKey); err == nil {
+			pin = u.Pin()
+		}
+	}
+
+	pub, err := k.getPublicKey(slot)
+	if err != nil {
+		return nil, err
+	}
+
+	priv, err := k.yk.PrivateKey(slot, pub, piv.KeyAuth{
+		PIN:       pin,
+		PINPolicy: piv.PINPolicyAlways,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error retrieving private key")
+	}
+
+	decrypter, ok := priv.(crypto.Decrypter)
+	if !ok {
+		return nil, errors.New("private key is not a crypto.Decrypter")
+	}
+	return decrypter, nil
+}
+
 // CreateAttestation creates an attestation certificate from a YubiKey slot.
 //
 // # Experimental

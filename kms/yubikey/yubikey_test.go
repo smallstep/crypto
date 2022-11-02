@@ -32,8 +32,26 @@ type stubPivKey struct {
 	keyOptionsMap map[piv.Slot]piv.Key
 }
 
+type symmetricAlgorithm int
+
+const (
+	ECDSA symmetricAlgorithm = iota
+	RSA
+)
+const rsaKeySize = 2048
+
+type privateKey interface {
+	crypto.PrivateKey
+
+	Public() crypto.PublicKey
+}
+
 //nolint:typecheck // ignore deadcode warnings
-func newStubPivKey(t *testing.T) *stubPivKey {
+func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
+	var (
+		attSigner  privateKey
+		userSigner privateKey
+	)
 	t.Helper()
 
 	attestCA, err := minica.New()
@@ -45,13 +63,27 @@ func newStubPivKey(t *testing.T) *stubPivKey {
 		t.Fatal(err)
 	}
 
-	attSigner, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	userSigner, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	switch alg {
+	case ECDSA:
+		attSigner, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		userSigner, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+	case RSA:
+		attSigner, err = rsa.GenerateKey(rand.Reader, rsaKeySize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		userSigner, err = rsa.GenerateKey(rand.Reader, rsaKeySize)
+		if err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal(errors.New("unknown alg"))
 	}
 
 	attCert, err := attestCA.Sign(&x509.Certificate{
@@ -182,7 +214,7 @@ func TestNew(t *testing.T) {
 		pivCards = pCards
 	})
 
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	okPivCards := func() ([]string, error) {
 		return []string{"Yubico YubiKey OTP+FIDO+CCID"}, nil
@@ -274,7 +306,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestYubiKey_LoadCertificate(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	type fields struct {
 		yk            pivKey
@@ -321,7 +353,7 @@ func TestYubiKey_LoadCertificate(t *testing.T) {
 }
 
 func TestYubiKey_StoreCertificate(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -381,7 +413,7 @@ func TestYubiKey_StoreCertificate(t *testing.T) {
 }
 
 func TestYubiKey_GetPublicKey(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	type fields struct {
 		yk            pivKey
@@ -428,7 +460,7 @@ func TestYubiKey_GetPublicKey(t *testing.T) {
 }
 
 func TestYubiKey_CreateKey(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	type fields struct {
 		yk            pivKey
@@ -595,7 +627,7 @@ func TestYubiKey_CreateKey(t *testing.T) {
 }
 
 func TestYubiKey_CreateKey_policies(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	type fields struct {
 		yk            pivKey
@@ -748,9 +780,9 @@ func TestYubiKey_CreateKey_policies(t *testing.T) {
 }
 
 func TestYubiKey_CreateSigner(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
-	ykFail := newStubPivKey(t)
+	ykFail := newStubPivKey(t, ECDSA)
 	ykFail.signerMap[piv.SlotSignature] = "not-a-signer"
 
 	type fields struct {
@@ -806,10 +838,75 @@ func TestYubiKey_CreateSigner(t *testing.T) {
 	}
 }
 
-func TestYubiKey_CreateAttestation(t *testing.T) {
-	yk := newStubPivKey(t)
+func TestYubiKey_CreateDecrypter(t *testing.T) {
+	yk := newStubPivKey(t, RSA)
 
-	ykFail := newStubPivKey(t)
+	ykFail := newStubPivKey(t, RSA)
+	ykFail.signerMap[piv.SlotSignature] = "not-a-decrypter"
+
+	// interface conversion: *ecdsa.PrivateKey is not crypto.Decrypter: missing method Decrypt
+	ykFailEC := newStubPivKey(t, ECDSA)
+
+	type fields struct {
+		yk            pivKey
+		pin           string
+		managementKey [24]byte
+	}
+	type args struct {
+		req *apiv1.CreateDecrypterRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    crypto.Decrypter
+		wantErr bool
+	}{
+		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=9c",
+		}}, yk.signerMap[piv.SlotSignature].(crypto.Decrypter), false},
+		{"ok with pin", fields{yk, "", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=9c?pin-value=123456",
+		}}, yk.signerMap[piv.SlotSignature].(crypto.Decrypter), false},
+		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=%%FF",
+		}}, nil, true},
+		{"fail getPublicKey", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=85",
+		}}, nil, true},
+		{"fail privateKey", fields{yk, "654321", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=9c",
+		}}, nil, true},
+		{"fail signer", fields{ykFail, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=9c",
+		}}, nil, true},
+		{"fail no decrypt support", fields{ykFailEC, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
+			DecryptionKey: "yubikey:slot-id=9c",
+		}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk:            tt.fields.yk,
+				pin:           tt.fields.pin,
+				managementKey: tt.fields.managementKey,
+			}
+			got, err := k.CreateDecrypter(tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.CreateDecrypter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("YubiKey.CreateDecrypter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestYubiKey_CreateAttestation(t *testing.T) {
+	yk := newStubPivKey(t, ECDSA)
+
+	ykFail := newStubPivKey(t, ECDSA)
 	delete(ykFail.certMap, slotAttestation)
 
 	type fields struct {
@@ -864,7 +961,7 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 }
 
 func TestYubiKey_Close(t *testing.T) {
-	yk := newStubPivKey(t)
+	yk := newStubPivKey(t, ECDSA)
 
 	type fields struct {
 		yk            pivKey
