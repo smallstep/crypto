@@ -23,7 +23,7 @@ jobs:
           echo ${{ github.ref }} | grep "\-rc.*"
           OUT=$?
           if [ $OUT -eq 0 ]; then IS_PRERELEASE=true; else IS_PRERELEASE=false; fi
-          echo "::set-output name=IS_PRERELEASE::${IS_PRERELEASE}"
+          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> ${GITHUB_OUTPUT}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
