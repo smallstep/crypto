@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/status"
 
 	cloudkms "cloud.google.com/go/kms/apiv1"
+	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
 	"google.golang.org/api/option"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 // Scheme is the scheme used in uris.

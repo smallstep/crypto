@@ -11,9 +11,9 @@ import (
 	"reflect"
 	"testing"
 
+	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
 	"go.step.sm/crypto/pemutil"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 func Test_newSigner(t *testing.T) {

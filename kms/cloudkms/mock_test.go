@@ -3,8 +3,8 @@ package cloudkms
 import (
 	"context"
 
+	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 type MockClient struct {
