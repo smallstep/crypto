@@ -5,9 +5,9 @@ import (
 	"crypto/x509"
 	"io"
 
+	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/pemutil"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 // Signer implements a crypto.Signer using Google's Cloud KMS.
