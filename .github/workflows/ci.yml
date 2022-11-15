@@ -15,10 +15,9 @@ concurrency:
 
 jobs:
   ci:
-    uses: smallstep/workflows/.github/workflows/goCI.yml@main
+    uses: smallstep/workflows/.github/workflows/goCI.yml@max/go-matrix
     with:
       os-dependencies: "libpcsclite-dev"
       run-build: false
-      run-gitleaks: true
       run-codeql: true
     secrets: inherit
