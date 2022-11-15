@@ -19,6 +19,5 @@ jobs:
     with:
       os-dependencies: "libpcsclite-dev"
       run-build: false
-      run-gitleaks: true
       run-codeql: true
     secrets: inherit
