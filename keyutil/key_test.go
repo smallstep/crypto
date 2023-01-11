@@ -499,7 +499,10 @@ func TestGenerateDefaultSigner(t *testing.T) {
 func TestGenerateSigner(t *testing.T) {
 	assertSigner := func(h crypto.Hash) func(t *testing.T, got crypto.Signer) {
 		return func(t *testing.T, got crypto.Signer) {
-
+			t.Helper()
+			if err := verifyPrivateKey(h, got); err != nil {
+				t.Errorf("GenerateSigner() error = %v", err)
+			}
 		}
 	}
 	assertNil := func() func(t *testing.T, got crypto.Signer) {
