@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"os"
 	"reflect"
@@ -367,12 +368,32 @@ func tempFile(t *testing.T) (*os.File, func()) {
 	}
 }
 
+type mockReader struct{}
+
+func (mockReader) Read(buf []byte) (int, error) {
+	for i := range buf {
+		buf[i] = byte(i % 256)
+	}
+	return len(buf), nil
+}
+
+type eofReader struct{}
+
+func (eofReader) Read(buf []byte) (int, error) {
+	return 0, io.EOF
+}
+
 func TestGenerateDefaultKeyPair(t *testing.T) {
-	reader := mustTeeReader(t)
+	rr := rand.Reader
+	t.Cleanup(func() {
+		rand.Reader = rr
+		jose.RandReader = rr
+	})
+
+	rand.Reader = mockReader{}
+	jose.RandReader = mockReader{}
 	jwk := mustGenerateJWK(t, "EC", "P-256", "ES256", "sig", "", 0)
 	jwe := mustEncryptJWK(t, jwk, []byte("planned password"))
-	rand.Reader = reader
-	jose.RandReader = reader
 
 	var err error
 	if jwk.KeyID, err = Thumbprint(jwk); err != nil {
@@ -382,6 +403,7 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 
 	type args struct {
 		passphrase []byte
+		randReader io.Reader
 	}
 	tests := []struct {
 		name           string
@@ -391,13 +413,15 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 		want1Decrypted *JSONWebKey
 		wantErr        bool
 	}{
-		{"ok", args{[]byte("planned password")}, &jwkPub, jwe, jwk, false},
-		{"failEmptyPassword", args{[]byte("")}, nil, nil, nil, true},
-		{"failNilPassword", args{nil}, nil, nil, nil, true},
-		{"failEOF", args{[]byte("planned password")}, nil, nil, nil, true},
+		{"ok", args{[]byte("planned password"), mockReader{}}, &jwkPub, jwe, jwk, false},
+		{"failEmptyPassword", args{[]byte(""), rr}, nil, nil, nil, true},
+		{"failNilPassword", args{nil, rr}, nil, nil, nil, true},
+		{"failEOF", args{[]byte("planned password"), eofReader{}}, nil, nil, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			rand.Reader = tt.args.randReader
+			jose.RandReader = tt.args.randReader
 			got, got1, err := GenerateDefaultKeyPair(tt.args.passphrase)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateDefaultKeyPair() error = %v, wantErr %v", err, tt.wantErr)
