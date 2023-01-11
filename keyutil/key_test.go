@@ -99,7 +99,7 @@ func verifyKeyPair(h crypto.Hash, priv, pub interface{}) error {
 	}
 	sig, err := s.Sign(randReader, sum, h)
 	if err != nil {
-		return fmt.Errorf("%T.Sign() error = %v", s, err)
+		return fmt.Errorf("%T.Sign() error = %w", s, err)
 	}
 
 	switch p := pub.(type) {
