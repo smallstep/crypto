@@ -1,5 +1,5 @@
-//go:build cgo
-// +build cgo
+//go:build cgo && !noyubikey
+// +build cgo,!noyubikey
 
 package yubikey
 

@@ -1,3 +1,6 @@
+//go:build !noazurekms
+// +build !noazurekms
+
 package azurekms
 
 import (

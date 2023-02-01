@@ -1,5 +1,5 @@
-//go:build cgo
-// +build cgo
+//go:build cgo && !nopkcs11
+// +build cgo,!nopkcs11
 
 package pkcs11
 
