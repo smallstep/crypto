@@ -1,5 +1,5 @@
-//go:build windows
-// +build windows
+//go:build windows && !nocapi
+// +build windows,!nocapi
 
 package capi
 
@@ -14,6 +14,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"math/big"
+	"reflect"
+	"strings"
+	"unsafe"
+
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -21,11 +27,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/sys/windows"
-	"io"
-	"math/big"
-	"reflect"
-	"strings"
-	"unsafe"
 )
 
 // Scheme is the scheme used in uris.
@@ -78,7 +79,6 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 // "key-id"           X509v3 Subject Key Identifier of the certificate to load in hex format
 // "serial"           serial number of the certificate to load in hex format
 // "issuer"           Common Name of the certificate issuer
-//
 type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
