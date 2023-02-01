@@ -15,6 +15,6 @@ import (
 func init() {
 	apiv1.Register(apiv1.YubiKey, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		name := filepath.Base(os.Args[0])
-		return nil, errors.Errorf("unsupported kms type 'yubikey': %s is compiled without CGO or YubiKey support", name)
+		return nil, errors.Errorf("unsupported kms type 'yubikey': %s is compiled without cgo or YubiKey support", name)
 	})
 }

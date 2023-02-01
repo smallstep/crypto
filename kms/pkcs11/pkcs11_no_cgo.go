@@ -17,7 +17,7 @@ var errUnsupported error
 
 func init() {
 	name := filepath.Base(os.Args[0])
-	errUnsupported = errors.Errorf("unsupported kms type 'pkcs11': %s is compiled without CGO or PKCS#11 support", name)
+	errUnsupported = errors.Errorf("unsupported kms type 'pkcs11': %s is compiled without cgo or PKCS#11 support", name)
 
 	apiv1.Register(apiv1.PKCS11, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		return nil, errUnsupported
