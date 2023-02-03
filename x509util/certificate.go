@@ -71,7 +71,7 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	// Generate the subjectAltName extension if the certificate contains SANs
 	// that are not supported in the Go standard library.
 	if cert.hasExtendedSANs() && !cert.hasExtension(oidExtensionSubjectAltName) {
-		ext, err := createSubjectAltNameExtension(&cert, cert.Subject.IsEmpty())
+		ext, err := createCertificateSubjectAltNameExtension(cert, cert.Subject.IsEmpty())
 		if err != nil {
 			return nil, err
 		}

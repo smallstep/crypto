@@ -8,6 +8,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/base64"
+	"fmt"
 	"net"
 	"net/url"
 	"reflect"
@@ -19,6 +21,49 @@ func TestNewCertificateRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// ok extended sans
+	sans := []SubjectAlternativeName{
+		{Type: DNSType, Value: "foo.com"},
+		{Type: EmailType, Value: "root@foo.com"},
+		{Type: IPType, Value: "3.14.15.92"},
+		{Type: URIType, Value: "mailto:root@foo.com"},
+		{Type: PermanentIdentifierType, Value: "123456789"},
+	}
+	extendedSANs := CreateTemplateData("123456789", nil)
+	extendedSANs.SetSubjectAlternativeNames(sans...)
+	extendedSANsExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, sans, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ok extended sans and extension
+	extendedSANsAndExtensionsTemplate := fmt.Sprintf(`{
+		"subject": {{ toJson .Subject }},
+		"sans": {{ toJson .SANs }},
+		"extensions": [
+			{"id":"2.5.29.17", "value":"%s"}
+		]
+	}`, base64.StdEncoding.EncodeToString(extendedSANsExtension.Value))
+
+	// ok permanent identifier template
+	permanentIdentifierTemplate := `{ 
+		"subject": {{ toJson .Subject }},
+		"sans": [{
+			"type": "permanentIdentifier", 
+			"value": {{ toJson .Subject.CommonName }}
+		}]
+	}`
+	permanentIdentifierTemplateExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{
+		{Type: PermanentIdentifierType, Value: "123456789"},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// fail extended sans
+	failExtendedSANs := CreateTemplateData("123456789", nil)
+	failExtendedSANs.SetSubjectAlternativeNames(SubjectAlternativeName{Type: "badType", Value: "foo.com"})
 
 	type args struct {
 		signer crypto.Signer
@@ -47,8 +92,50 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey: signer.Public(),
 			Signer:    signer,
 		}, false},
+		{"ok extended sans", args{signer, []Option{
+			WithTemplate(DefaultCertificateRequestTemplate, extendedSANs),
+		}}, &CertificateRequest{
+			Subject: Subject{CommonName: "123456789"},
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "email", Value: "root@foo.com"},
+				{Type: "ip", Value: "3.14.15.92"},
+				{Type: "uri", Value: "mailto:root@foo.com"},
+				{Type: "permanentIdentifier", Value: "123456789"},
+			},
+			Extensions: []Extension{extendedSANsExtension},
+			PublicKey:  signer.Public(),
+			Signer:     signer,
+		}, false},
+		{"ok extended sans and extension", args{signer, []Option{
+			WithTemplate(extendedSANsAndExtensionsTemplate, extendedSANs),
+		}}, &CertificateRequest{
+			Subject: Subject{CommonName: "123456789"},
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "email", Value: "root@foo.com"},
+				{Type: "ip", Value: "3.14.15.92"},
+				{Type: "uri", Value: "mailto:root@foo.com"},
+				{Type: "permanentIdentifier", Value: "123456789"},
+			},
+			Extensions: []Extension{extendedSANsExtension},
+			PublicKey:  signer.Public(),
+			Signer:     signer,
+		}, false},
+		{"ok permanent identifier template", args{signer, []Option{
+			WithTemplate(permanentIdentifierTemplate, CreateTemplateData("123456789", []string{})),
+		}}, &CertificateRequest{
+			Subject: Subject{CommonName: "123456789"},
+			SANs: []SubjectAlternativeName{
+				{Type: "permanentIdentifier", Value: "123456789"},
+			},
+			Extensions: []Extension{permanentIdentifierTemplateExtension},
+			PublicKey:  signer.Public(),
+			Signer:     signer,
+		}, false},
 		{"fail apply", args{signer, []Option{WithTemplateFile("testdata/missing.tpl", NewTemplateData())}}, nil, true},
 		{"fail unmarshal", args{signer, []Option{WithTemplate("{badjson", NewTemplateData())}}, nil, true},
+		{"fail extended sans", args{signer, []Option{WithTemplate(DefaultCertificateRequestTemplate, failExtendedSANs)}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,7 +145,7 @@ func TestNewCertificateRequest(t *testing.T) {
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCertificateRequest() = %v, want %v", got, tt.want)
+				t.Errorf("NewCertificateRequest() = %+v, want %v", got, tt.want)
 			}
 		})
 	}

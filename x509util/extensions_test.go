@@ -127,6 +127,29 @@ func TestExtension_Set(t *testing.T) {
 	}
 }
 
+func TestObjectIdentifier_Equal(t *testing.T) {
+	type args struct {
+		v ObjectIdentifier
+	}
+	tests := []struct {
+		name string
+		o    ObjectIdentifier
+		args args
+		want bool
+	}{
+		{"ok", ObjectIdentifier{1, 2, 3, 4}, args{ObjectIdentifier{1, 2, 3, 4}}, true},
+		{"false length", ObjectIdentifier{1, 2, 3}, args{ObjectIdentifier{1, 2, 3, 4}}, false},
+		{"false content", ObjectIdentifier{1, 2, 3, 5}, args{ObjectIdentifier{1, 2, 3, 4}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.o.Equal(tt.args.v); got != tt.want {
+				t.Errorf("ObjectIdentifier.Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestObjectIdentifier_MarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1203,7 +1226,7 @@ func TestSerialNumber_UnmarshalJSON(t *testing.T) {
 
 func Test_createSubjectAltNameExtension(t *testing.T) {
 	type args struct {
-		c              *Certificate
+		c              Certificate
 		subjectIsEmpty bool
 	}
 	tests := []struct {
@@ -1212,42 +1235,42 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 		want    Extension
 		wantErr bool
 	}{
-		{"ok dns", args{&Certificate{
+		{"ok dns", args{Certificate{
 			DNSNames: []string{"foo.com"},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
 		}, false},
-		{"ok dns critical", args{&Certificate{
+		{"ok dns critical", args{Certificate{
 			DNSNames: []string{"foo.com"},
 		}, true}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: true,
 			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
 		}, false},
-		{"ok email", args{&Certificate{
+		{"ok email", args{Certificate{
 			EmailAddresses: []string{"bar@foo.com"},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    append([]byte{0x30, 13, 0x80 | nameTypeEmail, 11}, []byte("bar@foo.com")...),
 		}, false},
-		{"ok uri", args{&Certificate{
+		{"ok uri", args{Certificate{
 			URIs: []*url.URL{{Scheme: "urn", Opaque: "foo:bar"}},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    append([]byte{0x30, 13, 0x80 | nameTypeURI, 11}, []byte("urn:foo:bar")...),
 		}, false},
-		{"ok ip", args{&Certificate{
+		{"ok ip", args{Certificate{
 			IPAddresses: []net.IP{net.ParseIP("1.2.3.4")},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    []byte{0x30, 6, 0x80 | nameTypeIP, 4, 1, 2, 3, 4},
 		}, false},
-		{"ok sans", args{&Certificate{
+		{"ok sans", args{Certificate{
 			SANs: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 				{Type: "email", Value: "bar@foo.com"},
@@ -1265,7 +1288,7 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 				{0x80 | nameTypeIP, 4, 1, 2, 3, 4},
 			}, nil),
 		}, false},
-		{"ok otherName", args{&Certificate{
+		{"ok otherName", args{Certificate{
 			SANs: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 				{Type: "1.2.3.4", Value: "utf8:bar@foo.com"},
@@ -1280,19 +1303,19 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 				{0xA0, 13, asn1.TagUTF8String, 11}, []byte("bar@foo.com"),
 			}, nil),
 		}, false},
-		{"fail dns", args{&Certificate{
+		{"fail dns", args{Certificate{
 			DNSNames: []string{""},
 		}, false}, Extension{}, true},
-		{"fail email", args{&Certificate{
+		{"fail email", args{Certificate{
 			EmailAddresses: []string{"nöt@ia5.com"},
 		}, false}, Extension{}, true},
-		{"fail uri", args{&Certificate{
+		{"fail uri", args{Certificate{
 			URIs: []*url.URL{{Scheme: "urn", Opaque: "nöt:ia5"}},
 		}, false}, Extension{}, true},
-		{"fail ip", args{&Certificate{
+		{"fail ip", args{Certificate{
 			IPAddresses: []net.IP{{1, 2, 3}},
 		}, false}, Extension{}, true},
-		{"fail otherName", args{&Certificate{
+		{"fail otherName", args{Certificate{
 			SANs: []SubjectAlternativeName{
 				{Type: "1.2.3.4", Value: "int:bar@foo.com"},
 			},
@@ -1300,13 +1323,30 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := createSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
+			gotCert, err := createCertificateSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", got, tt.want)
+			if !reflect.DeepEqual(gotCert, tt.want) {
+				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", gotCert, tt.want)
+			}
+
+			cr := CertificateRequest{
+				DNSNames:       tt.args.c.DNSNames,
+				EmailAddresses: tt.args.c.EmailAddresses,
+				IPAddresses:    tt.args.c.IPAddresses,
+				URIs:           tt.args.c.URIs,
+				SANs:           tt.args.c.SANs,
+			}
+
+			gotCSR, err := createCertificateRequestSubjectAltNameExtension(cr, tt.args.subjectIsEmpty)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotCSR, tt.want) {
+				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", gotCSR, tt.want)
 			}
 		})
 	}
