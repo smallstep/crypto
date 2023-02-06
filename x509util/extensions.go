@@ -922,6 +922,14 @@ func (s *SerialNumber) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func createCertificateSubjectAltNameExtension(c Certificate, subjectIsEmpty bool) (Extension, error) {
+	return createSubjectAltNameExtension(c.DNSNames, c.EmailAddresses, c.IPAddresses, c.URIs, c.SANs, subjectIsEmpty)
+}
+
+func createCertificateRequestSubjectAltNameExtension(c CertificateRequest, subjectIsEmpty bool) (Extension, error) {
+	return createSubjectAltNameExtension(c.DNSNames, c.EmailAddresses, c.IPAddresses, c.URIs, c.SANs, subjectIsEmpty)
+}
+
 // createSubjectAltNameExtension will construct an Extension containing all
 // SubjectAlternativeNames held in a Certificate. It implements more types than
 // the golang x509 library, so it is used whenever OtherName or RegisteredID
@@ -931,11 +939,11 @@ func (s *SerialNumber) UnmarshalJSON(data []byte) error {
 //
 // TODO(mariano,unreality): X400Address, DirectoryName, and EDIPartyName types
 // are defined in RFC5280 but are currently unimplemented
-func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (Extension, error) {
+func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddresses MultiIP, uris MultiURL, sans []SubjectAlternativeName, subjectIsEmpty bool) (Extension, error) {
 	var zero Extension
 
 	var rawValues []asn1.RawValue
-	for _, dnsName := range c.DNSNames {
+	for _, dnsName := range dnsNames {
 		rawValue, err := SubjectAlternativeName{
 			Type: DNSType, Value: dnsName,
 		}.RawValue()
@@ -946,7 +954,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (Extensi
 		rawValues = append(rawValues, rawValue)
 	}
 
-	for _, emailAddress := range c.EmailAddresses {
+	for _, emailAddress := range emailAddresses {
 		rawValue, err := SubjectAlternativeName{
 			Type: EmailType, Value: emailAddress,
 		}.RawValue()
@@ -957,18 +965,7 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (Extensi
 		rawValues = append(rawValues, rawValue)
 	}
 
-	for _, uri := range c.URIs {
-		rawValue, err := SubjectAlternativeName{
-			Type: URIType, Value: uri.String(),
-		}.RawValue()
-		if err != nil {
-			return zero, err
-		}
-
-		rawValues = append(rawValues, rawValue)
-	}
-
-	for _, ip := range c.IPAddresses {
+	for _, ip := range ipAddresses {
 		rawValue, err := SubjectAlternativeName{
 			Type: IPType, Value: ip.String(),
 		}.RawValue()
@@ -979,7 +976,18 @@ func createSubjectAltNameExtension(c *Certificate, subjectIsEmpty bool) (Extensi
 		rawValues = append(rawValues, rawValue)
 	}
 
-	for _, san := range c.SANs {
+	for _, uri := range uris {
+		rawValue, err := SubjectAlternativeName{
+			Type: URIType, Value: uri.String(),
+		}.RawValue()
+		if err != nil {
+			return zero, err
+		}
+
+		rawValues = append(rawValues, rawValue)
+	}
+
+	for _, san := range sans {
 		rawValue, err := san.RawValue()
 		if err != nil {
 			return zero, err
