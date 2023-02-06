@@ -1325,11 +1325,11 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gotCert, err := createCertificateSubjectAltNameExtension(tt.args.c, tt.args.subjectIsEmpty)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("createCertificateSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(gotCert, tt.want) {
-				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", gotCert, tt.want)
+				t.Errorf("createCertificateSubjectAltNameExtension() = %v, want %v", gotCert, tt.want)
 			}
 
 			cr := CertificateRequest{
@@ -1342,11 +1342,11 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 
 			gotCSR, err := createCertificateRequestSubjectAltNameExtension(cr, tt.args.subjectIsEmpty)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("createSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("createCertificateRequestSubjectAltNameExtension() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(gotCSR, tt.want) {
-				t.Errorf("createSubjectAltNameExtension() = \n%v, want \n%v", gotCSR, tt.want)
+				t.Errorf("createCertificateRequestSubjectAltNameExtension() = %v, want %v", gotCSR, tt.want)
 			}
 		})
 	}
