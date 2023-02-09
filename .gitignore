@@ -5,6 +5,14 @@
 *.so
 *.dylib
 
+# Go Workspaces
+go.work
+go.work.sum
+
+# Development
+.vscode/
+coverage.cov
+
 # Test binary, built with `go test -c`
 *.test
 
