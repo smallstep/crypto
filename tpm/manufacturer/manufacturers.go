@@ -31,13 +31,13 @@ func (m Manufacturer) String() string {
 // GetByID returns a Manufacturer based on its Manufacturer ID
 // code.
 func GetByID(id ID) Manufacturer {
-	ascii, hex := getManufacturerEncodings(id)
+	ascii, hexa := getManufacturerEncodings(id)
 	name := getManufacturerNameByASCII(ascii)
 	return Manufacturer{
 		Name:  name,
 		ASCII: ascii,
 		ID:    id,
-		Hex:   hex,
+		Hex:   hexa,
 	}
 }
 

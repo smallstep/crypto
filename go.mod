@@ -78,5 +78,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// relying on fork till changes get upstreamed
+// relying on fork till changes get upstreamed.
 replace github.com/google/go-attestation => github.com/smallstep/go-attestation v0.4.4-0.20230113130042-0ad94dd6a52e

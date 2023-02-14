@@ -21,7 +21,6 @@ var (
 )
 
 func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, params attest.CertificationParameters, shouldEncrypt bool) (pkix.Extension, error) {
-
 	asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence())
 	if err != nil {
 		return pkix.Extension{}, fmt.Errorf("error marshaling issuer: %w", err)

@@ -1,6 +1,7 @@
 //go:build windows
 // +build windows
 
+//nolint:errorlint,revive // copied code from github.com/google/go-attestation
 package key
 
 import (
@@ -8,7 +9,6 @@ import (
 )
 
 func create(_, keyName string, config CreateConfig) ([]byte, error) {
-
 	pcp, err := openPCP()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PCP: %w", err)
@@ -17,7 +17,7 @@ func create(_, keyName string, config CreateConfig) ([]byte, error) {
 
 	hnd, pub, blob, err := pcp.NewKey(keyName, &KeyConfig{Algorithm: Algorithm(config.Algorithm), Size: config.Size})
 	if err != nil {
-		return nil, fmt.Errorf("pcp failed to mint application key: %v", err)
+		return nil, fmt.Errorf("pcp failed to mint application key: %w", err)
 	}
 
 	_, _ = hnd, blob

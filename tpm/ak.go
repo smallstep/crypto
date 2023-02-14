@@ -20,7 +20,6 @@ type AK struct {
 }
 
 func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
-
 	result := AK{}
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
@@ -42,7 +41,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 		// to be far, isn't even used on Linux TPMs)
 		nameHex := make([]byte, 5)
 		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %v", n, len(nameHex), err)
+			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
@@ -81,7 +80,6 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 }
 
 func (t *TPM) GetAK(ctx context.Context, name string) (AK, error) {
-
 	result := AK{}
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
@@ -97,7 +95,6 @@ func (t *TPM) GetAK(ctx context.Context, name string) (AK, error) {
 }
 
 func (t *TPM) ListAKs(ctx context.Context) ([]AK, error) {
-
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -117,7 +114,6 @@ func (t *TPM) ListAKs(ctx context.Context) ([]AK, error) {
 }
 
 func (t *TPM) DeleteAK(ctx context.Context, name string) error {
-
 	if err := t.Open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -155,7 +151,6 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 // AttestationParameters returns information about the AK, typically used to
 // generate a credential activation challenge.
 func (ak AK) AttestationParameters(ctx context.Context) (params attest.AttestationParameters, err error) {
-
 	if err := ak.tpm.Open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -186,7 +181,6 @@ type EncryptedCredential attest.EncryptedCredential
 // generated on the same TPM as the EK. This operation is synonymous with
 // TPM2_ActivateCredential.
 func (ak AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (secret []byte, err error) {
-
 	if err := ak.tpm.Open(ctx); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}

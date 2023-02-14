@@ -29,7 +29,7 @@ func (f *FeedthroughStore) ListKeyNames() []string {
 
 func (f *FeedthroughStore) GetKey(name string) (*Key, error) {
 	if f.store == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional noop
 	}
 	return f.store.GetKey(name)
 }
@@ -64,7 +64,7 @@ func (f *FeedthroughStore) ListAKNames() []string {
 
 func (f *FeedthroughStore) GetAK(name string) (*AK, error) {
 	if f.store == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional noop
 	}
 	return f.store.GetAK(name)
 }

@@ -10,7 +10,7 @@ import (
 func TestBlackHoleContext(t *testing.T) {
 	t.Parallel()
 
-	got := BlackHoleContext(nil)
+	got := BlackHoleContext(nil) //nolint:staticcheck // nil context for testing
 	require.NotNil(t, got)
 	require.NotNil(t, FromContext(got))
 

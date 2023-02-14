@@ -1,3 +1,4 @@
+//nolint:errorlint,revive // copied code from github.com/google/go-attestation
 package key
 
 import (
@@ -175,18 +176,6 @@ type KeyConfig struct {
 }
 
 var (
-	akTemplate = tpm2.Public{
-		Type:       tpm2.AlgRSA,
-		NameAlg:    tpm2.AlgSHA256,
-		Attributes: tpm2.FlagSignerDefault | tpm2.FlagNoDA,
-		RSAParameters: &tpm2.RSAParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			KeyBits: 2048,
-		},
-	}
 	defaultSRKTemplate = tpm2.Public{
 		Type:       tpm2.AlgRSA,
 		NameAlg:    tpm2.AlgSHA256,

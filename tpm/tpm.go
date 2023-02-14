@@ -37,7 +37,6 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 }
 
 func New(opts ...NewTPMOption) (*TPM, error) {
-
 	tpm := &TPM{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20}, // default configuration for TPM attestation use cases
 		store:        storage.BlackHole(),                                 // default storage doesn't persist anything
@@ -53,7 +52,6 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 }
 
 func (t *TPM) Open(ctx context.Context) error {
-
 	t.lock.Lock()
 
 	if err := t.store.Load(); err != nil { // TODO: load this once

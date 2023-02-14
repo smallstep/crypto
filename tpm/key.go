@@ -3,14 +3,14 @@ package tpm
 import (
 	"context"
 	"crypto"
-	"crypto/rand"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/google/go-attestation/attest"
-	"go.step.sm/crypto/tpm/internal/key"
+	internalkey "go.step.sm/crypto/tpm/internal/key"
 	"go.step.sm/crypto/tpm/storage"
 )
 
@@ -46,7 +46,6 @@ type AttestKeyConfig struct {
 }
 
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (Key, error) {
-
 	result := Key{}
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
@@ -57,19 +56,19 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 
 	if name == "" {
 		nameHex := make([]byte, 5)
-		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %v", n, len(nameHex), err)
+		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
+			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
 
 	prefixedKeyName := fmt.Sprintf("app-%s", name)
 
-	createConfig := key.CreateConfig{
-		Algorithm: string(config.Algorithm),
+	createConfig := internalkey.CreateConfig{
+		Algorithm: config.Algorithm,
 		Size:      config.Size,
 	}
-	data, err := key.Create(t.deviceName, prefixedKeyName, createConfig)
+	data, err := internalkey.Create(t.deviceName, prefixedKeyName, createConfig)
 	if err != nil {
 		return result, fmt.Errorf("failed creating key: %w", err)
 	}
@@ -98,7 +97,6 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 // checking multiple locks and/or pointers and instantiating when required. Opening and closing
 // on-demand is the simplest way and safe to do for now, though.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (Key, error) {
-
 	result := Key{}
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
@@ -126,8 +124,8 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	if name == "" {
 		nameHex := make([]byte, 5)
-		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %v", n, len(nameHex), err)
+		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
+			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
@@ -171,7 +169,6 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 }
 
 func (t *TPM) GetKey(ctx context.Context, name string) (Key, error) {
-
 	result := Key{}
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
@@ -187,7 +184,6 @@ func (t *TPM) GetKey(ctx context.Context, name string) (Key, error) {
 }
 
 func (t *TPM) ListKeys(ctx context.Context) ([]Key, error) {
-
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -253,7 +249,6 @@ func (s *signer) Public() crypto.PublicKey {
 }
 
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-
 	ctx := context.Background()
 	if err := s.tpm.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -288,7 +283,6 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 
 // GetSigner returns a crypto.Signer for a TPM key identified by name.
 func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error) {
-
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}

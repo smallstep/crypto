@@ -9,7 +9,6 @@ import (
 )
 
 func (t *TPM) GenerateRandom(ctx context.Context, size uint16) ([]byte, error) {
-
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}

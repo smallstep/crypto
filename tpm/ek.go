@@ -59,7 +59,6 @@ type intelEKCertResponse struct {
 }
 
 func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
-
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -74,6 +73,12 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 	eks, err := at.EKs()
 	if err != nil {
 		return nil, fmt.Errorf("failed getting EKs: %w", err)
+	}
+
+	// an arbitrary limit, so that we don't start making a huge number of HTTP requests (if needed)
+	maxNumberOfEKs := 10
+	if len(eks) > maxNumberOfEKs {
+		return nil, fmt.Errorf("number of EKs (%d) passed the maximum allowed %d", len(eks), maxNumberOfEKs)
 	}
 
 	result := make([]EK, 0, len(eks))
@@ -95,6 +100,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 			// be different for other URLs. Ideally, I think this should be fixed in
 			// the underlying TPM library to contain the right URL? The `intelEKURL` already
 			// seems to do URLEncoding, though. Why do we still get an `=` then?
+			// TODO: do this just for Intel URLs; and check for other TPM manufacturer URLs
 			s := u.String()
 			h := path.Base(s)
 			h = strings.ReplaceAll(h, "=", "%3D") // TODO(hs): no better function in Go to do this in paths? https://github.com/golang/go/issues/27559;
@@ -107,11 +113,11 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 
 			var r *http.Response
 			ekURL = u.String()
-			r, err = http.Get(ekURL)
+			r, err = http.Get(ekURL) //nolint:gosec // URL originally comes from TPM. In the end it's user supplied, but not trivial to abuse
 			if err != nil {
 				return nil, fmt.Errorf("error retrieving EK certificate from %q: %w", ekURL, err)
 			}
-			defer r.Body.Close()
+			defer r.Body.Close() //nolint:gocritic // number of requests is limited, so resource leak is limited
 
 			if r.StatusCode != http.StatusOK {
 				return nil, fmt.Errorf("http request to %q failed with status %d", ekURL, r.StatusCode)

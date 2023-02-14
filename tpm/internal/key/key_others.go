@@ -11,7 +11,6 @@ import (
 )
 
 func create(deviceName, keyName string, config CreateConfig) ([]byte, error) {
-
 	rwc, err := open.TPM(deviceName)
 	if err != nil {
 		return nil, fmt.Errorf("error opening TPM: %w", err)
@@ -20,17 +19,17 @@ func create(deviceName, keyName string, config CreateConfig) ([]byte, error) {
 
 	srk, _, err := getPrimaryKeyHandle(rwc, commonSrkEquivalentHandle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SRK handle: %v", err)
+		return nil, fmt.Errorf("failed to get SRK handle: %w", err)
 	}
 
 	tmpl, err := templateFromConfig(&KeyConfig{Algorithm: Algorithm(config.Algorithm), Size: config.Size})
 	if err != nil {
-		return nil, fmt.Errorf("incorrect key options: %v", err)
+		return nil, fmt.Errorf("incorrect key options: %w", err)
 	}
 
 	blob, pub, creationData, _, _, err := tpm2.CreateKey(rwc, srk, tpm2.PCRSelection{}, "", "", tmpl)
 	if err != nil {
-		return nil, fmt.Errorf("CreateKey() failed: %v", err)
+		return nil, fmt.Errorf("CreateKey() failed: %w", err)
 	}
 
 	out := serializedKey{
