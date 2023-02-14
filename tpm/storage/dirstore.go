@@ -17,21 +17,28 @@ type Dirstore struct {
 	directory string
 }
 
+const tpmExtension = ".tpmkey"
+
 func advancedTransform(key string) *diskv.PathKey {
 	path := strings.Split(key, "/")
 	last := len(path) - 1
 	return &diskv.PathKey{
 		Path:     path[:last],
-		FileName: path[last] + ".tpmkey",
+		FileName: path[last] + tpmExtension,
 	}
 }
 
 func inverseTransform(pathKey *diskv.PathKey) (key string) {
-	tpmext := filepath.Ext(pathKey.FileName)
-	if tpmext != ".tpmkey" { // skipping
+	ext := filepath.Ext(pathKey.FileName)
+	if ext != tpmExtension { // skipping
 		return ""
 	}
-	return strings.Join(pathKey.Path, "/") + pathKey.FileName[:len(pathKey.FileName)-7]
+	filename := pathKey.FileName[:len(pathKey.FileName)-len(tpmExtension)]
+	p := filepath.Join(filepath.Join(pathKey.Path...), filename)
+	if len(pathKey.Path) > 0 && pathKey.Path[0] == "" { // absolute path at "/"
+		p = filepath.Join(string(filepath.Separator), p)
+	}
+	return p
 }
 
 // NewDirstore creates a new instance of a Direstore
@@ -76,12 +83,12 @@ func (s *Dirstore) ListKeyNames() []string {
 }
 
 func (s *Dirstore) GetKey(name string) (*Key, error) {
-	key := keyForKey(name)
-	if !s.store.Has(key) {
-		return nil, nil // TODO: likely needs an ErrNotFound-like error here
+	kk := keyForKey(name)
+	if !s.store.Has(kk) {
+		return nil, ErrNotFound
 	}
 
-	data, err := s.store.Read(key)
+	data, err := s.store.Read(kk)
 	if err != nil {
 		return nil, fmt.Errorf("error reading key from store: %w", err)
 	}
@@ -95,12 +102,17 @@ func (s *Dirstore) GetKey(name string) (*Key, error) {
 }
 
 func (s *Dirstore) AddKey(key *Key) error {
+	kk := keyForKey(key.Name)
+	if s.store.Has(kk) {
+		return ErrExists
+	}
+
 	data, err := json.Marshal(serializedKey{Name: key.Name, Type: typeKey, Data: key.Data, AttestedBy: key.AttestedBy, CreatedAt: key.CreatedAt})
 	if err != nil {
 		return fmt.Errorf("error serializing key: %w", err)
 	}
 
-	if err := s.store.WriteStream(keyForKey(key.Name), bytes.NewBuffer(data), true); err != nil {
+	if err := s.store.WriteStream(kk, bytes.NewBuffer(data), true); err != nil {
 		return fmt.Errorf("error writing to disk: %w", err)
 	}
 	return nil
@@ -109,7 +121,7 @@ func (s *Dirstore) AddKey(key *Key) error {
 func (s *Dirstore) DeleteKey(name string) error {
 	key := keyForKey(name)
 	if !s.store.Has(key) {
-		return nil
+		return ErrNotFound
 	}
 	if err := s.store.Erase(key); err != nil {
 		return fmt.Errorf("error deleting key from disk: %w", err)
@@ -146,12 +158,12 @@ func (s *Dirstore) ListAKNames() []string {
 }
 
 func (s *Dirstore) GetAK(name string) (*AK, error) {
-	key := keyForAK(name)
-	if !s.store.Has(key) {
-		return nil, nil // TODO: should return some ErrNotFound-like error
+	akKey := keyForAK(name)
+	if !s.store.Has(akKey) {
+		return nil, ErrNotFound
 	}
 
-	data, err := s.store.Read(key)
+	data, err := s.store.Read(akKey)
 	if err != nil {
 		return nil, fmt.Errorf("error reading AK from store: %w", err)
 	}
@@ -165,11 +177,15 @@ func (s *Dirstore) GetAK(name string) (*AK, error) {
 }
 
 func (s *Dirstore) AddAK(ak *AK) error {
+	akKey := keyForAK(ak.Name)
+	if s.store.Has(akKey) {
+		return ErrExists
+	}
 	data, err := json.Marshal(serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, CreatedAt: ak.CreatedAt})
 	if err != nil {
 		return fmt.Errorf("error serializing AK: %w", err)
 	}
-	if err := s.store.WriteStream(keyForAK(ak.Name), bytes.NewBuffer(data), true); err != nil {
+	if err := s.store.WriteStream(akKey, bytes.NewBuffer(data), true); err != nil {
 		return fmt.Errorf("error writing AK to disk: %w", err)
 	}
 	return nil
@@ -178,7 +194,7 @@ func (s *Dirstore) AddAK(ak *AK) error {
 func (s *Dirstore) DeleteAK(name string) error {
 	key := keyForAK(name)
 	if !s.store.Has(key) {
-		return nil
+		return ErrNotFound
 	}
 	if err := s.store.Erase(key); err != nil {
 		return fmt.Errorf("error deleting AK from disk: %w", err)

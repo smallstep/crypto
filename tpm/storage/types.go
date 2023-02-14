@@ -31,18 +31,18 @@ const (
 )
 
 type serializedAK struct {
-	Name      string
-	Type      tpmObjectType
-	Data      []byte
-	CreatedAt time.Time
+	Name      string        `json:"name"`
+	Type      tpmObjectType `json:"type"`
+	Data      []byte        `json:"data"`
+	CreatedAt time.Time     `json:"createdAt"`
 }
 
 type serializedKey struct {
-	Name       string
-	Type       tpmObjectType
-	Data       []byte
-	AttestedBy string
-	CreatedAt  time.Time
+	Name       string        `json:"name"`
+	Type       tpmObjectType `json:"type"`
+	Data       []byte        `json:"data"`
+	AttestedBy string        `json:"attestedBy"`
+	CreatedAt  time.Time     `json:"createdAt"`
 }
 
 func keyForKey(name string) string {

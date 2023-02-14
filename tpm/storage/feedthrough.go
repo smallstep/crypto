@@ -22,7 +22,7 @@ func (f *FeedthroughStore) ListKeys() ([]*Key, error) {
 
 func (f *FeedthroughStore) ListKeyNames() []string {
 	if f.store == nil {
-		return nil
+		return []string{}
 	}
 	return f.store.ListKeyNames()
 }
@@ -57,7 +57,7 @@ func (f *FeedthroughStore) ListAKs() ([]*AK, error) {
 
 func (f *FeedthroughStore) ListAKNames() []string {
 	if f.store == nil {
-		return nil
+		return []string{}
 	}
 	return f.store.ListAKNames()
 }

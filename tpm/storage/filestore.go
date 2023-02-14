@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -28,16 +29,38 @@ func NewFilestore(filepath string) *Filestore {
 }
 
 func (s *Filestore) AddKey(k *Key) error {
-	return s.store.Set(keyForKey(k.Name), serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, CreatedAt: k.CreatedAt})
+	kk := keyForKey(k.Name)
+	if err := s.store.Get(kk, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return s.store.Set(kk, serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, CreatedAt: k.CreatedAt})
+		}
+		return err
+	}
+
+	return ErrExists
 }
 
 func (s *Filestore) AddAK(ak *AK) error {
-	return s.store.Set(keyForAK(ak.Name), serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, CreatedAt: ak.CreatedAt})
+	ka := keyForAK(ak.Name)
+	if err := s.store.Get(ka, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return s.store.Set(ka, serializedAK{Name: ak.Name, Type: typeKey, Data: ak.Data, CreatedAt: ak.CreatedAt})
+		}
+		return err
+	}
+
+	return ErrExists
 }
 
 func (s *Filestore) GetKey(name string) (*Key, error) {
 	sk := &serializedKey{}
 	if err := s.store.Get(keyForKey(name), sk); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -47,6 +70,10 @@ func (s *Filestore) GetKey(name string) (*Key, error) {
 func (s *Filestore) GetAK(name string) (*AK, error) {
 	ak := &serializedAK{}
 	if err := s.store.Get(keyForAK(name), ak); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -54,12 +81,30 @@ func (s *Filestore) GetAK(name string) (*AK, error) {
 }
 
 func (s *Filestore) DeleteKey(name string) error {
-	s.store.Delete(keyForKey(name))
+	kk := keyForKey(name)
+	if err := s.store.Get(kk, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	s.store.Delete(kk)
 	return nil
 }
 
 func (s *Filestore) DeleteAK(name string) error {
-	s.store.Delete(keyForAK(name))
+	ka := keyForAK(name)
+	if err := s.store.Get(ka, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	s.store.Delete(ka)
 	return nil
 }
 
@@ -123,7 +168,7 @@ func (s *Filestore) Persist() error {
 
 func (s *Filestore) Load() error {
 	store, err := jsonstore.Open(s.filepath)
-	if err != nil { // TODO: handle different types of errors related to file system
+	if err != nil { // TODO: handle different types of errors related to file system?
 		store = new(jsonstore.JSONStore)
 	}
 	s.store = store
