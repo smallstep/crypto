@@ -3,6 +3,7 @@ package tpm
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"time"
 
@@ -46,6 +47,10 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 		name = fmt.Sprintf("%x", nameHex)
 	}
 
+	if _, err := t.store.GetAK(name); err == nil {
+		return result, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
+	}
+
 	akConfig := attest.AKConfig{
 		Name: fmt.Sprintf("ak-%s", name),
 	}
@@ -67,11 +72,11 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 	}
 
 	if err := t.store.AddAK(storedAK); err != nil {
-		return result, fmt.Errorf("failed adding AK: %w", err)
+		return result, fmt.Errorf("failed adding AK %q: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return result, fmt.Errorf("failed persisting AK: %w", err)
+		return result, fmt.Errorf("failed persisting AK %q: %w", name, err)
 	}
 
 	return AK{Name: storedAK.Name, Data: storedAK.Data, CreatedAt: now, tpm: t}, nil
@@ -86,6 +91,9 @@ func (t *TPM) GetAK(ctx context.Context, name string) (AK, error) {
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return result, ErrNotFound
+		}
 		return result, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
@@ -125,15 +133,18 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
-		return fmt.Errorf("failed loading AK: %w", err)
+		if errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("failed loading AK %q: %w", name, ErrNotFound)
+		}
+		return fmt.Errorf("failed loading AK %q: %w", name, err)
 	}
 
 	if err := at.DeleteKey(ak.Data); err != nil {
-		return fmt.Errorf("failed deleting AK: %w", err)
+		return fmt.Errorf("failed deleting AK %q: %w", name, err)
 	}
 
 	if err := t.store.DeleteAK(name); err != nil {
-		return fmt.Errorf("failed deleting AK from storage: %w", err)
+		return fmt.Errorf("failed deleting AK %q from storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
@@ -159,7 +170,7 @@ func (ak AK) AttestationParameters(ctx context.Context) (params attest.Attestati
 
 	loadedAK, err := at.LoadAK(ak.Data)
 	if err != nil {
-		return params, fmt.Errorf("failed loading AK: %w", err)
+		return params, fmt.Errorf("failed loading AK %q: %w", ak.Name, err)
 	}
 	defer loadedAK.Close(at)
 
@@ -189,7 +200,7 @@ func (ak AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (se
 
 	loadedAK, err := at.LoadAK(ak.Data)
 	if err != nil {
-		return secret, fmt.Errorf("failed loading AK: %w", err)
+		return secret, fmt.Errorf("failed loading AK %q: %w", ak.Name, err)
 	}
 	defer loadedAK.Close(at)
 

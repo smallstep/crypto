@@ -84,7 +84,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 	// an arbitrary limit, so that we don't start making a huge number of HTTP requests (if needed)
 	maxNumberOfEKs := 10
 	if len(eks) > maxNumberOfEKs {
-		return nil, fmt.Errorf("number of EKs (%d) passed the maximum allowed %d", len(eks), maxNumberOfEKs)
+		return nil, fmt.Errorf("number of EKs (%d) bigger than the maximum allowed %d", len(eks), maxNumberOfEKs)
 	}
 
 	result := make([]EK, 0, len(eks))

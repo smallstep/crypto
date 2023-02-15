@@ -62,15 +62,17 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		name = fmt.Sprintf("%x", nameHex)
 	}
 
-	prefixedKeyName := fmt.Sprintf("app-%s", name)
+	if _, err := t.store.GetKey(name); err == nil {
+		return result, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
+	}
 
 	createConfig := internalkey.CreateConfig{
 		Algorithm: config.Algorithm,
 		Size:      config.Size,
 	}
-	data, err := internalkey.Create(t.deviceName, prefixedKeyName, createConfig)
+	data, err := internalkey.Create(t.deviceName, fmt.Sprintf("app-%s", name), createConfig)
 	if err != nil {
-		return result, fmt.Errorf("failed creating key: %w", err)
+		return result, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
 	storedKey := &storage.Key{
@@ -80,11 +82,11 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	if err := t.store.AddKey(storedKey); err != nil {
-		return result, fmt.Errorf("failed adding key to storage: %w", err)
+		return result, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return result, fmt.Errorf("failed persisting key to storage: %w", err)
+		return result, fmt.Errorf("failed persisting key %q to storage: %w", name, err)
 	}
 
 	return Key{Name: storedKey.Name, Data: storedKey.Data, CreatedAt: now, tpm: t}, nil
@@ -111,6 +113,18 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	now := time.Now()
 
+	if name == "" {
+		nameHex := make([]byte, 5)
+		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
+			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
+		}
+		name = fmt.Sprintf("%x", nameHex)
+	}
+
+	if _, err := t.store.GetKey(name); err == nil {
+		return result, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
+	}
+
 	ak, err := t.store.GetAK(akName)
 	if err != nil {
 		return result, fmt.Errorf("failed getting AK %q: %w", akName, err)
@@ -122,32 +136,22 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 	defer loadedAK.Close(at)
 
-	if name == "" {
-		nameHex := make([]byte, 5)
-		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
-		}
-		name = fmt.Sprintf("%x", nameHex)
-	}
-
-	prefixedKeyName := fmt.Sprintf("app-%s", name)
-
 	keyConfig := &attest.KeyConfig{
 		Algorithm:      attest.Algorithm(config.Algorithm),
 		Size:           config.Size,
 		QualifyingData: config.QualifyingData,
-		Name:           prefixedKeyName,
+		Name:           fmt.Sprintf("app-%s", name),
 	}
 
 	key, err := at.NewKey(loadedAK, keyConfig)
 	if err != nil {
-		return result, fmt.Errorf("failed creating key: %w", err)
+		return result, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 	defer key.Close()
 
 	data, err := key.Marshal()
 	if err != nil {
-		return result, fmt.Errorf("failed marshaling key: %w", err)
+		return result, fmt.Errorf("failed marshaling key %q: %w", name, err)
 	}
 
 	storedKey := &storage.Key{
@@ -158,7 +162,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 
 	if err := t.store.AddKey(storedKey); err != nil {
-		return result, fmt.Errorf("failed adding key to storage: %w", err)
+		return result, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
@@ -177,6 +181,9 @@ func (t *TPM) GetKey(ctx context.Context, name string) (Key, error) {
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return result, fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
+		}
 		return result, fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
@@ -216,18 +223,21 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		return fmt.Errorf("failed loading key: %w", err)
+		if errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
+		}
+		return fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
 	// TODO: catch case when named key isn't found; tpm.GetKey returns nil in that case,
 	// resulting in a nil pointer. Need an ErrNotFound like type from the storage layer and appropriate
 	// handling?
 	if err := at.DeleteKey(key.Data); err != nil {
-		return fmt.Errorf("failed deleting key: %w", err)
+		return fmt.Errorf("failed deleting key %q: %w", name, err)
 	}
 
 	if err := t.store.DeleteKey(name); err != nil {
-		return fmt.Errorf("failed deleting key from storage: %w", err)
+		return fmt.Errorf("failed deleting key %q from storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
@@ -275,7 +285,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 	var signer crypto.Signer
 	var ok bool
 	if signer, ok = priv.(crypto.Signer); !ok {
-		return nil, errors.New("failed getting TPM private key as crypto.Signer")
+		return nil, fmt.Errorf("failed getting TPM private key %q as crypto.Signer", s.key.Name)
 	}
 
 	return signer.Sign(rand, digest, opts)
@@ -296,6 +306,9 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error)
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
+		}
 		return nil, err
 	}
 
@@ -333,7 +346,7 @@ func (k Key) CertificationParameters(ctx context.Context) (params attest.Certifi
 
 	loadedKey, err := at.LoadKey(k.Data)
 	if err != nil {
-		return attest.CertificationParameters{}, fmt.Errorf("failed loading key: %w", err)
+		return attest.CertificationParameters{}, fmt.Errorf("failed loading key %q: %w", k.Name, err)
 	}
 	defer loadedKey.Close()
 
