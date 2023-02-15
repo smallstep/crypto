@@ -50,14 +50,14 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	now := time.Now()
 
 	if name == "" {
 		nameHex := make([]byte, 5)
 		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
+			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
@@ -80,11 +80,11 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	if err := t.store.AddKey(storedKey); err != nil {
-		return result, fmt.Errorf("error adding key to storage: %w", err)
+		return result, fmt.Errorf("failed adding key to storage: %w", err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return result, fmt.Errorf("error persisting to storage: %w", err)
+		return result, fmt.Errorf("failed persisting key to storage: %w", err)
 	}
 
 	return Key{Name: storedKey.Name, Data: storedKey.Data, CreatedAt: now, tpm: t}, nil
@@ -101,7 +101,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {
@@ -113,19 +113,19 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	ak, err := t.store.GetAK(akName)
 	if err != nil {
-		return result, fmt.Errorf("error getting AK %q: %w", akName, err)
+		return result, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
 
 	loadedAK, err := at.LoadAK(ak.Data)
 	if err != nil {
-		return result, fmt.Errorf("error loading AK %q: %w", akName, err)
+		return result, fmt.Errorf("failed loading AK %q: %w", akName, err)
 	}
 	defer loadedAK.Close(at)
 
 	if name == "" {
 		nameHex := make([]byte, 5)
 		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
+			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
@@ -141,13 +141,13 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	key, err := at.NewKey(loadedAK, keyConfig)
 	if err != nil {
-		return result, fmt.Errorf("error creating key: %w", err)
+		return result, fmt.Errorf("failed creating key: %w", err)
 	}
 	defer key.Close()
 
 	data, err := key.Marshal()
 	if err != nil {
-		return result, fmt.Errorf("error marshaling key: %w", err)
+		return result, fmt.Errorf("failed marshaling key: %w", err)
 	}
 
 	storedKey := &storage.Key{
@@ -158,11 +158,11 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 
 	if err := t.store.AddKey(storedKey); err != nil {
-		return result, fmt.Errorf("error adding key to storage: %w", err)
+		return result, fmt.Errorf("failed adding key to storage: %w", err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return result, fmt.Errorf("error persisting to storage: %w", err)
+		return result, fmt.Errorf("failed persisting to storage: %w", err)
 	}
 
 	return Key{Name: storedKey.Name, Data: storedKey.Data, AttestedBy: akName, CreatedAt: now, tpm: t}, nil
@@ -173,11 +173,11 @@ func (t *TPM) GetKey(ctx context.Context, name string) (Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		return result, fmt.Errorf("error getting Key %q: %w", name, err)
+		return result, fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
 	return Key{Name: key.Name, Data: key.Data, AttestedBy: key.AttestedBy, CreatedAt: key.CreatedAt, tpm: t}, nil
@@ -187,11 +187,11 @@ func (t *TPM) ListKeys(ctx context.Context) ([]Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	keys, err := t.store.ListKeys()
 	if err != nil {
-		return nil, fmt.Errorf("error listing keys: %w", err)
+		return nil, fmt.Errorf("failed listing keys: %w", err)
 	}
 
 	result := make([]Key, 0, len(keys))
@@ -206,7 +206,7 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 	if err := t.Open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {
@@ -227,11 +227,11 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 	}
 
 	if err := t.store.DeleteKey(name); err != nil {
-		return fmt.Errorf("error deleting key from storage: %w", err)
+		return fmt.Errorf("failed deleting key from storage: %w", err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return fmt.Errorf("error persisting storage: %w", err)
+		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
 	return nil
@@ -253,7 +253,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 	if err := s.tpm.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer s.tpm.Close(ctx, false)
+	defer s.tpm.Close(ctx)
 
 	at, err := attest.OpenTPM(s.tpm.attestConfig)
 	if err != nil {
@@ -275,7 +275,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 	var signer crypto.Signer
 	var ok bool
 	if signer, ok = priv.(crypto.Signer); !ok {
-		return nil, errors.New("error getting TPM private key as crypto.Signer")
+		return nil, errors.New("failed getting TPM private key as crypto.Signer")
 	}
 
 	return signer.Sign(rand, digest, opts)
@@ -286,7 +286,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error)
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {
@@ -323,7 +323,7 @@ func (k Key) CertificationParameters(ctx context.Context) (params attest.Certifi
 	if err := k.tpm.Open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer k.tpm.Close(ctx, false)
+	defer k.tpm.Close(ctx)
 
 	at, err := attest.OpenTPM(k.tpm.attestConfig)
 	if err != nil {

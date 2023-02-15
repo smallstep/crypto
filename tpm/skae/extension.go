@@ -28,7 +28,7 @@ func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, para
 
 	skaeExtension := asn1SKAE{
 		TCGSpecVersion:         asn1TCGSpecVersion{Major: 2, Minor: 0},
-		KeyAttestationEvidence: asn1KeyAttestationEvidence{}, // TODO: this requires a choice to be encoded; normal vs enveloped},
+		KeyAttestationEvidence: asn1KeyAttestationEvidence{},
 	}
 
 	attestationEvidence := asn1AttestationEvidence{
@@ -42,7 +42,7 @@ func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, para
 				BitLength: len(params.CreateSignature) * 8,
 			},
 		},
-		TPMIdentityCredAccessInfo: asn1TPMIdentityCredentialAccessInfo{ // TODO: this should contain information from the AIK/AK cert. See x509.go on how to handle these values.
+		TPMIdentityCredAccessInfo: asn1TPMIdentityCredentialAccessInfo{
 			AuthorityInfoAccess: createAIA(akCert),
 			IssuerSerial: issuerAndSerial{
 				IssuerName:   asn1.RawValue{FullBytes: asn1Issuer},
@@ -99,8 +99,6 @@ func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, para
 	if err != nil {
 		return pkix.Extension{}, fmt.Errorf("creating SKAE extension failed: %w", err)
 	}
-
-	//skaeExtensionBytes := []byte{}
 
 	result := pkix.Extension{
 		Id:       oidSubjectKeyAttestationEvidence,

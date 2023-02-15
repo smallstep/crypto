@@ -24,7 +24,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {
@@ -41,15 +41,13 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 		// to be far, isn't even used on Linux TPMs)
 		nameHex := make([]byte, 5)
 		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("rand.Read() failed with %d/%d bytes read and error: %w", n, len(nameHex), err)
+			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
 		}
 		name = fmt.Sprintf("%x", nameHex)
 	}
 
-	prefixedName := fmt.Sprintf("ak-%s", name)
-
 	akConfig := attest.AKConfig{
-		Name: prefixedName,
+		Name: fmt.Sprintf("ak-%s", name),
 	}
 	ak, err := at.NewAK(&akConfig)
 	if err != nil {
@@ -69,11 +67,11 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 	}
 
 	if err := t.store.AddAK(storedAK); err != nil {
-		return result, err
+		return result, fmt.Errorf("failed adding AK: %w", err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return result, err
+		return result, fmt.Errorf("failed persisting AK: %w", err)
 	}
 
 	return AK{Name: storedAK.Name, Data: storedAK.Data, CreatedAt: now, tpm: t}, nil
@@ -84,11 +82,11 @@ func (t *TPM) GetAK(ctx context.Context, name string) (AK, error) {
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
-		return result, fmt.Errorf("error getting AK %q: %w", name, err)
+		return result, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
 	return AK{Name: ak.Name, Data: ak.Data, CreatedAt: ak.CreatedAt, tpm: t}, nil
@@ -98,11 +96,11 @@ func (t *TPM) ListAKs(ctx context.Context) ([]AK, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	aks, err := t.store.ListAKs()
 	if err != nil {
-		return nil, fmt.Errorf("error listing AKs: %w", err)
+		return nil, fmt.Errorf("failed listing AKs: %w", err)
 	}
 
 	result := make([]AK, 0, len(aks))
@@ -117,7 +115,7 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 	if err := t.Open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {
@@ -130,19 +128,16 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 		return fmt.Errorf("failed loading AK: %w", err)
 	}
 
-	// TODO: catch case when named AK isn't found; tpm.GetAK returns nil in that case,
-	// resulting in a nil pointer. Need an ErrNotFound like type from the storage layer and appropriate
-	// handling?
 	if err := at.DeleteKey(ak.Data); err != nil {
 		return fmt.Errorf("failed deleting AK: %w", err)
 	}
 
 	if err := t.store.DeleteAK(name); err != nil {
-		return fmt.Errorf("error deleting AK from storage: %w", err)
+		return fmt.Errorf("failed deleting AK from storage: %w", err)
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return fmt.Errorf("error persisting storage: %w", err)
+		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
 	return nil
@@ -154,7 +149,7 @@ func (ak AK) AttestationParameters(ctx context.Context) (params attest.Attestati
 	if err := ak.tpm.Open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer ak.tpm.Close(ctx, false)
+	defer ak.tpm.Close(ctx)
 
 	at, err := attest.OpenTPM(ak.tpm.attestConfig)
 	if err != nil {
@@ -184,7 +179,7 @@ func (ak AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (se
 	if err := ak.tpm.Open(ctx); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer ak.tpm.Close(ctx, false)
+	defer ak.tpm.Close(ctx)
 
 	at, err := attest.OpenTPM(ak.tpm.attestConfig)
 	if err != nil {

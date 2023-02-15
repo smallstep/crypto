@@ -1,6 +1,7 @@
 package tpm
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -28,16 +29,16 @@ func (ek EK) MarshalJSON() ([]byte, error) {
 		PEM  string `json:"pem,omitempty"`
 		URL  string `json:"url,omitempty"`
 	}
-	var pemBytes []byte
+	var pemString string
+	var err error
 	if ek.Certificate != nil {
-		pemBytes = pem.EncodeToMemory(&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: ek.Certificate.Raw,
-		})
+		if pemString, err = ek.PEM(); err != nil {
+			return nil, err
+		}
 	}
 	o := out{
-		Type: fmt.Sprintf("%T", ek.Public), // TODO: proper string; on EK struct
-		PEM:  string(pemBytes),
+		Type: fmt.Sprintf("%T", ek.Public), // TODO: proper description string; on EK struct
+		PEM:  pemString,
 		URL:  ek.CertificateURL,
 	}
 	return json.Marshal(o)
@@ -45,12 +46,17 @@ func (ek EK) MarshalJSON() ([]byte, error) {
 
 func (ek EK) PEM() (string, error) {
 	if ek.Certificate == nil {
-		return "", fmt.Errorf("EK %T does not have a certificate", ek)
+		return "", fmt.Errorf("EK %T does not have a certificate", ek) // TODO: proper string for the type of EK
 	}
-	return string(pem.EncodeToMemory(&pem.Block{
+	var buf bytes.Buffer
+	if err := pem.Encode(&buf, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: ek.Certificate.Raw,
-	})), nil
+	}); err != nil {
+		return "", fmt.Errorf("failed encoding EK certificate to PEM: %w", err)
+	}
+
+	return buf.String(), nil
 }
 
 type intelEKCertResponse struct {
@@ -62,7 +68,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	at, err := attest.OpenTPM(t.attestConfig)
 	if err != nil {

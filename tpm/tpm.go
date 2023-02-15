@@ -61,14 +61,6 @@ func (t *TPM) Open(ctx context.Context) error {
 	return nil
 }
 
-func (t *TPM) Close(ctx context.Context, shouldPersist bool) error {
-	if shouldPersist {
-		if err := t.store.Persist(); err != nil {
-			return err
-		}
-	}
-
+func (t *TPM) Close(ctx context.Context) {
 	t.lock.Unlock()
-
-	return nil
 }

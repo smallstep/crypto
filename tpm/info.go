@@ -30,7 +30,7 @@ func (t *TPM) Info(ctx context.Context) (Info, error) {
 	if err := t.Open(ctx); err != nil {
 		return result, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx, false)
+	defer t.Close(ctx)
 
 	a, err := attest.OpenTPM(t.attestConfig) // TODO: add layer of abstraction here, to ease testing?
 	if err != nil {
