@@ -3,7 +3,6 @@ package tpm
 import (
 	"context"
 	"crypto"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -54,12 +53,9 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 
 	now := time.Now()
 
-	if name == "" {
-		nameHex := make([]byte, 5)
-		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
-		}
-		name = fmt.Sprintf("%x", nameHex)
+	var err error
+	if name, err = processName(name); err != nil {
+		return result, err
 	}
 
 	if _, err := t.store.GetKey(name); err == nil {
@@ -113,12 +109,8 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	now := time.Now()
 
-	if name == "" {
-		nameHex := make([]byte, 5)
-		if n, err := crand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
-		}
-		name = fmt.Sprintf("%x", nameHex)
+	if name, err = processName(name); err != nil {
+		return result, err
 	}
 
 	if _, err := t.store.GetKey(name); err == nil {

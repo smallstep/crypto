@@ -2,7 +2,6 @@ package tpm
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
@@ -35,16 +34,8 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (AK, error) {
 
 	now := time.Now()
 
-	if name == "" {
-		// TODO: decouple the TPM key name from the name recorded in the storage? This might
-		// make it easier to work with the key names as a user; the TPM key name would be abstracted
-		// away. The key name in the storage can be different from the key stored with the key (which,
-		// to be far, isn't even used on Linux TPMs)
-		nameHex := make([]byte, 5)
-		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return result, fmt.Errorf("failed reading from CSPRNG: %w", err)
-		}
-		name = fmt.Sprintf("%x", nameHex)
+	if name, err = processName(name); err != nil {
+		return result, err
 	}
 
 	if _, err := t.store.GetAK(name); err == nil {
