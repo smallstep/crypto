@@ -143,8 +143,18 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 		return fmt.Errorf("failed loading AK %q: %w", name, err)
 	}
 
-	// TODO(hs): add check to verify there are no Keys that were attested by this AK
-	// Block deleting the AK if that's the case.
+	// prevent deleting the AK if the TPM (storage) contains keys that
+	// were attested by it. While keys would still work if the AK were
+	// deleted, some functionalities would no longer work. The AK can
+	// only be deleted if all keys attested by it are deleted first.
+	keys, err := t.GetKeysAttestedBy(internalCall(ctx), name)
+	if err != nil {
+		return fmt.Errorf("failed getting keys attested by AK %q: %w", name, err)
+	}
+
+	if len(keys) > 0 {
+		return fmt.Errorf("cannot delete AK %q before deleting keys that were attested by it", name)
+	}
 
 	if err := at.DeleteKey(ak.Data); err != nil {
 		return fmt.Errorf("failed deleting AK %q: %w", name, err)

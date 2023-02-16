@@ -212,6 +212,27 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 	return &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t}, nil
 }
 
+func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, error) {
+	if err := t.Open(ctx); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer t.Close(ctx)
+
+	keys, err := t.store.ListKeys()
+	if err != nil {
+		return nil, fmt.Errorf("failed listing keys: %w", err)
+	}
+
+	result := make([]*Key, 0, len(keys))
+	for _, key := range keys {
+		if key.AttestedBy == akName {
+			result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
+		}
+	}
+
+	return result, nil
+}
+
 func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
