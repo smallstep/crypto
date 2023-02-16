@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,32 +21,7 @@ func (id ID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strconv.FormatUint(uint64(id), 10))
 }
 
-// Manufacturer models a TPM Manufacturer.
-type Manufacturer struct {
-	ID    ID     `json:"id"`
-	Name  string `json:"name"`
-	ASCII string `json:"ascii"`
-	Hex   string `json:"hex"`
-}
-
-func (m Manufacturer) String() string {
-	return fmt.Sprintf("%s (%s, %s, %d)", m.Name, m.ASCII, m.Hex, m.ID)
-}
-
-// GetByID returns a Manufacturer based on its Manufacturer ID
-// code.
-func GetByID(id ID) Manufacturer {
-	ascii, hexa := getManufacturerEncodings(id)
-	name := getManufacturerNameByASCII(ascii)
-	return Manufacturer{
-		Name:  name,
-		ASCII: ascii,
-		ID:    id,
-		Hex:   hexa,
-	}
-}
-
-func getManufacturerEncodings(id ID) (ascii, hexa string) {
+func GetEncodings(id ID) (ascii, hexa string) {
 	b := [4]byte{}
 	binary.BigEndian.PutUint32(b[:], uint32(id))
 	ascii = string(b[:])
@@ -57,7 +31,7 @@ func getManufacturerEncodings(id ID) (ascii, hexa string) {
 	return
 }
 
-func getManufacturerNameByASCII(ascii string) string {
+func GetNameByASCII(ascii string) string {
 	if name, ok := manufacturerByASCII[ascii]; ok {
 		return name
 	}

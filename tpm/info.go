@@ -11,11 +11,11 @@ import (
 )
 
 type Info struct {
-	Version         Version                   `json:"version"`
-	Interface       Interface                 `json:"interface"`
-	Manufacturer    manufacturer.Manufacturer `json:"manufacturer"`
-	VendorInfo      string                    `json:"vendorInfo,omitempty"`
-	FirmwareVersion FirmwareVersion           `json:"firmwareVersion,omitempty"`
+	Version         Version         `json:"version"`
+	Interface       Interface       `json:"interface"`
+	Manufacturer    Manufacturer    `json:"manufacturer"`
+	VendorInfo      string          `json:"vendorInfo,omitempty"`
+	FirmwareVersion FirmwareVersion `json:"firmwareVersion,omitempty"`
 }
 
 type Version attest.TPMVersion
@@ -79,6 +79,31 @@ func (fv FirmwareVersion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fv.String())
 }
 
+// Manufacturer models a TPM Manufacturer.
+type Manufacturer struct {
+	ID    manufacturer.ID `json:"id"`
+	Name  string          `json:"name"`
+	ASCII string          `json:"ascii"`
+	Hex   string          `json:"hex"`
+}
+
+func (m Manufacturer) String() string {
+	return fmt.Sprintf("%s (%s, %s, %d)", m.Name, m.ASCII, m.Hex, m.ID)
+}
+
+// GetManufacturerByID returns a Manufacturer based on its Manufacturer ID
+// code.
+func GetManufacturerByID(id manufacturer.ID) Manufacturer {
+	ascii, hexa := manufacturer.GetEncodings(id)
+	name := manufacturer.GetNameByASCII(ascii)
+	return Manufacturer{
+		Name:  name,
+		ASCII: ascii,
+		ID:    id,
+		Hex:   hexa,
+	}
+}
+
 func (t *TPM) Info(ctx context.Context) (Info, error) {
 	result := Info{}
 	if err := t.Open(ctx); err != nil {
@@ -102,7 +127,7 @@ func (t *TPM) Info(ctx context.Context) (Info, error) {
 		Minor: info.FirmwareVersionMinor,
 	}
 	result.Interface = Interface(info.Interface)
-	result.Manufacturer = manufacturer.GetByID(manufacturer.ID(info.Manufacturer))
+	result.Manufacturer = GetManufacturerByID(manufacturer.ID(info.Manufacturer))
 	result.VendorInfo = info.VendorInfo
 	result.Version = Version(info.Version)
 
