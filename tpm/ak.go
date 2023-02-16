@@ -2,6 +2,7 @@ package tpm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -32,6 +33,20 @@ func (ak *AK) Data() []byte {
 // CreatedAt returns the creation time of the AK.
 func (ak *AK) CreatedAt() time.Time {
 	return ak.createdAt
+}
+
+func (ak *AK) MarshalJSON() ([]byte, error) {
+	type out struct {
+		Name      string    `json:"name"`
+		Data      []byte    `json:"data"`
+		CreatedAt time.Time `json:"createdAt"`
+	}
+	o := out{
+		Name:      ak.name,
+		Data:      ak.data,
+		CreatedAt: ak.createdAt,
+	}
+	return json.Marshal(o)
 }
 
 func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {

@@ -3,6 +3,7 @@ package tpm
 import (
 	"context"
 	"crypto"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -53,6 +54,22 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 // CreatedAt returns the the creation time of the Key.
 func (k *Key) CreatedAt() time.Time {
 	return k.createdAt
+}
+
+func (k *Key) MarshalJSON() ([]byte, error) {
+	type out struct {
+		Name       string    `json:"name"`
+		Data       []byte    `json:"data"`
+		AttestedBy string    `json:"attestedBy,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
+	}
+	o := out{
+		Name:       k.name,
+		Data:       k.data,
+		AttestedBy: k.attestedBy,
+		CreatedAt:  k.createdAt,
+	}
+	return json.Marshal(o)
 }
 
 type CreateKeyConfig struct {
@@ -212,6 +229,25 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 	return &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t}, nil
 }
 
+func (t *TPM) GetKeys(ctx context.Context) ([]*Key, error) {
+	if err := t.Open(ctx); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer t.Close(ctx)
+
+	keys, err := t.store.ListKeys()
+	if err != nil {
+		return nil, fmt.Errorf("failed listing keys: %w", err)
+	}
+
+	result := make([]*Key, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
+	}
+
+	return result, nil
+}
+
 func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -228,25 +264,6 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, err
 		if key.AttestedBy == akName {
 			result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
 		}
-	}
-
-	return result, nil
-}
-
-func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
-	if err := t.Open(ctx); err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer t.Close(ctx)
-
-	keys, err := t.store.ListKeys()
-	if err != nil {
-		return nil, fmt.Errorf("failed listing keys: %w", err)
-	}
-
-	result := make([]*Key, 0, len(keys))
-	for _, key := range keys {
-		result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
 	}
 
 	return result, nil
