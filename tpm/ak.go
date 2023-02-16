@@ -57,7 +57,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
 	}
 
 	akConfig := attest.AKConfig{
-		Name: fmt.Sprintf("ak-%s", name),
+		Name: prefixAK(name),
 	}
 	ak, err := at.NewAK(&akConfig)
 	if err != nil {
@@ -142,6 +142,9 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 		}
 		return fmt.Errorf("failed loading AK %q: %w", name, err)
 	}
+
+	// TODO(hs): add check to verify there are no Keys that were attested by this AK
+	// Block deleting the AK if that's the case.
 
 	if err := at.DeleteKey(ak.Data); err != nil {
 		return fmt.Errorf("failed deleting AK %q: %w", name, err)

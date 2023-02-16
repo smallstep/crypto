@@ -2,18 +2,67 @@ package tpm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/go-attestation/attest"
+
 	"go.step.sm/crypto/tpm/manufacturer"
 )
 
 type Info struct {
-	Version         uint8 // TODO: alias the `attest` types instead?
-	Interface       uint8
-	VendorInfo      string
-	Manufacturer    manufacturer.Manufacturer
-	FirmwareVersion FirmwareVersion
+	Version         Version                   `json:"version"`
+	Interface       Interface                 `json:"interface"`
+	Manufacturer    manufacturer.Manufacturer `json:"manufacturer"`
+	VendorInfo      string                    `json:"vendorInfo,omitempty"`
+	FirmwareVersion FirmwareVersion           `json:"firmwareVersion,omitempty"`
+}
+
+type Version attest.TPMVersion
+
+func (v Version) String() string {
+	switch v {
+	case Version(attest.TPMVersion12):
+		return "TPM 1.2"
+	case Version(attest.TPMVersion20):
+		return "TPM 2.0"
+	default:
+		return "unknown"
+	}
+}
+
+func (v Version) MarshalJSON() ([]byte, error) {
+	var s string
+	switch v {
+	case Version(attest.TPMVersion12):
+		s = "1.2"
+	case Version(attest.TPMVersion20):
+		s = "2.0"
+	default:
+		s = "unknown"
+	}
+	return json.Marshal(s)
+}
+
+type Interface attest.TPMInterface
+
+func (i Interface) String() string {
+	switch i {
+	case Interface(attest.TPMInterfaceDirect):
+		return "direct"
+	case Interface(attest.TPMInterfaceKernelManaged):
+		return "kernel-managed"
+	case Interface(attest.TPMInterfaceDaemonManaged):
+		return "daemon-managed"
+	case Interface(attest.TPMInterfaceCommandChannel):
+		return "command-channel"
+	default:
+		return "unknown"
+	}
+}
+
+func (i Interface) MarshalJSON() ([]byte, error) {
+	return json.Marshal(i.String())
 }
 
 type FirmwareVersion struct {
@@ -23,6 +72,11 @@ type FirmwareVersion struct {
 
 func (fv FirmwareVersion) String() string {
 	return fmt.Sprintf("%d.%d", fv.Major, fv.Minor)
+}
+
+func (fv FirmwareVersion) MarshalJSON() ([]byte, error) {
+	// TODO(hs): make empty if major.minor is 0.0?
+	return json.Marshal(fv.String())
 }
 
 func (t *TPM) Info(ctx context.Context) (Info, error) {
@@ -47,10 +101,10 @@ func (t *TPM) Info(ctx context.Context) (Info, error) {
 		Major: info.FirmwareVersionMajor,
 		Minor: info.FirmwareVersionMinor,
 	}
-	result.Interface = uint8(info.Interface)
+	result.Interface = Interface(info.Interface)
 	result.Manufacturer = manufacturer.GetByID(manufacturer.ID(info.Manufacturer))
 	result.VendorInfo = info.VendorInfo
-	result.Version = uint8(info.Version)
+	result.Version = Version(info.Version)
 
 	return result, nil
 }

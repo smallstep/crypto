@@ -3,8 +3,10 @@ package manufacturer
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -16,12 +18,16 @@ var (
 // ID models a TPM Manufacturer (or Vendor) ID.
 type ID uint32
 
+func (id ID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(strconv.FormatUint(uint64(id), 10))
+}
+
 // Manufacturer models a TPM Manufacturer.
 type Manufacturer struct {
-	ID    ID
-	Name  string
-	ASCII string
-	Hex   string
+	ID    ID     `json:"id"`
+	Name  string `json:"name"`
+	ASCII string `json:"ascii"`
+	Hex   string `json:"hex"`
 }
 
 func (m Manufacturer) String() string {

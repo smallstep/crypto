@@ -98,7 +98,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		Algorithm: config.Algorithm,
 		Size:      config.Size,
 	}
-	data, err := internalkey.Create(t.deviceName, fmt.Sprintf("app-%s", name), createConfig)
+	data, err := internalkey.Create(t.deviceName, prefixKey(name), createConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
@@ -163,7 +163,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		Algorithm:      attest.Algorithm(config.Algorithm),
 		Size:           config.Size,
 		QualifyingData: config.QualifyingData,
-		Name:           fmt.Sprintf("app-%s", name),
+		Name:           prefixKey(name),
 	}
 
 	key, err := at.NewKey(loadedAK, keyConfig)

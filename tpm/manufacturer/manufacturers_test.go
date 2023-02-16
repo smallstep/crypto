@@ -1,7 +1,10 @@
 package manufacturer
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_getManufacturerEncodings(t *testing.T) {
@@ -70,4 +73,16 @@ func TestManufacturer_String(t *testing.T) {
 	if got := m.String(); got != want {
 		t.Errorf("Manufacturer.String() = %v, want %v", got, want)
 	}
+}
+
+func TestID_MarshalJSON(t *testing.T) {
+	e := Manufacturer{}
+	b, err := json.Marshal(e)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"ascii":"", "hex":"", "id":"0", "name":""}`, string(b))
+
+	m := Manufacturer{1229346816, "Infineon", "IFX", "49465800"}
+	b, err = json.Marshal(m)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":"1229346816", "name":"Infineon", "ascii":"IFX", "hex":"49465800"}`, string(b))
 }

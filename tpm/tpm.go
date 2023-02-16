@@ -2,8 +2,6 @@ package tpm
 
 import (
 	"context"
-	"crypto/rand"
-	"fmt"
 	"sync"
 
 	"github.com/google/go-attestation/attest"
@@ -65,20 +63,4 @@ func (t *TPM) Open(ctx context.Context) error {
 
 func (t *TPM) Close(ctx context.Context) {
 	t.lock.Unlock()
-}
-
-func processName(name string) (string, error) {
-	if name == "" {
-		// TODO: decouple the TPM key name from the name recorded in the storage? This might
-		// make it easier to work with the key names as a user; the TPM key name would be abstracted
-		// away. The key name in the storage can be different from the key stored with the key (which,
-		// to be far, isn't even used on Linux TPMs)
-		nameHex := make([]byte, 5)
-		if n, err := rand.Read(nameHex); err != nil || n != len(nameHex) {
-			return "", fmt.Errorf("failed reading from CSPRNG: %w", err)
-		}
-		name = fmt.Sprintf("%x", nameHex)
-	}
-
-	return name, nil
 }
