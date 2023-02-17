@@ -18,40 +18,52 @@ import (
 )
 
 type EK struct {
-	Public         crypto.PublicKey
-	Certificate    *x509.Certificate
-	CertificateURL string
+	public         crypto.PublicKey
+	certificate    *x509.Certificate
+	certificateURL string
 }
 
-func (ek EK) MarshalJSON() ([]byte, error) {
-	type out struct {
-		Type string `json:"type"`
-		PEM  string `json:"pem,omitempty"`
-		URL  string `json:"url,omitempty"`
-	}
+func (ek *EK) Public() crypto.PublicKey {
+	return ek.public
+}
+
+func (ek *EK) Certificate() *x509.Certificate {
+	return ek.certificate
+}
+
+func (ek *EK) CertificateURL() string {
+	return ek.certificateURL
+}
+
+func (ek *EK) MarshalJSON() ([]byte, error) {
 	var pemString string
 	var err error
-	if ek.Certificate != nil {
+	if ek.certificate != nil {
 		if pemString, err = ek.PEM(); err != nil {
 			return nil, err
 		}
 	}
-	o := out{
-		Type: fmt.Sprintf("%T", ek.Public), // TODO: proper description string; on EK struct
+	o := struct {
+		Type string `json:"type"`
+		PEM  string `json:"pem,omitempty"`
+		URL  string `json:"url,omitempty"`
+	}{
+		Type: fmt.Sprintf("%T", ek.public), // TODO: proper description string; on EK struct
 		PEM:  pemString,
-		URL:  ek.CertificateURL,
+		URL:  ek.certificateURL,
 	}
+
 	return json.Marshal(o)
 }
 
-func (ek EK) PEM() (string, error) {
-	if ek.Certificate == nil {
+func (ek *EK) PEM() (string, error) {
+	if ek.certificate == nil {
 		return "", fmt.Errorf("EK %T does not have a certificate", ek) // TODO: proper string for the type of EK
 	}
 	var buf bytes.Buffer
 	if err := pem.Encode(&buf, &pem.Block{
 		Type:  "CERTIFICATE",
-		Bytes: ek.Certificate.Raw,
+		Bytes: ek.certificate.Raw,
 	}); err != nil {
 		return "", fmt.Errorf("failed encoding EK certificate to PEM: %w", err)
 	}
@@ -64,7 +76,7 @@ type intelEKCertResponse struct {
 	Certificate string `json:"certificate"`
 }
 
-func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
+func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -87,7 +99,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 		return nil, fmt.Errorf("number of EKs (%d) bigger than the maximum allowed %d", len(eks), maxNumberOfEKs)
 	}
 
-	result := make([]EK, 0, len(eks))
+	result := make([]*EK, 0, len(eks))
 	for _, ek := range eks {
 		ekCert := ek.Certificate
 		ekURL := ek.CertificateURL
@@ -145,10 +157,10 @@ func (t *TPM) GetEKs(ctx context.Context) ([]EK, error) {
 			}
 		}
 
-		result = append(result, EK{
-			Public:         ek.Public,
-			Certificate:    ekCert,
-			CertificateURL: ekURL,
+		result = append(result, &EK{
+			public:         ek.Public,
+			certificate:    ekCert,
+			certificateURL: ekURL,
 		})
 	}
 
