@@ -95,6 +95,8 @@ const (
 	AzureKMS Type = "azurekms"
 	// CAPIKMS
 	CAPIKMS Type = "capi"
+	// TPMKMS
+	TPMKMS Type = "tpmkms"
 )
 
 // Options are the KMS options. They represent the kms object in the ca.json.
