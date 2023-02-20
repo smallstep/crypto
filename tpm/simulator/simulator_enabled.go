@@ -1,3 +1,6 @@
+//go:build tpmsimulator
+// +build tpmsimulator
+
 package simulator
 
 import (
