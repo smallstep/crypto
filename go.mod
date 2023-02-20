@@ -19,7 +19,7 @@ require (
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/crypto v0.6.0
-	golang.org/x/net v0.6.0
+	golang.org/x/net v0.7.0
 	golang.org/x/sys v0.5.0
 	google.golang.org/api v0.110.0
 	google.golang.org/grpc v1.53.0
