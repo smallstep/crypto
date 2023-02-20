@@ -1,6 +1,7 @@
 //go:build cgo
 // +build cgo
 
+//nolint:gocritic // copied package from github.com/google/go-tpm-tools/simulator/internal
 package internal
 
 // // Directories containing .h files in the simulator source

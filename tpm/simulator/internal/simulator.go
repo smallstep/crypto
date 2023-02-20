@@ -15,6 +15,8 @@
  */
 
 // Package simulator provides a go interface to the Microsoft TPM2 simulator.
+//
+//nolint:gosec // copied package from github.com/google/go-tpm-tools/simulator; intentionally using math.rand for seed
 package internal
 
 import (
