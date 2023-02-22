@@ -21,19 +21,19 @@ func (s *Simulator) Open(ctx context.Context) error {
 }
 
 func (s *Simulator) Close() error {
-	return nil
+	return errors.New("cannot close: no simulator available")
 }
 
 func (s *Simulator) MeasurementLog() ([]byte, error) {
-	return nil, nil
+	return nil, errors.New("cannot get measurement log: no simulator available")
 }
 
 func (s *Simulator) Read(p []byte) (n int, err error) {
-	return 0, errors.New("can't read")
+	return 0, errors.New("cannot read: no simulator available")
 }
 
 func (s *Simulator) Write(p []byte) (n int, err error) {
-	return 0, errors.New("can't write")
+	return 0, errors.New("cannot write: no simulator available")
 }
 
 var _ io.ReadWriteCloser = (*Simulator)(nil)

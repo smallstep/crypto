@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	gotpm "go.step.sm/crypto/tpm/simulator/internal"
+	gotpm "github.com/google/go-tpm-tools/simulator"
 )
 
 type Simulator struct {
