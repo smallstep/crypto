@@ -305,13 +305,7 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	}
 	defer k.tpm.Close(ctx)
 
-	at, err := attest.OpenTPM(k.tpm.attestConfig)
-	if err != nil {
-		return params, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
-	loadedKey, err := at.LoadKey(k.data)
+	loadedKey, err := k.tpm.attestTPM.LoadKey(k.data)
 	if err != nil {
 		return attest.CertificationParameters{}, fmt.Errorf("failed loading key %q: %w", k.name, err)
 	}

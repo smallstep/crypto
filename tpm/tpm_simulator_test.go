@@ -266,7 +266,6 @@ func TestTPM_GetKey(t *testing.T) {
 	r, err = tpm.GetKey(context.Background(), "non-existing-key")
 	require.EqualError(t, err, `failed getting key "non-existing-key": not found`)
 	require.Nil(t, r)
-
 }
 
 func TestTPM_GetKeys(t *testing.T) {
@@ -320,6 +319,47 @@ func TestTPM_DeleteKey(t *testing.T) {
 
 	err = tpm.DeleteKey(context.Background(), "non-existing-key")
 	require.EqualError(t, err, `failed getting key "non-existing-key": not found`)
+}
+
+func TestKey_CertificationParameters(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	ak, err := tpm.CreateAK(context.Background(), "first-ak")
+	require.NoError(t, err)
+	require.NotNil(t, ak)
+	require.Same(t, tpm, ak.tpm)
+
+	config := AttestKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.AttestKey(context.Background(), "first-ak", "first-key", config)
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	require.Equal(t, "first-key", key.Name())
+	require.NotEqual(t, 0, len(key.Data()))
+	require.Equal(t, "first-ak", key.AttestedBy())
+	require.Same(t, tpm, key.tpm)
+
+	params, err := key.CertificationParameters(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, params)
+	require.NotEqual(t, 0, len(params.CreateAttestation))
+	require.NotEqual(t, 0, len(params.CreateSignature))
+
+	akParams, err := ak.AttestationParameters(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, akParams)
+
+	akPublic, err := attest.ParseAKPublic(attest.TPMVersion20, akParams.Public)
+	require.NoError(t, err)
+	require.NotNil(t, akPublic)
+
+	opts := attest.VerifyOpts{
+		Public: akPublic.Public,
+		Hash:   akPublic.Hash,
+	}
+	err = params.Verify(opts)
+	require.NoError(t, err)
 }
 
 func TestTPM_GetSigner(t *testing.T) {
