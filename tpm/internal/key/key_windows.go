@@ -22,16 +22,6 @@ func create(_, keyName string, config CreateConfig) ([]byte, error) {
 
 	_, _ = hnd, blob
 
-	// tpmPub, err := tpm2.DecodePublic(pub)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("decode public key: %v", err)
-	// }
-
-	// pubKey, err := tpmPub.Key()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("access public key: %v", err)
-	// }
-
 	out := serializedKey{
 		Encoding:   keyEncodingOSManaged,
 		TPMVersion: uint8(2), // hardcoded to not import github.com/google/go-attestation/attest

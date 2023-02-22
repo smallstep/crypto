@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -36,20 +38,17 @@ func (ek *EK) CertificateURL() string {
 }
 
 func (ek *EK) MarshalJSON() ([]byte, error) {
-	var pemString string
-	var err error
+	var der []byte
 	if ek.certificate != nil {
-		if pemString, err = ek.PEM(); err != nil {
-			return nil, err
-		}
+		der = ek.certificate.Raw
 	}
 	o := struct {
 		Type string `json:"type"`
-		PEM  string `json:"pem,omitempty"`
+		DER  []byte `json:"der,omitempty"`
 		URL  string `json:"url,omitempty"`
 	}{
-		Type: fmt.Sprintf("%T", ek.public), // TODO: proper description string; on EK struct
-		PEM:  pemString,
+		Type: keyType(ek.public),
+		DER:  der,
 		URL:  ek.certificateURL,
 	}
 
@@ -58,7 +57,7 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 
 func (ek *EK) PEM() (string, error) {
 	if ek.certificate == nil {
-		return "", fmt.Errorf("EK %T does not have a certificate", ek) // TODO: proper string for the type of EK
+		return "", fmt.Errorf("EK %q does not have a certificate", keyType(ek.public))
 	}
 	var buf bytes.Buffer
 	if err := pem.Encode(&buf, &pem.Block{
@@ -69,6 +68,22 @@ func (ek *EK) PEM() (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func keyType(p crypto.PublicKey) string {
+	switch t := p.(type) {
+	case *rsa.PublicKey:
+		return fmt.Sprintf("RSA %d", t.Size()*8)
+	case *ecdsa.PublicKey:
+		switch size := t.Curve.Params().BitSize; size {
+		case 256, 384, 521:
+			return fmt.Sprintf("ECDSA P-%d", size)
+		default:
+			return fmt.Sprintf("unexpected ECDSA size: %d", size)
+		}
+	default:
+		return fmt.Sprintf("unsupported public key type: %T", p)
+	}
 }
 
 type intelEKCertResponse struct {

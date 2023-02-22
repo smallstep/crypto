@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/google/go-attestation/attest"
 	"go.step.sm/crypto/tpm/storage"
 )
 
@@ -29,13 +28,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 	}
 	defer s.tpm.Close(ctx)
 
-	at, err := attest.OpenTPM(s.tpm.attestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
-	loadedKey, err := at.LoadKey(s.key.data)
+	loadedKey, err := s.tpm.attestTPM.LoadKey(s.key.data)
 	if err != nil {
 		return nil, err
 	}
@@ -62,12 +55,6 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error)
 	}
 	defer t.Close(ctx)
 
-	at, err := attest.OpenTPM(t.attestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
 	key, err := t.store.GetKey(name)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -76,7 +63,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error)
 		return nil, err
 	}
 
-	loadedKey, err := at.LoadKey(key.Data)
+	loadedKey, err := t.attestTPM.LoadKey(key.Data)
 	if err != nil {
 		return nil, err
 	}

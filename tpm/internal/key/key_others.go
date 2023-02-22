@@ -5,18 +5,12 @@ package key
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/google/go-tpm/tpm2"
-	"go.step.sm/crypto/tpm/internal/open"
 )
 
-func create(deviceName, keyName string, config CreateConfig) ([]byte, error) {
-	rwc, err := open.TPM(deviceName)
-	if err != nil {
-		return nil, fmt.Errorf("error opening TPM: %w", err)
-	}
-	defer rwc.Close()
-
+func create(rwc io.ReadWriteCloser, keyName string, config CreateConfig) ([]byte, error) {
 	srk, _, err := getPrimaryKeyHandle(rwc, commonSrkEquivalentHandle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SRK handle: %w", err)

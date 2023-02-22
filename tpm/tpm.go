@@ -14,13 +14,13 @@ import (
 )
 
 type TPM struct {
-	deviceName      string
-	attestConfig    *attest.OpenConfig
-	attestTPM       *attest.TPM
-	rwc             io.ReadWriteCloser
-	enableSimulator bool
-	lock            sync.RWMutex
-	store           storage.TPMStore
+	deviceName   string
+	attestConfig *attest.OpenConfig
+	attestTPM    *attest.TPM
+	rwc          io.ReadWriteCloser
+	lock         sync.RWMutex
+	store        storage.TPMStore
+	simulator    *simulator.Simulator
 }
 
 type NewTPMOption func(t *TPM) error
@@ -71,20 +71,18 @@ func (t *TPM) Open(ctx context.Context) error {
 		return err
 	}
 
-	if t.enableSimulator {
-		sim := simulator.New()
-		if err := sim.Open(ctx); err != nil {
-			return fmt.Errorf("failed opening TPM simulator: %w", err)
+	if t.simulator != nil {
+		if t.attestTPM == nil {
+			at, err := attest.OpenTPM(&attest.OpenConfig{
+				TPMVersion:     attest.TPMVersion20,
+				CommandChannel: t.simulator,
+			})
+			if err != nil {
+				return fmt.Errorf("failed opening attest.TPM: %w", err)
+			}
+			t.attestTPM = at
 		}
-		at, err := attest.OpenTPM(&attest.OpenConfig{
-			TPMVersion:     attest.TPMVersion20,
-			CommandChannel: sim,
-		})
-		if err != nil {
-			return fmt.Errorf("failed opening attest.TPM: %w", err)
-		}
-		t.attestTPM = at
-		t.rwc = sim
+		t.rwc = t.simulator
 	} else {
 		if isGoTPMCall(ctx) {
 			rwc, err := open.TPM(t.deviceName)
@@ -108,6 +106,16 @@ func (t *TPM) Close(ctx context.Context) {
 	// prevent closing the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
+		return
+	}
+
+	// if simulation is enabled, closing the TPM simulator must not
+	// happen, because re-opening it will result in a different instance,
+	// resulting in issues when running multiple test operations in
+	// sequence. Closing a simulator has to be done in the calling code,
+	// meaning it has to happen at the end of the test.
+	if t.simulator != nil {
+		t.lock.Unlock()
 		return
 	}
 

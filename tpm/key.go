@@ -53,7 +53,7 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 
 // CreatedAt returns the the creation time of the Key.
 func (k *Key) CreatedAt() time.Time {
-	return k.createdAt
+	return k.createdAt.Truncate(time.Second)
 }
 
 func (k *Key) MarshalJSON() ([]byte, error) {
@@ -115,7 +115,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		Algorithm: config.Algorithm,
 		Size:      config.Size,
 	}
-	data, err := internalkey.Create(t.deviceName, prefixKey(name), createConfig)
+	data, err := internalkey.Create(t.rwc, prefixKey(name), createConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
@@ -149,14 +149,8 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 	defer t.Close(ctx)
 
-	at, err := attest.OpenTPM(t.attestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
+	var err error
 	now := time.Now()
-
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -170,11 +164,11 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
 
-	loadedAK, err := at.LoadAK(ak.Data)
+	loadedAK, err := t.attestTPM.LoadAK(ak.Data)
 	if err != nil {
 		return nil, fmt.Errorf("failed loading AK %q: %w", akName, err)
 	}
-	defer loadedAK.Close(at)
+	defer loadedAK.Close(t.attestTPM)
 
 	keyConfig := &attest.KeyConfig{
 		Algorithm:      attest.Algorithm(config.Algorithm),
@@ -183,7 +177,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		Name:           prefixKey(name),
 	}
 
-	key, err := at.NewKey(loadedAK, keyConfig)
+	key, err := t.attestTPM.NewKey(loadedAK, keyConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
@@ -229,7 +223,7 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 	return &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t}, nil
 }
 
-func (t *TPM) GetKeys(ctx context.Context) ([]*Key, error) {
+func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -275,12 +269,6 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 	}
 	defer t.Close(ctx)
 
-	at, err := attest.OpenTPM(t.attestConfig)
-	if err != nil {
-		return fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
 	key, err := t.store.GetKey(name)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -289,10 +277,7 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 		return fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
-	// TODO: catch case when named key isn't found; tpm.GetKey returns nil in that case,
-	// resulting in a nil pointer. Need an ErrNotFound like type from the storage layer and appropriate
-	// handling?
-	if err := at.DeleteKey(key.Data); err != nil {
+	if err := t.attestTPM.DeleteKey(key.Data); err != nil {
 		return fmt.Errorf("failed deleting key %q: %w", name, err)
 	}
 

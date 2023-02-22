@@ -4,7 +4,6 @@
 package simulator
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -19,7 +18,7 @@ func New() *Simulator {
 	return &Simulator{}
 }
 
-func (s *Simulator) Open(ctx context.Context) error {
+func (s *Simulator) Open() error {
 	var sim *gotpm.Simulator
 	var err error
 	if s.wrapped == nil {

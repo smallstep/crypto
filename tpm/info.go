@@ -104,32 +104,27 @@ func GetManufacturerByID(id manufacturer.ID) Manufacturer {
 	}
 }
 
-func (t *TPM) Info(ctx context.Context) (Info, error) {
-	result := Info{}
+func (t *TPM) Info(ctx context.Context) (*Info, error) {
 	if err := t.Open(ctx); err != nil {
-		return result, fmt.Errorf("failed opening TPM: %w", err)
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer t.Close(ctx)
 
-	a, err := attest.OpenTPM(t.attestConfig) // TODO: add layer of abstraction here, to ease testing?
+	info, err := t.attestTPM.Info()
 	if err != nil {
-		return result, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer a.Close()
-
-	info, err := a.Info()
-	if err != nil {
-		return result, fmt.Errorf("failed getting TPM info: %w", err)
+		return nil, fmt.Errorf("failed getting TPM info: %w", err)
 	}
 
-	result.FirmwareVersion = FirmwareVersion{
-		Major: info.FirmwareVersionMajor,
-		Minor: info.FirmwareVersionMinor,
+	result := &Info{
+		FirmwareVersion: FirmwareVersion{
+			Major: info.FirmwareVersionMajor,
+			Minor: info.FirmwareVersionMinor,
+		},
+		Interface:    Interface(info.Interface),
+		Manufacturer: GetManufacturerByID(manufacturer.ID(info.Manufacturer)),
+		VendorInfo:   info.VendorInfo,
+		Version:      Version(info.Version),
 	}
-	result.Interface = Interface(info.Interface)
-	result.Manufacturer = GetManufacturerByID(manufacturer.ID(info.Manufacturer))
-	result.VendorInfo = info.VendorInfo
-	result.Version = Version(info.Version)
 
 	return result, nil
 }
