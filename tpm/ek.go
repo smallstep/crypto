@@ -82,13 +82,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 	}
 	defer t.Close(ctx)
 
-	at, err := attest.OpenTPM(t.attestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer at.Close()
-
-	eks, err := at.EKs()
+	eks, err := t.attestTPM.EKs()
 	if err != nil {
 		return nil, fmt.Errorf("failed getting EKs: %w", err)
 	}

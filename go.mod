@@ -52,6 +52,7 @@ require (
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/certificate-transparency-go v1.1.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/go-tpm-tools v0.3.10 // indirect
 	github.com/google/go-tspi v0.2.1-0.20190423175329-115dea689aad // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
