@@ -47,7 +47,7 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 		DER  []byte `json:"der,omitempty"`
 		URL  string `json:"url,omitempty"`
 	}{
-		Type: keyType(ek.public),
+		Type: ek.Type(),
 		DER:  der,
 		URL:  ek.certificateURL,
 	}
@@ -57,7 +57,7 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 
 func (ek *EK) PEM() (string, error) {
 	if ek.certificate == nil {
-		return "", fmt.Errorf("EK %q does not have a certificate", keyType(ek.public))
+		return "", fmt.Errorf("EK %q does not have a certificate", ek.Type())
 	}
 	var buf bytes.Buffer
 	if err := pem.Encode(&buf, &pem.Block{
@@ -68,6 +68,10 @@ func (ek *EK) PEM() (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func (ek *EK) Type() string {
+	return keyType(ek.public)
 }
 
 func keyType(p crypto.PublicKey) string {
