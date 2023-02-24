@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -209,6 +210,34 @@ func TestAK_ActivateCredential(t *testing.T) {
 	require.Equal(t, expectedSecret, secret)
 }
 
+func TestAK_Blobs(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	ak, err := tpm.CreateAK(context.Background(), "first-ak")
+	require.NoError(t, err)
+	require.NotNil(t, ak)
+	require.Same(t, tpm, ak.tpm)
+
+	blobs, err := ak.Blobs(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, blobs)
+
+	// check private bytes and its (encoded) length
+	private, err := blobs.Private()
+	require.NoError(t, err)
+	require.NotEmpty(t, private)
+
+	size := binary.BigEndian.Uint16(private[0:2])
+	require.Len(t, private, int(size)+2)
+
+	// check public bytes and its (encoded) length
+	public, err := blobs.Public()
+	require.NoError(t, err)
+	require.NotEmpty(t, public)
+
+	size = binary.BigEndian.Uint16(public[0:2])
+	require.Len(t, public, int(size)+2)
+}
+
 func TestTPM_CreateKey(t *testing.T) {
 	tpm := newSimulatedTPM(t)
 	config := CreateKeyConfig{
@@ -360,6 +389,39 @@ func TestKey_CertificationParameters(t *testing.T) {
 	}
 	err = params.Verify(opts)
 	require.NoError(t, err)
+}
+
+func TestKey_Blobs(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.CreateKey(context.Background(), "first-key", config)
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	require.Equal(t, "", key.AttestedBy())
+	require.Same(t, tpm, key.tpm)
+
+	blobs, err := key.Blobs(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, blobs)
+
+	// check private bytes and its (encoded) length
+	private, err := blobs.Private()
+	require.NoError(t, err)
+	require.NotEmpty(t, private)
+
+	size := binary.BigEndian.Uint16(private[0:2])
+	require.Len(t, private, int(size)+2)
+
+	// check public bytes and its (encoded) length
+	public, err := blobs.Public()
+	require.NoError(t, err)
+	require.NotEmpty(t, public)
+
+	size = binary.BigEndian.Uint16(public[0:2])
+	require.Len(t, public, int(size)+2)
 }
 
 func TestTPM_GetSigner(t *testing.T) {
