@@ -80,4 +80,4 @@ require (
 )
 
 // relying on fork till changes get upstreamed.
-replace github.com/google/go-attestation => github.com/smallstep/go-attestation v0.4.4-0.20230113130042-0ad94dd6a52e
+replace github.com/google/go-attestation => github.com/smallstep/go-attestation v0.4.4-0.20230224121042-1bcb20a75add
