@@ -19,7 +19,7 @@ type Key struct {
 	data       []byte
 	attestedBy string
 	createdAt  time.Time
-	blobs      *blobs
+	blobs      *Blobs
 	tpm        *TPM
 }
 
@@ -322,7 +322,7 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 // like this (after having been written to key.priv and key.pub):
 //
 //	tpm2_load -C 0x81000001 -u key.pub -r key.priv -c key.ctx
-func (k *Key) Blobs(ctx context.Context) (*blobs, error) {
+func (k *Key) Blobs(ctx context.Context) (*Blobs, error) {
 	if k.blobs == nil {
 		if err := k.tpm.Open(ctx); err != nil {
 			return nil, fmt.Errorf("failed opening TPM: %w", err)
