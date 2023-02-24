@@ -17,6 +17,7 @@ type AK struct {
 	name      string
 	data      []byte
 	createdAt time.Time
+	blobs     *blobs
 	tpm       *TPM
 }
 
@@ -217,4 +218,32 @@ func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (s
 	secret, err = loadedAK.ActivateCredential(ak.tpm.attestTPM, attest.EncryptedCredential(in))
 
 	return
+}
+
+// Blobs returns a container for the private and public AK blobs.
+// The resulting blobs are compatible with tpm2-tools, so can be used
+// like this (after having been written to ak.priv and ak.pub):
+//
+//	tpm2_load -C 0x81000001 -u ak.pub -r ak.priv -c ak.ctx
+func (ak *AK) Blobs(ctx context.Context) (*blobs, error) {
+	if ak.blobs == nil {
+		if err := ak.tpm.Open(ctx); err != nil {
+			return nil, fmt.Errorf("failed opening TPM: %w", err)
+		}
+		defer ak.tpm.Close(ctx)
+
+		aak, err := ak.tpm.attestTPM.LoadAK(ak.data)
+		if err != nil {
+			return nil, fmt.Errorf("failed loading AK: %w", err)
+		}
+		defer aak.Close(ak.tpm.attestTPM)
+
+		public, private, err := aak.Blobs()
+		if err != nil {
+			return nil, fmt.Errorf("failed getting AK blobs: %w", err)
+		}
+		ak.setBlobs(private, public)
+	}
+
+	return ak.blobs, nil
 }

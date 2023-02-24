@@ -19,6 +19,7 @@ type Key struct {
 	data       []byte
 	attestedBy string
 	createdAt  time.Time
+	blobs      *blobs
 	tpm        *TPM
 }
 
@@ -200,7 +201,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 
 	if err := t.store.Persist(); err != nil {
-		return nil, fmt.Errorf("failed persisting to storage: %w", err)
+		return nil, fmt.Errorf("failed persisting key %q: %w", name, err)
 	}
 
 	return &Key{name: storedKey.Name, data: storedKey.Data, attestedBy: akName, createdAt: now, tpm: t}, nil
@@ -314,4 +315,32 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	params = loadedKey.CertificationParameters()
 
 	return
+}
+
+// Blobs returns a container for the private and public key blobs.
+// The resulting blobs are compatible with tpm2-tools, so can be used
+// like this (after having been written to key.priv and key.pub):
+//
+//	tpm2_load -C 0x81000001 -u key.pub -r key.priv -c key.ctx
+func (k *Key) Blobs(ctx context.Context) (*blobs, error) {
+	if k.blobs == nil {
+		if err := k.tpm.Open(ctx); err != nil {
+			return nil, fmt.Errorf("failed opening TPM: %w", err)
+		}
+		defer k.tpm.Close(ctx)
+
+		key, err := k.tpm.attestTPM.LoadKey(k.data)
+		if err != nil {
+			return nil, fmt.Errorf("failed loading key: %w", err)
+		}
+		defer key.Close()
+
+		public, private, err := key.Blobs()
+		if err != nil {
+			return nil, fmt.Errorf("failed getting key blobs: %w", err)
+		}
+		k.setBlobs(private, public)
+	}
+
+	return k.blobs, nil
 }
