@@ -6,9 +6,10 @@ package key
 
 import (
 	"fmt"
+	"io"
 )
 
-func create(_, keyName string, config CreateConfig) ([]byte, error) {
+func create(_ io.ReadWriteCloser, keyName string, config CreateConfig) ([]byte, error) {
 	pcp, err := openPCP()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PCP: %w", err)
