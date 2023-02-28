@@ -26,10 +26,13 @@ bootstra%:
 test:
 	$Q $(GOFLAGS) gotestsum -- -coverprofile=coverage.out -short -covermode=atomic ./...
 
+tpmtest:
+	$Q $(GOFLAGS) CGO_ENALBED=1 gotestsum -- -coverprofile=tpmcoverage.out -short -covermode=atomic -tags tpmsimulator ./tpm 
+
 race:
 	$Q $(GOFLAGS) gotestsum -- -race ./...
 
-.PHONY: test race
+.PHONY: test tpmtest race
 
 #########################################
 # Linting
