@@ -132,7 +132,11 @@ func verifyPrivateKey(h crypto.Hash, priv interface{}) error {
 }
 
 func TestPublicKey(t *testing.T) {
+	type opaqueSigner struct {
+		crypto.Signer
+	}
 	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	ecdsaSigner := opaqueSigner{ecdsaKey}
 	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	x25519Pub, x25519Priv, err := x25519.GenerateKey(rand.Reader)
@@ -155,6 +159,7 @@ func TestPublicKey(t *testing.T) {
 		{"ed25519Public", args{ed25519.PublicKey(ed25519Key[32:])}, ed25519Key.Public(), false},
 		{"x25519", args{x25519Priv}, x25519Pub, false},
 		{"x25519Public", args{x25519Pub}, x25519Pub, false},
+		{"ecdsaSigner", args{ecdsaSigner}, ecdsaKey.Public(), false},
 		{"fail", args{[]byte("octkey")}, nil, true},
 	}
 	for _, tt := range tests {
