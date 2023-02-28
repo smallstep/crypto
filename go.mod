@@ -11,7 +11,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/ThalesIgnite/crypto11 v1.2.5
-	github.com/aws/aws-sdk-go v1.44.206
+	github.com/aws/aws-sdk-go v1.44.210
 	github.com/go-piv/piv-go v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/google/go-attestation v0.4.4-0.20220404204839-8820d49b18d9
@@ -23,7 +23,7 @@ require (
 	github.com/ryboe/q v1.0.19
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.6.0
 	golang.org/x/net v0.7.0
 	golang.org/x/sys v0.5.0
