@@ -14,6 +14,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"reflect"
 	"testing"
 
@@ -25,6 +26,7 @@ import (
 
 type stubPivKey struct {
 	attestCA      *minica.CA
+	attestSigner  privateKey
 	userCA        *minica.CA
 	attestMap     map[piv.Slot]*x509.Certificate
 	certMap       map[piv.Slot]*x509.Certificate
@@ -86,9 +88,16 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 		t.Fatal(errors.New("unknown alg"))
 	}
 
+	serialNumber, err := asn1.Marshal(112233)
+	if err != nil {
+		t.Fatal(err)
+	}
 	attCert, err := attestCA.Sign(&x509.Certificate{
 		Subject:   pkix.Name{CommonName: "attested certificate"},
 		PublicKey: attSigner.Public(),
+		ExtraExtensions: []pkix.Extension{
+			{Id: oidYubicoSerialNumber, Value: serialNumber},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -103,8 +112,9 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 	}
 
 	return &stubPivKey{
-		attestCA: attestCA,
-		userCA:   userCA,
+		attestCA:     attestCA,
+		attestSigner: attSigner,
+		userCA:       userCA,
 		attestMap: map[piv.Slot]*x509.Certificate{
 			piv.SlotAuthentication: attCert, // 9a
 		},
@@ -219,6 +229,12 @@ func TestNew(t *testing.T) {
 	okPivCards := func() ([]string, error) {
 		return []string{"Yubico YubiKey OTP+FIDO+CCID"}, nil
 	}
+	okMultiplePivCards := func() ([]string, error) {
+		return []string{
+			"Yubico YubiKey OTP+FIDO+CCID",
+			"Yubico YubiKey OTP+FIDO+CCID 01",
+		}, nil
+	}
 	failPivCards := func() ([]string, error) {
 		return nil, errors.New("error reading cards")
 	}
@@ -251,9 +267,15 @@ func TestNew(t *testing.T) {
 		{"ok with uri", args{ctx, apiv1.Options{
 			URI: "yubikey:pin-value=111111;management-key=001122334455667788990011223344556677889900112233",
 		}}, func() {
-			pivCards = okPivCards
+			pivCards = okMultiplePivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "111111", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		{"ok with uri and serial", args{ctx, apiv1.Options{
+			URI: "yubikey:serial=112233?pin-value=123456",
+		}}, func() {
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with Pin", args{ctx, apiv1.Options{Pin: "222222"}}, func() {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
@@ -281,6 +303,13 @@ func TestNew(t *testing.T) {
 		}, nil, true},
 		{"fail no pivCards", args{ctx, apiv1.Options{}}, func() {
 			pivCards = failNoPivCards
+			pivOpen = okPivOpen
+
+		}, nil, true},
+		{"fail no pivCards with serial", args{ctx, apiv1.Options{
+			URI: "yubikey:pin-value=111111;serial=332211?pin-value=123456",
+		}}, func() {
+			pivCards = okPivCards
 			pivOpen = okPivOpen
 
 		}, nil, true},
@@ -984,6 +1013,67 @@ func TestYubiKey_Close(t *testing.T) {
 			}
 			if err := k.Close(); (err != nil) != tt.wantErr {
 				t.Errorf("YubiKey.Close() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func Test_getSerialNumber(t *testing.T) {
+	ok := newStubPivKey(t, RSA)
+
+	failAttest := newStubPivKey(t, RSA)
+	delete(failAttest.attestMap, piv.SlotAuthentication)
+
+	failParse := newStubPivKey(t, ECDSA)
+	serialNumer, err := asn1.Marshal("112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attCertParse, err := failParse.attestCA.Sign(&x509.Certificate{
+		Subject:   pkix.Name{CommonName: "attested certificate"},
+		PublicKey: failParse.attestSigner.Public(),
+		ExtraExtensions: []pkix.Extension{
+			{Id: oidYubicoSerialNumber, Value: serialNumer},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failMissing := newStubPivKey(t, ECDSA)
+	attCertMissing, err := failMissing.attestCA.Sign(&x509.Certificate{
+		Subject:   pkix.Name{CommonName: "attested certificate"},
+		PublicKey: failMissing.attestSigner.Public(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	failParse.attestMap[piv.SlotAuthentication] = attCertParse
+	failMissing.attestMap[piv.SlotAuthentication] = attCertMissing
+
+	type args struct {
+		yk pivKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"ok", args{ok}, "112233", false},
+		{"fail attest", args{failAttest}, "", true},
+		{"fail parse", args{failParse}, "", true},
+		{"fail missing", args{failMissing}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getSerialNumber(tt.args.yk)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getSerialNumber() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("getSerialNumber() = %v, want %v", got, tt.want)
 			}
 		})
 	}
