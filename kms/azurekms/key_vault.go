@@ -6,7 +6,8 @@ package azurekms
 import (
 	"context"
 	"crypto"
-	"regexp"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
@@ -26,10 +27,6 @@ func init() {
 
 // Scheme is the scheme used for the Azure Key Vault uris.
 const Scheme = "azurekms"
-
-// keyIDRegexp is the regular expression that Key Vault uses on the kid. We can
-// extract the vault, name and version of the key.
-var keyIDRegexp = regexp.MustCompile(`^https://([0-9a-zA-Z-]+)\.vault\.azure\.net/keys/([0-9a-zA-Z-]+)/([0-9a-zA-Z-]+)$`)
 
 var (
 	valueTrue       = true
@@ -101,8 +98,9 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]keyType{
 	},
 }
 
-// vaultResource is the value the client will use as audience.
-const vaultResource = "https://vault.azure.net"
+// defaultVaultResource is the default value the client will use as audience, it
+// can be changed using the environment variable in the URI.
+const defaultVaultResource = "https://vault.azure.net"
 
 // KeyVaultClient is the interface implemented by keyvault.BaseClient. It will
 // be used for testing purposes.
@@ -119,12 +117,17 @@ type KeyVaultClient interface {
 //   - azurekms:name=key-name;vault=vault-name
 //   - azurekms:name=key-name;vault=vault-name?version=key-version
 //   - azurekms:name=key-name;vault=vault-name?hsm=true
+//   - azurekms:name=key-name;vault=vault-name;environment=usgov
 //
 // The scheme is "azurekms"; "name" is the key name; "vault" is the key vault
 // name where the key is located; "version" is an optional parameter that
 // defines the version of they key, if version is not given, the latest one will
-// be used; "hsm" defines if an HSM want to be used for this key, this is
-// specially useful when this is used from `step`.
+// be used; "hsm" defines if an HSM want to be used for this key, "environment"
+// defines the Azure Cloud environment to use, options are "public" or
+// "AzurePublicCloud", "usgov" or "AzureUSGovernmentCloud", "china" or
+// "AzureChinaCloud", "german" or "AzureGermanCloud", it will default to the
+// public cloud if not specified. This URI is handy with `step`, `step-ca` and
+// `step-kms-plugin`.
 //
 // TODO(mariano): The implementation is using /services/keyvault/v7.1/keyvault
 // package, at some point Azure might create a keyvault client with all the
@@ -143,6 +146,7 @@ type DefaultOptions struct {
 
 var createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient, error) {
 	baseClient := keyvault.New()
+	vaultResource := defaultVaultResource
 
 	// With an URI, try to log in only using client credentials in the URI.
 	// Client credentials requires:
@@ -163,6 +167,12 @@ var createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient
 		tenantID := u.Get("tenant-id")
 		// optional
 		aadEndpoint := u.Get("aad-endpoint")
+		// environment (optional)
+		environment, err := getAzureEnvironment(u.Get("environment"))
+		if err != nil {
+			return nil, err
+		}
+		vaultResource = environment.ResourceIdentifiers.KeyVault
 
 		if clientID != "" && clientSecret != "" && tenantID != "" {
 			s := auth.EnvironmentSettings{
@@ -172,7 +182,7 @@ var createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient
 					auth.TenantID:     tenantID,
 					auth.Resource:     vaultResource,
 				},
-				Environment: azure.PublicCloud,
+				Environment: environment,
 			}
 			if aadEndpoint != "" {
 				s.Environment.ActiveDirectoryEndpoint = aadEndpoint
@@ -342,4 +352,25 @@ func (k *KeyVault) Close() error {
 func (k *KeyVault) ValidateName(s string) error {
 	_, _, _, _, err := parseKeyName(s, k.defaults)
 	return err
+}
+
+func getAzureEnvironment(name string) (azure.Environment, error) {
+	// Using azure default names
+	if environment, err := azure.EnvironmentFromName(name); err == nil {
+		return environment, nil
+	}
+
+	// Using short names
+	switch strings.ToUpper(name) {
+	case "", "PUBLIC":
+		return azure.PublicCloud, nil
+	case "USGOV":
+		return azure.USGovernmentCloud, nil
+	case "CHINA":
+		return azure.ChinaCloud, nil
+	case "GERMAN":
+		return azure.GermanCloud, nil
+	default:
+		return azure.Environment{}, fmt.Errorf("unknown key vault cloud environment with name %q", name)
+	}
 }

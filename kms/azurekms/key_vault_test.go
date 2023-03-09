@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"go.step.sm/crypto/keyutil"
@@ -115,6 +116,19 @@ func TestNew(t *testing.T) {
 				ProtectionLevel: apiv1.HSM,
 			},
 		}, false},
+		{"ok with vault + environment", func() {
+			createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient, error) {
+				return client, nil
+			}
+		}, args{context.Background(), apiv1.Options{
+			URI: "azurekms:vault=my-vault;environment=usgov",
+		}}, &KeyVault{
+			baseClient: client,
+			defaults: DefaultOptions{
+				Vault:           "my-vault",
+				ProtectionLevel: apiv1.UnspecifiedProtectionLevel,
+			},
+		}, false},
 		{"fail", func() {
 			createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient, error) {
 				return nil, errTest
@@ -159,13 +173,19 @@ func TestKeyVault_createClient(t *testing.T) {
 			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id",
 		}}, false, false},
 		{"ok with uri+aad", args{context.Background(), apiv1.Options{
-			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;aad-enpoint=https%3A%2F%2Flogin.microsoftonline.us%2F",
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;aad-endpoint=https%3A%2F%2Flogin.microsoftonline.us%2F",
+		}}, false, false},
+		{"ok with uri+environment", args{context.Background(), apiv1.Options{
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;environment=usgov",
 		}}, false, false},
 		{"ok with uri no config", args{context.Background(), apiv1.Options{
 			URI: "azurekms:",
 		}}, true, false},
 		{"fail uri", args{context.Background(), apiv1.Options{
 			URI: "kms:client-id=id;client-secret=secret;tenant-id=id",
+		}}, false, true},
+		{"ok bad environment", args{context.Background(), apiv1.Options{
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;environment=fake",
 		}}, false, true},
 	}
 
@@ -647,6 +667,41 @@ func TestKeyVault_ValidateName(t *testing.T) {
 			k := &KeyVault{}
 			if err := k.ValidateName(tt.args.s); (err != nil) != tt.wantErr {
 				t.Errorf("KeyVault.ValidateName() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func Test_getAzureEnvironment(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    azure.Environment
+		wantErr bool
+	}{
+		{"empty", args{""}, azure.PublicCloud, false},
+		{"public", args{"public"}, azure.PublicCloud, false},
+		{"USGov", args{"USGov"}, azure.USGovernmentCloud, false},
+		{"China", args{"China"}, azure.ChinaCloud, false},
+		{"GERMAN", args{"GERMAN"}, azure.GermanCloud, false},
+		{"AzurePublicCloud", args{"AzurePublicCloud"}, azure.PublicCloud, false},
+		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud"}, azure.USGovernmentCloud, false},
+		{"AzureChinaCloud", args{"AzureChinaCloud"}, azure.ChinaCloud, false},
+		{"AzureGermanCloud", args{"AzureGermanCloud"}, azure.GermanCloud, false},
+		{"fake", args{"fake"}, azure.Environment{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getAzureEnvironment(tt.args.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getAzureEnvironment() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("getAzureEnvironment() = %v, want %v", got, tt.want)
 			}
 		})
 	}

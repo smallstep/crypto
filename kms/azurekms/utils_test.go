@@ -27,7 +27,10 @@ func Test_getKeyName(t *testing.T) {
 		want string
 	}{
 		{"ok", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.net/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
-		{"ok default", args{"my-vault", "my-key", getBundle("https://my-vault.foo.net/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault"},
+		{"ok usgov", args{"my-vault", "my-key", getBundle("https://my-vault.vault.usgovcloudapi.net/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
+		{"ok china", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.cn/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
+		{"ok german", args{"my-vault", "my-key", getBundle("https://my-vault.vault.microsoftazure.de/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
+		{"ok other", args{"my-vault", "my-key", getBundle("https://my-vault.foo.net/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
 		{"ok too short", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.net/keys/my-version")}, "azurekms:name=my-key;vault=my-vault"},
 		{"ok too long", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.net/keys/my-key/my-version/sign")}, "azurekms:name=my-key;vault=my-vault"},
 		{"ok nil key", args{"my-vault", "my-key", keyvault.KeyBundle{}}, "azurekms:name=my-key;vault=my-vault"},

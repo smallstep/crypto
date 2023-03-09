@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"encoding/json"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
@@ -25,15 +26,17 @@ func defaultContext() (context.Context, context.CancelFunc) {
 // getKeyName returns the uri of the key vault key.
 func getKeyName(vault, name string, bundle keyvault.KeyBundle) string {
 	if bundle.Key != nil && bundle.Key.Kid != nil {
-		sm := keyIDRegexp.FindAllStringSubmatch(*bundle.Key.Kid, 1)
-		if len(sm) == 1 && len(sm[0]) == 4 {
-			m := sm[0]
-			u := uri.New(Scheme, url.Values{
-				"vault": []string{m[1]},
-				"name":  []string{m[2]},
-			})
-			u.RawQuery = url.Values{"version": []string{m[3]}}.Encode()
-			return u.String()
+		if u, err := url.Parse(*bundle.Key.Kid); err == nil {
+			host := strings.SplitN(u.Host, ".", 2)
+			path := strings.Split(u.Path, "/")
+			if len(host) == 2 && len(path) == 4 {
+				uu := uri.New(Scheme, url.Values{
+					"vault": []string{host[0]},
+					"name":  []string{path[2]},
+				})
+				uu.RawQuery = url.Values{"version": []string{path[3]}}.Encode()
+				return uu.String()
+			}
 		}
 	}
 	// Fallback to URI without id.
