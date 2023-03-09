@@ -57,7 +57,7 @@ func getKeyName(vault, name string, bundle keyvault.KeyBundle) string {
 //
 // HSM can also be passed to define the protection level if this is not given in
 // CreateQuery.
-func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version string, hsm bool, err error) {
+func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version, dnsSuffix string, hsm bool, err error) {
 	var u *uri.URI
 
 	u, err = uri.ParseWithScheme(Scheme, rawURI)
@@ -83,12 +83,17 @@ func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version 
 	}
 
 	version = u.Get("version")
+	dnsSuffix = defaults.Environment.KeyVaultDNSSuffix
 
 	return
 }
 
-func vaultBaseURL(vault string) string {
-	return "https://" + vault + ".vault.azure.net/"
+func vaultBaseURL(vault, dnsSuffix string) string {
+	if dnsSuffix == "" {
+		return "https://" + vault + ".vault.azure.net/"
+	}
+
+	return "https://" + vault + "." + dnsSuffix + "/"
 }
 
 func convertKey(key *keyvault.JSONWebKey) (crypto.PublicKey, error) {

@@ -142,6 +142,7 @@ type KeyVault struct {
 type DefaultOptions struct {
 	Vault           string
 	ProtectionLevel apiv1.ProtectionLevel
+	Environment     azure.Environment
 }
 
 var createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient, error) {
@@ -229,6 +230,10 @@ func New(ctx context.Context, opts apiv1.Options) (*KeyVault, error) {
 			return nil, err
 		}
 		defaults.Vault = u.Get("vault")
+		defaults.Environment, err = getAzureEnvironment(u.Get("environment"))
+		if err != nil {
+			return nil, err
+		}
 		if u.GetBool("hsm") {
 			defaults.ProtectionLevel = apiv1.HSM
 		}
@@ -246,7 +251,7 @@ func (k *KeyVault) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKe
 		return nil, errors.New("getPublicKeyRequest 'name' cannot be empty")
 	}
 
-	vault, name, version, _, err := parseKeyName(req.Name, k.defaults)
+	vault, name, version, dnsSuffix, _, err := parseKeyName(req.Name, k.defaults)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +259,7 @@ func (k *KeyVault) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKe
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	resp, err := k.baseClient.GetKey(ctx, vaultBaseURL(vault), name, version)
+	resp, err := k.baseClient.GetKey(ctx, vaultBaseURL(vault, dnsSuffix), name, version)
 	if err != nil {
 		return nil, errors.Wrap(err, "keyVault GetKey failed")
 	}
@@ -268,7 +273,7 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		return nil, errors.New("createKeyRequest 'name' cannot be empty")
 	}
 
-	vault, name, _, hsm, err := parseKeyName(req.Name, k.defaults)
+	vault, name, _, dnsSuffix, hsm, err := parseKeyName(req.Name, k.defaults)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +308,7 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	resp, err := k.baseClient.CreateKey(ctx, vaultBaseURL(vault), name, keyvault.KeyCreateParameters{
+	resp, err := k.baseClient.CreateKey(ctx, vaultBaseURL(vault, dnsSuffix), name, keyvault.KeyCreateParameters{
 		Kty:     kt.KeyType(protectionLevel),
 		KeySize: keySize,
 		Curve:   kt.Curve,
@@ -350,7 +355,7 @@ func (k *KeyVault) Close() error {
 
 // ValidateName validates that the given string is a valid URI.
 func (k *KeyVault) ValidateName(s string) error {
-	_, _, _, _, err := parseKeyName(s, k.defaults)
+	_, _, _, _, _, err := parseKeyName(s, k.defaults)
 	return err
 }
 
