@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/x509"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,6 +26,9 @@ func TestFeedthroughStore_NilKeyOperations(t *testing.T) {
 	k, err := store.GetKey("1st-key")
 	require.NoError(t, err)
 	require.Nil(t, k)
+
+	err = store.UpdateKey(k)
+	require.NoError(t, err)
 
 	k, err = store.GetKey("3rd-key")
 	require.NoError(t, err)
@@ -71,6 +73,14 @@ func TestFeedthroughStore_KeyOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, key1, k)
 
+	k.AttestedBy = "ak1"
+	err = store.UpdateKey(k)
+	require.NoError(t, err)
+
+	k.AttestedBy = ""
+	err = store.UpdateKey(k)
+	require.NoError(t, err)
+
 	k, err = store.GetKey("3rd-key")
 	require.EqualError(t, err, "not found")
 	require.Nil(t, k)
@@ -113,6 +123,9 @@ func TestFeedthroughStore_NilAKOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, k)
 
+	err = store.UpdateAK(k)
+	require.NoError(t, err)
+
 	k, err = store.GetAK("3rd-ak")
 	require.NoError(t, err)
 	require.Nil(t, k)
@@ -140,8 +153,8 @@ func TestFeedthroughStore_AKOperations(t *testing.T) {
 	tempDir := t.TempDir()
 	store := NewFeedthroughStore(NewDirstore(tempDir))
 
-	ak1 := &AK{Name: "1st-ak", Chain: []*x509.Certificate{}}
-	ak2 := &AK{Name: "2nd-ak", Chain: []*x509.Certificate{}}
+	ak1 := &AK{Name: "1st-ak"}
+	ak2 := &AK{Name: "2nd-ak"}
 
 	err := store.AddAK(ak1)
 	require.NoError(t, err)
@@ -155,6 +168,14 @@ func TestFeedthroughStore_AKOperations(t *testing.T) {
 	k, err := store.GetAK("1st-ak")
 	require.NoError(t, err)
 	require.Equal(t, ak1, k)
+
+	k.Data = []byte{1, 2, 3, 4}
+	err = store.UpdateAK(k)
+	require.NoError(t, err)
+
+	k.Data = nil
+	err = store.UpdateAK(k)
+	require.NoError(t, err)
 
 	k, err = store.GetAK("3rd-ak")
 	require.EqualError(t, err, "not found")

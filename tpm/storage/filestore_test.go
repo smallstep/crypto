@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/x509"
 	"errors"
 	"testing"
 	"time"
@@ -83,7 +82,7 @@ func TestFilestore_GetKey(t *testing.T) {
 		{
 			name:    "ok",
 			keyName: "1st-key",
-			want:    &Key{Name: "1st-key", Data: []byte{0x1, 0x2, 0x3, 0x4}, AttestedBy: "1st-ak", Chain: []*x509.Certificate{}, CreatedAt: t0},
+			want:    &Key{Name: "1st-key", Data: []byte{0x1, 0x2, 0x3, 0x4}, AttestedBy: "1st-ak", CreatedAt: t0},
 			expErr:  nil,
 		},
 	}
@@ -104,6 +103,53 @@ func TestFilestore_GetKey(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestFilestore_UpdateKey(t *testing.T) {
+	t.Parallel()
+	t0 := time.Time{} // we're hit by https://github.com/stretchr/testify/issues/950
+	store := new(jsonstore.JSONStore)
+	store.Set("key-1st-key", serializedKey{Name: "1st-key", Type: typeKey, Data: []byte{1, 2, 3, 4}, AttestedBy: "1st-ak", CreatedAt: t0})
+	store.Data["key-bad-storage"] = nil
+	tests := []struct {
+		name   string
+		key    *Key
+		expErr error
+	}{
+		{
+			name:   "not-found",
+			key:    &Key{Name: "non-existing-key"},
+			expErr: errors.New("not found"),
+		},
+		{
+			name:   "an-error",
+			key:    &Key{Name: "bad-storage"},
+			expErr: errors.New("unexpected end of JSON input"),
+		},
+		{
+			name:   "ok",
+			key:    &Key{Name: "1st-key"},
+			expErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := &Filestore{
+				store: store,
+			}
+
+			err := s.UpdateKey(tc.key)
+			if tc.expErr != nil {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tc.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -175,7 +221,7 @@ func TestFilestore_ListKeys(t *testing.T) {
 			name:   "fail",
 			store:  failStore,
 			want:   []*Key{},
-			expErr: errors.New("unexpected end of JSON input"),
+			expErr: errors.New("failed unmarshaling key: unexpected end of JSON input"),
 		},
 		{
 			name:  "ok",
@@ -185,14 +231,12 @@ func TestFilestore_ListKeys(t *testing.T) {
 					Name:       "1st-key",
 					Data:       []byte{1, 2, 3, 4},
 					AttestedBy: "1st-ak",
-					Chain:      []*x509.Certificate{},
 					CreatedAt:  t0,
 				},
 				{
 					Name:       "2nd-key",
 					Data:       []byte{1, 2, 3, 4},
 					AttestedBy: "1st-ak",
-					Chain:      []*x509.Certificate{},
 					CreatedAt:  t0,
 				},
 			},
@@ -307,7 +351,7 @@ func TestFilestore_GetAK(t *testing.T) {
 		{
 			name:   "ok",
 			akName: "1st-ak",
-			want:   &AK{Name: "1st-ak", Data: []byte{0x1, 0x2, 0x3, 0x4}, Chain: []*x509.Certificate{}, CreatedAt: t0},
+			want:   &AK{Name: "1st-ak", Data: []byte{0x1, 0x2, 0x3, 0x4}, CreatedAt: t0},
 			expErr: nil,
 		},
 	}
@@ -328,6 +372,53 @@ func TestFilestore_GetAK(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestFilestore_UpdateAK(t *testing.T) {
+	t.Parallel()
+	t0 := time.Time{} // we're hit by https://github.com/stretchr/testify/issues/950
+	store := new(jsonstore.JSONStore)
+	store.Set("ak-1st-ak", serializedAK{Name: "1st-ak", Type: typeKey, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
+	store.Data["ak-bad-storage"] = nil
+	tests := []struct {
+		name   string
+		ak     *AK
+		expErr error
+	}{
+		{
+			name:   "not-found",
+			ak:     &AK{Name: "non-existing-key"},
+			expErr: errors.New("not found"),
+		},
+		{
+			name:   "an-error",
+			ak:     &AK{Name: "bad-storage"},
+			expErr: errors.New("unexpected end of JSON input"),
+		},
+		{
+			name:   "ok",
+			ak:     &AK{Name: "1st-ak"},
+			expErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := &Filestore{
+				store: store,
+			}
+
+			err := s.UpdateAK(tc.ak)
+			if tc.expErr != nil {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tc.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -399,7 +490,7 @@ func TestFilestore_ListAKs(t *testing.T) {
 			name:   "fail",
 			store:  failStore,
 			want:   []*AK{},
-			expErr: errors.New("unexpected end of JSON input"),
+			expErr: errors.New("failed unmarshaling AK: unexpected end of JSON input"),
 		},
 		{
 			name:  "ok",
@@ -408,13 +499,11 @@ func TestFilestore_ListAKs(t *testing.T) {
 				{
 					Name:      "1st-ak",
 					Data:      []byte{1, 2, 3, 4},
-					Chain:     []*x509.Certificate{},
 					CreatedAt: t0,
 				},
 				{
 					Name:      "2nd-ak",
 					Data:      []byte{1, 2, 3, 4},
-					Chain:     []*x509.Certificate{},
 					CreatedAt: t0,
 				},
 			},

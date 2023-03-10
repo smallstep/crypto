@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/x509"
 	"testing"
 
 	"github.com/peterbourgon/diskv/v3"
@@ -86,8 +85,8 @@ func TestDirstore_AKOperations(t *testing.T) {
 
 	tempDir := t.TempDir()
 	store := NewDirstore(tempDir)
-	ak1 := &AK{Name: "1st-ak", Chain: []*x509.Certificate{}}
-	ak2 := &AK{Name: "2nd-ak", Chain: []*x509.Certificate{}}
+	ak1 := &AK{Name: "1st-ak"}
+	ak2 := &AK{Name: "2nd-ak"}
 
 	err := store.AddAK(ak1)
 	require.NoError(t, err)
