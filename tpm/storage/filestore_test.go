@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"crypto/x509"
 	"errors"
 	"testing"
 	"time"
@@ -82,7 +83,7 @@ func TestFilestore_GetKey(t *testing.T) {
 		{
 			name:    "ok",
 			keyName: "1st-key",
-			want:    &Key{Name: "1st-key", Data: []byte{0x1, 0x2, 0x3, 0x4}, AttestedBy: "1st-ak", CreatedAt: t0},
+			want:    &Key{Name: "1st-key", Data: []byte{0x1, 0x2, 0x3, 0x4}, AttestedBy: "1st-ak", Chain: []*x509.Certificate{}, CreatedAt: t0},
 			expErr:  nil,
 		},
 	}
@@ -184,12 +185,14 @@ func TestFilestore_ListKeys(t *testing.T) {
 					Name:       "1st-key",
 					Data:       []byte{1, 2, 3, 4},
 					AttestedBy: "1st-ak",
+					Chain:      []*x509.Certificate{},
 					CreatedAt:  t0,
 				},
 				{
 					Name:       "2nd-key",
 					Data:       []byte{1, 2, 3, 4},
 					AttestedBy: "1st-ak",
+					Chain:      []*x509.Certificate{},
 					CreatedAt:  t0,
 				},
 			},
@@ -304,7 +307,7 @@ func TestFilestore_GetAK(t *testing.T) {
 		{
 			name:   "ok",
 			akName: "1st-ak",
-			want:   &AK{Name: "1st-ak", Data: []byte{0x1, 0x2, 0x3, 0x4}, CreatedAt: t0},
+			want:   &AK{Name: "1st-ak", Data: []byte{0x1, 0x2, 0x3, 0x4}, Chain: []*x509.Certificate{}, CreatedAt: t0},
 			expErr: nil,
 		},
 	}
@@ -405,11 +408,13 @@ func TestFilestore_ListAKs(t *testing.T) {
 				{
 					Name:      "1st-ak",
 					Data:      []byte{1, 2, 3, 4},
+					Chain:     []*x509.Certificate{},
 					CreatedAt: t0,
 				},
 				{
 					Name:      "2nd-ak",
 					Data:      []byte{1, 2, 3, 4},
+					Chain:     []*x509.Certificate{},
 					CreatedAt: t0,
 				},
 			},
