@@ -2,6 +2,7 @@ package tpm
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 type AK struct {
 	name      string
 	data      []byte
+	chain     []*x509.Certificate
 	createdAt time.Time
 	blobs     *Blobs
 	tpm       *TPM
@@ -34,6 +36,21 @@ func (ak *AK) Data() []byte {
 // CreatedAt returns the creation time of the AK.
 func (ak *AK) CreatedAt() time.Time {
 	return ak.createdAt.Truncate(time.Second)
+}
+
+// Certificate returns the AK certificate, if set.
+// Will return nil in case no AK certificate is available.
+func (ak *AK) Certificate() *x509.Certificate {
+	if len(ak.chain) == 0 {
+		return nil
+	}
+	return ak.chain[0]
+}
+
+// CertificateChain returns the AK certificate chain.
+// It can return an empty chain.
+func (ak *AK) CertificateChain() []*x509.Certificate {
+	return ak.chain
 }
 
 func (ak *AK) MarshalJSON() ([]byte, error) {
@@ -111,7 +128,7 @@ func (t *TPM) GetAK(ctx context.Context, name string) (*AK, error) {
 		return nil, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
-	return &AK{name: ak.Name, data: ak.Data, createdAt: ak.CreatedAt, tpm: t}, nil
+	return &AK{name: ak.Name, data: ak.Data, chain: ak.Chain, createdAt: ak.CreatedAt, tpm: t}, nil
 }
 
 func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
@@ -246,4 +263,27 @@ func (ak *AK) Blobs(ctx context.Context) (*Blobs, error) {
 	}
 
 	return ak.blobs, nil
+}
+
+func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) error {
+	if err := ak.tpm.Open(ctx); err != nil {
+		return fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer ak.tpm.Close(ctx)
+
+	// TODO(hs): perform validation, such as check if the chain includes leaf for the
+	// AK public key?
+
+	storedAK := &storage.AK{
+		Name:      ak.name,
+		Data:      ak.data,
+		Chain:     chain,
+		CreatedAt: ak.createdAt,
+	}
+	if err := ak.tpm.store.UpdateAK(storedAK); err != nil {
+		return fmt.Errorf("failed updating AK %q: %w", ak.name, err)
+	}
+
+	ak.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
+	return nil
 }

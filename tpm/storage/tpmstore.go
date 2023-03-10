@@ -17,12 +17,14 @@ type TPMStore interface {
 	ListKeyNames() []string
 	GetKey(name string) (*Key, error)
 	AddKey(key *Key) error
+	UpdateKey(key *Key) error
 	DeleteKey(name string) error
 
 	ListAKs() ([]*AK, error)
 	ListAKNames() []string
 	GetAK(name string) (*AK, error)
 	AddAK(ak *AK) error
+	UpdateAK(ak *AK) error
 	DeleteAK(name string) error
 
 	Persist() error

@@ -3,6 +3,7 @@ package tpm
 import (
 	"context"
 	"crypto"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ type Key struct {
 	name       string
 	data       []byte
 	attestedBy string
+	chain      []*x509.Certificate
 	createdAt  time.Time
 	blobs      *Blobs
 	tpm        *TPM
@@ -50,6 +52,21 @@ func (k *Key) WasAttested() bool {
 // at creation time.
 func (k *Key) WasAttestedBy(ak *AK) bool {
 	return k.attestedBy == ak.name
+}
+
+// Certificate returns the certificate for the Key, if set.
+// Will return nil in case no AK certificate is available.
+func (k *Key) Certificate() *x509.Certificate {
+	if len(k.chain) == 0 {
+		return nil
+	}
+	return k.chain[0]
+}
+
+// CertificateChain returns the certificate chain for the Key.
+// It can return an empty chain.
+func (k *Key) CertificateChain() []*x509.Certificate {
+	return k.chain
 }
 
 // CreatedAt returns the the creation time of the Key.
@@ -343,4 +360,28 @@ func (k *Key) Blobs(ctx context.Context) (*Blobs, error) {
 	}
 
 	return k.blobs, nil
+}
+
+func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) error {
+	if err := k.tpm.Open(ctx); err != nil {
+		return fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer k.tpm.Close(ctx)
+
+	// TODO(hs): perform validation, such as check if the chain includes leaf for the
+	// AK public key?
+
+	storedKey := &storage.Key{
+		Name:       k.name,
+		Data:       k.data,
+		AttestedBy: k.attestedBy,
+		Chain:      chain,
+		CreatedAt:  k.createdAt,
+	}
+	if err := k.tpm.store.UpdateKey(storedKey); err != nil {
+		return fmt.Errorf("failed updating key %q: %w", k.name, err)
+	}
+
+	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
+	return nil
 }

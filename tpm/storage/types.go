@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"crypto/x509"
 	"fmt"
 	"time"
 )
@@ -8,6 +9,7 @@ import (
 type AK struct {
 	Name      string
 	Data      []byte
+	Chain     []*x509.Certificate
 	CreatedAt time.Time
 }
 
@@ -15,6 +17,7 @@ type Key struct {
 	Name       string
 	Data       []byte
 	AttestedBy string
+	Chain      []*x509.Certificate
 	CreatedAt  time.Time
 }
 
@@ -34,6 +37,7 @@ type serializedAK struct {
 	Name      string        `json:"name"`
 	Type      tpmObjectType `json:"type"`
 	Data      []byte        `json:"data"`
+	Chain     [][]byte      `json:"chain"`
 	CreatedAt time.Time     `json:"createdAt"`
 }
 
@@ -42,6 +46,7 @@ type serializedKey struct {
 	Type       tpmObjectType `json:"type"`
 	Data       []byte        `json:"data"`
 	AttestedBy string        `json:"attestedBy"`
+	Chain      [][]byte      `json:"chain"`
 	CreatedAt  time.Time     `json:"createdAt"`
 }
 

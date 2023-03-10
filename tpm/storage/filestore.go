@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -33,7 +35,11 @@ func (s *Filestore) AddKey(k *Key) error {
 	if err := s.store.Get(kk, nil); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
-			return s.store.Set(kk, serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, CreatedAt: k.CreatedAt})
+			chain := make([][]byte, len(k.Chain))
+			for i, cert := range k.Chain {
+				chain[i] = cert.Raw
+			}
+			return s.store.Set(kk, serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, Chain: chain, CreatedAt: k.CreatedAt})
 		}
 		return err
 	}
@@ -46,7 +52,11 @@ func (s *Filestore) AddAK(ak *AK) error {
 	if err := s.store.Get(ka, nil); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
-			return s.store.Set(ka, serializedAK{Name: ak.Name, Type: typeKey, Data: ak.Data, CreatedAt: ak.CreatedAt})
+			chain := make([][]byte, len(ak.Chain))
+			for i, cert := range ak.Chain {
+				chain[i] = cert.Raw
+			}
+			return s.store.Set(ka, serializedAK{Name: ak.Name, Type: typeKey, Data: ak.Data, Chain: chain, CreatedAt: ak.CreatedAt})
 		}
 		return err
 	}
@@ -64,7 +74,16 @@ func (s *Filestore) GetKey(name string) (*Key, error) {
 		return nil, err
 	}
 
-	return &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt}, nil
+	chain := make([]*x509.Certificate, len(sk.Chain))
+	for i, certBytes := range sk.Chain {
+		cert, err := x509.ParseCertificate(certBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing certificate: %w", err)
+		}
+		chain[i] = cert
+	}
+
+	return &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, Chain: chain, CreatedAt: sk.CreatedAt}, nil
 }
 
 func (s *Filestore) GetAK(name string) (*AK, error) {
@@ -77,7 +96,50 @@ func (s *Filestore) GetAK(name string) (*AK, error) {
 		return nil, err
 	}
 
-	return &AK{Name: ak.Name, Data: ak.Data, CreatedAt: ak.CreatedAt}, nil
+	chain := make([]*x509.Certificate, len(ak.Chain))
+	for i, certBytes := range ak.Chain {
+		cert, err := x509.ParseCertificate(certBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing certificate: %w", err)
+		}
+		chain[i] = cert
+	}
+
+	return &AK{Name: ak.Name, Data: ak.Data, Chain: chain, CreatedAt: ak.CreatedAt}, nil
+}
+
+func (s *Filestore) UpdateKey(k *Key) error {
+	kk := keyForKey(k.Name)
+	if err := s.store.Get(kk, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	chain := make([][]byte, len(k.Chain))
+	for i, cert := range k.Chain {
+		chain[i] = cert.Raw
+	}
+	return s.store.Set(kk, serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, Chain: chain, CreatedAt: k.CreatedAt})
+}
+
+func (s *Filestore) UpdateAK(ak *AK) error {
+	ka := keyForAK(ak.Name)
+	if err := s.store.Get(ka, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	chain := make([][]byte, len(ak.Chain))
+	for i, cert := range ak.Chain {
+		chain[i] = cert.Raw
+	}
+	return s.store.Set(ka, serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, Chain: chain, CreatedAt: ak.CreatedAt})
 }
 
 func (s *Filestore) DeleteKey(name string) error {
@@ -117,7 +179,16 @@ func (s *Filestore) ListKeys() ([]*Key, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt})
+
+		chain := make([]*x509.Certificate, len(sk.Chain))
+		for i, certBytes := range sk.Chain {
+			cert, err := x509.ParseCertificate(certBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing certificate: %w", err)
+			}
+			chain[i] = cert
+		}
+		result = append(result, &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, Chain: chain, CreatedAt: sk.CreatedAt})
 	}
 
 	return result, nil
@@ -127,12 +198,21 @@ func (s *Filestore) ListAKs() ([]*AK, error) {
 	aks := s.store.GetAll(regexp.MustCompile(akPrefix))
 	var result = make([]*AK, 0, len(aks))
 	for _, v := range aks {
-		ak := &serializedAK{}
-		err := json.Unmarshal(v, ak)
+		sak := &serializedAK{}
+		err := json.Unmarshal(v, sak)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, &AK{Name: ak.Name, Data: ak.Data, CreatedAt: ak.CreatedAt})
+
+		chain := make([]*x509.Certificate, len(sak.Chain))
+		for i, certBytes := range sak.Chain {
+			cert, err := x509.ParseCertificate(certBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing certificate: %w", err)
+			}
+			chain[i] = cert
+		}
+		result = append(result, &AK{Name: sak.Name, Data: sak.Data, Chain: chain, CreatedAt: sak.CreatedAt})
 	}
 
 	return result, nil

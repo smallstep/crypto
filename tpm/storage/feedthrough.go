@@ -41,6 +41,13 @@ func (f *FeedthroughStore) AddKey(key *Key) error {
 	return f.store.AddKey(key)
 }
 
+func (f *FeedthroughStore) UpdateKey(key *Key) error {
+	if f.store == nil {
+		return nil
+	}
+	return f.store.UpdateKey(key)
+}
+
 func (f *FeedthroughStore) DeleteKey(name string) error {
 	if f.store == nil {
 		return nil
@@ -74,6 +81,13 @@ func (f *FeedthroughStore) AddAK(ak *AK) error {
 		return nil
 	}
 	return f.store.AddAK(ak)
+}
+
+func (f *FeedthroughStore) UpdateAK(ak *AK) error {
+	if f.store == nil {
+		return nil
+	}
+	return f.store.UpdateAK(ak)
 }
 
 func (f *FeedthroughStore) DeleteAK(name string) error {

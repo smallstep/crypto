@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -107,13 +108,37 @@ func (s *Dirstore) AddKey(key *Key) error {
 		return ErrExists
 	}
 
-	data, err := json.Marshal(serializedKey{Name: key.Name, Type: typeKey, Data: key.Data, AttestedBy: key.AttestedBy, CreatedAt: key.CreatedAt})
+	chain := make([][]byte, len(key.Chain))
+	for i, cert := range key.Chain {
+		chain[i] = cert.Raw
+	}
+
+	data, err := json.Marshal(serializedKey{Name: key.Name, Type: typeKey, Data: key.Data, AttestedBy: key.AttestedBy, Chain: chain, CreatedAt: key.CreatedAt})
 	if err != nil {
 		return fmt.Errorf("error serializing key: %w", err)
 	}
 
 	if err := s.store.WriteStream(kk, bytes.NewBuffer(data), true); err != nil {
-		return fmt.Errorf("error writing to disk: %w", err)
+		return fmt.Errorf("error writing key to disk: %w", err)
+	}
+	return nil
+}
+
+func (s *Dirstore) UpdateKey(key *Key) error {
+	kk := keyForKey(key.Name)
+	if !s.store.Has(kk) {
+		return ErrNotFound
+	}
+	chain := make([][]byte, len(key.Chain))
+	for i, cert := range key.Chain {
+		chain[i] = cert.Raw
+	}
+	data, err := json.Marshal(serializedKey{Name: key.Name, Type: typeKey, Data: key.Data, AttestedBy: key.AttestedBy, Chain: chain, CreatedAt: key.CreatedAt})
+	if err != nil {
+		return fmt.Errorf("error serializing key: %w", err)
+	}
+	if err := s.store.WriteStream(kk, bytes.NewBuffer(data), true); err != nil {
+		return fmt.Errorf("error writing key to disk: %w", err)
 	}
 	return nil
 }
@@ -143,7 +168,16 @@ func (s *Dirstore) ListAKs() ([]*AK, error) {
 			return nil, fmt.Errorf("error unmarshaling AK: %w", err)
 		}
 
-		result = append(result, &AK{Name: sak.Name, Data: sak.Data, CreatedAt: sak.CreatedAt})
+		chain := make([]*x509.Certificate, len(sak.Chain))
+		for i, certBytes := range sak.Chain {
+			cert, err := x509.ParseCertificate(certBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing certificate: %w", err)
+			}
+			chain[i] = cert
+		}
+
+		result = append(result, &AK{Name: sak.Name, Data: sak.Data, Chain: chain, CreatedAt: sak.CreatedAt})
 	}
 	return result, nil
 }
@@ -173,7 +207,16 @@ func (s *Dirstore) GetAK(name string) (*AK, error) {
 		return nil, fmt.Errorf("error unmarshaling AK: %w", err)
 	}
 
-	return &AK{Name: sak.Name, Data: sak.Data, CreatedAt: sak.CreatedAt}, nil
+	chain := make([]*x509.Certificate, len(sak.Chain))
+	for i, certBytes := range sak.Chain {
+		cert, err := x509.ParseCertificate(certBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing certificate: %w", err)
+		}
+		chain[i] = cert
+	}
+
+	return &AK{Name: sak.Name, Data: sak.Data, Chain: chain, CreatedAt: sak.CreatedAt}, nil
 }
 
 func (s *Dirstore) AddAK(ak *AK) error {
@@ -181,7 +224,30 @@ func (s *Dirstore) AddAK(ak *AK) error {
 	if s.store.Has(akKey) {
 		return ErrExists
 	}
-	data, err := json.Marshal(serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, CreatedAt: ak.CreatedAt})
+	chain := make([][]byte, len(ak.Chain))
+	for i, cert := range ak.Chain {
+		chain[i] = cert.Raw
+	}
+	data, err := json.Marshal(serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, Chain: chain, CreatedAt: ak.CreatedAt})
+	if err != nil {
+		return fmt.Errorf("error serializing AK: %w", err)
+	}
+	if err := s.store.WriteStream(akKey, bytes.NewBuffer(data), true); err != nil {
+		return fmt.Errorf("error writing AK to disk: %w", err)
+	}
+	return nil
+}
+
+func (s *Dirstore) UpdateAK(ak *AK) error {
+	akKey := keyForAK(ak.Name)
+	if !s.store.Has(akKey) {
+		return ErrNotFound
+	}
+	chain := make([][]byte, len(ak.Chain))
+	for i, cert := range ak.Chain {
+		chain[i] = cert.Raw
+	}
+	data, err := json.Marshal(serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, Chain: chain, CreatedAt: ak.CreatedAt})
 	if err != nil {
 		return fmt.Errorf("error serializing AK: %w", err)
 	}
