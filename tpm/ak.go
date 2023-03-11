@@ -57,11 +57,17 @@ func (ak *AK) MarshalJSON() ([]byte, error) {
 	type out struct {
 		Name      string    `json:"name"`
 		Data      []byte    `json:"data"`
+		Chain     [][]byte  `json:"chain,omitempty"`
 		CreatedAt time.Time `json:"createdAt"`
+	}
+	chain := make([][]byte, len(ak.chain))
+	for i, cert := range ak.chain {
+		chain[i] = cert.Raw
 	}
 	o := out{
 		Name:      ak.name,
 		Data:      ak.data,
+		Chain:     chain,
 		CreatedAt: ak.createdAt,
 	}
 	return json.Marshal(o)
@@ -86,24 +92,25 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
 	akConfig := attest.AKConfig{
 		Name: prefixAK(name),
 	}
-	ak, err := t.attestTPM.NewAK(&akConfig)
+	aak, err := t.attestTPM.NewAK(&akConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new AK %q: %w", name, err)
 	}
-	defer ak.Close(t.attestTPM)
+	defer aak.Close(t.attestTPM)
 
-	data, err := ak.Marshal()
+	data, err := aak.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("failed marshaling AK %q: %w", name, err)
 	}
 
-	storedAK := &storage.AK{
-		Name:      name,
-		Data:      data,
-		CreatedAt: now,
+	ak := &AK{
+		name:      name,
+		data:      data,
+		createdAt: now,
+		tpm:       t,
 	}
 
-	if err := t.store.AddAK(storedAK); err != nil {
+	if err := t.store.AddAK(ak.toStorage()); err != nil {
 		return nil, fmt.Errorf("failed adding AK %q: %w", name, err)
 	}
 
@@ -111,7 +118,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
 		return nil, fmt.Errorf("failed persisting AK %q: %w", name, err)
 	}
 
-	return &AK{name: storedAK.Name, data: storedAK.Data, createdAt: now, tpm: t}, nil
+	return ak, nil
 }
 
 func (t *TPM) GetAK(ctx context.Context, name string) (*AK, error) {
@@ -128,7 +135,7 @@ func (t *TPM) GetAK(ctx context.Context, name string) (*AK, error) {
 		return nil, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
-	return &AK{name: ak.Name, data: ak.Data, chain: ak.Chain, createdAt: ak.CreatedAt, tpm: t}, nil
+	return akFromStorage(ak, t), nil
 }
 
 func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
@@ -144,7 +151,7 @@ func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
 
 	result := make([]*AK, 0, len(aks))
 	for _, ak := range aks {
-		result = append(result, &AK{name: ak.Name, data: ak.Data, createdAt: ak.CreatedAt, tpm: t})
+		result = append(result, akFromStorage(ak, t))
 	}
 
 	// TODO: include ordering by name or createdAt?
@@ -274,16 +281,30 @@ func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	// TODO(hs): perform validation, such as check if the chain includes leaf for the
 	// AK public key?
 
-	storedAK := &storage.AK{
-		Name:      ak.name,
-		Data:      ak.data,
-		Chain:     chain,
-		CreatedAt: ak.createdAt,
-	}
-	if err := ak.tpm.store.UpdateAK(storedAK); err != nil {
+	ak.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
+
+	if err := ak.tpm.store.UpdateAK(ak.toStorage()); err != nil {
 		return fmt.Errorf("failed updating AK %q: %w", ak.name, err)
 	}
 
-	ak.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
 	return nil
+}
+
+func (ak *AK) toStorage() *storage.AK {
+	return &storage.AK{
+		Name:      ak.name,
+		Data:      ak.data,
+		Chain:     ak.chain,
+		CreatedAt: ak.createdAt,
+	}
+}
+
+func akFromStorage(sak *storage.AK, t *TPM) *AK {
+	return &AK{
+		name:      sak.Name,
+		data:      sak.Data,
+		chain:     sak.Chain,
+		createdAt: sak.CreatedAt,
+		tpm:       t,
+	}
 }

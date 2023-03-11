@@ -14,7 +14,7 @@ import (
 	"go.step.sm/crypto/tpm/storage"
 )
 
-// AK models a TPM 2.0 Key.
+// Key models a TPM 2.0 Key.
 type Key struct {
 	name       string
 	data       []byte
@@ -79,12 +79,18 @@ func (k *Key) MarshalJSON() ([]byte, error) {
 		Name       string    `json:"name"`
 		Data       []byte    `json:"data"`
 		AttestedBy string    `json:"attestedBy,omitempty"`
+		Chain      [][]byte  `json:"chain,omitempty"`
 		CreatedAt  time.Time `json:"createdAt"`
+	}
+	chain := make([][]byte, len(k.chain))
+	for i, cert := range k.chain {
+		chain[i] = cert.Raw
 	}
 	o := out{
 		Name:       k.name,
 		Data:       k.data,
 		AttestedBy: k.attestedBy,
+		Chain:      chain,
 		CreatedAt:  k.createdAt,
 	}
 	return json.Marshal(o)
@@ -138,13 +144,14 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
-	storedKey := &storage.Key{
-		Name:      name,
-		Data:      data,
-		CreatedAt: now,
+	key := &Key{
+		name:      name,
+		data:      data,
+		createdAt: now,
+		tpm:       t,
 	}
 
-	if err := t.store.AddKey(storedKey); err != nil {
+	if err := t.store.AddKey(key.toStorage()); err != nil {
 		return nil, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
@@ -152,7 +159,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		return nil, fmt.Errorf("failed persisting key %q to storage: %w", name, err)
 	}
 
-	return &Key{name: storedKey.Name, data: storedKey.Data, createdAt: now, tpm: t}, nil
+	return key, nil
 }
 
 // TODO: every interaction with the actual TPM now opens the "connection" when required, then
@@ -195,25 +202,26 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		Name:           prefixKey(name),
 	}
 
-	key, err := t.attestTPM.NewKey(loadedAK, keyConfig)
+	akey, err := t.attestTPM.NewKey(loadedAK, keyConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
-	defer key.Close()
+	defer akey.Close()
 
-	data, err := key.Marshal()
+	data, err := akey.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("failed marshaling key %q: %w", name, err)
 	}
 
-	storedKey := &storage.Key{
-		Name:       name,
-		Data:       data,
-		AttestedBy: akName,
-		CreatedAt:  now,
+	key := &Key{
+		name:       name,
+		data:       data,
+		attestedBy: akName,
+		createdAt:  now,
+		tpm:        t,
 	}
 
-	if err := t.store.AddKey(storedKey); err != nil {
+	if err := t.store.AddKey(key.toStorage()); err != nil {
 		return nil, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
@@ -221,7 +229,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		return nil, fmt.Errorf("failed persisting key %q: %w", name, err)
 	}
 
-	return &Key{name: storedKey.Name, data: storedKey.Data, attestedBy: akName, createdAt: now, tpm: t}, nil
+	return key, nil
 }
 
 func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
@@ -238,7 +246,7 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 		return nil, fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
-	return &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t}, nil
+	return keyFromStorage(key, t), nil
 }
 
 func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
@@ -254,7 +262,7 @@ func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 
 	result := make([]*Key, 0, len(keys))
 	for _, key := range keys {
-		result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
+		result = append(result, keyFromStorage(key, t))
 	}
 
 	return result, nil
@@ -274,7 +282,7 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, err
 	result := make([]*Key, 0, len(keys))
 	for _, key := range keys {
 		if key.AttestedBy == akName {
-			result = append(result, &Key{name: key.Name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t})
+			result = append(result, keyFromStorage(key, t))
 		}
 	}
 
@@ -371,17 +379,32 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	// TODO(hs): perform validation, such as check if the chain includes leaf for the
 	// AK public key?
 
-	storedKey := &storage.Key{
-		Name:       k.name,
-		Data:       k.data,
-		AttestedBy: k.attestedBy,
-		Chain:      chain,
-		CreatedAt:  k.createdAt,
-	}
-	if err := k.tpm.store.UpdateKey(storedKey); err != nil {
+	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
+
+	if err := k.tpm.store.UpdateKey(k.toStorage()); err != nil {
 		return fmt.Errorf("failed updating key %q: %w", k.name, err)
 	}
 
-	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
 	return nil
+}
+
+func (k *Key) toStorage() *storage.Key {
+	return &storage.Key{
+		Name:       k.name,
+		Data:       k.data,
+		AttestedBy: k.attestedBy,
+		Chain:      k.chain,
+		CreatedAt:  k.createdAt,
+	}
+}
+
+func keyFromStorage(sk *storage.Key, t *TPM) *Key {
+	return &Key{
+		name:       sk.Name,
+		data:       sk.Data,
+		attestedBy: sk.AttestedBy,
+		chain:      sk.Chain,
+		createdAt:  sk.CreatedAt,
+		tpm:        t,
+	}
 }

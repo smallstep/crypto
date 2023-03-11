@@ -17,7 +17,7 @@ func TestAK_MarshalUnmarshal(t *testing.T) {
 	ca, err := minica.New()
 	require.NoError(t, err)
 
-	signer, err := keyutil.GenerateDefaultSigner()
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
 	require.NoError(t, err)
 
 	cr, err := x509util.NewCertificateRequest(signer)
@@ -51,7 +51,7 @@ func TestKey_MarshalUnmarshal(t *testing.T) {
 	ca, err := minica.New()
 	require.NoError(t, err)
 
-	signer, err := keyutil.GenerateDefaultSigner()
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
 	require.NoError(t, err)
 
 	cr, err := x509util.NewCertificateRequest(signer)

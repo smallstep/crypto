@@ -250,6 +250,7 @@ func TestTPM_CreateKey(t *testing.T) {
 	require.Equal(t, "", key.AttestedBy())
 	require.NotEqual(t, 0, len(key.Data()))
 	require.Same(t, tpm, key.tpm)
+	require.False(t, key.WasAttested())
 }
 
 func TestTPM_AttestKey(t *testing.T) {
@@ -270,6 +271,8 @@ func TestTPM_AttestKey(t *testing.T) {
 	require.NotEqual(t, 0, len(key.Data()))
 	require.Equal(t, "first-ak", key.AttestedBy())
 	require.Same(t, tpm, key.tpm)
+	require.True(t, key.WasAttested())
+	require.True(t, key.WasAttestedBy(ak))
 }
 
 func TestTPM_GetKey(t *testing.T) {
@@ -368,6 +371,8 @@ func TestKey_CertificationParameters(t *testing.T) {
 	require.NotEqual(t, 0, len(key.Data()))
 	require.Equal(t, "first-ak", key.AttestedBy())
 	require.Same(t, tpm, key.tpm)
+	require.True(t, key.WasAttested())
+	require.True(t, key.WasAttestedBy(ak))
 
 	params, err := key.CertificationParameters(context.Background())
 	require.NoError(t, err)

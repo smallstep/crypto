@@ -12,13 +12,13 @@ func Test_transform(t *testing.T) {
 	t.Parallel()
 
 	got := advancedTransform("/path/to/file")
-	assert.Equal(t, &diskv.PathKey{Path: []string{"", "path", "to"}, FileName: "file.tpmkey"}, got)
+	assert.Equal(t, &diskv.PathKey{Path: []string{"", "path", "to"}, FileName: "file.tpmobj"}, got)
 
 	got = advancedTransform("path/to/file")
-	assert.Equal(t, &diskv.PathKey{Path: []string{"path", "to"}, FileName: "file.tpmkey"}, got)
+	assert.Equal(t, &diskv.PathKey{Path: []string{"path", "to"}, FileName: "file.tpmobj"}, got)
 
 	got = advancedTransform("file.txt")
-	assert.Equal(t, &diskv.PathKey{Path: []string{}, FileName: "file.txt.tpmkey"}, got)
+	assert.Equal(t, &diskv.PathKey{Path: []string{}, FileName: "file.txt.tpmobj"}, got)
 }
 
 func Test_inverseTransform(t *testing.T) {
@@ -27,13 +27,13 @@ func Test_inverseTransform(t *testing.T) {
 	got := inverseTransform(&diskv.PathKey{FileName: "file.txt.notpmkey"})
 	assert.Equal(t, "", got)
 
-	got = inverseTransform(&diskv.PathKey{FileName: "file.txt.tpmkey"})
+	got = inverseTransform(&diskv.PathKey{FileName: "file.txt.tpmobj"})
 	assert.Equal(t, "file.txt", got)
 
-	got = inverseTransform(&diskv.PathKey{Path: []string{"path", "to"}, FileName: "file.tpmkey"})
+	got = inverseTransform(&diskv.PathKey{Path: []string{"path", "to"}, FileName: "file.tpmobj"})
 	assert.Equal(t, "path/to/file", got)
 
-	got = inverseTransform(&diskv.PathKey{Path: []string{"", "path", "to"}, FileName: "file.tpmkey"})
+	got = inverseTransform(&diskv.PathKey{Path: []string{"", "path", "to"}, FileName: "file.tpmobj"})
 	assert.Equal(t, "/path/to/file", got)
 }
 
