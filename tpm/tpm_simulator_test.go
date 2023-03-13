@@ -7,14 +7,19 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"testing"
 
 	"github.com/google/go-attestation/attest"
 	"github.com/stretchr/testify/require"
+
+	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/x509util"
 )
 
 func newSimulatedTPM(t *testing.T) *TPM {
@@ -238,6 +243,53 @@ func TestAK_Blobs(t *testing.T) {
 	require.Len(t, public, int(size)+2)
 }
 
+func TestAK_CertificateOperations(t *testing.T) {
+
+	tpm := newSimulatedTPM(t)
+	ak, err := tpm.CreateAK(context.Background(), "first-ak")
+	require.NoError(t, err)
+	require.NotNil(t, ak)
+	require.Same(t, tpm, ak.tpm)
+
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	require.NoError(t, err)
+
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	require.NoError(t, err)
+
+	cr, err := x509util.NewCertificateRequest(signer)
+	require.NoError(t, err)
+	cr.Subject.CommonName = "testkey"
+
+	csr, err := cr.GetCertificateRequest()
+	require.NoError(t, err)
+
+	cert, err := ca.SignCSR(csr)
+	require.NoError(t, err)
+
+	akCert := ak.Certificate()
+	require.Nil(t, akCert)
+
+	akChain := ak.CertificateChain()
+	require.Empty(t, akChain)
+
+	chain := []*x509.Certificate{cert, ca.Intermediate}
+	err = ak.SetCertificateChain(context.TODO(), chain)
+	require.NoError(t, err)
+
+	akCert = ak.Certificate()
+	require.Equal(t, cert, akCert)
+
+	akChain = ak.CertificateChain()
+	require.Equal(t, chain, akChain)
+}
+
 func TestTPM_CreateKey(t *testing.T) {
 	tpm := newSimulatedTPM(t)
 	config := CreateKeyConfig{
@@ -427,6 +479,57 @@ func TestKey_Blobs(t *testing.T) {
 
 	size = binary.BigEndian.Uint16(public[0:2])
 	require.Len(t, public, int(size)+2)
+}
+
+func TestKey_SetCertificateChain(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.CreateKey(context.Background(), "first-key", config)
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	require.Equal(t, "", key.AttestedBy())
+	require.Same(t, tpm, key.tpm)
+
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	require.NoError(t, err)
+
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	require.NoError(t, err)
+
+	cr, err := x509util.NewCertificateRequest(signer)
+	require.NoError(t, err)
+	cr.Subject.CommonName = "testkey"
+
+	csr, err := cr.GetCertificateRequest()
+	require.NoError(t, err)
+
+	cert, err := ca.SignCSR(csr)
+	require.NoError(t, err)
+
+	keyCert := key.Certificate()
+	require.Nil(t, keyCert)
+
+	keyChain := key.CertificateChain()
+	require.Empty(t, keyChain)
+
+	chain := []*x509.Certificate{cert, ca.Intermediate}
+	err = key.SetCertificateChain(context.TODO(), chain)
+	require.NoError(t, err)
+
+	keyCert = key.Certificate()
+	require.Equal(t, cert, keyCert)
+
+	keyChain = key.CertificateChain()
+	require.Equal(t, chain, keyChain)
 }
 
 func TestTPM_GetSigner(t *testing.T) {
