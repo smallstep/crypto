@@ -7,8 +7,10 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-piv/piv-go/piv"
@@ -19,6 +21,10 @@ import (
 
 // Scheme is the scheme used in uris.
 const Scheme = "yubikey"
+
+// Yubico PIV attestation serial number, encoded as an integer.
+// https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
+var oidYubicoSerialNumber = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 41482, 3, 7}
 
 // YubiKey implements the KMS interface on a YubiKey.
 type YubiKey struct {
@@ -42,12 +48,33 @@ var pivOpen = func(card string) (pivKey, error) {
 	return piv.Open(card)
 }
 
-// New initializes a new YubiKey.
-// TODO(mariano): only one card is currently supported.
+// New initializes a new YubiKey KMS.
+//
+// The most common way to open a YubiKey is to add a URI in the options:
+//
+//	New(ctx, &apiv1.Options{
+//	    URI: yubikey:pin-value=123456,
+//	})
+//
+// This URI can also provide the management key in hexadecimal format if the
+// default one is not used, and the serial number of the card if we want to
+// support multiple cards at the same time.
+//
+//	yubikey:management-key=001122334455667788990011223344556677889900112233?pin-value=123456
+//	yubikey:serial=112233?pin-source=/var/run/yubikey.pin
+//
+// You can also define a slot id, this will be ignored in this method but can be
+// useful on CLI applications.
+//
+//	yubikey:slot-id=9a?pin-value=123456
+//
+// If the pin or the management-key are not provided, we will use the default
+// ones.
 func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
 	managementKey := piv.DefaultManagementKey
 
+	var serial string
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
@@ -58,6 +85,9 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		}
 		if v := u.Get("management-key"); v != "" {
 			opts.ManagementKey = v
+		}
+		if v := u.Get("serial"); v != "" {
+			serial = v
 		}
 	}
 
@@ -85,8 +115,21 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		return nil, errors.New("error detecting yubikey: try removing and reconnecting the device")
 	}
 
-	yk, err := pivOpen(cards[0])
-	if err != nil {
+	var yk pivKey
+	if serial != "" {
+		// Attempt to locate the yubikey with the given serial.
+		for _, name := range cards {
+			if k, err := pivOpen(name); err == nil {
+				if serialNumber, err := getSerialNumber(k); err == nil && serial == serialNumber {
+					yk = k
+					break
+				}
+			}
+		}
+		if yk == nil {
+			return nil, errors.Errorf("failed to find key with serial number %s", serial)
+		}
+	} else if yk, err = pivOpen(cards[0]); err != nil {
 		return nil, errors.Wrap(err, "error opening yubikey")
 	}
 
@@ -394,15 +437,11 @@ func getSlotAndName(name string) (piv.Slot, string, error) {
 	var slotID string
 	name = strings.ToLower(name)
 	if strings.HasPrefix(name, "yubikey:") {
-		u, err := url.Parse(name)
+		u, err := uri.Parse(name)
 		if err != nil {
-			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s'", name)
+			return piv.Slot{}, "", err
 		}
-		v, err := url.ParseQuery(u.Opaque)
-		if err != nil {
-			return piv.Slot{}, "", errors.Wrapf(err, "error parsing '%s'", name)
-		}
-		if slotID = v.Get("slot-id"); slotID == "" {
+		if slotID = u.Get("slot-id"); slotID == "" {
 			return piv.Slot{}, "", errors.Errorf("error parsing '%s': slot-id is missing", name)
 		}
 	} else {
@@ -430,4 +469,24 @@ func getPolicies(req *apiv1.CreateKeyRequest) (piv.PINPolicy, piv.TouchPolicy) {
 		touch = piv.TouchPolicyNever
 	}
 	return pin, touch
+}
+
+// getSerialNumber gets an attestation certificate on the given key and returns
+// the serial number on it.
+func getSerialNumber(yk pivKey) (string, error) {
+	cert, err := yk.Attest(piv.SlotAuthentication)
+	if err != nil {
+		return "", err
+	}
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(oidYubicoSerialNumber) {
+			var serialNumber int
+			rest, err := asn1.Unmarshal(ext.Value, &serialNumber)
+			if err != nil || len(rest) > 0 {
+				return "", errors.New("error parsing YubiKey serial number")
+			}
+			return strconv.Itoa(serialNumber), nil
+		}
+	}
+	return "", errors.New("failed to find YubiKey serial number")
 }

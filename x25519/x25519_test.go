@@ -577,3 +577,66 @@ func TestVerify_error(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicKey_Equal(t *testing.T) {
+	pub1, _, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub2, _, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type args struct {
+		x crypto.PublicKey
+	}
+	tests := []struct {
+		name string
+		p    PublicKey
+		args args
+		want bool
+	}{
+		{"true", pub1, args{pub1}, true},
+		{"false", pub1, args{pub2}, false},
+		{"false type", pub1, args{[]byte(pub1)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.Equal(tt.args.x); got != tt.want {
+				t.Errorf("PublicKey.Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrivateKey_Equal(t *testing.T) {
+	_, priv1, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, priv2, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		x crypto.PrivateKey
+	}
+	tests := []struct {
+		name string
+		p    PrivateKey
+		args args
+		want bool
+	}{
+		{"true", priv1, args{priv1}, true},
+		{"false", priv1, args{priv2}, false},
+		{"false type", priv1, args{[]byte(priv1)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.Equal(tt.args.x); got != tt.want {
+				t.Errorf("PrivateKey.Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
