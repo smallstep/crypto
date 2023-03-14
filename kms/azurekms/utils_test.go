@@ -120,10 +120,16 @@ func Test_convertKey(t *testing.T) {
 	// EC Public Key
 	x := ecKey.X.Bytes()
 	y := ecKey.Y.Bytes()
-	pad := make([]byte, 32-len(x))
-	x = append(pad, x...)
-	pad = make([]byte, 32-len(y))
-	y = append(pad, y...)
+	if s := 32 - len(x); s > 0 {
+		pad := make([]byte, s)
+		//nolint:makezero // prepend with 0s
+		x = append(pad, x...)
+	}
+	if s := 32 - len(y); s > 0 {
+		pad := make([]byte, 32-len(y))
+		//nolint:makezero // prepend with 0s
+		y = append(pad, y...)
+	}
 
 	// RSA Public key
 	n := rsaKey.N.Bytes()
