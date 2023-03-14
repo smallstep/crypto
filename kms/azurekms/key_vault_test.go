@@ -574,10 +574,10 @@ func TestKeyVault_CreateSigner(t *testing.T) {
 
 	m := mockClient(t)
 	m.EXPECT().GetKey(gomock.Any(), "my-key", "", nil).Return(azkeys.GetKeyResponse{
-		azkeys.KeyBundle{Key: jwk},
+		KeyBundle: azkeys.KeyBundle{Key: jwk},
 	}, nil)
 	m.EXPECT().GetKey(gomock.Any(), "my-key", "my-version", nil).Return(azkeys.GetKeyResponse{
-		azkeys.KeyBundle{Key: jwk},
+		KeyBundle: azkeys.KeyBundle{Key: jwk},
 	}, nil)
 	m.EXPECT().GetKey(gomock.Any(), "not-found", "my-version", nil).Return(azkeys.GetKeyResponse{}, errTest)
 

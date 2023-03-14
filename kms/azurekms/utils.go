@@ -35,7 +35,7 @@ func defaultContext() (context.Context, context.CancelFunc) {
 // getKeyName returns the uri of the key vault key.
 func getKeyName(vault, name string, key *azkeys.JSONWebKey) string {
 	if key != nil && key.KID != nil {
-		if u, err := url.Parse((string)(*key.KID)); err == nil {
+		if u, err := url.Parse(string(*key.KID)); err == nil {
 			host := strings.SplitN(u.Host, ".", 2)
 			path := strings.Split(u.Path, "/")
 			if len(host) == 2 && len(path) == 4 {

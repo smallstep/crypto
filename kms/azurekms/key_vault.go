@@ -159,7 +159,7 @@ var createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.To
 
 		// The 'environment' parameter in the URI defines the Cloud environment to
 		// be used. By default Azure Public Cloud is used.
-		cloud, err := getCloudConfiguration(u.Get("environment"))
+		cloudConf, err := getCloudConfiguration(u.Get("environment"))
 		if err != nil {
 			return nil, err
 		}
@@ -171,10 +171,10 @@ var createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.To
 		//
 		// TODO(mariano): is this option still valid?
 		if v := u.Get("aad-endpoint"); v != "" {
-			cloud.ActiveDirectoryAuthorityHost = v
+			cloudConf.ActiveDirectoryAuthorityHost = v
 		}
 
-		clientOptions.Cloud = cloud.Configuration
+		clientOptions.Cloud = cloudConf.Configuration
 
 		// ClientSecret credential parameters.
 		//
@@ -232,13 +232,13 @@ func New(ctx context.Context, opts apiv1.Options) (*KeyVault, error) {
 		if err != nil {
 			return nil, err
 		}
-		cloud, err := getCloudConfiguration(u.Get("environment"))
+		cloudConf, err := getCloudConfiguration(u.Get("environment"))
 		if err != nil {
 			return nil, err
 		}
 		defaults = defaultOptions{
 			Vault:     u.Get("vault"),
-			DNSSuffix: cloud.DNSSuffix,
+			DNSSuffix: cloudConf.DNSSuffix,
 		}
 		if u.GetBool("hsm") {
 			defaults.ProtectionLevel = apiv1.HSM
