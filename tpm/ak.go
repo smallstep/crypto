@@ -3,12 +3,15 @@ package tpm
 import (
 	"context"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/go-attestation/attest"
+	x509ext "github.com/google/go-attestation/x509"
 
 	"go.step.sm/crypto/tpm/storage"
 )
@@ -136,6 +139,59 @@ func (t *TPM) GetAK(ctx context.Context, name string) (*AK, error) {
 	}
 
 	return akFromStorage(ak, t), nil
+}
+
+var (
+	oidSubjectAlternativeName = asn1.ObjectIdentifier{2, 5, 29, 17}
+)
+
+func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifier string) (*AK, error) {
+	if err := t.Open(ctx); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer t.Close(ctx)
+
+	aks, err := t.store.ListAKs()
+	if err != nil {
+		return nil, fmt.Errorf("failed listing AKs: %w", err)
+	}
+
+	// loop through all available AKs and check if one exist that
+	// contains a Subject Alternative Name extension containing the
+	// requested PermanentIdentifier.
+	for _, ak := range aks {
+		chain := ak.Chain
+		if len(chain) == 0 {
+			continue
+		}
+		akCert := chain[0]
+
+		var sanExtension pkix.Extension
+		for _, ext := range akCert.Extensions {
+			if ext.Id.Equal(oidSubjectAlternativeName) {
+				sanExtension = ext
+			}
+		}
+
+		if sanExtension.Value == nil {
+			continue
+		}
+
+		san, err := x509ext.ParseSubjectAltName(sanExtension) // TODO(hs): move to a package under our control?
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing Subject Alternative Name extension")
+		}
+
+		// loop through the permanent identifier values and return the AK
+		// if the requested PermanentIdentifier was found.
+		for _, p := range san.PermanentIdentifiers {
+			if p.IdentifierValue == permanentIdentifier {
+				return akFromStorage(ak, t), nil
+			}
+		}
+	}
+
+	return nil, ErrNotFound
 }
 
 func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
