@@ -3,24 +3,22 @@ package azurekms
 import (
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	"go.step.sm/crypto/kms/apiv1"
 )
 
 func Test_getKeyName(t *testing.T) {
-	getBundle := func(kid string) keyvault.KeyBundle {
-		return keyvault.KeyBundle{
-			Key: &keyvault.JSONWebKey{
-				Kid: &kid,
-			},
+	getBundle := func(kid string) *azkeys.JSONWebKey {
+		id := azkeys.ID(kid)
+		return &azkeys.JSONWebKey{
+			KID: &id,
 		}
 	}
 
 	type args struct {
 		vault  string
 		name   string
-		bundle keyvault.KeyBundle
+		bundle *azkeys.JSONWebKey
 	}
 	tests := []struct {
 		name string
@@ -34,8 +32,8 @@ func Test_getKeyName(t *testing.T) {
 		{"ok other", args{"my-vault", "my-key", getBundle("https://my-vault.foo.net/keys/my-key/my-version")}, "azurekms:name=my-key;vault=my-vault?version=my-version"},
 		{"ok too short", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.net/keys/my-version")}, "azurekms:name=my-key;vault=my-vault"},
 		{"ok too long", args{"my-vault", "my-key", getBundle("https://my-vault.vault.azure.net/keys/my-key/my-version/sign")}, "azurekms:name=my-key;vault=my-vault"},
-		{"ok nil key", args{"my-vault", "my-key", keyvault.KeyBundle{}}, "azurekms:name=my-key;vault=my-vault"},
-		{"ok nil kid", args{"my-vault", "my-key", keyvault.KeyBundle{Key: &keyvault.JSONWebKey{}}}, "azurekms:name=my-key;vault=my-vault"},
+		{"ok nil key", args{"my-vault", "my-key", nil}, "azurekms:name=my-key;vault=my-vault"},
+		{"ok nil kid", args{"my-vault", "my-key", &azkeys.JSONWebKey{KID: nil}}, "azurekms:name=my-key;vault=my-vault"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -47,41 +45,40 @@ func Test_getKeyName(t *testing.T) {
 }
 
 func Test_parseKeyName(t *testing.T) {
-	var noOptions, publicOptions, sovereignOptions DefaultOptions
-	publicOptions.Environment = azure.PublicCloud
-	sovereignOptions.Environment = azure.USGovernmentCloud
+	var noOptions, publicOptions, sovereignOptions defaultOptions
+	publicOptions.DNSSuffix = "vault.azure.net"
+	sovereignOptions.DNSSuffix = "vault.usgovcloudapi.net"
 	type args struct {
 		rawURI   string
-		defaults DefaultOptions
+		defaults defaultOptions
 	}
 	tests := []struct {
-		name          string
-		args          args
-		wantVault     string
-		wantName      string
-		wantVersion   string
-		wantDNSSuffix string
-		wantHsm       bool
-		wantErr       bool
+		name        string
+		args        args
+		wantVault   string
+		wantName    string
+		wantVersion string
+		wantHsm     bool
+		wantErr     bool
 	}{
-		{"ok", args{"azurekms:name=my-key;vault=my-vault?version=my-version", noOptions}, "my-vault", "my-key", "my-version", "", false, false},
-		{"ok opaque version", args{"azurekms:name=my-key;vault=my-vault;version=my-version", publicOptions}, "my-vault", "my-key", "my-version", "vault.azure.net", false, false},
-		{"ok no version", args{"azurekms:name=my-key;vault=my-vault", publicOptions}, "my-vault", "my-key", "", "vault.azure.net", false, false},
-		{"ok hsm", args{"azurekms:name=my-key;vault=my-vault?hsm=true", sovereignOptions}, "my-vault", "my-key", "", "vault.usgovcloudapi.net", true, false},
-		{"ok hsm false", args{"azurekms:name=my-key;vault=my-vault?hsm=false", sovereignOptions}, "my-vault", "my-key", "", "vault.usgovcloudapi.net", false, false},
-		{"ok default vault", args{"azurekms:name=my-key?version=my-version", DefaultOptions{Vault: "my-vault", Environment: azure.PublicCloud}}, "my-vault", "my-key", "my-version", "vault.azure.net", false, false},
-		{"ok default hsm", args{"azurekms:name=my-key;vault=my-vault?version=my-version", DefaultOptions{Vault: "other-vault", ProtectionLevel: apiv1.HSM, Environment: azure.PublicCloud}}, "my-vault", "my-key", "my-version", "vault.azure.net", true, false},
-		{"fail scheme", args{"azure:name=my-key;vault=my-vault", noOptions}, "", "", "", "", false, true},
-		{"fail parse uri", args{"azurekms:name=%ZZ;vault=my-vault", noOptions}, "", "", "", "", false, true},
-		{"fail no name", args{"azurekms:vault=my-vault", noOptions}, "", "", "", "", false, true},
-		{"fail empty name", args{"azurekms:name=;vault=my-vault", noOptions}, "", "", "", "", false, true},
-		{"fail no vault", args{"azurekms:name=my-key", noOptions}, "", "", "", "", false, true},
-		{"fail empty vault", args{"azurekms:name=my-key;vault=", noOptions}, "", "", "", "", false, true},
-		{"fail empty", args{"", noOptions}, "", "", "", "", false, true},
+		{"ok", args{"azurekms:name=my-key;vault=my-vault?version=my-version", noOptions}, "my-vault", "my-key", "my-version", false, false},
+		{"ok opaque version", args{"azurekms:name=my-key;vault=my-vault;version=my-version", publicOptions}, "my-vault", "my-key", "my-version", false, false},
+		{"ok no version", args{"azurekms:name=my-key;vault=my-vault", publicOptions}, "my-vault", "my-key", "", false, false},
+		{"ok hsm", args{"azurekms:name=my-key;vault=my-vault?hsm=true", sovereignOptions}, "my-vault", "my-key", "", true, false},
+		{"ok hsm false", args{"azurekms:name=my-key;vault=my-vault?hsm=false", sovereignOptions}, "my-vault", "my-key", "", false, false},
+		{"ok default vault", args{"azurekms:name=my-key?version=my-version", defaultOptions{Vault: "my-vault", DNSSuffix: "vault.azure.net"}}, "my-vault", "my-key", "my-version", false, false},
+		{"ok default hsm", args{"azurekms:name=my-key;vault=my-vault?version=my-version", defaultOptions{Vault: "other-vault", ProtectionLevel: apiv1.HSM, DNSSuffix: "vault.azure.net"}}, "my-vault", "my-key", "my-version", true, false},
+		{"fail scheme", args{"azure:name=my-key;vault=my-vault", noOptions}, "", "", "", false, true},
+		{"fail parse uri", args{"azurekms:name=%ZZ;vault=my-vault", noOptions}, "", "", "", false, true},
+		{"fail no name", args{"azurekms:vault=my-vault", noOptions}, "", "", "", false, true},
+		{"fail empty name", args{"azurekms:name=;vault=my-vault", noOptions}, "", "", "", false, true},
+		{"fail no vault", args{"azurekms:name=my-key", noOptions}, "", "", "", false, true},
+		{"fail empty vault", args{"azurekms:name=my-key;vault=", noOptions}, "", "", "", false, true},
+		{"fail empty", args{"", noOptions}, "", "", "", false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotVault, gotName, gotVersion, gotDNSSuffix, gotHsm, err := parseKeyName(tt.args.rawURI, tt.args.defaults)
+			gotVault, gotName, gotVersion, gotHsm, err := parseKeyName(tt.args.rawURI, tt.args.defaults)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseKeyName() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -94,9 +91,6 @@ func Test_parseKeyName(t *testing.T) {
 			}
 			if gotVersion != tt.wantVersion {
 				t.Errorf("parseKeyName() gotVersion = %v, want %v", gotVersion, tt.wantVersion)
-			}
-			if gotVersion != tt.wantVersion {
-				t.Errorf("parseKeyName() gotDNSSuffix = %v, want %v", gotDNSSuffix, tt.wantDNSSuffix)
 			}
 			if gotHsm != tt.wantHsm {
 				t.Errorf("parseKeyName() gotHsm = %v, want %v", gotHsm, tt.wantHsm)

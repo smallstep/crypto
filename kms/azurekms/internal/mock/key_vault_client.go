@@ -8,73 +8,73 @@ import (
 	context "context"
 	reflect "reflect"
 
-	keyvault "github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	azkeys "github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	gomock "github.com/golang/mock/gomock"
 )
 
-// KeyVaultClient is a mock of KeyVaultClient interface
+// KeyVaultClient is a mock of KeyVaultClient interface.
 type KeyVaultClient struct {
 	ctrl     *gomock.Controller
 	recorder *KeyVaultClientMockRecorder
 }
 
-// KeyVaultClientMockRecorder is the mock recorder for KeyVaultClient
+// KeyVaultClientMockRecorder is the mock recorder for KeyVaultClient.
 type KeyVaultClientMockRecorder struct {
 	mock *KeyVaultClient
 }
 
-// NewKeyVaultClient creates a new mock instance
+// NewKeyVaultClient creates a new mock instance.
 func NewKeyVaultClient(ctrl *gomock.Controller) *KeyVaultClient {
 	mock := &KeyVaultClient{ctrl: ctrl}
 	mock.recorder = &KeyVaultClientMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *KeyVaultClient) EXPECT() *KeyVaultClientMockRecorder {
 	return m.recorder
 }
 
-// CreateKey mocks base method
-func (m *KeyVaultClient) CreateKey(arg0 context.Context, arg1, arg2 string, arg3 keyvault.KeyCreateParameters) (keyvault.KeyBundle, error) {
+// CreateKey mocks base method.
+func (m *KeyVaultClient) CreateKey(arg0 context.Context, arg1 string, arg2 azkeys.CreateKeyParameters, arg3 *azkeys.CreateKeyOptions) (azkeys.CreateKeyResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateKey", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(keyvault.KeyBundle)
+	ret0, _ := ret[0].(azkeys.CreateKeyResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CreateKey indicates an expected call of CreateKey
+// CreateKey indicates an expected call of CreateKey.
 func (mr *KeyVaultClientMockRecorder) CreateKey(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateKey", reflect.TypeOf((*KeyVaultClient)(nil).CreateKey), arg0, arg1, arg2, arg3)
 }
 
-// GetKey mocks base method
-func (m *KeyVaultClient) GetKey(arg0 context.Context, arg1, arg2, arg3 string) (keyvault.KeyBundle, error) {
+// GetKey mocks base method.
+func (m *KeyVaultClient) GetKey(arg0 context.Context, arg1, arg2 string, arg3 *azkeys.GetKeyOptions) (azkeys.GetKeyResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetKey", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(keyvault.KeyBundle)
+	ret0, _ := ret[0].(azkeys.GetKeyResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetKey indicates an expected call of GetKey
+// GetKey indicates an expected call of GetKey.
 func (mr *KeyVaultClientMockRecorder) GetKey(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*KeyVaultClient)(nil).GetKey), arg0, arg1, arg2, arg3)
 }
 
-// Sign mocks base method
-func (m *KeyVaultClient) Sign(arg0 context.Context, arg1, arg2, arg3 string, arg4 keyvault.KeySignParameters) (keyvault.KeyOperationResult, error) {
+// Sign mocks base method.
+func (m *KeyVaultClient) Sign(arg0 context.Context, arg1, arg2 string, arg3 azkeys.SignParameters, arg4 *azkeys.SignOptions) (azkeys.SignResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Sign", arg0, arg1, arg2, arg3, arg4)
-	ret0, _ := ret[0].(keyvault.KeyOperationResult)
+	ret0, _ := ret[0].(azkeys.SignResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Sign indicates an expected call of Sign
+// Sign indicates an expected call of Sign.
 func (mr *KeyVaultClientMockRecorder) Sign(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sign", reflect.TypeOf((*KeyVaultClient)(nil).Sign), arg0, arg1, arg2, arg3, arg4)
