@@ -101,6 +101,16 @@ func parseKeyName(rawURI string, defaults defaultOptions) (vault, name, version 
 }
 
 func convertKey(key *azkeys.JSONWebKey) (crypto.PublicKey, error) {
+	// Hack to be able to properly convert keys in HSM.
+	if key != nil && key.Kty != nil {
+		switch *key.Kty {
+		case azkeys.JSONWebKeyTypeECHSM:
+			key.Kty = pointer(azkeys.JSONWebKeyTypeEC)
+		case azkeys.JSONWebKeyTypeRSAHSM:
+			key.Kty = pointer(azkeys.JSONWebKeyTypeRSA)
+		}
+	}
+
 	b, err := json.Marshal(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "error marshaling key")

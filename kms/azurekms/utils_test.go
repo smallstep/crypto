@@ -1,6 +1,14 @@
 package azurekms
 
 import (
+	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/binary"
+	"reflect"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
@@ -94,6 +102,80 @@ func Test_parseKeyName(t *testing.T) {
 			}
 			if gotHsm != tt.wantHsm {
 				t.Errorf("parseKeyName() gotHsm = %v, want %v", gotHsm, tt.wantHsm)
+			}
+		})
+	}
+}
+
+func Test_convertKey(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// EC Public Key
+	x := ecKey.X.Bytes()
+	y := ecKey.Y.Bytes()
+	pad := make([]byte, 32-len(x))
+	x = append(pad, x...)
+	pad = make([]byte, 32-len(y))
+	y = append(pad, y...)
+
+	// RSA Public key
+	n := rsaKey.N.Bytes()
+	e := make([]byte, 8)
+	binary.BigEndian.PutUint64(e, uint64(rsaKey.E))
+	e = bytes.TrimLeft(e, "\x00")
+
+	type args struct {
+		key *azkeys.JSONWebKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    crypto.PublicKey
+		wantErr bool
+	}{
+		{"ok EC", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   x,
+			Y:   y,
+		}}, &ecKey.PublicKey, false},
+		{"ok RSA", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			E:   e,
+			N:   n,
+		}}, &rsaKey.PublicKey, false},
+		{"ok EC-HSM", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeECHSM),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   x,
+			Y:   y,
+		}}, &ecKey.PublicKey, false},
+		{"ok RSA-HSM", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeRSAHSM),
+			E:   e,
+			N:   n,
+		}}, &rsaKey.PublicKey, false},
+		{"fail unmarshal", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeOctHSM),
+			K:   []byte("the-oct-key"),
+		}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := convertKey(tt.args.key)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("convertKey() = %v, want %v", got, tt.want)
 			}
 		})
 	}
