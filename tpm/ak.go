@@ -151,43 +151,17 @@ func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifie
 	}
 	defer t.Close(ctx)
 
-	aks, err := t.store.ListAKs()
+	aks, err := t.ListAKs(internalCall(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("failed listing AKs: %w", err)
+		return nil, err
 	}
 
 	// loop through all available AKs and check if one exist that
 	// contains a Subject Alternative Name extension containing the
 	// requested PermanentIdentifier.
 	for _, ak := range aks {
-		chain := ak.Chain
-		if len(chain) == 0 {
-			continue
-		}
-		akCert := chain[0]
-
-		var sanExtension pkix.Extension
-		for _, ext := range akCert.Extensions {
-			if ext.Id.Equal(oidSubjectAlternativeName) {
-				sanExtension = ext
-			}
-		}
-
-		if sanExtension.Value == nil {
-			continue
-		}
-
-		san, err := x509ext.ParseSubjectAltName(sanExtension) // TODO(hs): move to a package under our control?
-		if err != nil {
-			return nil, fmt.Errorf("failed parsing Subject Alternative Name extension")
-		}
-
-		// loop through the permanent identifier values and return the AK
-		// if the requested PermanentIdentifier was found.
-		for _, p := range san.PermanentIdentifiers {
-			if p.IdentifierValue == permanentIdentifier {
-				return akFromStorage(ak, t), nil
-			}
+		if ak.HasValidPermanentIdentifier(permanentIdentifier) {
+			return ak, nil
 		}
 	}
 
@@ -344,6 +318,40 @@ func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	}
 
 	return nil
+}
+
+func (ak *AK) HasValidPermanentIdentifier(permanentIdentifier string) bool {
+	chain := ak.chain
+	if len(chain) == 0 {
+		return false
+	}
+	akCert := chain[0]
+
+	var sanExtension pkix.Extension
+	for _, ext := range akCert.Extensions {
+		if ext.Id.Equal(oidSubjectAlternativeName) {
+			sanExtension = ext
+		}
+	}
+
+	if sanExtension.Value == nil {
+		return false
+	}
+
+	san, err := x509ext.ParseSubjectAltName(sanExtension) // TODO(hs): move to a package under our control?
+	if err != nil {
+		return false
+	}
+
+	// loop through the permanent identifier values and return
+	// if the requested PermanentIdentifier was found.
+	for _, p := range san.PermanentIdentifiers {
+		if p.IdentifierValue == permanentIdentifier {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ak *AK) toStorage() *storage.AK {
