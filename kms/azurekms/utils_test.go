@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -108,7 +109,15 @@ func Test_parseKeyName(t *testing.T) {
 }
 
 func Test_convertKey(t *testing.T) {
-	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,25 +126,28 @@ func Test_convertKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	encodeXorY := func(i *big.Int, size int) []byte {
+		b := i.Bytes()
+		if s := size - len(b); s > 0 {
+			pad := make([]byte, s)
+			//nolint:makezero // prepend with 0s
+			return append(pad, b...)
+		}
+		return b
+	}
+	encodeE := func(v int) []byte {
+		e := make([]byte, 8)
+		binary.BigEndian.PutUint64(e, uint64(v))
+		return bytes.TrimLeft(e, "\x00")
+	}
+
 	// EC Public Key
-	x := ecKey.X.Bytes()
-	y := ecKey.Y.Bytes()
-	if s := 32 - len(x); s > 0 {
-		pad := make([]byte, s)
-		//nolint:makezero // prepend with 0s
-		x = append(pad, x...)
-	}
-	if s := 32 - len(y); s > 0 {
-		pad := make([]byte, 32-len(y))
-		//nolint:makezero // prepend with 0s
-		y = append(pad, y...)
-	}
+	x := encodeXorY(p256.X, 32)
+	y := encodeXorY(p256.Y, 32)
 
 	// RSA Public key
 	n := rsaKey.N.Bytes()
-	e := make([]byte, 8)
-	binary.BigEndian.PutUint64(e, uint64(rsaKey.E))
-	e = bytes.TrimLeft(e, "\x00")
+	e := encodeE(rsaKey.E)
 
 	type args struct {
 		key *azkeys.JSONWebKey
@@ -146,12 +158,24 @@ func Test_convertKey(t *testing.T) {
 		want    crypto.PublicKey
 		wantErr bool
 	}{
-		{"ok EC", args{&azkeys.JSONWebKey{
+		{"ok EC P-256", args{&azkeys.JSONWebKey{
 			Kty: pointer(azkeys.JSONWebKeyTypeEC),
 			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
 			X:   x,
 			Y:   y,
-		}}, &ecKey.PublicKey, false},
+		}}, &p256.PublicKey, false},
+		{"ok EC P-384", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP384),
+			X:   encodeXorY(p384.X, 48),
+			Y:   encodeXorY(p384.Y, 48),
+		}}, &p384.PublicKey, false},
+		{"ok EC P-521", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP521),
+			X:   encodeXorY(p521.X, 66),
+			Y:   encodeXorY(p521.Y, 66),
+		}}, &p521.PublicKey, false},
 		{"ok RSA", args{&azkeys.JSONWebKey{
 			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
 			E:   e,
@@ -162,15 +186,85 @@ func Test_convertKey(t *testing.T) {
 			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
 			X:   x,
 			Y:   y,
-		}}, &ecKey.PublicKey, false},
+		}}, &p256.PublicKey, false},
 		{"ok RSA-HSM", args{&azkeys.JSONWebKey{
 			Kty: pointer(azkeys.JSONWebKeyTypeRSAHSM),
 			E:   e,
 			N:   n,
 		}}, &rsaKey.PublicKey, false},
-		{"fail unmarshal", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeOctHSM),
-			K:   []byte("the-oct-key"),
+		{"ok oct", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeOct),
+			K:   []byte("a-symmetric-key"),
+		}}, []byte("a-symmetric-key"), false},
+		{"fail nil", args{nil}, nil, true},
+		{"fail nil kty", args{&azkeys.JSONWebKey{}}, nil, true},
+		{"fail kty", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyType("EC-BAD")),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP521),
+			X:   encodeXorY(p521.X, 66),
+			Y:   encodeXorY(p521.Y, 66),
+		}}, nil, true},
+		{"fail nil crv", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: nil,
+			X:   x,
+			Y:   y,
+		}}, nil, true},
+		{"fail nil x", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   nil,
+			Y:   y,
+		}}, nil, true},
+		{"fail nil y", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   x,
+			Y:   nil,
+		}}, nil, true},
+		{"fail size x", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   encodeXorY(p256.X, 33),
+			Y:   y,
+		}}, nil, true},
+		{"fail size y", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   x,
+			Y:   encodeXorY(p256.Y, 33),
+		}}, nil, true},
+		{"fail or curve", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			X:   y,
+			Y:   x,
+		}}, nil, true},
+		{"fail or P-256k", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveNameP256K),
+			X:   y,
+			Y:   x,
+		}}, nil, true},
+		{"fail unknown curve", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Crv: pointer(azkeys.JSONWebKeyCurveName("COOL")),
+			X:   y,
+			Y:   x,
+		}}, nil, true},
+		{"fail nil n", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			N:   nil,
+			E:   e,
+		}}, nil, true},
+		{"fail nil e", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			N:   n,
+			E:   nil,
+		}}, nil, true},
+		{"fail nil k", args{&azkeys.JSONWebKey{
+			Kty: pointer(azkeys.JSONWebKeyTypeOct),
+			K:   nil,
 		}}, nil, true},
 	}
 	for _, tt := range tests {

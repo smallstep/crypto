@@ -6,14 +6,17 @@ package azurekms
 import (
 	"context"
 	"crypto"
-	"encoding/json"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"fmt"
+	"math/big"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/jose"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 )
@@ -78,13 +81,13 @@ func parseKeyName(rawURI string, defaults defaultOptions) (vault, name, version 
 		return
 	}
 	if name = u.Get("name"); name == "" {
-		err = errors.Errorf("key uri %s is not valid: name is missing", rawURI)
+		err = errors.Errorf("key uri %q is not valid: name is missing", rawURI)
 		return
 	}
 	if vault = u.Get("vault"); vault == "" {
 		if defaults.Vault == "" {
 			name = ""
-			err = errors.Errorf("key uri %s is not valid: vault is missing", rawURI)
+			err = errors.Errorf("key uri %q is not valid: vault is missing", rawURI)
 			return
 		}
 		vault = defaults.Vault
@@ -101,23 +104,78 @@ func parseKeyName(rawURI string, defaults defaultOptions) (vault, name, version 
 }
 
 func convertKey(key *azkeys.JSONWebKey) (crypto.PublicKey, error) {
-	// Hack to be able to properly convert keys in HSM.
-	if key != nil && key.Kty != nil {
-		switch *key.Kty {
-		case azkeys.JSONWebKeyTypeECHSM:
-			key.Kty = pointer(azkeys.JSONWebKeyTypeEC)
-		case azkeys.JSONWebKeyTypeRSAHSM:
-			key.Kty = pointer(azkeys.JSONWebKeyTypeRSA)
-		}
+	if key == nil || key.Kty == nil {
+		return nil, errors.New("invalid key: missing kty value")
 	}
 
-	b, err := json.Marshal(key)
-	if err != nil {
-		return nil, errors.Wrap(err, "error marshaling key")
+	switch *key.Kty {
+	case azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyTypeECHSM:
+		return ecPublicKey(key.Crv, key.X, key.Y)
+	case azkeys.JSONWebKeyTypeRSA, azkeys.JSONWebKeyTypeRSAHSM:
+		return rsaPublicKey(key.N, key.E)
+	case azkeys.JSONWebKeyTypeOct, azkeys.JSONWebKeyTypeOctHSM:
+		return octPublicKey(key.K)
+	default:
+		return nil, fmt.Errorf("invalid key: unsupported kty %q", *key.Kty)
 	}
-	var jwk jose.JSONWebKey
-	if err := jwk.UnmarshalJSON(b); err != nil {
-		return nil, errors.Wrap(err, "error unmarshaling key")
+}
+
+func ecPublicKey(crv *azkeys.JSONWebKeyCurveName, x, y []byte) (crypto.PublicKey, error) {
+	if crv == nil {
+		return nil, errors.New("invalid EC key: missing crv value")
 	}
-	return jwk.Key, nil
+	if len(x) == 0 || len(y) == 0 {
+		return nil, errors.New("invalid EC key: missing x or y values")
+	}
+
+	var curve elliptic.Curve
+	var curveSize int
+	switch *crv {
+	case azkeys.JSONWebKeyCurveNameP256:
+		curve = elliptic.P256()
+		curveSize = 32
+	case azkeys.JSONWebKeyCurveNameP384:
+		curve = elliptic.P384()
+		curveSize = 48
+	case azkeys.JSONWebKeyCurveNameP521:
+		curve = elliptic.P521()
+		curveSize = 66 // (521/8 + 1)
+	case azkeys.JSONWebKeyCurveNameP256K:
+		return nil, fmt.Errorf(`invalid EC key: crv %q is not supported`, *crv)
+	default:
+		return nil, fmt.Errorf("invalid EC key: crv %q is not supported", *crv)
+	}
+
+	if len(x) != curveSize || len(y) != curveSize {
+		return nil, errors.New("invalid EC key: x or y length is not valid")
+	}
+
+	key := &ecdsa.PublicKey{
+		Curve: curve,
+		X:     new(big.Int).SetBytes(x),
+		Y:     new(big.Int).SetBytes(y),
+	}
+
+	if !curve.IsOnCurve(key.X, key.Y) {
+		return nil, errors.New("invalid EC key: point (x, y) does not lie on the curve")
+	}
+
+	return key, nil
+}
+
+func rsaPublicKey(n, e []byte) (crypto.PublicKey, error) {
+	if len(n) == 0 || len(e) == 0 {
+		return nil, errors.New("invalid RSA key: missing n or e values")
+	}
+	return &rsa.PublicKey{
+		N: new(big.Int).SetBytes(n),
+		E: int(new(big.Int).SetBytes(e).Int64()),
+	}, nil
+}
+
+func octPublicKey(k []byte) (crypto.PublicKey, error) {
+	if k == nil {
+		return nil, errors.New("invalid oct key: missing k value")
+	}
+	return k, nil
 }

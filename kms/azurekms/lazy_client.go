@@ -41,7 +41,7 @@ func (l *lazyClient) Get(vault string) (KeyVaultClient, error) {
 	// Create a new client
 	c, err := l.new(vaultURL)
 	if err != nil {
-		return nil, fmt.Errorf("error creating client for vault %s: %w", vaultURL, err)
+		return nil, fmt.Errorf("error creating client for vault %q: %w", vaultURL, err)
 	}
 
 	l.rw.Lock()

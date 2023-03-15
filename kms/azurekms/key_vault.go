@@ -303,7 +303,7 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 
 	kt, ok := signatureAlgorithmMapping[req.SignatureAlgorithm]
 	if !ok {
-		return nil, errors.Errorf("keyVault does not support signature algorithm '%s'", req.SignatureAlgorithm)
+		return nil, errors.Errorf("keyVault does not support signature algorithm %q", req.SignatureAlgorithm)
 	}
 
 	var keySize *int32
