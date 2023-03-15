@@ -81,13 +81,13 @@ func parseKeyName(rawURI string, defaults defaultOptions) (vault, name, version 
 		return
 	}
 	if name = u.Get("name"); name == "" {
-		err = errors.Errorf("key uri %s is not valid: name is missing", rawURI)
+		err = errors.Errorf("key uri %q is not valid: name is missing", rawURI)
 		return
 	}
 	if vault = u.Get("vault"); vault == "" {
 		if defaults.Vault == "" {
 			name = ""
-			err = errors.Errorf("key uri %s is not valid: vault is missing", rawURI)
+			err = errors.Errorf("key uri %q is not valid: vault is missing", rawURI)
 			return
 		}
 		vault = defaults.Vault
@@ -116,7 +116,7 @@ func convertKey(key *azkeys.JSONWebKey) (crypto.PublicKey, error) {
 	case azkeys.JSONWebKeyTypeOct, azkeys.JSONWebKeyTypeOctHSM:
 		return octPublicKey(key.K)
 	default:
-		return nil, fmt.Errorf("invalid key: unsupported kty '%s'", *key.Kty)
+		return nil, fmt.Errorf("invalid key: unsupported kty %q", *key.Kty)
 	}
 }
 
@@ -141,9 +141,9 @@ func ecPublicKey(crv *azkeys.JSONWebKeyCurveName, x, y []byte) (crypto.PublicKey
 		curve = elliptic.P521()
 		curveSize = 66 // (521/8 + 1)
 	case azkeys.JSONWebKeyCurveNameP256K:
-		return nil, errors.New("invalid EC key: crv 'P-256K' is not supported")
+		return nil, fmt.Errorf(`invalid EC key: crv %q is not supported`, *crv)
 	default:
-		return nil, fmt.Errorf("invalid EC key: crv '%s' is not supported", *crv)
+		return nil, fmt.Errorf("invalid EC key: crv %q is not supported", *crv)
 	}
 
 	if len(x) != curveSize || len(y) != curveSize {
