@@ -72,6 +72,22 @@ func Test_now(t *testing.T) {
 	}
 }
 
+func TestRegister(t *testing.T) {
+	fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.AzureKMS)
+	if !ok {
+		t.Fatal("azurekms is not registered")
+	}
+	k, err := fn(context.Background(), apiv1.Options{
+		Type: "azurekms", URI: "azurekms:",
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if k == nil {
+		t.Fatalf("New() = %v, want &KeyVault{}", k)
+	}
+}
+
 func TestNew(t *testing.T) {
 	old := createCredentials
 	t.Cleanup(func() {
