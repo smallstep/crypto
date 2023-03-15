@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"encoding/json"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
@@ -25,15 +26,17 @@ func defaultContext() (context.Context, context.CancelFunc) {
 // getKeyName returns the uri of the key vault key.
 func getKeyName(vault, name string, bundle keyvault.KeyBundle) string {
 	if bundle.Key != nil && bundle.Key.Kid != nil {
-		sm := keyIDRegexp.FindAllStringSubmatch(*bundle.Key.Kid, 1)
-		if len(sm) == 1 && len(sm[0]) == 4 {
-			m := sm[0]
-			u := uri.New(Scheme, url.Values{
-				"vault": []string{m[1]},
-				"name":  []string{m[2]},
-			})
-			u.RawQuery = url.Values{"version": []string{m[3]}}.Encode()
-			return u.String()
+		if u, err := url.Parse(*bundle.Key.Kid); err == nil {
+			host := strings.SplitN(u.Host, ".", 2)
+			path := strings.Split(u.Path, "/")
+			if len(host) == 2 && len(path) == 4 {
+				uu := uri.New(Scheme, url.Values{
+					"vault": []string{host[0]},
+					"name":  []string{path[2]},
+				})
+				uu.RawQuery = url.Values{"version": []string{path[3]}}.Encode()
+				return uu.String()
+			}
 		}
 	}
 	// Fallback to URI without id.
@@ -54,7 +57,7 @@ func getKeyName(vault, name string, bundle keyvault.KeyBundle) string {
 //
 // HSM can also be passed to define the protection level if this is not given in
 // CreateQuery.
-func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version string, hsm bool, err error) {
+func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version, dnsSuffix string, hsm bool, err error) {
 	var u *uri.URI
 
 	u, err = uri.ParseWithScheme(Scheme, rawURI)
@@ -80,12 +83,17 @@ func parseKeyName(rawURI string, defaults DefaultOptions) (vault, name, version 
 	}
 
 	version = u.Get("version")
+	dnsSuffix = defaults.Environment.KeyVaultDNSSuffix
 
 	return
 }
 
-func vaultBaseURL(vault string) string {
-	return "https://" + vault + ".vault.azure.net/"
+func vaultBaseURL(vault, dnsSuffix string) string {
+	if dnsSuffix == "" {
+		return "https://" + vault + ".vault.azure.net/"
+	}
+
+	return "https://" + vault + "." + dnsSuffix + "/"
 }
 
 func convertKey(key *keyvault.JSONWebKey) (crypto.PublicKey, error) {

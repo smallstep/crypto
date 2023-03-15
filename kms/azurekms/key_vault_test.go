@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"go.step.sm/crypto/keyutil"
@@ -100,6 +101,7 @@ func TestNew(t *testing.T) {
 			defaults: DefaultOptions{
 				Vault:           "my-vault",
 				ProtectionLevel: apiv1.UnspecifiedProtectionLevel,
+				Environment:     azure.PublicCloud,
 			},
 		}, false},
 		{"ok with vault + hsm", func() {
@@ -113,6 +115,21 @@ func TestNew(t *testing.T) {
 			defaults: DefaultOptions{
 				Vault:           "my-vault",
 				ProtectionLevel: apiv1.HSM,
+				Environment:     azure.PublicCloud,
+			},
+		}, false},
+		{"ok with vault + environment", func() {
+			createClient = func(ctx context.Context, opts apiv1.Options) (KeyVaultClient, error) {
+				return client, nil
+			}
+		}, args{context.Background(), apiv1.Options{
+			URI: "azurekms:vault=my-vault;environment=usgov",
+		}}, &KeyVault{
+			baseClient: client,
+			defaults: DefaultOptions{
+				Vault:           "my-vault",
+				ProtectionLevel: apiv1.UnspecifiedProtectionLevel,
+				Environment:     azure.USGovernmentCloud,
 			},
 		}, false},
 		{"fail", func() {
@@ -159,13 +176,19 @@ func TestKeyVault_createClient(t *testing.T) {
 			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id",
 		}}, false, false},
 		{"ok with uri+aad", args{context.Background(), apiv1.Options{
-			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;aad-enpoint=https%3A%2F%2Flogin.microsoftonline.us%2F",
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;aad-endpoint=https%3A%2F%2Flogin.microsoftonline.us%2F",
+		}}, false, false},
+		{"ok with uri+environment", args{context.Background(), apiv1.Options{
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;environment=usgov",
 		}}, false, false},
 		{"ok with uri no config", args{context.Background(), apiv1.Options{
 			URI: "azurekms:",
 		}}, true, false},
 		{"fail uri", args{context.Background(), apiv1.Options{
 			URI: "kms:client-id=id;client-secret=secret;tenant-id=id",
+		}}, false, true},
+		{"ok bad environment", args{context.Background(), apiv1.Options{
+			URI: "azurekms:client-id=id;client-secret=secret;tenant-id=id;environment=fake",
 		}}, false, true},
 	}
 
@@ -197,10 +220,14 @@ func TestKeyVault_GetPublicKey(t *testing.T) {
 	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", "my-version").Return(keyvault.KeyBundle{
 		Key: jwk,
 	}, nil)
+	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.usgovcloudapi.net/", "my-key", "my-version").Return(keyvault.KeyBundle{
+		Key: jwk,
+	}, nil)
 	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "not-found", "my-version").Return(keyvault.KeyBundle{}, errTest)
 
 	type fields struct {
 		baseClient KeyVaultClient
+		defaults   DefaultOptions
 	}
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
@@ -212,22 +239,25 @@ func TestKeyVault_GetPublicKey(t *testing.T) {
 		want    crypto.PublicKey
 		wantErr bool
 	}{
-		{"ok", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"ok", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "azurekms:vault=my-vault;name=my-key",
 		}}, pub, false},
-		{"ok with version", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"ok with version", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "azurekms:vault=my-vault;name=my-key?version=my-version",
 		}}, pub, false},
-		{"fail GetKey", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"ok with options", fields{client, DefaultOptions{Environment: azure.USGovernmentCloud}}, args{&apiv1.GetPublicKeyRequest{
+			Name: "azurekms:vault=my-vault;name=my-key?version=my-version",
+		}}, pub, false},
+		{"fail GetKey", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "azurekms:vault=my-vault;name=not-found?version=my-version",
 		}}, nil, true},
-		{"fail empty", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"fail empty", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "",
 		}}, nil, true},
-		{"fail vault", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"fail vault", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "azurekms:vault=;name=not-found?version=my-version",
 		}}, nil, true},
-		{"fail id", fields{client}, args{&apiv1.GetPublicKeyRequest{
+		{"fail id", fields{client, DefaultOptions{}}, args{&apiv1.GetPublicKeyRequest{
 			Name: "azurekms:vault=;name=?version=my-version",
 		}}, nil, true},
 	}
@@ -235,6 +265,7 @@ func TestKeyVault_GetPublicKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &KeyVault{
 				baseClient: tt.fields.baseClient,
+				defaults:   tt.fields.defaults,
 			}
 			got, err := k.GetPublicKey(tt.args.req)
 			if (err != nil) != tt.wantErr {
@@ -266,28 +297,29 @@ func TestKeyVault_CreateKey(t *testing.T) {
 	client := mockClient(t)
 
 	expects := []struct {
-		Name    string
-		Kty     keyvault.JSONWebKeyType
-		KeySize *int32
-		Curve   keyvault.JSONWebKeyCurveName
-		Key     *keyvault.JSONWebKey
+		Name        string
+		Kty         keyvault.JSONWebKeyType
+		KeySize     *int32
+		Curve       keyvault.JSONWebKeyCurveName
+		Key         *keyvault.JSONWebKey
+		Environment azure.Environment
 	}{
-		{"P-256", keyvault.EC, nil, keyvault.P256, ecJWK},
-		{"P-256 HSM", keyvault.ECHSM, nil, keyvault.P256, ecJWK},
-		{"P-256 HSM (uri)", keyvault.ECHSM, nil, keyvault.P256, ecJWK},
-		{"P-256 Default", keyvault.EC, nil, keyvault.P256, ecJWK},
-		{"P-384", keyvault.EC, nil, keyvault.P384, ecJWK},
-		{"P-521", keyvault.EC, nil, keyvault.P521, ecJWK},
-		{"RSA 0", keyvault.RSA, &value3072, "", rsaJWK},
-		{"RSA 0 HSM", keyvault.RSAHSM, &value3072, "", rsaJWK},
-		{"RSA 0 HSM (uri)", keyvault.RSAHSM, &value3072, "", rsaJWK},
-		{"RSA 2048", keyvault.RSA, &value2048, "", rsaJWK},
-		{"RSA 3072", keyvault.RSA, &value3072, "", rsaJWK},
-		{"RSA 4096", keyvault.RSA, &value4096, "", rsaJWK},
+		{"P-256", keyvault.EC, nil, keyvault.P256, ecJWK, azure.PublicCloud},
+		{"P-256 HSM", keyvault.ECHSM, nil, keyvault.P256, ecJWK, azure.USGovernmentCloud},
+		{"P-256 HSM (uri)", keyvault.ECHSM, nil, keyvault.P256, ecJWK, azure.ChinaCloud},
+		{"P-256 Default", keyvault.EC, nil, keyvault.P256, ecJWK, azure.GermanCloud},
+		{"P-384", keyvault.EC, nil, keyvault.P384, ecJWK, azure.PublicCloud},
+		{"P-521", keyvault.EC, nil, keyvault.P521, ecJWK, azure.PublicCloud},
+		{"RSA 0", keyvault.RSA, &value3072, "", rsaJWK, azure.PublicCloud},
+		{"RSA 0 HSM", keyvault.RSAHSM, &value3072, "", rsaJWK, azure.PublicCloud},
+		{"RSA 0 HSM (uri)", keyvault.RSAHSM, &value3072, "", rsaJWK, azure.PublicCloud},
+		{"RSA 2048", keyvault.RSA, &value2048, "", rsaJWK, azure.PublicCloud},
+		{"RSA 3072", keyvault.RSA, &value3072, "", rsaJWK, azure.PublicCloud},
+		{"RSA 4096", keyvault.RSA, &value4096, "", rsaJWK, azure.PublicCloud},
 	}
 
 	for _, e := range expects {
-		client.EXPECT().CreateKey(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", keyvault.KeyCreateParameters{
+		client.EXPECT().CreateKey(gomock.Any(), "https://my-vault."+e.Environment.KeyVaultDNSSuffix+"/", "my-key", keyvault.KeyCreateParameters{
 			Kty:     e.Kty,
 			KeySize: e.KeySize,
 			Curve:   e.Curve,
@@ -310,6 +342,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 
 	type fields struct {
 		baseClient KeyVaultClient
+		defaults   DefaultOptions
 	}
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -321,7 +354,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 		want    *apiv1.CreateKeyResponse
 		wantErr bool
 	}{
-		{"ok P-256", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-256", fields{client, DefaultOptions{Environment: azure.PublicCloud}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 			ProtectionLevel:    apiv1.Software,
@@ -332,7 +365,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok P-256 HSM", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-256 HSM", fields{client, DefaultOptions{Environment: azure.USGovernmentCloud}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 			ProtectionLevel:    apiv1.HSM,
@@ -343,7 +376,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok P-256 HSM (uri)", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-256 HSM (uri)", fields{client, DefaultOptions{Environment: azure.ChinaCloud}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key?hsm=true",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, &apiv1.CreateKeyResponse{
@@ -353,7 +386,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok P-256 Default", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-256 Default", fields{client, DefaultOptions{Environment: azure.GermanCloud}}, args{&apiv1.CreateKeyRequest{
 			Name: "azurekms:vault=my-vault;name=my-key",
 		}}, &apiv1.CreateKeyResponse{
 			Name:      "azurekms:name=my-key;vault=my-vault",
@@ -362,7 +395,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok P-384", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-384", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA384,
 		}}, &apiv1.CreateKeyResponse{
@@ -372,7 +405,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok P-521", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok P-521", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA512,
 		}}, &apiv1.CreateKeyResponse{
@@ -382,7 +415,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 0", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 0", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			Bits:               0,
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
@@ -394,7 +427,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 0 HSM", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 0 HSM", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			Bits:               0,
 			SignatureAlgorithm: apiv1.SHA256WithRSAPSS,
@@ -406,7 +439,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 0 HSM (uri)", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 0 HSM (uri)", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key;hsm=true",
 			Bits:               0,
 			SignatureAlgorithm: apiv1.SHA256WithRSAPSS,
@@ -417,7 +450,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 2048", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 2048", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			Bits:               2048,
 			SignatureAlgorithm: apiv1.SHA384WithRSA,
@@ -428,7 +461,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 3072", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 3072", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			Bits:               3072,
 			SignatureAlgorithm: apiv1.SHA512WithRSA,
@@ -439,7 +472,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"ok RSA 4096", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"ok RSA 4096", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=my-key",
 			Bits:               4096,
 			SignatureAlgorithm: apiv1.SHA512WithRSAPSS,
@@ -450,28 +483,28 @@ func TestKeyVault_CreateKey(t *testing.T) {
 				SigningKey: "azurekms:name=my-key;vault=my-vault",
 			},
 		}, false},
-		{"fail createKey", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail createKey", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=not-found",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, nil, true},
-		{"fail convertKey", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail convertKey", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=not-found",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, nil, true},
-		{"fail name", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail name", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name: "",
 		}}, nil, true},
-		{"fail vault", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail vault", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name: "azurekms:vault=;name=not-found?version=my-version",
 		}}, nil, true},
-		{"fail id", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail id", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name: "azurekms:vault=my-vault;name=?version=my-version",
 		}}, nil, true},
-		{"fail SignatureAlgorithm", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail SignatureAlgorithm", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=not-found",
 			SignatureAlgorithm: apiv1.PureEd25519,
 		}}, nil, true},
-		{"fail bit size", fields{client}, args{&apiv1.CreateKeyRequest{
+		{"fail bit size", fields{client, DefaultOptions{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "azurekms:vault=my-vault;name=not-found",
 			SignatureAlgorithm: apiv1.SHA384WithRSAPSS,
 			Bits:               1024,
@@ -481,6 +514,7 @@ func TestKeyVault_CreateKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &KeyVault{
 				baseClient: tt.fields.baseClient,
+				defaults:   tt.fields.defaults,
 			}
 			got, err := k.CreateKey(tt.args.req)
 			if (err != nil) != tt.wantErr {
@@ -647,6 +681,41 @@ func TestKeyVault_ValidateName(t *testing.T) {
 			k := &KeyVault{}
 			if err := k.ValidateName(tt.args.s); (err != nil) != tt.wantErr {
 				t.Errorf("KeyVault.ValidateName() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func Test_getAzureEnvironment(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    azure.Environment
+		wantErr bool
+	}{
+		{"empty", args{""}, azure.PublicCloud, false},
+		{"public", args{"public"}, azure.PublicCloud, false},
+		{"USGov", args{"USGov"}, azure.USGovernmentCloud, false},
+		{"China", args{"China"}, azure.ChinaCloud, false},
+		{"GERMAN", args{"GERMAN"}, azure.GermanCloud, false},
+		{"AzurePublicCloud", args{"AzurePublicCloud"}, azure.PublicCloud, false},
+		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud"}, azure.USGovernmentCloud, false},
+		{"AzureChinaCloud", args{"AzureChinaCloud"}, azure.ChinaCloud, false},
+		{"AzureGermanCloud", args{"AzureGermanCloud"}, azure.GermanCloud, false},
+		{"fake", args{"fake"}, azure.Environment{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getAzureEnvironment(tt.args.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getAzureEnvironment() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("getAzureEnvironment() = %v, want %v", got, tt.want)
 			}
 		})
 	}

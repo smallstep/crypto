@@ -30,7 +30,7 @@ type Signer struct {
 
 // NewSigner creates a new signer using a key in the AWS KMS.
 func NewSigner(client KeyVaultClient, signingKey string, defaults DefaultOptions) (crypto.Signer, error) {
-	vault, name, version, _, err := parseKeyName(signingKey, defaults)
+	vault, name, version, dnsSuffix, _, err := parseKeyName(signingKey, defaults)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func NewSigner(client KeyVaultClient, signingKey string, defaults DefaultOptions
 	// Make sure that the key exists.
 	signer := &Signer{
 		client:       client,
-		vaultBaseURL: vaultBaseURL(vault),
+		vaultBaseURL: vaultBaseURL(vault, dnsSuffix),
 		name:         name,
 		version:      version,
 	}
