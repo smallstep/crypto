@@ -474,11 +474,11 @@ func TestFilestore_ListAKs(t *testing.T) {
 	t.Parallel()
 	t0 := time.Time{} // we're hit by https://github.com/stretchr/testify/issues/950
 	okStore := new(jsonstore.JSONStore)
-	okStore.Set("ak-1st-ak", serializedAK{Name: "1st-ak", Type: typeKey, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
-	okStore.Set("ak-2nd-ak", serializedAK{Name: "2nd-ak", Type: typeKey, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
+	okStore.Set("ak-1st-ak", serializedAK{Name: "1st-ak", Type: typeAK, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
+	okStore.Set("ak-2nd-ak", serializedAK{Name: "2nd-ak", Type: typeAK, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
 	failStore := new(jsonstore.JSONStore)
-	failStore.Set("ak-1st-ak", serializedAK{Name: "1st-ak", Type: typeKey, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
-	failStore.Set("ak-2nd-ak", serializedAK{Name: "2nd-ak", Type: typeKey, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
+	failStore.Set("ak-1st-ak", serializedAK{Name: "1st-ak", Type: typeAK, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
+	failStore.Set("ak-2nd-ak", serializedAK{Name: "2nd-ak", Type: typeAK, Data: []byte{1, 2, 3, 4}, CreatedAt: t0})
 	failStore.Data["ak-bad-storage"] = nil
 	tests := []struct {
 		name   string

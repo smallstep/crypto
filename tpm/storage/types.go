@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// AK is the type used to store AKs.
 type AK struct {
 	Name      string
 	Data      []byte
@@ -14,6 +15,7 @@ type AK struct {
 	CreatedAt time.Time
 }
 
+// MarshalJSON marshals the AK into JSON.
 func (ak *AK) MarshalJSON() ([]byte, error) {
 	chain := make([][]byte, len(ak.Chain))
 	for i, cert := range ak.Chain {
@@ -34,10 +36,15 @@ func (ak *AK) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sak)
 }
 
+// UnmarshalJSON unmarshals `data` into an AK.
 func (ak *AK) UnmarshalJSON(data []byte) error {
 	sak := &serializedAK{}
 	if err := json.Unmarshal(data, sak); err != nil {
 		return fmt.Errorf("failed unmarshaling serialized AK: %w", err)
+	}
+
+	if sak.Type != typeAK {
+		return fmt.Errorf("unexpected serialized data type %q", sak.Type)
 	}
 
 	ak.Name = sak.Name
@@ -59,6 +66,7 @@ func (ak *AK) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Key is the type used to store Keys.
 type Key struct {
 	Name       string
 	Data       []byte
@@ -67,6 +75,7 @@ type Key struct {
 	CreatedAt  time.Time
 }
 
+// MarshalJSON marshals the Key into JSON.
 func (key *Key) MarshalJSON() ([]byte, error) {
 	chain := make([][]byte, len(key.Chain))
 	for i, cert := range key.Chain {
@@ -88,10 +97,15 @@ func (key *Key) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sk)
 }
 
+// UnmarshalJSON unmarshals `data` into a Key.
 func (key *Key) UnmarshalJSON(data []byte) error {
 	sk := &serializedKey{}
 	if err := json.Unmarshal(data, sk); err != nil {
 		return fmt.Errorf("failed unmarshaling serialized key: %w", err)
+	}
+
+	if sk.Type != typeKey {
+		return fmt.Errorf("unexpected serialized data type %q", sk.Type)
 	}
 
 	key.Name = sk.Name
@@ -126,6 +140,8 @@ const (
 	typeKey tpmObjectType = "KEY"
 )
 
+// serializedAK is the struct used when marshaling
+// a storage AK to JSON.
 type serializedAK struct {
 	Name      string        `json:"name"`
 	Type      tpmObjectType `json:"type"`
@@ -134,6 +150,8 @@ type serializedAK struct {
 	CreatedAt time.Time     `json:"createdAt"`
 }
 
+// serializedKey is the struct used when marshaling
+// a storage Key to JSON.
 type serializedKey struct {
 	Name       string        `json:"name"`
 	Type       tpmObjectType `json:"type"`
@@ -143,10 +161,12 @@ type serializedKey struct {
 	CreatedAt  time.Time     `json:"createdAt"`
 }
 
-func keyForKey(name string) string {
-	return fmt.Sprintf("%s%s", keyPrefix, name)
-}
-
+// keyForAK returns the key to use when storing an AK.
 func keyForAK(name string) string {
 	return fmt.Sprintf("%s%s", akPrefix, name)
+}
+
+// keyForKey returns the key to use when storing a Key.
+func keyForKey(name string) string {
+	return fmt.Sprintf("%s%s", keyPrefix, name)
 }

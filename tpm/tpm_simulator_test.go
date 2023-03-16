@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
 	"fmt"
 	"testing"
@@ -251,6 +252,10 @@ func TestAK_CertificateOperations(t *testing.T) {
 	require.NotNil(t, ak)
 	require.Same(t, tpm, ak.tpm)
 
+	akPub, err := ak.public(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, akPub)
+
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
 			func() (crypto.Signer, error) {
@@ -260,18 +265,15 @@ func TestAK_CertificateOperations(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testkey",
+		},
+		PublicKey: akPub,
+	}
+	cert, err := ca.Sign(template)
 	require.NoError(t, err)
-
-	cr, err := x509util.NewCertificateRequest(signer)
-	require.NoError(t, err)
-	cr.Subject.CommonName = "testkey"
-
-	csr, err := cr.GetCertificateRequest()
-	require.NoError(t, err)
-
-	cert, err := ca.SignCSR(csr)
-	require.NoError(t, err)
+	require.NotNil(t, cert)
 
 	akCert := ak.Certificate()
 	require.Nil(t, akCert)
@@ -502,7 +504,7 @@ func TestKey_SetCertificateChain(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	signer, err := key.Signer(context.Background())
 	require.NoError(t, err)
 
 	cr, err := x509util.NewCertificateRequest(signer)

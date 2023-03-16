@@ -10,6 +10,9 @@ import (
 	"go.step.sm/crypto/tpm/manufacturer"
 )
 
+// Info models information about a TPM. It contains the
+// TPM version, interface, manufacturer, vendor info and
+// firmware version.
 type Info struct {
 	Version         Version         `json:"version"`
 	Interface       Interface       `json:"interface"`
@@ -18,6 +21,8 @@ type Info struct {
 	FirmwareVersion FirmwareVersion `json:"firmwareVersion,omitempty"`
 }
 
+// Version models the TPM specification version supported
+// by the TPM.
 type Version attest.TPMVersion
 
 func (v Version) String() string {
@@ -31,6 +36,7 @@ func (v Version) String() string {
 	}
 }
 
+// MarshalJSON marshals the version into JSON.
 func (v Version) MarshalJSON() ([]byte, error) {
 	var s string
 	switch v {
@@ -44,8 +50,11 @@ func (v Version) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s)
 }
 
+// Interface models a TPM interface.
 type Interface attest.TPMInterface
 
+// String returns a textual representation of the
+// TPM interface.
 func (i Interface) String() string {
 	switch i {
 	case Interface(attest.TPMInterfaceDirect):
@@ -61,19 +70,24 @@ func (i Interface) String() string {
 	}
 }
 
+// MarshalJSON marshals the TPM interface into JSON.
 func (i Interface) MarshalJSON() ([]byte, error) {
 	return json.Marshal(i.String())
 }
 
+// FirmwareVersion models the TPM firmware version.
 type FirmwareVersion struct {
 	Major int
 	Minor int
 }
 
+// String returns a textual representation of the
+// TPM firmware version.
 func (fv FirmwareVersion) String() string {
 	return fmt.Sprintf("%d.%d", fv.Major, fv.Minor)
 }
 
+// MarshalJSON marshals the TPM firmware version to JSON.
 func (fv FirmwareVersion) MarshalJSON() ([]byte, error) {
 	// TODO(hs): make empty if major.minor is 0.0?
 	return json.Marshal(fv.String())
@@ -87,6 +101,10 @@ type Manufacturer struct {
 	Hex   string          `json:"hex"`
 }
 
+// String returns a textual representation of the TPM
+// manufacturer. An example looks like this:
+//
+//	ST Microelectronics (STM, 53544D20, 1398033696)
 func (m Manufacturer) String() string {
 	return fmt.Sprintf("%s (%s, %s, %d)", m.Name, m.ASCII, m.Hex, m.ID)
 }
@@ -104,6 +122,7 @@ func GetManufacturerByID(id manufacturer.ID) Manufacturer {
 	}
 }
 
+// Info returns info about the TPM.
 func (t *TPM) Info(ctx context.Context) (*Info, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)

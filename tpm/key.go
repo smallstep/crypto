@@ -14,7 +14,10 @@ import (
 	"go.step.sm/crypto/tpm/storage"
 )
 
-// Key models a TPM 2.0 Key.
+// Key models a TPM 2.0 Key. A Key can be used
+// to sign data. When a Key is created, it can be
+// attested by an AK, to be able to prove that it
+// was created by a specific TPM.
 type Key struct {
 	name       string
 	data       []byte
@@ -25,12 +28,17 @@ type Key struct {
 	tpm        *TPM
 }
 
-// Name returns the Key name.
+// Name returns the Key name. The name uniquely
+// identifies the Key if a TPM with persistent
+// storage is used.
 func (k *Key) Name() string {
 	return k.name
 }
 
-// Data returns the Key data blob.
+// Data returns the Key data blob. The data blob
+// contains all information required for the Key
+// to be loaded into the TPM that created it again,
+// so that it can be used for signing data.
 func (k *Key) Data() []byte {
 	return k.data
 }
@@ -74,19 +82,19 @@ func (k *Key) CreatedAt() time.Time {
 	return k.createdAt.Truncate(time.Second)
 }
 
+// MarshalJSON marshals the Key to JSON.
 func (k *Key) MarshalJSON() ([]byte, error) {
-	type out struct {
+	chain := make([][]byte, len(k.chain))
+	for i, cert := range k.chain {
+		chain[i] = cert.Raw
+	}
+	o := struct {
 		Name       string    `json:"name"`
 		Data       []byte    `json:"data"`
 		AttestedBy string    `json:"attestedBy,omitempty"`
 		Chain      [][]byte  `json:"chain,omitempty"`
 		CreatedAt  time.Time `json:"createdAt"`
-	}
-	chain := make([][]byte, len(k.chain))
-	for i, cert := range k.chain {
-		chain[i] = cert.Raw
-	}
-	o := out{
+	}{
 		Name:       k.name,
 		Data:       k.data,
 		AttestedBy: k.attestedBy,
@@ -96,6 +104,14 @@ func (k *Key) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o)
 }
 
+// comparablePublicKey is an interface that allows an crypto.PublicKey to be
+// compared to another crypto.PublicKey.
+type comparablePublicKey interface {
+	Equal(crypto.PublicKey) bool
+}
+
+// CreateKeyConfig is used to pass configuration
+// when creating Keys.
 type CreateKeyConfig struct {
 	// Algorithm to be used, either RSA or ECDSA.
 	Algorithm string
@@ -106,18 +122,27 @@ type CreateKeyConfig struct {
 	// TODO(hs): move key name to this struct?
 }
 
+// AttestKeyConfig is used to pass configuration
+// when creating Keys that are to be attested by
+// an AK.
 type AttestKeyConfig struct {
 	// Algorithm to be used, either RSA or ECDSA.
 	Algorithm string
 	// Size is used to specify the bit size of the key or elliptic curve. For
 	// example, '256' is used to specify curve P-256.
 	Size int
-
+	// QualifyingData is additional data that is passed to the TPM.
+	// It can be used as a nonce to ensure freshness of an attestation.
+	// When used with ACME `device-attest-01`, this contains a hash of
+	// the key authorization.
 	QualifyingData []byte
 
 	// TODO(hs): add akName and key name to this struct?
 }
 
+// CreateKey creates a new Key identified by `name`. If no name is  provided,
+// a random 10 character name is generated. If a Key with the same name exists,
+// `ErrExists` is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -162,12 +187,10 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	return key, nil
 }
 
-// TODO: every interaction with the actual TPM now opens the "connection" when required, then
-// closes it when the operation is done. Can we reuse one open "connection" to the TPM for
-// multiple operations reliably? What makes it harder is that now all operations are implemented
-// by go-attestation, so it might come down to replicating a lot of that logic. It could involve
-// checking multiple locks and/or pointers and instantiating when required. Opening and closing
-// on-demand is the simplest way and safe to do for now, though.
+// AttestKey creates a new Key identified by `name` and attested by the AK
+// identified by `akName`. If no name is  provided, a random 10 character
+// name is generated. If a Key with the same name exists, `ErrExists` is
+// returned.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -201,7 +224,6 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		QualifyingData: config.QualifyingData,
 		Name:           prefixKey(name),
 	}
-
 	akey, err := t.attestTPM.NewKey(loadedAK, keyConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
@@ -232,6 +254,8 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	return key, nil
 }
 
+// GetKey returns the Key identified by `name`. It returns `ErrNotfound`
+// if it doesn't exist.
 func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -249,6 +273,8 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 	return keyFromStorage(key, t), nil
 }
 
+// ListKeys returns a slice of Keys. The result is (currently)
+// not ordered.
 func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -268,6 +294,8 @@ func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 	return result, nil
 }
 
+// GetKeysAttestedBy returns a slice of Keys attested by the AK
+// identified by `akName`. The result is (currently) not ordered.
 func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -289,6 +317,8 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, err
 	return result, nil
 }
 
+// DeleteKey removes the Key identified by `name`. It returns `ErrNotfound`
+// if it doesn't exist.
 func (t *TPM) DeleteKey(ctx context.Context, name string) error {
 	if err := t.Open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
@@ -370,14 +400,34 @@ func (k *Key) Blobs(ctx context.Context) (*Blobs, error) {
 	return k.blobs, nil
 }
 
+// SetCertificateChain associates an X.509 certificate chain with the Key.
+// If the public key doesn't match the public key in the first certificate
+// in the chain (the leaf), an error is returned.
 func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) error {
 	if err := k.tpm.Open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer k.tpm.Close(ctx)
 
-	// TODO(hs): perform validation, such as check if the chain includes leaf for the
-	// AK public key?
+	signer, err := k.Signer(internalCall(ctx)) // TODO: cache the crypto.PublicKey after its first load instead?
+	if err != nil {
+		return fmt.Errorf("failed getting signer for key: %w", err)
+	}
+
+	leaf := chain[0]
+	leafPK, ok := leaf.PublicKey.(crypto.PublicKey)
+	if !ok {
+		return fmt.Errorf("unexpected type for certificate public key: %T", leaf.PublicKey)
+	}
+
+	publicKey, ok := leafPK.(comparablePublicKey)
+	if !ok {
+		return errors.New("no method Equal() defined on certificate public key")
+	}
+
+	if !publicKey.Equal(signer.Public()) {
+		return errors.New("public key does not match the leaf certificate public key")
+	}
 
 	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
 
@@ -388,6 +438,8 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	return nil
 }
 
+// toStorage transforms the Key to the struct used for
+// persisting Keys.
 func (k *Key) toStorage() *storage.Key {
 	return &storage.Key{
 		Name:       k.name,
@@ -398,6 +450,8 @@ func (k *Key) toStorage() *storage.Key {
 	}
 }
 
+// keyFromStorage recreates a Key from the struct used for
+// persisting Keys.
 func keyFromStorage(sk *storage.Key, t *TPM) *Key {
 	return &Key{
 		name:       sk.Name,

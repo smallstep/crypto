@@ -11,7 +11,9 @@ import (
 )
 
 // Dirstore is a concrete implementation of the TPMStore interface that
-// stores TPM keys in a directory.
+// stores TPM objects in a directory. Each object will be stored in a
+// separate file. The name of the file is constructed by prefixing the
+// name of the object with its type.
 type Dirstore struct {
 	store     *diskv.Diskv
 	directory string
@@ -41,7 +43,7 @@ func inverseTransform(pathKey *diskv.PathKey) (key string) {
 	return p
 }
 
-// NewDirstore creates a new instance of a Direstore
+// NewDirstore creates a new instance of a Direstore.
 func NewDirstore(directory string) *Dirstore {
 	return &Dirstore{
 		store: diskv.New(diskv.Options{
@@ -49,6 +51,7 @@ func NewDirstore(directory string) *Dirstore {
 			AdvancedTransform: advancedTransform,
 			InverseTransform:  inverseTransform,
 			CacheSizeMax:      1024 * 1024,
+			// TODO(hs): add TempDir for atomic operations?
 		}),
 		directory: directory,
 	}
@@ -221,10 +224,12 @@ func (s *Dirstore) DeleteAK(name string) error {
 }
 
 func (s *Dirstore) Persist() error {
+	// writes are persisted directly
 	return nil
 }
 
 func (s *Dirstore) Load() error {
+	// reads are performed directly
 	return nil
 }
 

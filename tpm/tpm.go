@@ -13,6 +13,11 @@ import (
 	"go.step.sm/crypto/tpm/storage"
 )
 
+// TPM models a Trusted Platform Module. It provides an abstraction
+// over the google/go-tpm and google/go-attestation packages, allowing
+// functionalities of these packages to be performed in a uniform manner.
+// Besides that, it provides a transparent method for persisting TPM
+// objects, so that referencing and using these is simplified.
 type TPM struct {
 	deviceName   string
 	attestConfig *attest.OpenConfig
@@ -23,8 +28,12 @@ type TPM struct {
 	simulator    *simulator.Simulator
 }
 
+// NewTPMOption is used to provide options when instantiating a new
+// instance of TPM.
 type NewTPMOption func(t *TPM) error
 
+// WithDeviceName is used to provide the `name` or path to the TPM
+// device.
 func WithDeviceName(name string) NewTPMOption {
 	return func(t *TPM) error {
 		t.deviceName = name
@@ -32,6 +41,8 @@ func WithDeviceName(name string) NewTPMOption {
 	}
 }
 
+// WithStore is used to set the TPMStore implementation to use for
+// persisting TPM objects, including AKs and Keys.
 func WithStore(store storage.TPMStore) NewTPMOption {
 	return func(t *TPM) error {
 		if store == nil {
@@ -43,10 +54,12 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 	}
 }
 
+// New creates a new TPM instance. It takes `opts` to configure
+// the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
 	tpm := &TPM{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20}, // default configuration for TPM attestation use cases
-		store:        storage.BlackHole(),                                 // default storage doesn't persist anything
+		store:        storage.BlackHole(),                                 // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
 	}
 
 	for _, o := range opts {
@@ -58,6 +71,9 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 	return tpm, nil
 }
 
+// Open readies the TPM for usage and marks it as being
+// in use. This makes using the instance safe for
+// concurrent use.
 func (t *TPM) Open(ctx context.Context) error {
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
@@ -65,12 +81,15 @@ func (t *TPM) Open(ctx context.Context) error {
 		return nil
 	}
 
+	// lock the TPM instance; it's in use now
 	t.lock.Lock()
 
-	if err := t.store.Load(); err != nil { // TODO: load this once
+	if err := t.store.Load(); err != nil { // TODO(hs): load this once? Or abstract this away.
 		return err
 	}
 
+	// if a simulator was set, use it as the backing TPM device.
+	// The simulator is currently only used for testing.
 	if t.simulator != nil {
 		if t.attestTPM == nil {
 			at, err := attest.OpenTPM(&attest.OpenConfig{
@@ -84,6 +103,11 @@ func (t *TPM) Open(ctx context.Context) error {
 		}
 		t.rwc = t.simulator
 	} else {
+		// TODO(hs): when an internal call to Open is performed, but when
+		// switching the "TPM implementation" to use between the two types,
+		// there's a possibility of a nil pointer exception. At the moment,
+		// the only "go-tpm" call is for GetRandom(), but this could change
+		// in the future.
 		if isGoTPMCall(ctx) {
 			rwc, err := open.TPM(t.deviceName)
 			if err != nil {
@@ -91,6 +115,9 @@ func (t *TPM) Open(ctx context.Context) error {
 			}
 			t.rwc = rwc
 		} else {
+			// TODO(hs): attest.OpenTPM doesn't currently take into account the
+			// device name provided. This doesn't seem to be an available option
+			// to filter on currently?
 			at, err := attest.OpenTPM(t.attestConfig)
 			if err != nil {
 				return fmt.Errorf("failed opening TPM: %w", err)
@@ -102,6 +129,8 @@ func (t *TPM) Open(ctx context.Context) error {
 	return nil
 }
 
+// Close closes the TPM instance, cleaning up resources and
+// marking it ready to be use again.
 func (t *TPM) Close(ctx context.Context) {
 	// prevent closing the TPM multiple times if Open is called
 	// within the package multiple times.
@@ -119,17 +148,20 @@ func (t *TPM) Close(ctx context.Context) {
 		return
 	}
 
+	// clean up the attest.TPM
 	if t.attestTPM != nil {
 		err := t.attestTPM.Close()
 		_ = err // TODO: handle error correctly (in defer)
 		t.attestTPM = nil
 	}
 
+	// clean up the go-tpm rwc
 	if t.rwc != nil {
 		err := t.rwc.Close()
 		_ = err // TODO: handle error correctly (in defer)
 		t.rwc = nil
 	}
 
+	// mark the TPM as ready to be used again
 	t.lock.Unlock()
 }

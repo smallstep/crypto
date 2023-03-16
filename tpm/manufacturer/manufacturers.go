@@ -21,6 +21,8 @@ func (id ID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strconv.FormatUint(uint64(id), 10))
 }
 
+// GetEncodings returns the ASCII and hexadecimal representations
+// of the manufacturer ID.
 func GetEncodings(id ID) (ascii, hexa string) {
 	b := [4]byte{}
 	binary.BigEndian.PutUint32(b[:], uint32(id))
@@ -31,6 +33,8 @@ func GetEncodings(id ID) (ascii, hexa string) {
 	return
 }
 
+// GetNameByASCII returns the manufacturer name based on its
+// ASCII identifier.
 func GetNameByASCII(ascii string) string {
 	if name, ok := manufacturerByASCII[ascii]; ok {
 		return name

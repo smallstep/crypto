@@ -19,24 +19,34 @@ import (
 	"github.com/google/go-attestation/attest"
 )
 
+// EK models a TPM Endorsement Key. The EK can be used to
+// identify a specific TPM. The EK is certified by a TPM
+// manufacturer.
 type EK struct {
 	public         crypto.PublicKey
 	certificate    *x509.Certificate
 	certificateURL string
 }
 
+// Public returns the EK public key.
 func (ek *EK) Public() crypto.PublicKey {
 	return ek.public
 }
 
+// Certificate returns the EK certificate. This
+// can return nil.
 func (ek *EK) Certificate() *x509.Certificate {
 	return ek.certificate
 }
 
+// CertificateURL returns the URL from which the EK
+// certificate can be retrieved. Not all EKs have a
+// certificate URL.
 func (ek *EK) CertificateURL() string {
 	return ek.certificateURL
 }
 
+// MarshalJSON marshals the EK to JSON.
 func (ek *EK) MarshalJSON() ([]byte, error) {
 	var der []byte
 	if ek.certificate != nil {
@@ -51,10 +61,12 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 		DER:  der,
 		URL:  ek.certificateURL,
 	}
-
 	return json.Marshal(o)
 }
 
+// PEM returns the EK certificate as a PEM
+// formatted string. It returns an error if
+// the EK doesn't have a certificate.
 func (ek *EK) PEM() (string, error) {
 	if ek.certificate == nil {
 		return "", fmt.Errorf("EK %q does not have a certificate", ek.Type())
@@ -70,6 +82,7 @@ func (ek *EK) PEM() (string, error) {
 	return buf.String(), nil
 }
 
+// Type returns the EK public key type description.
 func (ek *EK) Type() string {
 	return keyType(ek.public)
 }
@@ -95,6 +108,10 @@ type intelEKCertResponse struct {
 	Certificate string `json:"certificate"`
 }
 
+// GetEKs returns a slice of TPM EKs. It will return an error
+// when interaction with the TPM fails. It will loop through
+// the TPM EKs and download the EK certificate if it's available
+// online.
 func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 	if err := t.Open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -106,7 +123,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 		return nil, fmt.Errorf("failed getting EKs: %w", err)
 	}
 
-	// an arbitrary limit, so that we don't start making a huge number of HTTP requests (if needed)
+	// an arbitrary limit, so that we don't start making a large number of HTTP requests (if needed)
 	maxNumberOfEKs := 10
 	if len(eks) > maxNumberOfEKs {
 		return nil, fmt.Errorf("number of EKs (%d) bigger than the maximum allowed %d", len(eks), maxNumberOfEKs)
