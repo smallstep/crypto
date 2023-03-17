@@ -253,8 +253,8 @@ func templateFromConfig(opts *KeyConfig) (tpm2.Public, error) {
 			tmpl.ECCParameters.Sign.Hash = tpm2.AlgSHA512
 			tmpl.ECCParameters.CurveID = tpm2.CurveNISTP521
 			tmpl.ECCParameters.Point = tpm2.ECPoint{
-				XRaw: make([]byte, 65),
-				YRaw: make([]byte, 65),
+				XRaw: make([]byte, 66),
+				YRaw: make([]byte, 66),
 			}
 		default:
 			return tmpl, fmt.Errorf("unsupported key size: %v", opts.Size)
