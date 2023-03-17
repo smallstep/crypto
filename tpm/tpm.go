@@ -26,6 +26,9 @@ type TPM struct {
 	lock         sync.RWMutex
 	store        storage.TPMStore
 	simulator    *simulator.Simulator
+	downloader   *downloader
+	info         *Info
+	eks          []*EK
 }
 
 // NewTPMOption is used to provide options when instantiating a new
@@ -54,12 +57,22 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 	}
 }
 
+// WithDisableDownload disables EK certificates from being downloaded
+// from online hosts.
+func WithDisableDownload() NewTPMOption {
+	return func(t *TPM) error {
+		t.downloader.enabled = false
+		return nil
+	}
+}
+
 // New creates a new TPM instance. It takes `opts` to configure
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
 	tpm := &TPM{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20}, // default configuration for TPM attestation use cases
 		store:        storage.BlackHole(),                                 // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
+		downloader:   &downloader{enabled: true, maxDownloads: 10},        // EK certificate download (if required) is enabled by default
 	}
 
 	for _, o := range opts {

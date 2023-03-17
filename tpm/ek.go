@@ -46,6 +46,11 @@ func (ek *EK) CertificateURL() string {
 	return ek.certificateURL
 }
 
+// Fingerprint returns the EK public key fingerprint.
+func (ek *EK) Fingerprint() string {
+	return "TODO"
+}
+
 // MarshalJSON marshals the EK to JSON.
 func (ek *EK) MarshalJSON() ([]byte, error) {
 	var der []byte
@@ -103,96 +108,142 @@ func keyType(p crypto.PublicKey) string {
 	}
 }
 
+// GetEKs returns a slice of TPM EKs. It will return an error
+// when interaction with the TPM fails. It will loop through
+// the TPM EKs and download the EK certificate if it's available
+// online. The TPM EKs don't change after the first lookup, so
+// the result is cached for future lookups.
+func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
+	if len(t.eks) == 0 {
+		if err := t.Open(ctx); err != nil {
+			return nil, fmt.Errorf("failed opening TPM: %w", err)
+		}
+		defer t.Close(ctx)
+
+		eks, err := t.attestTPM.EKs()
+		if err != nil {
+			return nil, fmt.Errorf("failed getting EKs: %w", err)
+		}
+
+		// an arbitrary limit, so that we don't start making a large number of HTTP requests (if needed)
+		if len(eks) > t.downloader.maxDownloads {
+			return nil, fmt.Errorf("number of EKs (%d) bigger than the maximum allowed number (%d) of downloads", len(eks), t.downloader.maxDownloads)
+		}
+
+		result := make([]*EK, 0, len(eks))
+		for _, ek := range eks {
+			ekCert := ek.Certificate
+			ekURL := ek.CertificateURL
+			// TODO(hs): handle case for which ekURL is empty, but TPM is from a manufacturer
+			// that hosts EK certificates online.
+			if ekCert == nil && ekURL != "" {
+				u, err := t.prepareEKCertifiateURL(ctx, ekURL)
+				if err != nil {
+					return nil, fmt.Errorf("failed preparing EK certificate URL: %w", err)
+				}
+				ekURL = u.String()
+				ekCert, err = t.downloadEKCertifiate(ctx, u)
+				if err != nil {
+					return nil, fmt.Errorf("failed downloading EK certificate: %w", err)
+				}
+			}
+
+			result = append(result, &EK{
+				public:         ek.Public,
+				certificate:    ekCert,
+				certificateURL: ekURL,
+			})
+		}
+
+		// cache the result
+		t.eks = result
+	}
+
+	// return the cached EKs
+	return t.eks, nil
+}
+
+func (t *TPM) prepareEKCertifiateURL(ctx context.Context, ekURL string) (*url.URL, error) {
+	var u *url.URL
+	var err error
+	u, err = url.Parse(ekURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing EK certificate URL %q: %w", ekURL, err)
+	}
+
+	info, err := t.Info(internalCall(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed getting TPM info: %w", err)
+	}
+
+	if info.Manufacturer.ASCII == "INTC" {
+		// Ensure the URL is in the right format; for Intel TPMs, the path
+		// parameter contains the base64 encoding of the hash of the public key,
+		// potentially containing padding characters, which will results in a 403,
+		// if not transformed to `%3D`. The below has currently only be tested for
+		// Intel TPMs, which connect to https://ekop.intel.com/ekcertservice. It may
+		// be different for other TPM manufacturers. Ideally, I think this should be fixed in
+		// the underlying TPM library to contain the right URL? The `intelEKURL` already
+		// seems to do URLEncoding, though.
+		// TODO: do this just for Intel URLs; and check for other TPM manufacturer URLs
+		s := u.String()
+		h := path.Base(s)
+		h = strings.ReplaceAll(h, "=", "%3D") // TODO(hs): no better function in Go to do this in paths? https://github.com/golang/go/issues/27559;
+		s = s[:strings.LastIndex(s, "/")+1] + h
+
+		u, err = url.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing EK certificate URL %q: %w", s, err)
+		}
+	}
+
+	return u, nil
+}
+
+func (t *TPM) downloadEKCertifiate(ctx context.Context, ekURL *url.URL) (*x509.Certificate, error) {
+	return t.downloader.downloadEKCertifiate(ctx, ekURL)
+}
+
 type intelEKCertResponse struct {
 	Pubhash     string `json:"pubhash"`
 	Certificate string `json:"certificate"`
 }
 
-// GetEKs returns a slice of TPM EKs. It will return an error
-// when interaction with the TPM fails. It will loop through
-// the TPM EKs and download the EK certificate if it's available
-// online.
-func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
-	if err := t.Open(ctx); err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer t.Close(ctx)
+type downloader struct {
+	enabled      bool
+	maxDownloads int
+}
 
-	eks, err := t.attestTPM.EKs()
+func (d *downloader) downloadEKCertifiate(ctx context.Context, ekURL *url.URL) (*x509.Certificate, error) {
+	if !d.enabled {
+		// if downloads are disabled, don't try to download at all
+		return nil, nil //nolint:nilnil // a nill *x509.Certificate is valid
+	}
+
+	r, err := http.Get(ekURL.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed getting EKs: %w", err)
+		return nil, fmt.Errorf("failed retrieving EK certificate from %q: %w", ekURL, err)
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http request to %q failed with status %d", ekURL, r.StatusCode)
 	}
 
-	// an arbitrary limit, so that we don't start making a large number of HTTP requests (if needed)
-	maxNumberOfEKs := 10
-	if len(eks) > maxNumberOfEKs {
-		return nil, fmt.Errorf("number of EKs (%d) bigger than the maximum allowed %d", len(eks), maxNumberOfEKs)
+	var c intelEKCertResponse // TODO(hs): handle different manufacturers
+	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+		return nil, fmt.Errorf("failed decoding EK certificate response: %w", err)
 	}
 
-	result := make([]*EK, 0, len(eks))
-	for _, ek := range eks {
-		ekCert := ek.Certificate
-		ekURL := ek.CertificateURL
-		if ekCert == nil && ekURL != "" {
-			var u *url.URL
-			u, err = url.Parse(ekURL)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing EK certificate URL %q: %w", ekURL, err)
-			}
-
-			// Ensure the URL is in the right format; for Intel TPMs, the path
-			// parameter contains the base64 encoding of the hash of the public key,
-			// potentially containing padding characters, which will results in a 403,
-			// if not transformed to `%3D`. The below has currently only be tested for
-			// Intel TPMs, which connect to https://ekop.intel.com/ekcertservice. It may
-			// be different for other URLs. Ideally, I think this should be fixed in
-			// the underlying TPM library to contain the right URL? The `intelEKURL` already
-			// seems to do URLEncoding, though. Why do we still get an `=` then?
-			// TODO: do this just for Intel URLs; and check for other TPM manufacturer URLs
-			s := u.String()
-			h := path.Base(s)
-			h = strings.ReplaceAll(h, "=", "%3D") // TODO(hs): no better function in Go to do this in paths? https://github.com/golang/go/issues/27559;
-			s = s[:strings.LastIndex(s, "/")+1] + h
-
-			u, err = url.Parse(s)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing reconstructed EK certificate URL: %w", err)
-			}
-
-			var r *http.Response
-			ekURL = u.String()
-			r, err = http.Get(ekURL) //nolint:gosec // URL originally comes from TPM. In the end it's user supplied, but not trivial to abuse
-			if err != nil {
-				return nil, fmt.Errorf("error retrieving EK certificate from %q: %w", ekURL, err)
-			}
-			defer r.Body.Close() //nolint:gocritic // number of requests is limited, so resource leak is limited
-
-			if r.StatusCode != http.StatusOK {
-				return nil, fmt.Errorf("http request to %q failed with status %d", ekURL, r.StatusCode)
-			}
-
-			var c intelEKCertResponse
-			if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-				return nil, fmt.Errorf("error decoding EK certificate response: %w", err)
-			}
-
-			cb, err := base64.URLEncoding.DecodeString(c.Certificate)
-			if err != nil {
-				return nil, fmt.Errorf("error base64 decoding EK certificate response: %w", err)
-			}
-
-			ekCert, err = attest.ParseEKCertificate(cb)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing EK certificate: %w", err)
-			}
-		}
-
-		result = append(result, &EK{
-			public:         ek.Public,
-			certificate:    ekCert,
-			certificateURL: ekURL,
-		})
+	cb, err := base64.RawURLEncoding.DecodeString(strings.ReplaceAll(c.Certificate, "%3D", "")) // strip padding; decode raw // TODO(hs): this is for Intel; might be different for others
+	if err != nil {
+		return nil, fmt.Errorf("failed base64 decoding EK certificate response: %w", err)
 	}
 
-	return result, nil
+	ekCert, err := attest.ParseEKCertificate(cb)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing EK certificate: %w", err)
+	}
+
+	return ekCert, nil
 }

@@ -122,28 +122,33 @@ func GetManufacturerByID(id manufacturer.ID) Manufacturer {
 	}
 }
 
-// Info returns info about the TPM.
+// Info returns info about the TPM. The info doesn't change, so
+// it's cached after the first lookup.
 func (t *TPM) Info(ctx context.Context) (*Info, error) {
-	if err := t.Open(ctx); err != nil {
-		return nil, fmt.Errorf("failed opening TPM: %w", err)
-	}
-	defer t.Close(ctx)
+	if t.info == nil {
+		if err := t.Open(ctx); err != nil {
+			return nil, fmt.Errorf("failed opening TPM: %w", err)
+		}
+		defer t.Close(ctx)
 
-	info, err := t.attestTPM.Info()
-	if err != nil {
-		return nil, fmt.Errorf("failed getting TPM info: %w", err)
+		info, err := t.attestTPM.Info()
+		if err != nil {
+			return nil, fmt.Errorf("failed getting TPM info: %w", err)
+		}
+
+		// the TPM info won't change, so it's cached for future lookups
+		t.info = &Info{
+			FirmwareVersion: FirmwareVersion{
+				Major: info.FirmwareVersionMajor,
+				Minor: info.FirmwareVersionMinor,
+			},
+			Interface:    Interface(info.Interface),
+			Manufacturer: GetManufacturerByID(manufacturer.ID(info.Manufacturer)),
+			VendorInfo:   info.VendorInfo,
+			Version:      Version(info.Version),
+		}
 	}
 
-	result := &Info{
-		FirmwareVersion: FirmwareVersion{
-			Major: info.FirmwareVersionMajor,
-			Minor: info.FirmwareVersionMinor,
-		},
-		Interface:    Interface(info.Interface),
-		Manufacturer: GetManufacturerByID(manufacturer.ID(info.Manufacturer)),
-		VendorInfo:   info.VendorInfo,
-		Version:      Version(info.Version),
-	}
-
-	return result, nil
+	// return the cached TPM info
+	return t.info, nil
 }
