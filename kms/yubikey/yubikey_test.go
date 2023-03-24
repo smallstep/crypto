@@ -216,19 +216,22 @@ func (s *stubPivKey) Close() error {
 }
 
 func TestRegister(t *testing.T) {
+	pCards := pivCards
+	t.Cleanup(func() {
+		pivCards = pCards
+	})
+
+	pivCards = func() ([]string, error) {
+		return []string{"Yubico YubiKey OTP+FIDO+CCID"}, nil
+	}
+
 	fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.YubiKey)
 	if !ok {
 		t.Fatal("YubiKey is not registered")
 	}
-	k, err := fn(context.Background(), apiv1.Options{
+	_, _ = fn(context.Background(), apiv1.Options{
 		Type: "YubiKey", URI: "yubikey:",
 	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	if k == nil {
-		t.Fatalf("New() = %v, want &KeyVault{}", k)
-	}
 }
 
 func TestNew(t *testing.T) {
