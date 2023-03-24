@@ -120,9 +120,11 @@ func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
 		// Attempt to locate the yubikey with the given serial.
 		for _, name := range cards {
 			if k, err := pivOpen(name); err == nil {
-				if serialNumber, err := getSerialNumber(k); err == nil && serial == serialNumber {
-					yk = k
-					break
+				if cert, err := k.Attest(piv.SlotAuthentication); err == nil {
+					if serial == getSerialNumber(cert) {
+						yk = k
+						break
+					}
 				}
 			}
 		}
@@ -321,9 +323,10 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 	}
 
 	return &apiv1.CreateAttestationResponse{
-		Certificate:      cert,
-		CertificateChain: []*x509.Certificate{intermediate},
-		PublicKey:        cert.PublicKey,
+		Certificate:         cert,
+		CertificateChain:    []*x509.Certificate{intermediate},
+		PublicKey:           cert.PublicKey,
+		PermanentIdentifier: getSerialNumber(cert),
 	}, nil
 }
 
@@ -471,22 +474,19 @@ func getPolicies(req *apiv1.CreateKeyRequest) (piv.PINPolicy, piv.TouchPolicy) {
 	return pin, touch
 }
 
-// getSerialNumber gets an attestation certificate on the given key and returns
-// the serial number on it.
-func getSerialNumber(yk pivKey) (string, error) {
-	cert, err := yk.Attest(piv.SlotAuthentication)
-	if err != nil {
-		return "", err
-	}
+// getSerialNumber returns the serial number from an attestation certificate. It
+// will return an empty string if it the serial number extension does not exists
+// or if it is malformed.
+func getSerialNumber(cert *x509.Certificate) string {
 	for _, ext := range cert.Extensions {
 		if ext.Id.Equal(oidYubicoSerialNumber) {
 			var serialNumber int
 			rest, err := asn1.Unmarshal(ext.Value, &serialNumber)
 			if err != nil || len(rest) > 0 {
-				return "", errors.New("error parsing YubiKey serial number")
+				return ""
 			}
-			return strconv.Itoa(serialNumber), nil
+			return strconv.Itoa(serialNumber)
 		}
 	}
-	return "", errors.New("failed to find YubiKey serial number")
+	return ""
 }
