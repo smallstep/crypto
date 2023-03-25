@@ -189,7 +189,7 @@ func TestPKCS11_CreateKey(t *testing.T) {
 	k := setupPKCS11(t)
 
 	// Make sure to delete the created key
-	k.DeleteKey(testObject)
+	_ = k.DeleteKey(testObject)
 
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -553,13 +553,13 @@ func TestPKCS11_CreateDecrypter(t *testing.T) {
 				}
 
 				// RSA-OAEP
-				enc, err = rsa.EncryptOAEP(crypto.SHA256.New(), rand.Reader, pub, data, []byte("label"))
+				enc, err = rsa.EncryptOAEP(crypto.SHA1.New(), rand.Reader, pub, data, []byte("label"))
 				if err != nil {
 					t.Errorf("rsa.EncryptOAEP() error = %v", err)
 					return
 				}
 				dec, err = got.Decrypt(rand.Reader, enc, &rsa.OAEPOptions{
-					Hash:  crypto.SHA256,
+					Hash:  crypto.SHA1,
 					Label: []byte("label"),
 				})
 				if err != nil {
@@ -653,8 +653,8 @@ func TestPKCS11_StoreCertificate(t *testing.T) {
 
 	// Make sure to delete the created certificate
 	t.Cleanup(func() {
-		k.DeleteCertificate(testObject)
-		k.DeleteCertificate(testObjectAlt)
+		_ = k.DeleteCertificate(testObject)
+		_ = k.DeleteCertificate(testObjectAlt)
 	})
 
 	type args struct {

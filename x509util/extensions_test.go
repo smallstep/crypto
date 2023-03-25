@@ -464,7 +464,9 @@ func TestKeyUsage_MarshalJSON(t *testing.T) {
 				t.Errorf("KeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
 			}
 			var unmarshaled KeyUsage
-			unmarshaled.UnmarshalJSON(got)
+			if err := unmarshaled.UnmarshalJSON(got); err != nil {
+				t.Errorf("KeyUsage.UnmarshalJSON() error = %v", err)
+			}
 			if unmarshaled != tt.k {
 				t.Errorf("KeyUsage.UnmarshalJSON(keyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.k)
 			}
@@ -582,7 +584,7 @@ func TestExtKeyUsage_MarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.eku.MarshalJSON()
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("ExtKeyUsage.MarshalJSON() = error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("ExtKeyUsage.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
 				return
@@ -591,7 +593,9 @@ func TestExtKeyUsage_MarshalJSON(t *testing.T) {
 				t.Errorf("ExtKeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
 			}
 			var unmarshaled ExtKeyUsage
-			unmarshaled.UnmarshalJSON(got)
+			if err := unmarshaled.UnmarshalJSON(got); err != nil {
+				t.Errorf("ExtKeyUsage.UnmarshalJSON() error = %v", err)
+			}
 			if !reflect.DeepEqual(unmarshaled, tt.eku) {
 				t.Errorf("ExtKeyUsage.UnmarshalJSON(ExtKeyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.eku)
 			}
