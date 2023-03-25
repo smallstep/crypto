@@ -475,7 +475,7 @@ func getPolicies(req *apiv1.CreateKeyRequest) (piv.PINPolicy, piv.TouchPolicy) {
 }
 
 // getSerialNumber returns the serial number from an attestation certificate. It
-// will return an empty string if it the serial number extension does not exists
+// will return an empty string if the serial number extension does not exist
 // or if it is malformed.
 func getSerialNumber(cert *x509.Certificate) string {
 	for _, ext := range cert.Extensions {
