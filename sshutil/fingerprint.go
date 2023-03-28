@@ -76,7 +76,15 @@ func FormatFingerprint(in []byte, encoding FingerprintEncoding) (string, error) 
 		return "", fmt.Errorf("error determining key type and size: %w", err)
 	}
 
-	fp := EncodedFingerprint(key, encoding)
+	// if the SSH key is actually an SSH certificate, get its
+	// public key and encode just that, instead of encoding
+	// the entire key blob including certificate bytes.
+	publicKey := key
+	if c, ok := key.(*ssh.Certificate); ok {
+		publicKey = c.Key
+	}
+
+	fp := EncodedFingerprint(publicKey, encoding)
 	if fp == "" {
 		return "", fmt.Errorf("unsupported encoding format %v", encoding)
 	}
