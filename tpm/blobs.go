@@ -33,7 +33,7 @@ func (b *Blobs) Public() (blob []byte, err error) {
 }
 
 func toTPM2Tools(blob []byte) ([]byte, error) {
-	buf := bytes.Buffer{}
+	var buf bytes.Buffer
 	bytesWithHeader := tpmutil.U16Bytes(blob)
 	if err := bytesWithHeader.TPMMarshal(&buf); err != nil {
 		return nil, err

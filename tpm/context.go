@@ -23,10 +23,8 @@ func internalCall(ctx context.Context) context.Context {
 }
 
 func isInternalCall(ctx context.Context) bool {
-	if v, ok := ctx.Value(internalCallContextKey{}).(bool); ok {
-		return v
-	}
-	return false
+	v, ok := ctx.Value(internalCallContextKey{}).(bool)
+	return ok && v
 }
 
 type goTPMCallContextKey struct{}
@@ -36,8 +34,6 @@ func goTPMCall(ctx context.Context) context.Context {
 }
 
 func isGoTPMCall(ctx context.Context) bool {
-	if v, ok := ctx.Value(goTPMCallContextKey{}).(bool); ok {
-		return v
-	}
-	return false
+	v, ok := ctx.Value(goTPMCallContextKey{}).(bool)
+	return ok && v
 }

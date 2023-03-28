@@ -179,7 +179,7 @@ func TestTPM_DeleteAK(t *testing.T) {
 	require.NotNil(t, key)
 
 	err = tpm.DeleteAK(context.Background(), "second-ak")
-	require.EqualError(t, err, `cannot delete AK "second-ak" before deleting keys that were attested by it`)
+	require.EqualError(t, err, `failed deleting AK "second-ak" because 1 key(s) exist that were attested by it`)
 
 	err = tpm.DeleteAK(context.Background(), "non-existing-ak")
 	require.EqualError(t, err, `failed getting AK "non-existing-ak": not found`)

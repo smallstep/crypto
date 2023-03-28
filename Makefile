@@ -37,7 +37,7 @@ combinecoverage:
 race:
 	$Q $(GOFLAGS) gotestsum -- -race ./...
 
-.PHONY: test defaulttest simulatortest race
+.PHONY: test defaulttest simulatortest combinecoverage race
 
 #########################################
 # Linting

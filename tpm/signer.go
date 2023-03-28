@@ -57,8 +57,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 }
 
 // GetSigner returns a crypto.Signer for a TPM Key identified by `name`.
-func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error) {
-	var err error
+func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -91,9 +90,11 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error)
 		return nil, fmt.Errorf("failed getting TPM private key %q as crypto.Signer", name)
 	}
 
-	return &signer{
+	csigner = &signer{
 		tpm:    t,
 		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t},
 		public: loadedKey.Public(),
-	}, nil
+	}
+
+	return
 }

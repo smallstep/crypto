@@ -94,7 +94,7 @@ func (m *mockClient) Do(req *http.Request) (*http.Response, error) {
 	if m.doFunc != nil {
 		return m.doFunc(req)
 	}
-	return nil, errors.New("mocked DoFunc not set")
+	return nil, errors.New("mocked doFunc not set")
 }
 
 func Test_downloader_downloadEKCertifiate(t *testing.T) {
@@ -149,7 +149,8 @@ func Test_downloader_downloadEKCertifiate(t *testing.T) {
 			d := &downloader{enabled: true, maxDownloads: 10, client: client}
 			ekURL, err := url.Parse(tc.ekURL)
 			require.NoError(t, err)
-			got, err := d.downloadEKCertifiate(tc.ctx, ekURL)
+
+			got, err := d.downloadEKCertificate(tc.ctx, ekURL)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("downloader.downloadEKCertifiate() error = %v, wantErr %v", err, tc.wantErr)
 				return
