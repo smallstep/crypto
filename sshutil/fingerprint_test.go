@@ -166,6 +166,7 @@ func TestFormatFingerprint(t *testing.T) {
 		{"SK-ECDSA", args{marshal(skECKey, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(skECKey) + " jane@example.com (SK-ECDSA)", false},
 		{"SK-ED25519", args{marshal(skEDKey, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(skEDKey) + " jane@example.com (SK-ED25519)", false},
 		{"ED25519-CERT", args{marshal(sshCert, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(sshCertPublicKey) + " jane@example.com (ED25519-CERT)", false},
+		{"ED25519-CERT (fixture)", args{[]byte(fixtureED25519Certificate), DefaultFingerprint}, "256 SHA256:RvkDPGwl/G9d7LUFm1kmWhvOD9I/moPq4yxcb0STwr0 herman (ECDSA-CERT)", false},
 		{"DSA", args{marshal(sshDSAKey, "jane@example.com"), 0}, "1024 " + ssh.FingerprintSHA256(sshDSAKey) + " jane@example.com (DSA)", false},
 		{"Base64RawFingerprint", args{marshal(sshECKey, ""), Base64RawFingerprint}, "256 " + ssh.FingerprintSHA256(sshECKey) + " no comment (ECDSA)", false},
 		{"Base64RawURLFingerprint", args{marshal(sshECKey, ""), Base64RawURLFingerprint}, "256 SHA256:" + base64.RawURLEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
@@ -189,6 +190,10 @@ func TestFormatFingerprint(t *testing.T) {
 		})
 	}
 }
+
+const (
+	fixtureED25519Certificate = `ecdsa-sha2-nistp256-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzdHAyNTYtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgLnkvSk4odlo3b1R+RDw+LmorL3RkN354IilCIVFVen4AAAAIbmlzdHAyNTYAAABBBHjKHss8WM2ffMYlavisoLXR0I6UEIU+cidV1ogEH1U6+/SYaFPrlzQo0tGLM5CNkMbhInbyasQsrHzn8F1Rt7nHg5/tcSf9qwAAAAEAAAAGaGVybWFuAAAACgAAAAZoZXJtYW4AAAAAY8kvJwAAAABjyhBjAAAAAAAAAIIAAAAVcGVybWl0LVgxMS1mb3J3YXJkaW5nAAAAAAAAABdwZXJtaXQtYWdlbnQtZm9yd2FyZGluZwAAAAAAAAAWcGVybWl0LXBvcnQtZm9yd2FyZGluZwAAAAAAAAAKcGVybWl0LXB0eQAAAAAAAAAOcGVybWl0LXVzZXItcmMAAAAAAAAAAAAAAGgAAAATZWNkc2Etc2hhMi1uaXN0cDI1NgAAAAhuaXN0cDI1NgAAAEEE/ayqpPrZZF5uA1UlDt4FreTf15agztQIzpxnWq/XoxAHzagRSkFGkdgFpjgsfiRpP8URHH3BZScqc0ZDCTxhoQAAAGQAAAATZWNkc2Etc2hhMi1uaXN0cDI1NgAAAEkAAAAhAJuP1wCVwoyrKrEtHGfFXrVbRHySDjvXtS1tVTdHyqymAAAAIBa/CSSzfZb4D2NLP+eEmOOMJwSjYOiNM8fiOoAaqglI herman`
+)
 
 type fakeKey struct {
 	typ   string
