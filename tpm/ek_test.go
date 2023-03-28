@@ -1,6 +1,7 @@
 package tpm
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -8,10 +9,11 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"net/url"
 	"testing"
 
+	"github.com/smallstep/assert"
 	"github.com/stretchr/testify/require"
-
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/x509util"
@@ -76,4 +78,48 @@ func TestEK_MarshalJSON(t *testing.T) {
 	require.Equal(t, m["fingerprint"], fp)
 	require.Equal(t, m["der"], base64.StdEncoding.EncodeToString(cert.Raw))
 	require.Equal(t, m["url"], "https://certificate.example.com")
+}
+
+func Test_downloader_downloadEKCertifiate(t *testing.T) {
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		ekURL       string
+		wantSubject string
+		wantErr     bool
+	}{
+		{
+			name:        "intel",
+			ctx:         context.Background(),
+			ekURL:       "https://ekop.intel.com/ekcertservice/WVEG2rRwkQ7m3RpXlUphgo6Y2HLxl18h6ZZkkOAdnBE%3D",
+			wantSubject: "", // no subject in EK certificate
+			wantErr:     false,
+		},
+		{
+			name:        "amd EK CA root",
+			ctx:         context.Background(),
+			ekURL:       "https://ftpm.amd.com/pki/aia/264D39A23CEB5D5B49D610044EEBD121",            // assumes AMD EK certificate responses are all in the same format
+			wantSubject: "CN=AMDTPM,OU=Engineering,O=Advanced Micro Devices,L=Sunnyvale,ST=CA,C=US", // AMDTPM EK CA root subject
+			wantErr:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &downloader{enabled: true, maxDownloads: 10}
+			ekURL, err := url.Parse(tt.ekURL)
+			require.NoError(t, err)
+			got, err := d.downloadEKCertifiate(tt.ctx, ekURL)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("downloader.downloadEKCertifiate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if assert.NoError(t, err) {
+				assert.NotNil(t, got)
+				if got.Subject.String() != tt.wantSubject {
+					t.Errorf("downloader.downloadEKCertifiate() = %v, want %v", got.Subject.String(), tt.wantSubject)
+				}
+			}
+		})
+	}
 }
