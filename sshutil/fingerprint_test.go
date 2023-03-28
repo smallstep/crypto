@@ -114,6 +114,7 @@ func TestFormatFingerprint(t *testing.T) {
 	skECKey := generateFakeSKKey(t, ecKey)
 	skEDKey := generateFakeSKKey(t, edKey)
 	sshCert := generateCertificate(t)
+	sshCertPublicKey := sshCert.(*ssh.Certificate).Key
 
 	dsaKey := new(dsa.PrivateKey)
 	if err := dsa.GenerateParameters(&dsaKey.Parameters, rand.Reader, dsa.L1024N160); err != nil {
@@ -164,7 +165,7 @@ func TestFormatFingerprint(t *testing.T) {
 		{"RSA", args{marshal(sshRSAKey, "jane@example.com"), 0}, "2048 " + ssh.FingerprintSHA256(sshRSAKey) + " jane@example.com (RSA)", false},
 		{"SK-ECDSA", args{marshal(skECKey, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(skECKey) + " jane@example.com (SK-ECDSA)", false},
 		{"SK-ED25519", args{marshal(skEDKey, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(skEDKey) + " jane@example.com (SK-ED25519)", false},
-		{"ED25519-CERT", args{marshal(sshCert, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(sshCert) + " jane@example.com (ED25519-CERT)", false},
+		{"ED25519-CERT", args{marshal(sshCert, "jane@example.com"), 0}, "256 " + ssh.FingerprintSHA256(sshCertPublicKey) + " jane@example.com (ED25519-CERT)", false},
 		{"DSA", args{marshal(sshDSAKey, "jane@example.com"), 0}, "1024 " + ssh.FingerprintSHA256(sshDSAKey) + " jane@example.com (DSA)", false},
 		{"Base64RawFingerprint", args{marshal(sshECKey, ""), Base64RawFingerprint}, "256 " + ssh.FingerprintSHA256(sshECKey) + " no comment (ECDSA)", false},
 		{"Base64RawURLFingerprint", args{marshal(sshECKey, ""), Base64RawURLFingerprint}, "256 SHA256:" + base64.RawURLEncoding.EncodeToString(ec256Bytes) + " no comment (ECDSA)", false},
