@@ -80,3 +80,12 @@ or just a YubiKey or an ssh-agent. On the cloud it supports:
 
 Package `fingerprint` provides methods for creating and encoding X.509
 certificate, SSH certificate and SSH key fingerprints.
+
+### tpm
+
+Package `tpm` provides an abstraction over and utilities for interacting
+with TPMs. It can be used to retrieve TPM information, retrieve its Endorsement
+Keys (EK) and associated certifiates, create and operate on Attestation Keys (AK), 
+and create and operate on (attested) application keys. The `storage` subpackage 
+provides an interface and concrete implementations offering a transparent 
+persistence mechanism for Attestation and application keys.
