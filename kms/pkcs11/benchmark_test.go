@@ -19,7 +19,7 @@ func benchmarkSign(b *testing.B, signer crypto.Signer, opts crypto.SignerOpts) {
 	digest := h.Sum(nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		signer.Sign(rand.Reader, digest, opts)
+		_, _ = signer.Sign(rand.Reader, digest, opts)
 	}
 	b.StopTimer()
 }

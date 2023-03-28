@@ -226,7 +226,8 @@ type CreateAttestationRequest struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type CreateAttestationResponse struct {
-	Certificate      *x509.Certificate
-	CertificateChain []*x509.Certificate
-	PublicKey        crypto.PublicKey
+	Certificate         *x509.Certificate
+	CertificateChain    []*x509.Certificate
+	PublicKey           crypto.PublicKey
+	PermanentIdentifier string
 }

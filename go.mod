@@ -3,31 +3,30 @@ module go.step.sm/crypto
 go 1.18
 
 require (
-	cloud.google.com/go/kms v1.9.0
+	cloud.google.com/go/kms v1.10.0
 	filippo.io/edwards25519 v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.2
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.9.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/ThalesIgnite/crypto11 v1.2.5
-	github.com/aws/aws-sdk-go v1.44.220
-	github.com/go-piv/piv-go v1.10.0
+	github.com/aws/aws-sdk-go v1.44.230
+	github.com/go-piv/piv-go v1.11.0
 	github.com/golang/mock v1.6.0
 	github.com/google/go-attestation v0.4.4-0.20220404204839-8820d49b18d9
 	github.com/google/go-tpm v0.3.3
 	github.com/google/go-tpm-tools v0.3.10
-	github.com/googleapis/gax-go/v2 v2.7.1
+	github.com/googleapis/gax-go/v2 v2.8.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
-	github.com/ryboe/q v1.0.19
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.7.0
 	golang.org/x/net v0.8.0
 	golang.org/x/sys v0.6.0
-	google.golang.org/api v0.112.0
-	google.golang.org/grpc v1.53.0
+	google.golang.org/api v0.114.0
+	google.golang.org/grpc v1.54.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
@@ -54,14 +53,12 @@ require (
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/miekg/pkcs11 v1.0.3 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/thales-e-security/pool v0.0.2 // indirect
@@ -69,8 +66,8 @@ require (
 	golang.org/x/oauth2 v0.6.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230303212802-e74f57abe488 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
+	google.golang.org/protobuf v1.29.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
