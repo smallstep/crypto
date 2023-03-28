@@ -422,7 +422,7 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 
 	publicKey, ok := leafPK.(comparablePublicKey)
 	if !ok {
-		return errors.New("no method Equal() defined on certificate public key")
+		return errors.New("certificate public key can't be compared to a crypto.PublicKey")
 	}
 
 	if !publicKey.Equal(signer.Public()) {

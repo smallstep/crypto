@@ -160,7 +160,7 @@ func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 			// TODO(hs): handle case for which ekURL is empty, but TPM is from a manufacturer
 			// that hosts EK certificates online. For Intel TPMs, the URL is constructed by go-attestation,
 			// but that doesn't seem to be the case for other TPMs. Unsure if other TPMs do or do not
-			// provide the proper URL when read.
+			// provide the proper URL when read. Also see https://github.com/tpm2-software/tpm2-tools/issues/3158.
 			if ekCert == nil && ekURL != "" {
 				u, err := t.prepareEKCertifiateURL(ctx, ekURL)
 				if err != nil {
@@ -238,9 +238,15 @@ type intelEKCertResponse struct {
 	Certificate string `json:"certificate"`
 }
 
+// httpClient interface
+type httpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type downloader struct {
 	enabled      bool
 	maxDownloads int
+	client       httpClient
 }
 
 // downloadEKCertificate attempts to download the EK certificate from ekURL.
@@ -250,7 +256,12 @@ func (d *downloader) downloadEKCertifiate(ctx context.Context, ekURL *url.URL) (
 		return nil, nil //nolint:nilnil // a nill *x509.Certificate is valid
 	}
 
-	r, err := http.Get(ekURL.String())
+	req, err := http.NewRequestWithContext(ctx, "GET", ekURL.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating request: %w", err)
+	}
+
+	r, err := d.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving EK certificate from %q: %w", ekURL, err)
 	}

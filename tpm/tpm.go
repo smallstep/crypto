@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/google/go-attestation/attest"
@@ -70,9 +71,9 @@ func WithDisableDownload() NewTPMOption {
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
 	tpm := &TPM{
-		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20}, // default configuration for TPM attestation use cases
-		store:        storage.BlackHole(),                                 // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
-		downloader:   &downloader{enabled: true, maxDownloads: 10},        // EK certificate download (if required) is enabled by default
+		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20},                      // default configuration for TPM attestation use cases
+		store:        storage.BlackHole(),                                                      // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
+		downloader:   &downloader{enabled: true, maxDownloads: 10, client: http.DefaultClient}, // EK certificate download (if required) is enabled by default
 	}
 
 	for _, o := range opts {
