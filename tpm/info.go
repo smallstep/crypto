@@ -126,10 +126,15 @@ func GetManufacturerByID(id manufacturer.ID) Manufacturer {
 // it's cached after the first lookup.
 func (t *TPM) Info(ctx context.Context) (*Info, error) {
 	if t.info == nil {
-		if err := t.Open(ctx); err != nil {
+		var err error
+		if err := t.open(ctx); err != nil {
 			return nil, fmt.Errorf("failed opening TPM: %w", err)
 		}
-		defer t.Close(ctx)
+		defer func() {
+			if tempErr := t.close(ctx); tempErr != nil && err != nil {
+				err = tempErr
+			}
+		}()
 
 		info, err := t.attestTPM.Info()
 		if err != nil {

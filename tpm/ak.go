@@ -120,13 +120,17 @@ func (ak *AK) MarshalJSON() ([]byte, error) {
 // If no name is  provided, a random 10 character name is generated.
 // If an AK with the same name exists, `ErrExists` is returned.
 func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	now := time.Now()
-	var err error
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -170,10 +174,15 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
 // GetAK returns the AK identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) GetAK(ctx context.Context, name string) (*AK, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
@@ -194,10 +203,15 @@ var (
 // exists with `permanentIdentifier` as one of the Subject Alternative
 // Names. It returns `ErrNotFound` if it doesn't exist.
 func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifier string) (*AK, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	aks, err := t.ListAKs(internalCall(ctx))
 	if err != nil {
@@ -219,10 +233,15 @@ func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifie
 // ListAKs returns a slice of AKs. The result is (currently)
 // not ordered.
 func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err := t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	aks, err := t.store.ListAKs()
 	if err != nil {
@@ -243,10 +262,15 @@ func (t *TPM) ListAKs(ctx context.Context) ([]*AK, error) {
 // if it doesn't exist. Keys that were attested by the AK have to be removed
 // before removing the AK, otherwise an error will be returned.
 func (t *TPM) DeleteAK(ctx context.Context, name string) error {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err := t.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
@@ -288,10 +312,15 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) error {
 // generate a credential activation challenge.
 func (ak *AK) AttestationParameters(ctx context.Context) (params attest.AttestationParameters, err error) {
 	if ak.attestParams == nil {
-		if err := ak.tpm.Open(ctx); err != nil {
+		var err error
+		if err = ak.tpm.open(ctx); err != nil {
 			return params, fmt.Errorf("failed opening TPM: %w", err)
 		}
-		defer ak.tpm.Close(ctx)
+		defer func() {
+			if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
+				err = tempErr
+			}
+		}()
 
 		loadedAK, err := ak.tpm.attestTPM.LoadAK(ak.data)
 		if err != nil {
@@ -314,10 +343,14 @@ type EncryptedCredential attest.EncryptedCredential
 // generated on the same TPM as the EK. This operation is synonymous with
 // TPM2_ActivateCredential.
 func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (secret []byte, err error) {
-	if err := ak.tpm.Open(ctx); err != nil {
+	if err := ak.tpm.open(ctx); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer ak.tpm.Close(ctx)
+	defer func() {
+		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	loadedAK, err := ak.tpm.attestTPM.LoadAK(ak.data)
 	if err != nil {
@@ -337,10 +370,15 @@ func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (s
 //	tpm2_load -C 0x81000001 -u ak.pub -r ak.priv -c ak.ctx
 func (ak *AK) Blobs(ctx context.Context) (*Blobs, error) {
 	if ak.blobs == nil {
-		if err := ak.tpm.Open(ctx); err != nil {
+		var err error
+		if err = ak.tpm.open(ctx); err != nil {
 			return nil, fmt.Errorf("failed opening TPM: %w", err)
 		}
-		defer ak.tpm.Close(ctx)
+		defer func() {
+			if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
+				err = tempErr
+			}
+		}()
 
 		aak, err := ak.tpm.attestTPM.LoadAK(ak.data)
 		if err != nil {
@@ -362,10 +400,15 @@ func (ak *AK) Blobs(ctx context.Context) (*Blobs, error) {
 // If the AK public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) error {
-	if err := ak.tpm.Open(ctx); err != nil {
+	var err error
+	if err := ak.tpm.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer ak.tpm.Close(ctx)
+	defer func() {
+		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	if len(chain) == 0 {
 		return errors.New("certificate chain must contain at least one certificate")

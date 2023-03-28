@@ -144,14 +144,18 @@ type AttestKeyConfig struct {
 // a random 10 character name is generated. If a Key with the same name exists,
 // `ErrExists` is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (*Key, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	now := time.Now()
 
-	var err error
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -192,12 +196,16 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 // name is generated. If a Key with the same name exists, `ErrExists` is
 // returned.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (*Key, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
-	var err error
 	now := time.Now()
 	if name, err = processName(name); err != nil {
 		return nil, err
@@ -257,10 +265,15 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 // GetKey returns the Key identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
@@ -276,10 +289,15 @@ func (t *TPM) GetKey(ctx context.Context, name string) (*Key, error) {
 // ListKeys returns a slice of Keys. The result is (currently)
 // not ordered.
 func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	keys, err := t.store.ListKeys()
 	if err != nil {
@@ -297,10 +315,15 @@ func (t *TPM) ListKeys(ctx context.Context) ([]*Key, error) {
 // GetKeysAttestedBy returns a slice of Keys attested by the AK
 // identified by `akName`. The result is (currently) not ordered.
 func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	keys, err := t.store.ListKeys()
 	if err != nil {
@@ -320,10 +343,15 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) ([]*Key, err
 // DeleteKey removes the Key identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) DeleteKey(ctx context.Context, name string) error {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err := t.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
@@ -356,10 +384,14 @@ func (k *Key) Signer(ctx context.Context) (crypto.Signer, error) {
 // CertificationParameters returns information about the key that can be used to
 // verify key certification.
 func (k *Key) CertificationParameters(ctx context.Context) (params attest.CertificationParameters, err error) {
-	if err := k.tpm.Open(ctx); err != nil {
+	if err = k.tpm.open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer k.tpm.Close(ctx)
+	defer func() {
+		if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	loadedKey, err := k.tpm.attestTPM.LoadKey(k.data)
 	if err != nil {
@@ -379,10 +411,15 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 //	tpm2_load -C 0x81000001 -u key.pub -r key.priv -c key.ctx
 func (k *Key) Blobs(ctx context.Context) (*Blobs, error) {
 	if k.blobs == nil {
-		if err := k.tpm.Open(ctx); err != nil {
+		var err error
+		if err = k.tpm.open(ctx); err != nil {
 			return nil, fmt.Errorf("failed opening TPM: %w", err)
 		}
-		defer k.tpm.Close(ctx)
+		defer func() {
+			if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
+				err = tempErr
+			}
+		}()
 
 		key, err := k.tpm.attestTPM.LoadKey(k.data)
 		if err != nil {
@@ -404,10 +441,15 @@ func (k *Key) Blobs(ctx context.Context) (*Blobs, error) {
 // If the public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) error {
-	if err := k.tpm.Open(ctx); err != nil {
+	var err error
+	if err = k.tpm.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer k.tpm.Close(ctx)
+	defer func() {
+		if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	signer, err := k.Signer(internalCall(ctx)) // TODO: cache the crypto.PublicKey after its first load instead?
 	if err != nil {

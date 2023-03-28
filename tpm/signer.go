@@ -27,10 +27,14 @@ func (s *signer) Public() crypto.PublicKey {
 // will reload the TPM key to be used.
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	ctx := context.Background()
-	if err := s.tpm.Open(ctx); err != nil {
+	if err = s.tpm.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer s.tpm.Close(ctx)
+	defer func() {
+		if tempErr := s.tpm.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	loadedKey, err := s.tpm.attestTPM.LoadKey(s.key.data)
 	if err != nil {
@@ -54,10 +58,15 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 
 // GetSigner returns a crypto.Signer for a TPM Key identified by `name`.
 func (t *TPM) GetSigner(ctx context.Context, name string) (crypto.Signer, error) {
-	if err := t.Open(ctx); err != nil {
+	var err error
+	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer t.Close(ctx)
+	defer func() {
+		if tempErr := t.close(ctx); tempErr != nil && err != nil {
+			err = tempErr
+		}
+	}()
 
 	key, err := t.store.GetKey(name)
 	if err != nil {

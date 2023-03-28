@@ -138,10 +138,15 @@ func keyType(p crypto.PublicKey) string {
 // the result is cached for future lookups.
 func (t *TPM) GetEKs(ctx context.Context) ([]*EK, error) {
 	if len(t.eks) == 0 {
-		if err := t.Open(ctx); err != nil {
+		var err error
+		if err = t.open(ctx); err != nil {
 			return nil, fmt.Errorf("failed opening TPM: %w", err)
 		}
-		defer t.Close(ctx)
+		defer func() {
+			if tempErr := t.close(ctx); tempErr != nil && err != nil {
+				err = tempErr
+			}
+		}()
 
 		eks, err := t.attestTPM.EKs()
 		if err != nil {

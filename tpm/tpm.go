@@ -88,7 +88,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 // Open readies the TPM for usage and marks it as being
 // in use. This makes using the instance safe for
 // concurrent use.
-func (t *TPM) Open(ctx context.Context) error {
+func (t *TPM) open(ctx context.Context) error {
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
@@ -117,7 +117,7 @@ func (t *TPM) Open(ctx context.Context) error {
 		}
 		t.rwc = t.simulator
 	} else {
-		// TODO(hs): when an internal call to Open is performed, but when
+		// TODO(hs): when an internal call to open is performed, but when
 		// switching the "TPM implementation" to use between the two types,
 		// there's a possibility of a nil pointer exception. At the moment,
 		// the only "go-tpm" call is for GetRandom(), but this could change
@@ -145,11 +145,11 @@ func (t *TPM) Open(ctx context.Context) error {
 
 // Close closes the TPM instance, cleaning up resources and
 // marking it ready to be use again.
-func (t *TPM) Close(ctx context.Context) {
+func (t *TPM) close(ctx context.Context) error {
 	// prevent closing the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
-		return
+		return nil
 	}
 
 	// if simulation is enabled, closing the TPM simulator must not
@@ -159,23 +159,25 @@ func (t *TPM) Close(ctx context.Context) {
 	// meaning it has to happen at the end of the test.
 	if t.simulator != nil {
 		t.lock.Unlock()
-		return
+		return nil // return early, so that simulator remains usable.
 	}
 
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
 		err := t.attestTPM.Close()
-		_ = err // TODO: handle error correctly (in defer)
 		t.attestTPM = nil
+		return fmt.Errorf("failed closing attest.TPM: %w", err)
 	}
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
 		err := t.rwc.Close()
-		_ = err // TODO: handle error correctly (in defer)
 		t.rwc = nil
+		return fmt.Errorf("failed closing rwc: %w", err)
 	}
 
 	// mark the TPM as ready to be used again
 	t.lock.Unlock()
+
+	return nil
 }

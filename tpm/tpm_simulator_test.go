@@ -59,7 +59,7 @@ func TestTPM_Info(t *testing.T) {
 	info, err := tpm.Info(context.Background())
 	require.NoError(t, err)
 
-	// expected TPM info for the simulator Microsoft TPM simulator
+	// expected TPM info for the Microsoft TPM simulator
 	expected := &Info{
 		Version:      Version(2),
 		Interface:    Interface(3),
