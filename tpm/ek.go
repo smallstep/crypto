@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -47,8 +48,23 @@ func (ek *EK) CertificateURL() string {
 }
 
 // Fingerprint returns the EK public key fingerprint.
-func (ek *EK) Fingerprint() string {
-	return "TODO"
+// The fingerprint is the base64 encoded SHA256 of
+// the EK public key.
+func (ek *EK) Fingerprint() (string, error) {
+	fp, err := generateKeyID(ek.public)
+	if err != nil {
+		return "", fmt.Errorf("failed generating EK public key ID: %w", err)
+	}
+	return "sha256:" + base64.StdEncoding.EncodeToString(fp), nil
+}
+
+func generateKeyID(pub crypto.PublicKey) ([]byte, error) {
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling public key: %w", err)
+	}
+	hash := sha256.Sum256(b)
+	return hash[:], nil
 }
 
 // MarshalJSON marshals the EK to JSON.
@@ -57,14 +73,20 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 	if ek.certificate != nil {
 		der = ek.certificate.Raw
 	}
+	fp, err := ek.Fingerprint()
+	if err != nil {
+		return nil, fmt.Errorf("failed getting EK fingerprint: %w", err)
+	}
 	o := struct {
-		Type string `json:"type"`
-		DER  []byte `json:"der,omitempty"`
-		URL  string `json:"url,omitempty"`
+		Type        string `json:"type"`
+		Fingerprint string `json:"fingerprint"`
+		DER         []byte `json:"der,omitempty"`
+		URL         string `json:"url,omitempty"`
 	}{
-		Type: ek.Type(),
-		DER:  der,
-		URL:  ek.certificateURL,
+		Type:        ek.Type(),
+		Fingerprint: fp,
+		DER:         der,
+		URL:         ek.certificateURL,
 	}
 	return json.Marshal(o)
 }

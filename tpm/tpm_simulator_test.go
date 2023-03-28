@@ -7,10 +7,13 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/go-attestation/attest"
@@ -87,6 +90,16 @@ func TestTPM_GetEKs(t *testing.T) {
 	eks, err := tpm.GetEKs(context.Background())
 	require.NoError(t, err)
 	require.Len(t, eks, 1)
+	require.IsType(t, &rsa.PublicKey{}, eks[0].Public())
+	require.Nil(t, eks[0].Certificate())
+	require.Equal(t, "", eks[0].CertificateURL())
+
+	fp, err := eks[0].Fingerprint()
+	require.NoError(t, err)
+
+	b, err := base64.StdEncoding.DecodeString(strings.Split(fp, ":")[1])
+	require.NoError(t, err)
+	require.Len(t, b, 32)
 }
 
 func TestTPM_CreateAK(t *testing.T) {
