@@ -4,12 +4,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/big"
-
-	"github.com/ryboe/q"
 
 	"github.com/google/go-attestation/attest"
 )
@@ -21,6 +18,8 @@ var (
 )
 
 func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, params attest.CertificationParameters, shouldEncrypt bool) (pkix.Extension, error) {
+	return pkix.Extension{}, errors.New("not implemented yet") // return early; not verified to be working as expected yet
+
 	asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence())
 	if err != nil {
 		return pkix.Extension{}, fmt.Errorf("error marshaling issuer: %w", err)
@@ -55,8 +54,6 @@ func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, para
 	if err != nil {
 		return pkix.Extension{}, fmt.Errorf("error marshaling attestation evidence: %w", err)
 	}
-
-	q.Q(base64.StdEncoding.EncodeToString(aeb))
 
 	if !shouldEncrypt {
 		//skaeExtension.KeyAttestationEvidence.AttestEvidence = attestationEvidence
@@ -106,16 +103,12 @@ func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, para
 		Value:    skaeExtensionBytes,
 	}
 
-	q.Q(result)
-	q.Q(string(result.Value))
-	q.Q(base64.StdEncoding.EncodeToString(result.Value))
-
 	b, err := asn1.Marshal(result)
 	if err != nil {
 		return result, err
 	}
 
-	q.Q(base64.StdEncoding.EncodeToString(b))
+	_ = b
 
 	return result, nil
 }
