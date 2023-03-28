@@ -78,5 +78,4 @@ func TestKey_MarshalJSON(t *testing.T) {
 	require.Equal(t, m["attestedBy"], key.attestedBy)
 	require.Equal(t, m["chain"], []interface{}{base64.StdEncoding.EncodeToString(cert.Raw), base64.StdEncoding.EncodeToString(ca.Intermediate.Raw)})
 	require.Equal(t, m["createdAt"], key.createdAt.Format("2006-01-02T15:04:05Z"))
-
 }

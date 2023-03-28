@@ -154,8 +154,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		}
 	}()
 
-	now := time.Now()
-
+	now := time.Now().UTC()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}

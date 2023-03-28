@@ -130,7 +130,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (*AK, error) {
 		}
 	}()
 
-	now := time.Now()
+	now := time.Now().UTC()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
