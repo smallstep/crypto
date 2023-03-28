@@ -20,7 +20,7 @@ var (
 func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, params attest.CertificationParameters, shouldEncrypt bool) (pkix.Extension, error) {
 	return pkix.Extension{}, errors.New("not implemented yet") // return early; not verified to be working as expected yet
 
-	asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence())
+	asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence()) //nolint:govet // intentionally breaking early
 	if err != nil {
 		return pkix.Extension{}, fmt.Errorf("error marshaling issuer: %w", err)
 	}
