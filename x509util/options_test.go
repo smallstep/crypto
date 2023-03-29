@@ -7,9 +7,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
+	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func createRSACertificateRequest(t *testing.T, bits int, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
@@ -41,6 +45,22 @@ func TestWithTemplate(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	crRSA, _ := createRSACertificateRequest(t, 2048, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	crQuotes, _ := createCertificateRequest(t, `foo"}`, []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
+
+	templateWithExtensions := `{
+	"subject": {{ toJson .Subject }},
+	"sans": {{ toJson .SANs }},
+{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+	"keyUsage": ["keyEncipherment", "digitalSignature"],
+{{- else }}
+	"keyUsage": ["digitalSignature"],
+{{- end }}
+	"extKeyUsage": ["serverAuth", "clientAuth"],
+	"extensions": [
+		{"type": "1.2.3.4", "value": {{ asn1Encode (first .Insecure.CR.DNSNames) | toJson }},
+		{"type": "1.2.3.5", "value": {{ asn1Sequence (asn1Encode (first .Insecure.CR.DNSNames)) (asn1Encode "int:123456") | toJson }},
+	]
+}`
+
 	type args struct {
 		text string
 		data TemplateData
@@ -126,6 +146,21 @@ func TestWithTemplate(t *testing.T) {
 	"keyUsage": ["keyEncipherment", "digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`)}, false},
+		{"extensions", args{templateWithExtensions, TemplateData{
+			SubjectKey: Subject{CommonName: "foo"},
+			SANsKey:    []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
+		}, cr}, Options{
+			CertBuffer: bytes.NewBufferString(`{
+	"subject": {"commonName":"foo"},
+	"sans": [{"type":"dns","value":"foo.com"}],
+	"keyUsage": ["digitalSignature"],
+	"extKeyUsage": ["serverAuth", "clientAuth"],
+	"extensions": [
+		{"type": "1.2.3.4", "value": "Ewdmb28uY29t",
+		{"type": "1.2.3.5", "value": "MA4TB2Zvby5jb20CAwHiQA==",
+	]
+}`),
+		}, false},
 		{"fail", args{`{{ fail "a message" }}`, TemplateData{}, cr}, Options{}, true},
 		{"error", args{`{{ mustHas 3 .Data }}`, TemplateData{
 			"Data": 3,
@@ -245,6 +280,121 @@ func TestWithTemplateFile(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("WithTemplateFile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func mustMarshal(t *testing.T, value interface{}, params string) string {
+	t.Helper()
+	b, err := asn1.MarshalWithParams(value, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func Test_asn1Encode(t *testing.T) {
+	now := time.Now().UTC()
+
+	_, timeErr := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", "not-a-time")
+	timeErr = fmt.Errorf("invalid utc value: %w", timeErr)
+
+	type args struct {
+		str string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"ok", args{"string"}, mustMarshal(t, "string", "printable")},
+		{"ok explicit", args{"explicit:string"}, mustMarshal(t, "string", "printable,explicit")},
+		{"ok printable", args{"printable:string"}, mustMarshal(t, "string", "printable")},
+		{"ok printable explicit", args{"printable,explicit:string"}, mustMarshal(t, "string", "printable,explicit")},
+		{"ok ia5", args{"ia5:string"}, mustMarshal(t, "string", "ia5")},
+		{"ok utf8", args{"utf8:string"}, mustMarshal(t, "string", "utf8")},
+		{"ok utc", args{"utc:" + now.String()}, mustMarshal(t, now, "utc")},
+		{"ok generalized", args{"generalized:" + now.Format(time.RFC3339)}, mustMarshal(t, now, "generalized")},
+		{"ok int", args{"int:1234"}, mustMarshal(t, 1234, "")},
+		{"ok numeric", args{"numeric:1234"}, mustMarshal(t, "1234", "numeric")},
+		{"ok raw", args{"raw:" + mustMarshal(t, 1234, "")}, mustMarshal(t, 1234, "")},
+		{"fail numeric", args{"numeric:not-a-number"}, "invalid numeric value"},
+		{"fail time", args{"utc:not-a-time"}, timeErr.Error()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := asn1Encode(tt.args.str); got != tt.want {
+				t.Errorf("asn1Encode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_asn1Sequence(t *testing.T) {
+	now := time.Now().UTC()
+	type set struct {
+		Int  int
+		Time time.Time `asn1:"utc"`
+	}
+	type complexWithSet struct {
+		String string
+		Set    set `asn1:"set"`
+	}
+
+	_, err := strconv.Atoi("string")
+	err = fmt.Errorf("invalid int value: %w", err)
+	_, err = base64.StdEncoding.DecodeString(err.Error())
+
+	type args struct {
+		b64enc []string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"ok", args{[]string{asn1Encode("string"), asn1Encode("int:1234")}}, mustMarshal(t, []any{"string", 1234}, "sequence")},
+		{"ok complex", args{[]string{asn1Encode("string"), asn1Set(asn1Encode("int:1234"), asn1Encode("utc:"+now.String()))}}, mustMarshal(t, complexWithSet{"string", set{1234, now}}, "")},
+		{"fail", args{[]string{asn1Encode("string"), asn1Encode("int:string")}}, err.Error()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := asn1Sequence(tt.args.b64enc...); got != tt.want {
+				t.Errorf("asn1Sequence() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_asn1Set(t *testing.T) {
+	now := time.Now().UTC()
+
+	type complexWithSequence struct {
+		String   string
+		Sequence []any
+	}
+
+	_, err := strconv.Atoi("string")
+	err = fmt.Errorf("invalid int value: %w", err)
+	_, err = base64.StdEncoding.DecodeString(err.Error())
+
+	type args struct {
+		b64enc []string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"ok", args{[]string{asn1Encode("int:1234"), asn1Encode("string")}}, mustMarshal(t, []any{1234, "string"}, "set")},
+		{"ok complex", args{[]string{asn1Encode("string"), asn1Sequence(asn1Encode("int:1234"), asn1Encode("utc:"+now.String()))}}, mustMarshal(t, complexWithSequence{"string", []any{1234, now}}, "set")},
+		{"fail", args{[]string{asn1Encode("string"), asn1Encode("int:string")}}, err.Error()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := asn1Set(tt.args.b64enc...); got != tt.want {
+				t.Errorf("asn1Set() = %v, want %v", got, tt.want)
 			}
 		})
 	}

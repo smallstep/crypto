@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -439,28 +440,65 @@ func marshalOtherName(oid asn1.ObjectIdentifier, value interface{}) (asn1.RawVal
 	return asn1.RawValue{FullBytes: b}, nil
 }
 
-// marshalExplicitValue marshals the given value with given type and returns the
-// raw bytes to use.
+type asn1Params struct {
+	Type   string
+	Params string
+}
+
+func parseFieldParameters(str string) (p asn1Params) {
+	var part string
+	var params []string
+	for len(str) > 0 {
+		part, str, _ = strings.Cut(str, ",")
+		switch part {
+		// string types
+		case "utf8", "ia5", "numeric", "printable":
+			p.Type = part
+			params = append(params, part)
+		// types that are parsed from the string.
+		// int and oid are not a type that can be set in a tag.
+		case "int", "oid":
+			p.Type = part
+		// types parsed from the string as a time
+		case "utc", "generalized":
+			p.Type = part
+			params = append(params, part)
+		// base64 encoded ans1 value
+		case "raw":
+			p.Type = part
+		case "":
+			// skip
+		default:
+			params = append(params, part)
+		}
+	}
+	p.Params = strings.Join(params, ",")
+	return p
+}
+
+// marshalValue marshals the given value with the given params.
 //
 // The return value value can be any type depending on the OID ASN supports a great
 // number of formats, but Golang's ans1 package supports much fewer -- for now
 // support anything the golang asn1 marshaller supports.
 //
 // See https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html
-func marshalExplicitValue(value, typ string) ([]byte, error) {
-	switch typ {
+func marshalValue(value, params string) ([]byte, error) {
+	p := parseFieldParameters(params)
+	// Marshal types without a tag support.
+	switch p.Type {
 	case "int":
 		i, err := strconv.Atoi(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid int value")
 		}
-		return asn1.MarshalWithParams(i, "explicit")
+		return asn1.MarshalWithParams(i, p.Params)
 	case "oid":
 		oid, err := parseObjectIdentifier(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid oid value")
 		}
-		return asn1.MarshalWithParams(oid, "explicit")
+		return asn1.MarshalWithParams(oid, p.Params)
 	case "raw":
 		// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
 		// marshaller. By using this type users can add ASN1 data types manually into templates
@@ -470,30 +508,45 @@ func marshalExplicitValue(value, typ string) ([]byte, error) {
 		if !isUTF8String(value) {
 			return nil, fmt.Errorf("invalid utf8 value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,utf8")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "ia5":
 		if !isIA5String(value) {
 			return nil, fmt.Errorf("invalid ia5 value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,ia5")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "numeric":
 		if !isNumericString(value) {
 			return nil, fmt.Errorf("invalid numeric value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,numeric")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "printable":
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,printable")
-	default:
-		// if it's an unknown type, default to printable - but use the entire
-		// value specified in case there is a semicolon in the value
+		return asn1.MarshalWithParams(value, p.Params)
+	case "utc", "generalized":
+		// This is the layout of Time.String() function
+		const defaultLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
+		t, err := time.Parse(defaultLayout, value)
+		if err != nil {
+			var err2 error
+			if t, err2 = time.Parse(time.RFC3339, value); err2 != nil {
+				return nil, errors.Wrapf(err, "invalid %s value", p.Type)
+			}
+		}
+		return asn1.MarshalWithParams(t, p.Params)
+	default: // if it's an unknown type, default to printable
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,printable")
+		return asn1.MarshalWithParams(value, p.Params)
 	}
+}
+
+// marshalExplicitValue marshals the given value with given type and returns the
+// raw bytes to use. It will add the explicit tag to the final parameters.
+func marshalExplicitValue(value, typ string) ([]byte, error) {
+	return marshalValue(value, "explicit,"+typ)
 }
 
 // KeyUsage type represents the JSON array used to represent the key usages of a

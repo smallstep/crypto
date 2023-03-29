@@ -5,9 +5,12 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 
 	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/internal/templates"
@@ -36,7 +39,15 @@ func WithTemplate(text string, data TemplateData) Option {
 	return func(cr *x509.CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
+		// asn1 methods
+		funcMap["asn1Encode"] = asn1Encode
+		funcMap["asn1Sequence"] = asn1Sequence
+		funcMap["asn1Set"] = asn1Set
+		funcMap["mustASN1Encode"] = mustASN1Encode
+		funcMap["mustASN1Sequence"] = mustASN1Sequence
+		funcMap["mustASN1Set"] = mustASN1Set
 
+		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {
 			return errors.Wrapf(err, "error parsing template")
@@ -80,4 +91,79 @@ func WithTemplateFile(path string, data TemplateData) Option {
 		fn := WithTemplate(string(b), data)
 		return fn(cr, o)
 	}
+}
+
+func asn1Encode(str string) string {
+	b64, err := mustASN1Encode(str)
+	if err != nil {
+		return err.Error()
+	}
+	return b64
+}
+
+func asn1Sequence(b64enc ...string) string {
+	b64, err := mustASN1Sequence(b64enc...)
+	if err != nil {
+		return err.Error()
+	}
+	return b64
+}
+
+func asn1Set(b64enc ...string) string {
+	b64, err := mustASN1Set(b64enc...)
+	if err != nil {
+		return err.Error()
+	}
+	return b64
+}
+
+func mustASN1Encode(str string) (string, error) {
+	value, params := str, "printable"
+	if strings.Contains(value, sanTypeSeparator) {
+		params = strings.SplitN(value, sanTypeSeparator, 2)[0]
+		value = value[len(params)+1:]
+	}
+	b, err := marshalValue(value, params)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+func mustASN1Sequence(b64enc ...string) (string, error) {
+	var builder cryptobyte.Builder
+	builder.AddASN1(asn1.SEQUENCE, func(child *cryptobyte.Builder) {
+		for _, s := range b64enc {
+			b, err := base64.StdEncoding.DecodeString(s)
+			if err != nil {
+				child.SetError(err)
+				return
+			}
+			child.AddBytes(b)
+		}
+	})
+	b, err := builder.Bytes()
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+func mustASN1Set(b64enc ...string) (string, error) {
+	var builder cryptobyte.Builder
+	builder.AddASN1(asn1.SET, func(child *cryptobyte.Builder) {
+		for _, s := range b64enc {
+			b, err := base64.StdEncoding.DecodeString(s)
+			if err != nil {
+				child.SetError(err)
+				return
+			}
+			child.AddBytes(b)
+		}
+	})
+	b, err := builder.Bytes()
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
