@@ -196,7 +196,7 @@ func (t *TPM) close(ctx context.Context) error {
 // returned an error, `ep` will be pointed to the latter. In practice
 // this  means that errors originating from main-line logic will have
 // precedence over errors returned from closing the TPM.
-func closeTPM(ctx context.Context, t *TPM, ep *error) {
+func closeTPM(ctx context.Context, t *TPM, ep *error) { //nolint:gocritic // pointer to error required to be able to point it to an error
 	if err := t.close(ctx); err != nil && *ep == nil {
 		*ep = err
 	}
