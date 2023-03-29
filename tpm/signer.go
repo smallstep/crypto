@@ -30,11 +30,7 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 	if err = s.tpm.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := s.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, s.tpm, &err)
 
 	loadedKey, err := s.tpm.attestTPM.LoadKey(s.key.data)
 	if err != nil {
@@ -61,11 +57,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	key, err := t.store.GetKey(name)
 	if err != nil {

@@ -144,11 +144,7 @@ func (t *TPM) GetEKs(ctx context.Context) (eks []*EK, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	aeks, err := t.attestTPM.EKs()
 	if err != nil {

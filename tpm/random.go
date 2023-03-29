@@ -12,11 +12,7 @@ func (t *TPM) GenerateRandom(ctx context.Context, size uint16) (random []byte, e
 	if err = t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	random, err = tpm2.GetRandom(t.rwc, size)
 	if err != nil {

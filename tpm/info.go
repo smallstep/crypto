@@ -32,7 +32,7 @@ func (v Version) String() string {
 	case Version(attest.TPMVersion20):
 		return "TPM 2.0"
 	default:
-		return "unknown"
+		return fmt.Sprintf("unknown (%d)", v)
 	}
 }
 
@@ -45,7 +45,7 @@ func (v Version) MarshalJSON() ([]byte, error) {
 	case Version(attest.TPMVersion20):
 		s = "2.0"
 	default:
-		s = "unknown"
+		s = fmt.Sprintf("unknown (%d)", v)
 	}
 	return json.Marshal(s)
 }
@@ -66,7 +66,7 @@ func (i Interface) String() string {
 	case Interface(attest.TPMInterfaceCommandChannel):
 		return "command-channel"
 	default:
-		return "unknown"
+		return fmt.Sprintf("unknown (%d)", i)
 	}
 }
 
@@ -124,36 +124,36 @@ func GetManufacturerByID(id manufacturer.ID) Manufacturer {
 
 // Info returns info about the TPM. The info doesn't change, so
 // it's cached after the first lookup.
-func (t *TPM) Info(ctx context.Context) (*Info, error) {
-	if t.info == nil {
-		var err error
-		if err := t.open(ctx); err != nil {
-			return nil, fmt.Errorf("failed opening TPM: %w", err)
-		}
-		defer func() {
-			if tempErr := t.close(ctx); tempErr != nil && err != nil {
-				err = tempErr
-			}
-		}()
-
-		info, err := t.attestTPM.Info()
-		if err != nil {
-			return nil, fmt.Errorf("failed getting TPM info: %w", err)
-		}
-
-		// the TPM info won't change, so it's cached for future lookups
-		t.info = &Info{
-			FirmwareVersion: FirmwareVersion{
-				Major: info.FirmwareVersionMajor,
-				Minor: info.FirmwareVersionMinor,
-			},
-			Interface:    Interface(info.Interface),
-			Manufacturer: GetManufacturerByID(manufacturer.ID(info.Manufacturer)),
-			VendorInfo:   info.VendorInfo,
-			Version:      Version(info.Version),
-		}
+func (t *TPM) Info(ctx context.Context) (info *Info, err error) {
+	if t.info != nil {
+		return t.info, nil
 	}
 
-	// return the cached TPM info
-	return t.info, nil
+	if err = t.open(ctx); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer func() {
+		closeTPM(ctx, t, &err)
+	}()
+
+	ainfo, err := t.attestTPM.Info()
+	if err != nil {
+		return nil, fmt.Errorf("failed getting TPM info: %w", err)
+	}
+
+	// the TPM info won't change, so it's cached for future lookups
+	info = &Info{
+		FirmwareVersion: FirmwareVersion{
+			Major: ainfo.FirmwareVersionMajor,
+			Minor: ainfo.FirmwareVersionMinor,
+		},
+		Interface:    Interface(ainfo.Interface),
+		Manufacturer: GetManufacturerByID(manufacturer.ID(ainfo.Manufacturer)),
+		VendorInfo:   ainfo.VendorInfo,
+		Version:      Version(ainfo.Version),
+	}
+
+	t.info = info
+
+	return
 }

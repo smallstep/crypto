@@ -147,11 +147,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	now := time.Now().UTC()
 	if name, err = processName(name); err != nil {
@@ -197,11 +193,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	now := time.Now().UTC()
 	if name, err = processName(name); err != nil {
@@ -265,11 +257,7 @@ func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	skey, err := t.store.GetKey(name)
 	if err != nil {
@@ -288,11 +276,7 @@ func (t *TPM) ListKeys(ctx context.Context) (keys []*Key, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	skeys, err := t.store.ListKeys()
 	if err != nil {
@@ -313,11 +297,7 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	skeys, err := t.store.ListKeys()
 	if err != nil {
@@ -340,11 +320,7 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 	if err := t.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
@@ -380,11 +356,7 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	if err = k.tpm.open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, k.tpm, &err)
 
 	loadedKey, err := k.tpm.attestTPM.LoadKey(k.data)
 	if err != nil {
@@ -410,11 +382,7 @@ func (k *Key) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 	if err = k.tpm.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, k.tpm, &err)
 
 	key, err := k.tpm.attestTPM.LoadKey(k.data)
 	if err != nil {
@@ -438,11 +406,7 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	if err = k.tpm.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := k.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, k.tpm, &err)
 
 	signer, err := k.Signer(internalCall(ctx)) // TODO: cache the crypto.PublicKey after its first load instead?
 	if err != nil {

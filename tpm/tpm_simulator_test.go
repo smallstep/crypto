@@ -36,7 +36,7 @@ func newSimulatedTPM(t *testing.T) *TPM {
 
 func withSimulator(t *testing.T) NewTPMOption {
 	t.Helper()
-	var sim *simulator.Simulator
+	var sim simulator.Simulator
 	t.Cleanup(func() {
 		if sim == nil {
 			return

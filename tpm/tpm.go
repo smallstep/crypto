@@ -26,7 +26,7 @@ type TPM struct {
 	rwc          io.ReadWriteCloser
 	lock         sync.RWMutex
 	store        storage.TPMStore
-	simulator    *simulator.Simulator
+	simulator    simulator.Simulator
 	downloader   *downloader
 	info         *Info
 	eks          []*EK
@@ -88,18 +88,23 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 // Open readies the TPM for usage and marks it as being
 // in use. This makes using the instance safe for
 // concurrent use.
-func (t *TPM) open(ctx context.Context) error {
+func (t *TPM) open(ctx context.Context) (err error) {
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
-		return nil
+		return
 	}
 
 	// lock the TPM instance; it's in use now
 	t.lock.Lock()
+	defer func() {
+		if err != nil {
+			t.lock.Unlock()
+		}
+	}()
 
 	if err := t.store.Load(); err != nil { // TODO(hs): load this once? Or abstract this away.
-		return err
+		return fmt.Errorf("failed loading from TPM storage: %w", err)
 	}
 
 	// if a simulator was set, use it as the backing TPM device.
@@ -162,22 +167,37 @@ func (t *TPM) close(ctx context.Context) error {
 		return nil // return early, so that simulator remains usable.
 	}
 
+	// mark the TPM as ready to be used again when returning
+	defer t.lock.Unlock()
+
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
 		err := t.attestTPM.Close()
 		t.attestTPM = nil
-		return fmt.Errorf("failed closing attest.TPM: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed closing attest.TPM: %w", err)
+		}
 	}
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
 		err := t.rwc.Close()
 		t.rwc = nil
-		return fmt.Errorf("failed closing rwc: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed closing rwc: %w", err)
+		}
 	}
 
-	// mark the TPM as ready to be used again
-	t.lock.Unlock()
-
 	return nil
+}
+
+// closeTPM closes TPM `t`. It must be called as a deferred function
+// every time TPM `t` is opened. If `ep` is nil and closing the TPM
+// returned an error, `ep` will be pointed to the latter. In practice
+// this  means that errors originating from main-line logic will have
+// precedence over errors returned from closing the TPM.
+func closeTPM(ctx context.Context, t *TPM, ep *error) {
+	if err := t.close(ctx); err != nil && *ep == nil {
+		*ep = err
+	}
 }

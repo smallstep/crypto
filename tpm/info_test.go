@@ -28,7 +28,7 @@ func TestInterface_MarshalJSON(t *testing.T) {
 
 	b, err = json.Marshal(Interface(255))
 	require.NoError(t, err)
-	require.JSONEq(t, `"unknown"`, string(b))
+	require.JSONEq(t, `"unknown (255)"`, string(b))
 }
 
 func TestFirmwareVersion_MarshalJSON(t *testing.T) {
@@ -52,13 +52,13 @@ func TestVersion_MarshalJSON(t *testing.T) {
 
 	b, err = json.Marshal(Version(0))
 	require.NoError(t, err)
-	require.JSONEq(t, `"unknown"`, string(b))
+	require.JSONEq(t, `"unknown (0)"`, string(b))
 }
 
 func TestVersion_String(t *testing.T) {
 	require.Equal(t, "TPM 1.2", Version(attest.TPMVersion12).String())
 	require.Equal(t, "TPM 2.0", Version(attest.TPMVersion20).String())
-	require.Equal(t, "unknown", Version(0).String())
+	require.Equal(t, "unknown (0)", Version(0).String())
 }
 
 func Test_GetManufacturerByID(t *testing.T) {

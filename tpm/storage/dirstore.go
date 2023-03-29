@@ -36,11 +36,11 @@ func inverseTransform(pathKey *diskv.PathKey) (key string) {
 		return ""
 	}
 	filename := pathKey.FileName[:len(pathKey.FileName)-len(tpmExtension)]
-	p := filepath.Join(filepath.Join(pathKey.Path...), filename)
+	key = filepath.Join(filepath.Join(pathKey.Path...), filename)
 	if len(pathKey.Path) > 0 && pathKey.Path[0] == "" { // absolute path at "/"
-		p = filepath.Join(string(filepath.Separator), p)
+		key = filepath.Join(string(filepath.Separator), key)
 	}
-	return p
+	return
 }
 
 // NewDirstore creates a new instance of a Direstore.

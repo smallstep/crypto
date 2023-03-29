@@ -123,19 +123,15 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	now := time.Now().UTC()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
 
-	if _, err := t.store.GetAK(name); err == nil {
-		return nil, fmt.Errorf("failed getting AK %q: %w", name, ErrExists)
+	if _, err := t.store.GetAK(name); err == nil { // TODO: check for the error type instead to make it clearer
+		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
 	}
 
 	akConfig := attest.AKConfig{
@@ -176,11 +172,7 @@ func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	sak, err := t.store.GetAK(name)
 	if err != nil {
@@ -204,11 +196,7 @@ func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifie
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	aks, err := t.ListAKs(internalCall(ctx))
 	if err != nil {
@@ -233,11 +221,7 @@ func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
 	if err := t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	saks, err := t.store.ListAKs()
 	if err != nil {
@@ -261,11 +245,7 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 	if err := t.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := t.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, t, &err)
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
@@ -313,11 +293,7 @@ func (ak *AK) AttestationParameters(ctx context.Context) (params attest.Attestat
 	if err = ak.tpm.open(ctx); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, ak.tpm, &err)
 
 	loadedAK, err := ak.tpm.attestTPM.LoadAK(ak.data)
 	if err != nil {
@@ -343,9 +319,7 @@ func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (s
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer func() {
-		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
+		closeTPM(ctx, ak.tpm, &err)
 	}()
 
 	loadedAK, err := ak.tpm.attestTPM.LoadAK(ak.data)
@@ -372,11 +346,7 @@ func (ak *AK) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 	if err = ak.tpm.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, ak.tpm, &err)
 
 	aak, err := ak.tpm.attestTPM.LoadAK(ak.data)
 	if err != nil {
@@ -400,11 +370,7 @@ func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	if err := ak.tpm.open(ctx); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		if tempErr := ak.tpm.close(ctx); tempErr != nil && err != nil {
-			err = tempErr
-		}
-	}()
+	defer closeTPM(ctx, ak.tpm, &err)
 
 	if len(chain) == 0 {
 		return errors.New("certificate chain must contain at least one certificate")

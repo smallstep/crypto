@@ -17,6 +17,8 @@ var (
 // ID models a TPM Manufacturer (or Vendor) ID.
 type ID uint32
 
+// MarshalJSON marshals the (numeric) TPM Manufacturer ID to
+// a JSON string representation, including quotes.
 func (id ID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strconv.FormatUint(uint64(id), 10))
 }

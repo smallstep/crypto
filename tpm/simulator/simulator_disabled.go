@@ -4,36 +4,36 @@
 package simulator
 
 import (
-	"context"
 	"errors"
 	"io"
 )
 
-type Simulator struct {
+type NoSimulator struct {
 }
 
-func New() *Simulator {
-	return &Simulator{}
+func New() Simulator {
+	return &NoSimulator{}
 }
 
-func (s *Simulator) Open(ctx context.Context) error {
+func (s *NoSimulator) Open() error {
 	return errors.New("no simulator available")
 }
 
-func (s *Simulator) Close() error {
+func (s *NoSimulator) Close() error {
 	return errors.New("cannot close: no simulator available")
 }
 
-func (s *Simulator) MeasurementLog() ([]byte, error) {
+func (s *NoSimulator) MeasurementLog() ([]byte, error) {
 	return nil, errors.New("cannot get measurement log: no simulator available")
 }
 
-func (s *Simulator) Read(p []byte) (n int, err error) {
-	return 0, errors.New("cannot read: no simulator available")
+func (s *NoSimulator) Read([]byte) (int, error) {
+	return -1, errors.New("cannot read: no simulator available")
 }
 
-func (s *Simulator) Write(p []byte) (n int, err error) {
-	return 0, errors.New("cannot write: no simulator available")
+func (s *NoSimulator) Write([]byte) (int, error) {
+	return -1, errors.New("cannot write: no simulator available")
 }
 
-var _ io.ReadWriteCloser = (*Simulator)(nil)
+var _ Simulator = (*NoSimulator)(nil)
+var _ io.ReadWriteCloser = (*NoSimulator)(nil)

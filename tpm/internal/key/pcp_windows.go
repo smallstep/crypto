@@ -1,3 +1,5 @@
+// CODE COPIED FROM github.com/google/go-attestation; DO NOT EDIT!
+//
 // Copyright 2019 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
