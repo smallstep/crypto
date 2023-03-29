@@ -12,7 +12,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/binary"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -44,14 +43,10 @@ func withSimulator(t *testing.T) NewTPMOption {
 		err := sim.Close()
 		require.NoError(t, err)
 	})
-	return func(tpm *TPM) error {
-		sim = simulator.New()
-		if err := sim.Open(); err != nil {
-			return fmt.Errorf("failed opening TPM simulator: %w", err)
-		}
-		tpm.simulator = sim
-		return nil
-	}
+	sim = simulator.New()
+	err := sim.Open()
+	require.NoError(t, err)
+	return WithSimulator(sim)
 }
 
 func TestTPM_Info(t *testing.T) {

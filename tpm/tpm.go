@@ -67,6 +67,16 @@ func WithDisableDownload() NewTPMOption {
 	}
 }
 
+// WithSimulator is used to configure a TPM simulator implementation
+// that simulates TPM operations instead of interacting with an actual
+// TPM.
+func WithSimulator(simulator simulator.Simulator) NewTPMOption {
+	return func(t *TPM) error {
+		t.simulator = simulator
+		return nil
+	}
+}
+
 // New creates a new TPM instance. It takes `opts` to configure
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
