@@ -40,11 +40,11 @@ func WithTemplate(text string, data TemplateData) Option {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
 		// asn1 methods
-		funcMap["asn1Encode"] = asn1Encode
-		funcMap["asn1Sequence"] = asn1Sequence
+		funcMap["asn1enc"] = asn1Encode
+		funcMap["asn1Seq"] = asn1Sequence
 		funcMap["asn1Set"] = asn1Set
-		funcMap["mustASN1Encode"] = mustASN1Encode
-		funcMap["mustASN1Sequence"] = mustASN1Sequence
+		funcMap["mustASN1Enc"] = mustASN1Encode
+		funcMap["mustASN1Seq"] = mustASN1Sequence
 		funcMap["mustASN1Set"] = mustASN1Set
 
 		// Parse template

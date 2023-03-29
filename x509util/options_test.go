@@ -56,8 +56,8 @@ func TestWithTemplate(t *testing.T) {
 {{- end }}
 	"extKeyUsage": ["serverAuth", "clientAuth"],
 	"extensions": [
-		{"type": "1.2.3.4", "value": {{ asn1Encode (first .Insecure.CR.DNSNames) | toJson }},
-		{"type": "1.2.3.5", "value": {{ asn1Sequence (asn1Encode (first .Insecure.CR.DNSNames)) (asn1Encode "int:123456") | toJson }},
+		{"id": "1.2.3.4", "value": {{ asn1enc (first .Insecure.CR.DNSNames) | toJson }},
+		{"id": "1.2.3.5", "value": {{ asn1Seq (asn1enc (first .Insecure.CR.DNSNames)) (asn1enc "int:123456") | toJson }},
 	]
 }`
 
@@ -156,8 +156,8 @@ func TestWithTemplate(t *testing.T) {
 	"keyUsage": ["digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"],
 	"extensions": [
-		{"type": "1.2.3.4", "value": "Ewdmb28uY29t",
-		{"type": "1.2.3.5", "value": "MA4TB2Zvby5jb20CAwHiQA==",
+		{"id": "1.2.3.4", "value": "Ewdmb28uY29t",
+		{"id": "1.2.3.5", "value": "MA4TB2Zvby5jb20CAwHiQA==",
 	]
 }`),
 		}, false},
