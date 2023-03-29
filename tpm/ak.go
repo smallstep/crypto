@@ -130,7 +130,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 		return nil, err
 	}
 
-	if _, err := t.store.GetAK(name); err == nil { // TODO: check for the error type instead to make it clearer
+	if _, err := t.store.GetAK(name); err == nil {
 		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
 	}
 
