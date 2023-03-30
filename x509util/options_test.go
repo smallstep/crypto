@@ -56,8 +56,10 @@ func TestWithTemplate(t *testing.T) {
 {{- end }}
 	"extKeyUsage": ["serverAuth", "clientAuth"],
 	"extensions": [
-		{"id": "1.2.3.4", "value": {{ asn1enc (first .Insecure.CR.DNSNames) | toJson }},
-		{"id": "1.2.3.5", "value": {{ asn1Seq (asn1enc (first .Insecure.CR.DNSNames)) (asn1enc "int:123456") | toJson }},
+		{"id": "1.2.3.4", "value": {{ asn1enc (first .Insecure.CR.DNSNames) | toJson }}},
+		{"id": "1.2.3.5", "value": {{ asn1Marshal (first .Insecure.CR.DNSNames) | toJson }}},
+		{"id": "1.2.3.6", "value": {{ asn1Seq (asn1enc (first .Insecure.CR.DNSNames)) (asn1enc "int:123456") | toJson }}},
+		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1enc "int:123456") | toJson }}}
 	]
 }`
 
@@ -156,8 +158,10 @@ func TestWithTemplate(t *testing.T) {
 	"keyUsage": ["digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"],
 	"extensions": [
-		{"id": "1.2.3.4", "value": "Ewdmb28uY29t",
-		{"id": "1.2.3.5", "value": "MA4TB2Zvby5jb20CAwHiQA==",
+		{"id": "1.2.3.4", "value": "Ewdmb28uY29t"},
+		{"id": "1.2.3.5", "value": "Ewdmb28uY29t"},
+		{"id": "1.2.3.6", "value": "MA4TB2Zvby5jb20CAwHiQA=="},
+		{"id": "1.2.3.7", "value": "MQ4MB2Zvby5jb20CAwHiQA=="}
 	]
 }`),
 		}, false},
@@ -326,6 +330,36 @@ func Test_asn1Encode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := asn1Encode(tt.args.str); got != tt.want {
 				t.Errorf("asn1Encode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_asn1Marshal(t *testing.T) {
+	_, numericErr := asn1.MarshalWithParams("string", "numeric")
+
+	now := time.Now()
+	type args struct {
+		v      interface{}
+		params []string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"ok printable", args{"string", nil}, mustMarshal(t, "string", "printable")},
+		{"ok utf8", args{"string", []string{"utf8"}}, mustMarshal(t, "string", "utf8")},
+		{"ok int", args{1234, nil}, mustMarshal(t, 1234, "")},
+		{"ok time", args{now, nil}, mustMarshal(t, now, "utc")},
+		{"ok seq", args{[]any{"string", 1234}, nil}, mustMarshal(t, []any{"string", 1234}, "")},
+		{"ok set", args{[]any{"string", 1234}, []string{"set"}}, mustMarshal(t, []any{"string", 1234}, "set")},
+		{"fail numeric", args{"string", []string{"numeric"}}, numericErr.Error()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := asn1Marshal(tt.args.v, tt.args.params...); got != tt.want {
+				t.Errorf("asn1Marshal() = %v, want %v", got, tt.want)
 			}
 		})
 	}
