@@ -1008,3 +1008,136 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 		Value:    rawBytes,
 	}, nil
 }
+
+type SubjectAlternativeNames struct {
+	DNSNames             []string
+	EmailAddresses       []string
+	IPAddresses          []net.IP
+	URIs                 []*url.URL
+	PermanentIdentifiers []PermanentIdentifier
+	HardwareModuleNames  []HardwareModuleName
+	//OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
+}
+
+// ParseSubjectAlternativeNames parses the Subject Alternative Names
+// from the X.509 certificate `c`. SAN types supported by the Go stdlib,
+// including DNS names, IP addresses, email addresses and URLs, are copied
+// to the result first. After that, the raw extension bytes are parsed to
+// extract PermanentIdentifiers and HardwareModuleNames SANs.
+func ParseSubjectAlternativeNames(c *x509.Certificate) (sans SubjectAlternativeNames, err error) {
+	// the Certificate c is expected to have been processed before, so the
+	// SANs known by the Go stdlib are expected to have been populated already.
+	// These SANs are copied over to the result.
+	sans.DNSNames = c.DNSNames
+	sans.IPAddresses = c.IPAddresses
+	sans.EmailAddresses = c.EmailAddresses
+	sans.URIs = c.URIs
+
+	var sanExtension pkix.Extension
+	for _, ext := range c.Extensions {
+		if ext.Id.Equal(oidExtensionSubjectAltName) {
+			sanExtension = ext
+			break
+		}
+	}
+
+	if sanExtension.Value == nil {
+		return
+	}
+
+	_, otherNames, err := parseSubjectAltName(sanExtension)
+	if err != nil {
+		return sans, fmt.Errorf("failed parsing SubjectAltName extension: %w", err)
+	}
+
+	for _, otherName := range otherNames {
+		switch {
+		case otherName.TypeID.Equal(oidPermanentIdentifier):
+			permanentIdentifier, err := parsePermanentIdentifier(otherName.Value.FullBytes)
+			if err != nil {
+				return sans, fmt.Errorf("failed parsing PermanentIdentifier: %w", err)
+			}
+			sans.PermanentIdentifiers = append(sans.PermanentIdentifiers, permanentIdentifier)
+		case otherName.TypeID.Equal(oidHardwareModuleNameIdentifier):
+			hardwareModuleName, err := parseHardwareModuleName(otherName.Value.FullBytes)
+			if err != nil {
+				return sans, fmt.Errorf("failed parsing HardwareModuleName: %w", err)
+			}
+			sans.HardwareModuleNames = append(sans.HardwareModuleNames, hardwareModuleName)
+		default:
+			// TODO(hs): handle other types; defaulting to otherName?
+		}
+	}
+	return
+}
+
+// https://datatracker.ietf.org/doc/html/rfc5280#page-35
+func parseSubjectAltName(ext pkix.Extension) (dirNames []pkix.Name, otherNames []otherName, err error) {
+	err = forEachSAN(ext.Value, func(generalName asn1.RawValue) error {
+		switch generalName.Tag {
+		case 0: // otherName
+			var on otherName
+			if _, err := asn1.UnmarshalWithParams(generalName.FullBytes, &on, "tag:0"); err != nil {
+				return fmt.Errorf("failed unmarshaling otherName: %w", err)
+			}
+			otherNames = append(otherNames, on)
+		case 4: // directoryName
+			var rdns pkix.RDNSequence
+			if _, err := asn1.Unmarshal(generalName.Bytes, &rdns); err != nil {
+				return fmt.Errorf("failed unmarshaling directoryName: %w", err)
+			}
+			var dirName pkix.Name
+			dirName.FillFromRDNSequence(&rdns)
+			dirNames = append(dirNames, dirName)
+		default:
+			// skipping the other tag values intentionally
+		}
+		return nil
+	})
+	return
+}
+
+func parsePermanentIdentifier(der []byte) (PermanentIdentifier, error) {
+	var permID asn1PermanentIdentifier
+	if _, err := asn1.UnmarshalWithParams(der, &permID, "explicit,tag:0"); err != nil {
+		return PermanentIdentifier{}, fmt.Errorf("failed unmarshaling der data: %w", err)
+	}
+	return PermanentIdentifier{Identifier: permID.IdentifierValue, Assigner: ObjectIdentifier(permID.Assigner)}, nil
+}
+
+func parseHardwareModuleName(der []byte) (HardwareModuleName, error) {
+	var hardwareModuleName asn1HardwareModuleName
+	if _, err := asn1.UnmarshalWithParams(der, &hardwareModuleName, "explicit,tag:0"); err != nil {
+		return HardwareModuleName{}, fmt.Errorf("failed unmarshaling der data: %w", err)
+	}
+	return HardwareModuleName{Type: ObjectIdentifier(hardwareModuleName.Type), SerialNumber: hardwareModuleName.SerialNumber}, nil
+}
+
+// Borrowed from the x509 package.
+func forEachSAN(extension []byte, callback func(ext asn1.RawValue) error) error {
+	var seq asn1.RawValue
+	rest, err := asn1.Unmarshal(extension, &seq)
+	if err != nil {
+		return err
+	} else if len(rest) != 0 {
+		return errors.New("x509: trailing data after X.509 extension")
+	}
+	if !seq.IsCompound || seq.Tag != 16 || seq.Class != 0 {
+		return asn1.StructuralError{Msg: "bad SAN sequence"}
+	}
+
+	rest = seq.Bytes
+	for len(rest) > 0 {
+		var v asn1.RawValue
+		rest, err = asn1.Unmarshal(rest, &v)
+		if err != nil {
+			return err
+		}
+
+		if err := callback(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
