@@ -69,6 +69,7 @@ func Test_GetManufacturerByID(t *testing.T) {
 	}{
 		{"infineon", 1229346816, Manufacturer{1229346816, "Infineon", "IFX", "49465800"}},
 		{"intel", 1229870147, Manufacturer{1229870147, "Intel", "INTC", "494E5443"}},
+		{"fido", 4294963664, Manufacturer{4294963664, "FIDO Alliance", "FIDO", "FFFFF1D0"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

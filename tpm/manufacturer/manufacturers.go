@@ -95,6 +95,10 @@ func init() {
 		"TST6": "Test 6",
 		"TST7": "Test 7",
 
+		// FIDO Alliance; 0xFFFFF1D0; does not conform to the ASCII naming scheme
+		// Also see https://github.com/fido-alliance/conformance-test-tools-resources/issues/537
+		"FIDO": "FIDO Alliance", // NOTE: FIDO is not the official ASCII representation
+
 		// Others
 		"PRLS": "Parallels Desktop",
 		"VMW":  "VMWare",

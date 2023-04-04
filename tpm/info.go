@@ -111,15 +111,16 @@ func (m Manufacturer) String() string {
 
 // GetManufacturerByID returns a Manufacturer based on its Manufacturer ID
 // code.
-func GetManufacturerByID(id manufacturer.ID) Manufacturer {
-	ascii, hexa := manufacturer.GetEncodings(id)
-	name := manufacturer.GetNameByASCII(ascii)
-	return Manufacturer{
-		Name:  name,
-		ASCII: ascii,
-		ID:    id,
-		Hex:   hexa,
+func GetManufacturerByID(id manufacturer.ID) (m Manufacturer) {
+	m.ID = id
+	m.ASCII, m.Hex = manufacturer.GetEncodings(id)
+	// the FIDO Alliance fake TPM vendor ID doesn't conform to the standard ASCII lookup
+	if id == 4294963664 {
+		m.ASCII = "FIDO"
 	}
+	m.Name = manufacturer.GetNameByASCII(m.ASCII)
+
+	return
 }
 
 // Info returns info about the TPM. The info doesn't change, so
