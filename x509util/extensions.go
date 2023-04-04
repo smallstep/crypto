@@ -1009,6 +1009,8 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 	}, nil
 }
 
+// SubjectAlternativeNames is a container for names extracted
+// from the X.509 Subject Alternative Names extension.
 type SubjectAlternativeNames struct {
 	DNSNames             []string
 	EmailAddresses       []string
@@ -1016,8 +1018,23 @@ type SubjectAlternativeNames struct {
 	URIs                 []*url.URL
 	PermanentIdentifiers []PermanentIdentifier
 	HardwareModuleNames  []HardwareModuleName
+	TPMHardwareDetails   TPMHardwareDetails
 	//OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
 }
+
+// TPMHardwareDetails is a container for some details
+// for TPM hardware.
+type TPMHardwareDetails struct {
+	Manufacturer string // TODO(hs): use Manufacturer from TPM package? Need to fix import cycle, though
+	Model        string
+	Version      string
+}
+
+var (
+	oidTPMManufacturer = asn1.ObjectIdentifier{2, 23, 133, 2, 1}
+	oidTPMModel        = asn1.ObjectIdentifier{2, 23, 133, 2, 2}
+	oidTPMVersion      = asn1.ObjectIdentifier{2, 23, 133, 2, 3}
+)
 
 // ParseSubjectAlternativeNames parses the Subject Alternative Names
 // from the X.509 certificate `c`. SAN types supported by the Go stdlib,
@@ -1045,7 +1062,7 @@ func ParseSubjectAlternativeNames(c *x509.Certificate) (sans SubjectAlternativeN
 		return
 	}
 
-	_, otherNames, err := parseSubjectAltName(sanExtension)
+	directoryNames, otherNames, err := parseSubjectAltName(sanExtension)
 	if err != nil {
 		return sans, fmt.Errorf("failed parsing SubjectAltName extension: %w", err)
 	}
@@ -1068,6 +1085,24 @@ func ParseSubjectAlternativeNames(c *x509.Certificate) (sans SubjectAlternativeN
 			// TODO(hs): handle other types; defaulting to otherName?
 		}
 	}
+
+	tpmDetails := TPMHardwareDetails{}
+	for _, directoryName := range directoryNames {
+		for _, name := range directoryName.Names {
+			switch {
+			case name.Type.Equal(oidTPMManufacturer):
+				tpmDetails.Manufacturer = name.Value.(string)
+			case name.Type.Equal(oidTPMModel):
+				tpmDetails.Model = name.Value.(string)
+			case name.Type.Equal(oidTPMVersion):
+				tpmDetails.Version = name.Value.(string)
+			default:
+				// TODO(hs): handle other directoryNames?
+			}
+		}
+	}
+	sans.TPMHardwareDetails = tpmDetails
+
 	return
 }
 

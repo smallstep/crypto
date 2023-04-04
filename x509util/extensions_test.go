@@ -1369,9 +1369,9 @@ func mustParseURL(t *testing.T, s string) *url.URL {
 func TestParseSubjectAlternativeNames(t *testing.T) {
 	permanentIdentifierSAN := SubjectAlternativeName{
 		Type:  PermanentIdentifierType,
-		Value: "test-permanent-identifier",
+		Value: "12345",
 	}
-	permanentIdentifierSANExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{permanentIdentifierSAN}, true)
+	permanentIdentifierSANExtension, err := createSubjectAltNameExtension([]string{"test"}, nil, nil, nil, []SubjectAlternativeName{permanentIdentifierSAN}, true)
 	require.NoError(t, err)
 	hardwareModuleNameSAN := SubjectAlternativeName{
 		Type:      HardwareModuleNameType,
@@ -1416,7 +1416,7 @@ func TestParseSubjectAlternativeNames(t *testing.T) {
 				DNSNames: []string{"example.com"},
 				PermanentIdentifiers: []PermanentIdentifier{
 					{
-						Identifier: "test-permanent-identifier",
+						Identifier: "12345",
 					},
 				},
 			},
