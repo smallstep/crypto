@@ -318,9 +318,7 @@ func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (s
 	if err := ak.tpm.open(ctx); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
-	defer func() {
-		closeTPM(ctx, ak.tpm, &err)
-	}()
+	defer closeTPM(ctx, ak.tpm, &err)
 
 	loadedAK, err := ak.tpm.attestTPM.LoadAK(ak.data)
 	if err != nil {
