@@ -23,13 +23,21 @@ bootstra%:
 # Test
 #########################################
 
-test:
-	$Q $(GOFLAGS) gotestsum -- -coverprofile=coverage.out -short -covermode=atomic ./...
+test: defaulttest simulatortest combinecoverage
+
+defaulttest:
+	$Q $(GOFLAGS) gotestsum -- -coverpkg=./... -coverprofile=defaultcoverage.out -covermode=atomic ./...
+
+simulatortest:
+	$Q $(GOFLAGS) CGO_ENALBED=1 gotestsum -- -coverpkg=./tpm -coverprofile=simulatorcoverage.out -covermode=atomic -tags tpmsimulator ./tpm
+
+combinecoverage:
+	cat defaultcoverage.out simulatorcoverage.out > coverage.out
 
 race:
 	$Q $(GOFLAGS) gotestsum -- -race ./...
 
-.PHONY: test race
+.PHONY: test defaulttest simulatortest combinecoverage race
 
 #########################################
 # Linting

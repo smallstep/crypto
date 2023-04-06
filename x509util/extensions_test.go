@@ -11,6 +11,9 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_convertName(t *testing.T) {
@@ -1352,6 +1355,107 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 			if !reflect.DeepEqual(gotCSR, tt.want) {
 				t.Errorf("createCertificateRequestSubjectAltNameExtension() = %v, want %v", gotCSR, tt.want)
 			}
+		})
+	}
+}
+
+func mustParseURL(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	require.NoError(t, err)
+	return u
+}
+
+func TestParseSubjectAlternativeNames(t *testing.T) {
+	permanentIdentifierSAN := SubjectAlternativeName{
+		Type:  PermanentIdentifierType,
+		Value: "12345",
+	}
+	permanentIdentifierSANExtension, err := createSubjectAltNameExtension([]string{"test"}, nil, nil, nil, []SubjectAlternativeName{permanentIdentifierSAN}, true)
+	require.NoError(t, err)
+	hardwareModuleNameSAN := SubjectAlternativeName{
+		Type:      HardwareModuleNameType,
+		ASN1Value: []byte(`{"type": "1.2.3.4", "serialNumber": "MTIzNDU2Nzg="}`),
+	}
+	hardwareModuleNameSANExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{hardwareModuleNameSAN}, true)
+	require.NoError(t, err)
+	tests := []struct {
+		name     string
+		cert     *x509.Certificate
+		wantSans SubjectAlternativeNames
+		expErr   error
+	}{
+		{
+			name: "ok/stdlib",
+			cert: &x509.Certificate{
+				DNSNames:       []string{"example.com"},
+				IPAddresses:    []net.IP{net.ParseIP("127.0.0.1")},
+				EmailAddresses: []string{"test@example.com"},
+				URIs:           []*url.URL{mustParseURL(t, "https://127.0.0.1")},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames:       []string{"example.com"},
+				IPAddresses:    []net.IP{net.ParseIP("127.0.0.1")},
+				EmailAddresses: []string{"test@example.com"},
+				URIs:           []*url.URL{mustParseURL(t, "https://127.0.0.1")},
+			},
+		},
+		{
+			name: "ok/permanent-identifier",
+			cert: &x509.Certificate{
+				DNSNames: []string{"example.com"},
+				Extensions: []pkix.Extension{
+					{
+						Id:       asn1.ObjectIdentifier(permanentIdentifierSANExtension.ID),
+						Critical: permanentIdentifierSANExtension.Critical,
+						Value:    permanentIdentifierSANExtension.Value,
+					},
+				},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames: []string{"example.com"},
+				PermanentIdentifiers: []PermanentIdentifier{
+					{
+						Identifier: "12345",
+					},
+				},
+			},
+		},
+		{
+			name: "ok/hardware-module-name",
+			cert: &x509.Certificate{
+				DNSNames: []string{"example.com"},
+				Extensions: []pkix.Extension{
+					{
+						Id:       asn1.ObjectIdentifier(hardwareModuleNameSANExtension.ID),
+						Critical: hardwareModuleNameSANExtension.Critical,
+						Value:    hardwareModuleNameSANExtension.Value,
+					},
+				},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames: []string{"example.com"},
+				HardwareModuleNames: []HardwareModuleName{
+					{
+						Type:         ObjectIdentifier([]int{1, 2, 3, 4}),
+						SerialNumber: []byte("12345678"),
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSans, err := ParseSubjectAlternativeNames(tt.cert)
+			if tt.expErr != nil {
+				if assert.Error(t, err) {
+					assert.EqualError(t, err, tt.expErr.Error())
+				}
+				assert.Empty(t, gotSans)
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantSans, gotSans)
 		})
 	}
 }
