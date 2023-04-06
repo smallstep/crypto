@@ -62,10 +62,21 @@ func (ek *EK) Fingerprint() (string, error) {
 func generateKeyID(pub crypto.PublicKey) ([]byte, error) {
 	b, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
-		return nil, fmt.Errorf("error marshaling public key: %w", err)
+		return nil, fmt.Errorf("failed marshaling public key: %w", err)
 	}
 	hash := sha256.Sum256(b)
 	return hash[:], nil
+}
+
+func (ek *EK) FingerprintURI() (*url.URL, error) {
+	fp, err := ek.Fingerprint()
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{
+		Scheme: "urn",
+		Opaque: fmt.Sprintf("ek:%s", fp), // ek:sha256:<base64 encoded public key>
+	}, nil
 }
 
 // MarshalJSON marshals the EK to JSON.

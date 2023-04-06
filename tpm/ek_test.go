@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -18,7 +19,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/x509util"
@@ -174,3 +174,24 @@ const (
 	// base64 encoded response for https://ftpm.amd.com/pki/aia/264D39A23CEB5D5B49D610044EEBD121
 	amdEKRootMockResponse = `MIIEiDCCA3CgAwIBAgIQJk05ojzrXVtJ1hAETuvRITANBgkqhkiG9w0BAQsFADB2MRQwEgYDVQQLEwtFbmdpbmVlcmluZzELMAkGA1UEBhMCVVMxEjAQBgNVBAcTCVN1bm55dmFsZTELMAkGA1UECBMCQ0ExHzAdBgNVBAoTFkFkdmFuY2VkIE1pY3JvIERldmljZXMxDzANBgNVBAMTBkFNRFRQTTAeFw0xNDEwMjMxNDM0MzJaFw0zOTEwMjMxNDM0MzJaMHYxFDASBgNVBAsTC0VuZ2luZWVyaW5nMQswCQYDVQQGEwJVUzESMBAGA1UEBxMJU3Vubnl2YWxlMQswCQYDVQQIEwJDQTEfMB0GA1UEChMWQWR2YW5jZWQgTWljcm8gRGV2aWNlczEPMA0GA1UEAxMGQU1EVFBNMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAssnOAYu5nRflQk0bVtsTFcLSAMx9odZ4Ey3n6/MA6FD7DECIE70RGZgaRIID0eb+dyX3znMrp1TS+lD+GJSw7yDJrKeU4it8cMLqFrqGm4SEx/X5GBa11sTmL4i60pJ5nDo2T69OiJ+iqYzgBfYJLqHQaeSRN6bBYyn3w1H4JNzPDNvqKHvkPfYewHjUAFJAI1dShYO8REnNCB8eeolj375nymfAAZzgA8v7zmFX/1tVLCy7Mm6n7zndT452TB1mek9LC5LkwlnyABwaN2Q8LV4NWpIAzTgr55xbU5VvgcIpw+/qcbYHmqL6ZzCSeE1gRKQXlsybK+W4phCtQfMgHQIDAQABo4IBEDCCAQwwDgYDVR0PAQH/BAQDAgEGMCMGCSsGAQQBgjcVKwQWBBRXjFRfeWlRQhIhpKV4rNtfaC+JyDAdBgNVHQ4EFgQUV4xUX3lpUUISIaSleKzbX2gvicgwDwYDVR0TAQH/BAUwAwEB/zA4BggrBgEFBQcBAQQsMCowKAYIKwYBBQUHMAGGHGh0dHA6Ly9mdHBtLmFtZC5jb20vcGtpL29jc3AwLAYDVR0fBCUwIzAhoB+gHYYbaHR0cDovL2Z0cG0uYW1kLmNvbS9wa2kvY3JsMD0GA1UdIAQ2MDQwMgYEVR0gADAqMCgGCCsGAQUFBwIBFhxodHRwczovL2Z0cG0uYW1kLmNvbS9wa2kvY3BzMA0GCSqGSIb3DQEBCwUAA4IBAQCWB9yAoYYIt5HRY/OqJ5LUacP6rNmsMfPUDTcahXB3iQmY8HpUoGB23lhxbq+kz3vIiGAcUdKHlpB/epXyhABGTcJrNPMfx9akLqhI7WnMCPBbHDDDzKjjMB3Vm65PFbyuqbLujN/sN6kNtc4hL5r5Pr6Mze5H9WXBo2F2Oy+7+9jWMkxNrmUhoUUrF/6YsajTGPeq7r+i6q84W2nJdd+BoQQv4sk5GeuN2j2u4k1a8DkRPsVPc2I9QTtbzekchTK1GCXWki3DKGkZUEuaoaa60Kgw55Q5rt1eK7HKEG5npmR8aEod7BDLWy4CMTNAWR5iabCW/KX28JbJL6Phau9j`
 )
+
+func TestEK_FingerprintURI(t *testing.T) {
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	require.NoError(t, err)
+	ek := &EK{
+		public: signer.Public(),
+	}
+
+	keyID, err := generateKeyID(signer.Public())
+	require.NoError(t, err)
+	exp := fmt.Sprintf("urn:ek:sha256:%s", base64.StdEncoding.EncodeToString(keyID))
+
+	u, err := ek.FingerprintURI()
+	assert.NoError(t, err)
+	assert.Equal(t, exp, u.String())
+
+	invalidEK := &EK{}
+	u, err = invalidEK.FingerprintURI()
+	assert.Error(t, err)
+	assert.Nil(t, u)
+}
