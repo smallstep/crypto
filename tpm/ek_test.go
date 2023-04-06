@@ -33,9 +33,7 @@ func Test_keyType(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ECDSA P-256", keyType(e.Public()))
 
-	// break the ECDSA key
-	e.Curve.Params().BitSize = 1234
-	require.Equal(t, "unexpected ECDSA size: 1234", keyType(e.Public()))
+	require.Equal(t, "unsupported public key type: <nil>", keyType(nil))
 }
 
 func TestEK_MarshalJSON(t *testing.T) {

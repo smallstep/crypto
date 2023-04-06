@@ -131,12 +131,7 @@ func keyType(p crypto.PublicKey) string {
 	case *rsa.PublicKey:
 		return fmt.Sprintf("RSA %d", t.Size()*8)
 	case *ecdsa.PublicKey:
-		switch size := t.Curve.Params().BitSize; size {
-		case 256, 384, 521:
-			return fmt.Sprintf("ECDSA P-%d", size)
-		default:
-			return fmt.Sprintf("unexpected ECDSA size: %d", size)
-		}
+		return fmt.Sprintf("ECDSA %s", t.Curve.Params().Name)
 	default:
 		return fmt.Sprintf("unsupported public key type: %T", p)
 	}
