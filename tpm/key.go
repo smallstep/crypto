@@ -149,7 +149,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 	defer closeTPM(ctx, t, &err)
 
-	now := time.Now().UTC()
+	now := time.Now()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 	defer closeTPM(ctx, t, &err)
 
-	now := time.Now().UTC()
+	now := time.Now()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -445,7 +445,7 @@ func (k *Key) toStorage() *storage.Key {
 		Data:       k.data,
 		AttestedBy: k.attestedBy,
 		Chain:      k.chain,
-		CreatedAt:  k.createdAt,
+		CreatedAt:  k.createdAt.UTC(),
 	}
 }
 
@@ -457,7 +457,7 @@ func keyFromStorage(sk *storage.Key, t *TPM) *Key {
 		data:       sk.Data,
 		attestedBy: sk.AttestedBy,
 		chain:      sk.Chain,
-		createdAt:  sk.CreatedAt,
+		createdAt:  sk.CreatedAt.Local(),
 		tpm:        t,
 	}
 }

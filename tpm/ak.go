@@ -125,7 +125,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	}
 	defer closeTPM(ctx, t, &err)
 
-	now := time.Now().UTC()
+	now := time.Now()
 	if name, err = processName(name); err != nil {
 		return nil, err
 	}
@@ -452,7 +452,7 @@ func (ak *AK) toStorage() *storage.AK {
 		Name:      ak.name,
 		Data:      ak.data,
 		Chain:     ak.chain,
-		CreatedAt: ak.createdAt,
+		CreatedAt: ak.createdAt.UTC(),
 	}
 }
 
@@ -463,7 +463,7 @@ func akFromStorage(sak *storage.AK, t *TPM) *AK {
 		name:      sak.Name,
 		data:      sak.Data,
 		chain:     sak.Chain,
-		createdAt: sak.CreatedAt,
+		createdAt: sak.CreatedAt.Local(),
 		tpm:       t,
 	}
 }
