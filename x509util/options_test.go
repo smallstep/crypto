@@ -9,11 +9,11 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
-	"fmt"
 	"reflect"
-	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func createRSACertificateRequest(t *testing.T, bits int, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
@@ -56,10 +56,10 @@ func TestWithTemplate(t *testing.T) {
 {{- end }}
 	"extKeyUsage": ["serverAuth", "clientAuth"],
 	"extensions": [
-		{"id": "1.2.3.4", "value": {{ asn1enc (first .Insecure.CR.DNSNames) | toJson }}},
+		{"id": "1.2.3.4", "value": {{ asn1Enc (first .Insecure.CR.DNSNames) | toJson }}},
 		{"id": "1.2.3.5", "value": {{ asn1Marshal (first .Insecure.CR.DNSNames) | toJson }}},
-		{"id": "1.2.3.6", "value": {{ asn1Seq (asn1enc (first .Insecure.CR.DNSNames)) (asn1enc "int:123456") | toJson }}},
-		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1enc "int:123456") | toJson }}}
+		{"id": "1.2.3.6", "value": {{ asn1Seq (asn1Enc (first .Insecure.CR.DNSNames)) (asn1Enc "int:123456") | toJson }}},
+		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1Enc "int:123456") | toJson }}}
 	]
 }`
 
@@ -301,34 +301,36 @@ func mustMarshal(t *testing.T, value interface{}, params string) string {
 func Test_asn1Encode(t *testing.T) {
 	now := time.Now().UTC()
 
-	_, timeErr := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", "not-a-time")
-	timeErr = fmt.Errorf("invalid utc value: %w", timeErr)
-
 	type args struct {
 		str string
 	}
 	tests := []struct {
-		name string
-		args args
-		want string
+		name    string
+		args    args
+		want    string
+		wantErr bool
 	}{
-		{"ok", args{"string"}, mustMarshal(t, "string", "printable")},
-		{"ok explicit", args{"explicit:string"}, mustMarshal(t, "string", "printable,explicit")},
-		{"ok printable", args{"printable:string"}, mustMarshal(t, "string", "printable")},
-		{"ok printable explicit", args{"printable,explicit:string"}, mustMarshal(t, "string", "printable,explicit")},
-		{"ok ia5", args{"ia5:string"}, mustMarshal(t, "string", "ia5")},
-		{"ok utf8", args{"utf8:string"}, mustMarshal(t, "string", "utf8")},
-		{"ok utc", args{"utc:" + now.String()}, mustMarshal(t, now, "utc")},
-		{"ok generalized", args{"generalized:" + now.Format(time.RFC3339)}, mustMarshal(t, now, "generalized")},
-		{"ok int", args{"int:1234"}, mustMarshal(t, 1234, "")},
-		{"ok numeric", args{"numeric:1234"}, mustMarshal(t, "1234", "numeric")},
-		{"ok raw", args{"raw:" + mustMarshal(t, 1234, "")}, mustMarshal(t, 1234, "")},
-		{"fail numeric", args{"numeric:not-a-number"}, "invalid numeric value"},
-		{"fail time", args{"utc:not-a-time"}, timeErr.Error()},
+		{"ok", args{"string"}, mustMarshal(t, "string", "printable"), false},
+		{"ok explicit", args{"explicit:string"}, mustMarshal(t, "string", "printable,explicit"), false},
+		{"ok printable", args{"printable:string"}, mustMarshal(t, "string", "printable"), false},
+		{"ok printable explicit", args{"printable,explicit:string"}, mustMarshal(t, "string", "printable,explicit"), false},
+		{"ok ia5", args{"ia5:string"}, mustMarshal(t, "string", "ia5"), false},
+		{"ok utf8", args{"utf8:string"}, mustMarshal(t, "string", "utf8"), false},
+		{"ok utc", args{"utc:" + now.String()}, mustMarshal(t, now, "utc"), false},
+		{"ok generalized", args{"generalized:" + now.Format(time.RFC3339)}, mustMarshal(t, now, "generalized"), false},
+		{"ok int", args{"int:1234"}, mustMarshal(t, 1234, ""), false},
+		{"ok numeric", args{"numeric:1234"}, mustMarshal(t, "1234", "numeric"), false},
+		{"ok raw", args{"raw:" + mustMarshal(t, 1234, "")}, mustMarshal(t, 1234, ""), false},
+		{"fail numeric", args{"numeric:not-a-number"}, "", true},
+		{"fail time", args{"utc:not-a-time"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := asn1Encode(tt.args.str); got != tt.want {
+			got, err := asn1Encode(tt.args.str)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("asn1Encode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
 				t.Errorf("asn1Encode() = %v, want %v", got, tt.want)
 			}
 		})
@@ -336,29 +338,32 @@ func Test_asn1Encode(t *testing.T) {
 }
 
 func Test_asn1Marshal(t *testing.T) {
-	_, numericErr := asn1.MarshalWithParams("string", "numeric")
-
 	now := time.Now()
 	type args struct {
 		v      interface{}
 		params []string
 	}
 	tests := []struct {
-		name string
-		args args
-		want string
+		name    string
+		args    args
+		want    string
+		wantErr bool
 	}{
-		{"ok printable", args{"string", nil}, mustMarshal(t, "string", "printable")},
-		{"ok utf8", args{"string", []string{"utf8"}}, mustMarshal(t, "string", "utf8")},
-		{"ok int", args{1234, nil}, mustMarshal(t, 1234, "")},
-		{"ok time", args{now, nil}, mustMarshal(t, now, "utc")},
-		{"ok seq", args{[]any{"string", 1234}, nil}, mustMarshal(t, []any{"string", 1234}, "")},
-		{"ok set", args{[]any{"string", 1234}, []string{"set"}}, mustMarshal(t, []any{"string", 1234}, "set")},
-		{"fail numeric", args{"string", []string{"numeric"}}, numericErr.Error()},
+		{"ok printable", args{"string", nil}, mustMarshal(t, "string", "printable"), false},
+		{"ok utf8", args{"string", []string{"utf8"}}, mustMarshal(t, "string", "utf8"), false},
+		{"ok int", args{1234, nil}, mustMarshal(t, 1234, ""), false},
+		{"ok time", args{now, nil}, mustMarshal(t, now, "utc"), false},
+		{"ok seq", args{[]any{"string", 1234}, nil}, mustMarshal(t, []any{"string", 1234}, ""), false},
+		{"ok set", args{[]any{"string", 1234}, []string{"set"}}, mustMarshal(t, []any{"string", 1234}, "set"), false},
+		{"fail numeric", args{"string", []string{"numeric"}}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := asn1Marshal(tt.args.v, tt.args.params...); got != tt.want {
+			got, err := asn1Marshal(tt.args.v, tt.args.params...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("asn1Marshal() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
 				t.Errorf("asn1Marshal() = %v, want %v", got, tt.want)
 			}
 		})
@@ -376,25 +381,38 @@ func Test_asn1Sequence(t *testing.T) {
 		Set    set `asn1:"set"`
 	}
 
-	_, err := strconv.Atoi("string")
-	err = fmt.Errorf("invalid int value: %w", err)
-	_, err = base64.StdEncoding.DecodeString(err.Error())
+	b64String, err := asn1Encode("string")
+	require.NoError(t, err)
+
+	b64Int, err := asn1Encode("int:1234")
+	require.NoError(t, err)
+
+	b64Time, err := asn1Encode("utc:" + now.String())
+	require.NoError(t, err)
+
+	b64Set, err := asn1Set(b64Int, b64Time)
+	require.NoError(t, err)
 
 	type args struct {
 		b64enc []string
 	}
 	tests := []struct {
-		name string
-		args args
-		want string
+		name    string
+		args    args
+		want    string
+		wantErr bool
 	}{
-		{"ok", args{[]string{asn1Encode("string"), asn1Encode("int:1234")}}, mustMarshal(t, []any{"string", 1234}, "sequence")},
-		{"ok complex", args{[]string{asn1Encode("string"), asn1Set(asn1Encode("int:1234"), asn1Encode("utc:"+now.String()))}}, mustMarshal(t, complexWithSet{"string", set{1234, now}}, "")},
-		{"fail", args{[]string{asn1Encode("string"), asn1Encode("int:string")}}, err.Error()},
+		{"ok", args{[]string{b64String, b64Int}}, mustMarshal(t, []any{"string", 1234}, "sequence"), false},
+		{"ok complex", args{[]string{b64String, b64Set}}, mustMarshal(t, complexWithSet{"string", set{1234, now}}, ""), false},
+		{"fail", args{[]string{b64String, "bad-base-64"}}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := asn1Sequence(tt.args.b64enc...); got != tt.want {
+			got, err := asn1Sequence(tt.args.b64enc...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("asn1Sequence() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
 				t.Errorf("asn1Sequence() = %v, want %v", got, tt.want)
 			}
 		})
@@ -409,25 +427,38 @@ func Test_asn1Set(t *testing.T) {
 		Sequence []any
 	}
 
-	_, err := strconv.Atoi("string")
-	err = fmt.Errorf("invalid int value: %w", err)
-	_, err = base64.StdEncoding.DecodeString(err.Error())
+	b64String, err := asn1Encode("string")
+	require.NoError(t, err)
+
+	b64Int, err := asn1Encode("int:1234")
+	require.NoError(t, err)
+
+	b64Time, err := asn1Encode("utc:" + now.String())
+	require.NoError(t, err)
+
+	b64Sequence, err := asn1Sequence(b64Int, b64Time)
+	require.NoError(t, err)
 
 	type args struct {
 		b64enc []string
 	}
 	tests := []struct {
-		name string
-		args args
-		want string
+		name    string
+		args    args
+		want    string
+		wantErr bool
 	}{
-		{"ok", args{[]string{asn1Encode("int:1234"), asn1Encode("string")}}, mustMarshal(t, []any{1234, "string"}, "set")},
-		{"ok complex", args{[]string{asn1Encode("string"), asn1Sequence(asn1Encode("int:1234"), asn1Encode("utc:"+now.String()))}}, mustMarshal(t, complexWithSequence{"string", []any{1234, now}}, "set")},
-		{"fail", args{[]string{asn1Encode("string"), asn1Encode("int:string")}}, err.Error()},
+		{"ok", args{[]string{b64Int, b64String}}, mustMarshal(t, []any{1234, "string"}, "set"), false},
+		{"ok complex", args{[]string{b64String, b64Sequence}}, mustMarshal(t, complexWithSequence{"string", []any{1234, now}}, "set"), false},
+		{"fail", args{[]string{b64String, "bad-base-64"}}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := asn1Set(tt.args.b64enc...); got != tt.want {
+			got, err := asn1Set(tt.args.b64enc...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("asn1Set() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
 				t.Errorf("asn1Set() = %v, want %v", got, tt.want)
 			}
 		})

@@ -126,7 +126,7 @@ type asn1PermanentIdentifier struct {
 	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
 }
 
-func (p *PermanentIdentifier) ans1Type() asn1PermanentIdentifier {
+func (p *PermanentIdentifier) asn1Type() asn1PermanentIdentifier {
 	return asn1PermanentIdentifier{
 		IdentifierValue: p.Identifier,
 		Assigner:        asn1.ObjectIdentifier(p.Assigner),
@@ -154,7 +154,7 @@ type asn1HardwareModuleName struct {
 	SerialNumber []byte `asn1:"tag:4"`
 }
 
-func (h *HardwareModuleName) ans1Type() asn1HardwareModuleName {
+func (h *HardwareModuleName) asn1Type() asn1HardwareModuleName {
 	return asn1HardwareModuleName{
 		Type:         asn1.ObjectIdentifier(h.Type),
 		SerialNumber: h.SerialNumber,
@@ -350,7 +350,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			v.Identifier = s.Value
 		default: // continue, both identifierValue and assigner are optional
 		}
-		otherName, err := marshalOtherName(oidPermanentIdentifier, v.ans1Type())
+		otherName, err := marshalOtherName(oidPermanentIdentifier, v.asn1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
 		}
@@ -363,7 +363,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
 		}
-		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.ans1Type())
+		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.asn1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling HardwareModuleName SAN")
 		}
@@ -381,7 +381,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			return zero, errors.Wrap(err, "error marshaling DirectoryName SAN")
 		}
 		if bytes.Equal(rdn, emptyASN1Subject) {
-			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed ans1Value")
+			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed asn1Value")
 		}
 		return asn1.RawValue{
 			Class:      asn1.ClassContextSpecific,
@@ -463,7 +463,7 @@ func parseFieldParameters(str string) (p asn1Params) {
 		case "utc", "generalized":
 			p.Type = part
 			params = append(params, part)
-		// base64 encoded ans1 value
+		// base64 encoded asn1 value
 		case "raw":
 			p.Type = part
 		case "":
@@ -478,9 +478,9 @@ func parseFieldParameters(str string) (p asn1Params) {
 
 // marshalValue marshals the given value with the given params.
 //
-// The return value value can be any type depending on the OID ASN supports a great
-// number of formats, but Golang's ans1 package supports much fewer -- for now
-// support anything the golang asn1 marshaller supports.
+// The return value value can be any type depending on the OID. ASN supports a
+// great number of formats, but Golang's asn1 package supports much fewer -- for
+// now support anything the Golang asn1 marshaller supports.
 //
 // See https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html
 func marshalValue(value, params string) ([]byte, error) {

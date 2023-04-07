@@ -41,14 +41,10 @@ func WithTemplate(text string, data TemplateData) Option {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
 		// asn1 methods
-		funcMap["asn1enc"] = asn1Encode
+		funcMap["asn1Enc"] = asn1Encode
 		funcMap["asn1Marshal"] = asn1Marshal
 		funcMap["asn1Seq"] = asn1Sequence
 		funcMap["asn1Set"] = asn1Set
-		funcMap["mustASN1Enc"] = mustASN1Encode
-		funcMap["mustASN1Marshal"] = mustASN1Marshal
-		funcMap["mustASN1Seq"] = mustASN1Sequence
-		funcMap["mustASN1Set"] = mustASN1Set
 
 		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
@@ -96,39 +92,7 @@ func WithTemplateFile(path string, data TemplateData) Option {
 	}
 }
 
-func asn1Encode(str string) string {
-	b64, err := mustASN1Encode(str)
-	if err != nil {
-		return err.Error()
-	}
-	return b64
-}
-
-func asn1Marshal(v interface{}, params ...string) string {
-	b64, err := mustASN1Marshal(v, params...)
-	if err != nil {
-		return err.Error()
-	}
-	return b64
-}
-
-func asn1Sequence(b64enc ...string) string {
-	b64, err := mustASN1Sequence(b64enc...)
-	if err != nil {
-		return err.Error()
-	}
-	return b64
-}
-
-func asn1Set(b64enc ...string) string {
-	b64, err := mustASN1Set(b64enc...)
-	if err != nil {
-		return err.Error()
-	}
-	return b64
-}
-
-func mustASN1Encode(str string) (string, error) {
+func asn1Encode(str string) (string, error) {
 	value, params := str, "printable"
 	if strings.Contains(value, sanTypeSeparator) {
 		params = strings.SplitN(value, sanTypeSeparator, 2)[0]
@@ -141,7 +105,7 @@ func mustASN1Encode(str string) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func mustASN1Marshal(v interface{}, params ...string) (string, error) {
+func asn1Marshal(v interface{}, params ...string) (string, error) {
 	b, err := encoding_asn1.MarshalWithParams(v, strings.Join(params, ","))
 	if err != nil {
 		return "", err
@@ -149,7 +113,7 @@ func mustASN1Marshal(v interface{}, params ...string) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func mustASN1Sequence(b64enc ...string) (string, error) {
+func asn1Sequence(b64enc ...string) (string, error) {
 	var builder cryptobyte.Builder
 	builder.AddASN1(asn1.SEQUENCE, func(child *cryptobyte.Builder) {
 		for _, s := range b64enc {
@@ -168,7 +132,7 @@ func mustASN1Sequence(b64enc ...string) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func mustASN1Set(b64enc ...string) (string, error) {
+func asn1Set(b64enc ...string) (string, error) {
 	var builder cryptobyte.Builder
 	builder.AddASN1(asn1.SET, func(child *cryptobyte.Builder) {
 		for _, s := range b64enc {
