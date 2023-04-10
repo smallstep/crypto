@@ -313,7 +313,7 @@ func EncryptPKCS8PrivateKey(rand io.Reader, data, password []byte, alg x509.PEMC
 	}
 	enc.CryptBlocks(encrypted, encrypted)
 
-	// Build encrypted ans1 data
+	// Build encrypted asn1 data
 	pki := encryptedPrivateKeyInfo{
 		Algo: encryptedlAlgorithmIdentifier{
 			Algorithm: oidPBES2,

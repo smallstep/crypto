@@ -352,10 +352,19 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"otherName printable", fields{"1.2.3.4", "printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
+		{"otherName utc", fields{"1.2.3.4", "utc:2023-03-29T02:03:57Z", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 22, 6, 3, 42, 3, 4, 160, 15, 23, 13}, []byte("230329020357Z")...),
+		}, false},
+		{"otherName generalizd", fields{"1.2.3.4", "generalized:2023-03-29T02:03:57Z", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 24, 6, 3, 42, 3, 4, 160, 17, 24, 15}, []byte("20230329020357Z")...),
+		}, false},
 		{"otherName default", fields{"1.2.3.4", "foo:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
 		{"otherName no type", fields{"1.2.3.4", "abc1234", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName whitespaces", fields{"1.2.3.4", ",,printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
 		{"fail dn", fields{"dn", "1234", nil}, asn1.RawValue{}, true},
@@ -390,6 +399,8 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5", nil}, asn1.RawValue{}, true},
 		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc", nil}, asn1.RawValue{}, true},
 		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable", nil}, asn1.RawValue{}, true},
+		{"fail otherName utc", fields{"1.2.3.4", "utc:2023", nil}, asn1.RawValue{}, true},
+		{"fail otherName generalized", fields{"1.2.3.4", "generalized:2023-12-12", nil}, asn1.RawValue{}, true},
 		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable", nil}, asn1.RawValue{}, true},
 		{"fail otherName no type", fields{"1.2.3.4", "nötprintable", nil}, asn1.RawValue{}, true},
 	}
