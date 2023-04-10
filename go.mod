@@ -15,7 +15,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/go-attestation v0.4.4-0.20220404204839-8820d49b18d9
 	github.com/google/go-tpm v0.3.3
-	github.com/google/go-tpm-tools v0.3.10
+	github.com/google/go-tpm-tools v0.3.11
 	github.com/googleapis/gax-go/v2 v2.8.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
