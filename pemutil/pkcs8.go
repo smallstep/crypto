@@ -324,7 +324,8 @@ func EncryptPKCS8PrivateKey(rand io.Reader, data, password []byte, alg x509.PEMC
 						Salt:           salt,
 						IterationCount: PBKDF2Iterations,
 						PrfParam: prfParam{
-							Algo: oidHMACWithSHA256,
+							Algo:      oidHMACWithSHA256,
+							NullParam: asn1.NullRawValue,
 						},
 					},
 				},
