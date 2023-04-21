@@ -157,6 +157,20 @@ func TestNew(t *testing.T) {
 				ProtectionLevel: apiv1.UnspecifiedProtectionLevel,
 			},
 		}, false},
+		{"ok with vault + environment + privatelink", func() {
+			createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
+				return fakeTokenCredential{}, nil
+			}
+		}, args{context.Background(), apiv1.Options{
+			URI: "azurekms:vault=my-vault;environment=usgov;privatelink=true",
+		}}, &KeyVault{
+			client: newLazyClient("privatelink.vaultcore.usgovcloudapi.net", lazyClientCreator(fakeTokenCredential{})),
+			defaults: defaultOptions{
+				Vault:           "my-vault",
+				DNSSuffix:       "privatelink.vaultcore.usgovcloudapi.net",
+				ProtectionLevel: apiv1.UnspecifiedProtectionLevel,
+			},
+		}, false},
 		{"fail", func() {
 			createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
 				return nil, errTest
@@ -761,14 +775,14 @@ func Test_getCloudConfiguration(t *testing.T) {
 		want    cloudConfiguration
 		wantErr bool
 	}{
-		{"empty", args{""}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"public", args{"public"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"USGov", args{"USGov"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
-		{"China", args{"China"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
+		{"empty", args{""}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net", PrivateLink: "privatelink.vaultcore.azure.net"}, false},
+		{"public", args{"public"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net", PrivateLink: "privatelink.vaultcore.azure.net"}, false},
+		{"USGov", args{"USGov"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net", PrivateLink: "privatelink.vaultcore.usgovcloudapi.net"}, false},
+		{"China", args{"China"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn", PrivateLink: "privatelink.vaultcore.azure.cn"}, false},
 		{"GERMAN", args{"GERMAN"}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
-		{"AzurePublicCloud", args{"AzurePublicCloud"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
-		{"AzureChinaCloud", args{"AzureChinaCloud"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
+		{"AzurePublicCloud", args{"AzurePublicCloud"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net", PrivateLink: "privatelink.vaultcore.azure.net"}, false},
+		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net", PrivateLink: "privatelink.vaultcore.usgovcloudapi.net"}, false},
+		{"AzureChinaCloud", args{"AzureChinaCloud"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn", PrivateLink: "privatelink.vaultcore.azure.cn"}, false},
 		{"AzureGermanCloud", args{"AzureGermanCloud"}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
 		{"fake", args{"fake"}, cloudConfiguration{}, true},
 	}
