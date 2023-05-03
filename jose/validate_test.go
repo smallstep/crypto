@@ -1,10 +1,14 @@
 package jose
 
 import (
+	"bytes"
 	"crypto"
-	"crypto/sha1" // nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/base64"
+	"os"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -18,6 +22,62 @@ var (
 	certFile    = "./testdata/rsa2048.crt"
 	keyFile     = "./testdata/rsa2048.key"
 )
+
+func TestValidateSSHPOP(t *testing.T) {
+	key, err := pemutil.Read("testdata/host-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("testdata/host-key-cert.pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := bytes.Fields(b)
+	if len(fields) != 3 {
+		t.Fatalf("unexpected number of fields, got = %d, want 3", len(fields))
+	}
+	certBase64 := string(fields[1])
+
+	_, otherKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		certFile string
+		key      interface{}
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"ok crypto.PrivateKey", args{"testdata/host-key-cert.pub", key}, certBase64, false},
+		{"ok JSONWebKey", args{"testdata/host-key-cert.pub", &JSONWebKey{Key: key}}, certBase64, false},
+		{"ok OpaqueSigner", args{"testdata/host-key-cert.pub", NewOpaqueSigner(key.(crypto.Signer))}, certBase64, false},
+		{"fail certFile", args{"", key}, "", true},
+		{"fail missing", args{"testdata/missing", key}, "", true},
+		{"fail not ssh", args{"testdata/rsa2048.crt", key}, "", true},
+		{"fail not a cert", args{"testdata/host-key.pub", key}, "", true},
+		{"fail validate crypto.PrivateKey", args{"testdata/host-key-cert.pub", otherKey}, "", true},
+		{"fail validate JSONWebKey", args{"testdata/host-key-cert.pub", &JSONWebKey{Key: otherKey}}, "", true},
+		{"fail validate OpaqueSigner", args{"testdata/host-key-cert.pub", NewOpaqueSigner(otherKey)}, "", true},
+		{"fail bad key", args{"testdata/host-key-cert.pub", "not a key"}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ValidateSSHPOP(tt.args.certFile, tt.args.key)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateSSHPOP() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ValidateSSHPOP() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func Test_validateX5(t *testing.T) {
 	type test struct {
@@ -108,6 +168,26 @@ func TestValidateX5T(t *testing.T) {
 			return test{
 				certs: certs,
 				key:   k,
+				fp:    base64.URLEncoding.EncodeToString(fp[:]),
+			}
+		},
+		"ok/opaque": func() test {
+			certs, err := pemutil.ReadCertificateBundle(certFile)
+			assert.FatalError(t, err)
+			k, err := pemutil.Read(keyFile)
+			assert.FatalError(t, err)
+			sig, ok := k.(crypto.Signer)
+			assert.True(t, ok)
+			op := NewOpaqueSigner(sig)
+			cert, err := pemutil.ReadCertificate(certFile)
+			assert.FatalError(t, err)
+			// x5t is the base64 URL encoded SHA1 thumbprint
+			// (see https://tools.ietf.org/html/rfc7515#section-4.1.7)
+			// nolint:gosec // RFC 7515 - X.509 Certificate SHA-1 Thumbprint
+			fp := sha1.Sum(cert.Raw)
+			return test{
+				certs: certs,
+				key:   op,
 				fp:    base64.URLEncoding.EncodeToString(fp[:]),
 			}
 		},

@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+// processName creates a random 10 character name if the provided
+// one is empty.
 func processName(name string) (string, error) {
 	if name == "" {
 		// TODO: decouple the TPM key name from the name recorded in the storage? This might

@@ -115,6 +115,10 @@ func verifyKeyPair(h crypto.Hash, priv, pub interface{}) error {
 		if !ed25519.Verify(p, sum, sig) {
 			return fmt.Errorf("ed25519.Verify failed")
 		}
+	case x25519.PublicKey:
+		if !x25519.Verify(p, sum, sig) {
+			return fmt.Errorf("x25519.Verify failed")
+		}
 	default:
 		return fmt.Errorf("unsupported public key type %T", pub)
 	}
@@ -132,7 +136,11 @@ func verifyPrivateKey(h crypto.Hash, priv interface{}) error {
 }
 
 func TestPublicKey(t *testing.T) {
+	type opaqueSigner struct {
+		crypto.Signer
+	}
 	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
+	ecdsaSigner := opaqueSigner{ecdsaKey}
 	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	x25519Pub, x25519Priv, err := x25519.GenerateKey(rand.Reader)
@@ -155,6 +163,7 @@ func TestPublicKey(t *testing.T) {
 		{"ed25519Public", args{ed25519.PublicKey(ed25519Key[32:])}, ed25519Key.Public(), false},
 		{"x25519", args{x25519Priv}, x25519Pub, false},
 		{"x25519Public", args{x25519Pub}, x25519Pub, false},
+		{"ecdsaSigner", args{ecdsaSigner}, ecdsaKey.Public(), false},
 		{"fail", args{[]byte("octkey")}, nil, true},
 	}
 	for _, tt := range tests {
@@ -289,10 +298,12 @@ func TestGenerateKey(t *testing.T) {
 		{"P-384", randReader, args{"EC", "P-384", 0}, assertKey, crypto.SHA384, false},
 		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey, crypto.SHA512, false},
 		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey, crypto.Hash(0), false},
+		{"X25519", randReader, args{"OKP", "X25519", 0}, assertKey, crypto.Hash(0), false},
 		{"OCT", zeroReader{}, args{"oct", "", 32}, assertOCT, crypto.Hash(0), false},
 		{"eof EC", eofReader{}, args{"EC", "P-256", 0}, nil, 0, true},
 		{"eof RSA", eofReader{}, args{"RSA", "", 1024}, nil, 0, true},
-		{"eof OKP", eofReader{}, args{"OKP", "Ed25519", 0}, nil, 0, true},
+		{"eof Ed25519", eofReader{}, args{"OKP", "Ed25519", 0}, nil, 0, true},
+		{"eof X25519", eofReader{}, args{"OKP", "X25519", 0}, nil, 0, true},
 		{"eof oct", eofReader{}, args{"oct", "", 32}, nil, 0, true},
 		{"unknown EC curve", randReader, args{"EC", "P-128", 0}, nil, 0, true},
 		{"unknown OKP curve", randReader, args{"OKP", "Edward", 0}, nil, 0, true},
@@ -681,6 +692,78 @@ func TestInsecure(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Insecure() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+		})
+	}
+}
+
+func TestEqual(t *testing.T) {
+	mustSigner := func(kty, crv string, size int) crypto.Signer {
+		s, err := GenerateSigner(kty, crv, size)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	mustCopy := func(key crypto.Signer) crypto.Signer {
+		if x, ok := key.(x25519.PrivateKey); ok {
+			return x25519.PrivateKey([]byte(x))
+		}
+
+		b, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		priv, err := x509.ParsePKCS8PrivateKey(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, ok := priv.(crypto.Signer)
+		if !ok {
+			t.Fatalf("type %T is not a crypto.Signer", priv)
+		}
+		return signer
+	}
+
+	ecdsaKey := mustSigner("EC", "P-256", 0)
+	rsaKey := mustSigner("RSA", "", 2048)
+	ed25519Key := mustSigner("OKP", "Ed25519", 0)
+	x25519Key := mustSigner("OKP", "X25519", 0)
+
+	type args struct {
+		x any
+		y any
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{"ok ecdsaKey", args{ecdsaKey, mustCopy(ecdsaKey)}, true},
+		{"ok rsaKey", args{rsaKey, mustCopy(rsaKey)}, true},
+		{"ok ed25519Key", args{ed25519Key, mustCopy(ed25519Key)}, true},
+		{"ok x25519Key", args{x25519Key, mustCopy(x25519Key)}, true},
+		{"ok ecdsaKey pub", args{ecdsaKey.Public(), mustCopy(ecdsaKey).Public()}, true},
+		{"ok rsaKey pub", args{rsaKey.Public(), mustCopy(rsaKey).Public()}, true},
+		{"ok ed25519Key pub", args{ed25519Key.Public(), mustCopy(ed25519Key).Public()}, true},
+		{"ok x25519Key pub", args{x25519Key.Public(), mustCopy(x25519Key).Public()}, true},
+		{"ok []byte", args{[]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}}, true},
+		{"fail ecdsaKey", args{ecdsaKey, mustCopy(ecdsaKey).Public()}, false},
+		{"fail rsaKey", args{rsaKey, mustCopy(rsaKey).Public()}, false},
+		{"fail ed25519Key", args{ed25519Key, mustCopy(ed25519Key).Public()}, false},
+		{"fail x25519Key", args{x25519Key, mustCopy(x25519Key).Public()}, false},
+		{"fail ecdsaKey pub", args{ecdsaKey.Public(), mustCopy(ecdsaKey)}, false},
+		{"fail rsaKey pub", args{rsaKey.Public(), mustCopy(rsaKey)}, false},
+		{"fail ed25519Key pub", args{ed25519Key.Public(), mustCopy(ed25519Key)}, false},
+		{"fail x25519Key pub", args{x25519Key.Public(), mustCopy(x25519Key)}, false},
+		{"fail []byte", args{[]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}, false},
+		{"fail int", args{1, 2}, false},
+		{"fail string", args{"foo", "foo"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Equal(tt.args.x, tt.args.y); got != tt.want {
+				t.Errorf("Equal() = %v, want %v", got, tt.want)
 			}
 		})
 	}

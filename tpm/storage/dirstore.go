@@ -11,13 +11,15 @@ import (
 )
 
 // Dirstore is a concrete implementation of the TPMStore interface that
-// stores TPM keys in a directory.
+// stores TPM objects in a directory. Each object will be stored in a
+// separate file. The name of the file is constructed by prefixing the
+// name of the object with its type.
 type Dirstore struct {
 	store     *diskv.Diskv
 	directory string
 }
 
-const tpmExtension = ".tpmkey"
+const tpmExtension = ".tpmobj"
 
 func advancedTransform(key string) *diskv.PathKey {
 	path := strings.Split(key, "/")
@@ -34,14 +36,14 @@ func inverseTransform(pathKey *diskv.PathKey) (key string) {
 		return ""
 	}
 	filename := pathKey.FileName[:len(pathKey.FileName)-len(tpmExtension)]
-	p := filepath.Join(filepath.Join(pathKey.Path...), filename)
+	key = filepath.Join(filepath.Join(pathKey.Path...), filename)
 	if len(pathKey.Path) > 0 && pathKey.Path[0] == "" { // absolute path at "/"
-		p = filepath.Join(string(filepath.Separator), p)
+		key = filepath.Join(string(filepath.Separator), key)
 	}
-	return p
+	return
 }
 
-// NewDirstore creates a new instance of a Direstore
+// NewDirstore creates a new instance of a Direstore.
 func NewDirstore(directory string) *Dirstore {
 	return &Dirstore{
 		store: diskv.New(diskv.Options{
@@ -49,6 +51,7 @@ func NewDirstore(directory string) *Dirstore {
 			AdvancedTransform: advancedTransform,
 			InverseTransform:  inverseTransform,
 			CacheSizeMax:      1024 * 1024,
+			// TODO(hs): add TempDir for atomic operations?
 		}),
 		directory: directory,
 	}
@@ -60,15 +63,13 @@ func (s *Dirstore) ListKeys() ([]*Key, error) {
 	for k := range c {
 		data, err := s.store.Read(k)
 		if err != nil {
-			return nil, fmt.Errorf("error reading key from store: %w", err)
+			return nil, fmt.Errorf("failed reading key from store: %w", err)
 		}
-
-		sk := &serializedKey{}
-		if err := json.Unmarshal(data, sk); err != nil {
-			return nil, fmt.Errorf("error unmarshaling key: %w", err)
+		key := &Key{}
+		if err := json.Unmarshal(data, key); err != nil {
+			return nil, fmt.Errorf("failed unmarshaling key: %w", err)
 		}
-
-		result = append(result, &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt})
+		result = append(result, key)
 	}
 	return result, nil
 }
@@ -87,18 +88,15 @@ func (s *Dirstore) GetKey(name string) (*Key, error) {
 	if !s.store.Has(kk) {
 		return nil, ErrNotFound
 	}
-
 	data, err := s.store.Read(kk)
 	if err != nil {
-		return nil, fmt.Errorf("error reading key from store: %w", err)
+		return nil, fmt.Errorf("failed reading key from store: %w", err)
 	}
-
-	sk := &serializedKey{}
-	if err := json.Unmarshal(data, sk); err != nil {
-		return nil, fmt.Errorf("error unmarshaling key: %w", err)
+	key := &Key{}
+	if err := json.Unmarshal(data, key); err != nil {
+		return nil, fmt.Errorf("failed unmarshaling key: %w", err)
 	}
-
-	return &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt}, nil
+	return key, nil
 }
 
 func (s *Dirstore) AddKey(key *Key) error {
@@ -106,14 +104,27 @@ func (s *Dirstore) AddKey(key *Key) error {
 	if s.store.Has(kk) {
 		return ErrExists
 	}
-
-	data, err := json.Marshal(serializedKey{Name: key.Name, Type: typeKey, Data: key.Data, AttestedBy: key.AttestedBy, CreatedAt: key.CreatedAt})
+	data, err := json.Marshal(key)
 	if err != nil {
-		return fmt.Errorf("error serializing key: %w", err)
+		return fmt.Errorf("failed serializing key: %w", err)
 	}
-
 	if err := s.store.WriteStream(kk, bytes.NewBuffer(data), true); err != nil {
-		return fmt.Errorf("error writing to disk: %w", err)
+		return fmt.Errorf("failed writing key to disk: %w", err)
+	}
+	return nil
+}
+
+func (s *Dirstore) UpdateKey(key *Key) error {
+	kk := keyForKey(key.Name)
+	if !s.store.Has(kk) {
+		return ErrNotFound
+	}
+	data, err := json.Marshal(key)
+	if err != nil {
+		return fmt.Errorf("failed serializing key: %w", err)
+	}
+	if err := s.store.WriteStream(kk, bytes.NewBuffer(data), true); err != nil {
+		return fmt.Errorf("failed writing key to disk: %w", err)
 	}
 	return nil
 }
@@ -124,7 +135,7 @@ func (s *Dirstore) DeleteKey(name string) error {
 		return ErrNotFound
 	}
 	if err := s.store.Erase(key); err != nil {
-		return fmt.Errorf("error deleting key from disk: %w", err)
+		return fmt.Errorf("failed deleting key from disk: %w", err)
 	}
 	return nil
 }
@@ -135,15 +146,13 @@ func (s *Dirstore) ListAKs() ([]*AK, error) {
 	for k := range c {
 		data, err := s.store.Read(k)
 		if err != nil {
-			return nil, fmt.Errorf("error reading AK from store: %w", err)
+			return nil, fmt.Errorf("failed reading AK from store: %w", err)
 		}
-
-		sak := &serializedAK{}
-		if err := json.Unmarshal(data, sak); err != nil {
-			return nil, fmt.Errorf("error unmarshaling AK: %w", err)
+		ak := &AK{}
+		if err := json.Unmarshal(data, ak); err != nil {
+			return nil, fmt.Errorf("failed unmarshaling AK: %w", err)
 		}
-
-		result = append(result, &AK{Name: sak.Name, Data: sak.Data, CreatedAt: sak.CreatedAt})
+		result = append(result, ak)
 	}
 	return result, nil
 }
@@ -162,18 +171,15 @@ func (s *Dirstore) GetAK(name string) (*AK, error) {
 	if !s.store.Has(akKey) {
 		return nil, ErrNotFound
 	}
-
 	data, err := s.store.Read(akKey)
 	if err != nil {
-		return nil, fmt.Errorf("error reading AK from store: %w", err)
+		return nil, fmt.Errorf("failed reading AK from store: %w", err)
 	}
-
-	sak := &serializedAK{}
-	if err := json.Unmarshal(data, sak); err != nil {
-		return nil, fmt.Errorf("error unmarshaling AK: %w", err)
+	ak := &AK{}
+	if err := json.Unmarshal(data, ak); err != nil {
+		return nil, fmt.Errorf("failed unmarshaling AK: %w", err)
 	}
-
-	return &AK{Name: sak.Name, Data: sak.Data, CreatedAt: sak.CreatedAt}, nil
+	return ak, nil
 }
 
 func (s *Dirstore) AddAK(ak *AK) error {
@@ -181,12 +187,27 @@ func (s *Dirstore) AddAK(ak *AK) error {
 	if s.store.Has(akKey) {
 		return ErrExists
 	}
-	data, err := json.Marshal(serializedAK{Name: ak.Name, Type: typeAK, Data: ak.Data, CreatedAt: ak.CreatedAt})
+	data, err := json.Marshal(ak)
 	if err != nil {
-		return fmt.Errorf("error serializing AK: %w", err)
+		return fmt.Errorf("failed serializing AK: %w", err)
 	}
 	if err := s.store.WriteStream(akKey, bytes.NewBuffer(data), true); err != nil {
-		return fmt.Errorf("error writing AK to disk: %w", err)
+		return fmt.Errorf("failed writing AK to disk: %w", err)
+	}
+	return nil
+}
+
+func (s *Dirstore) UpdateAK(ak *AK) error {
+	akKey := keyForAK(ak.Name)
+	if !s.store.Has(akKey) {
+		return ErrNotFound
+	}
+	data, err := json.Marshal(ak)
+	if err != nil {
+		return fmt.Errorf("failed serializing AK: %w", err)
+	}
+	if err := s.store.WriteStream(akKey, bytes.NewBuffer(data), true); err != nil {
+		return fmt.Errorf("failed writing AK to disk: %w", err)
 	}
 	return nil
 }
@@ -197,16 +218,18 @@ func (s *Dirstore) DeleteAK(name string) error {
 		return ErrNotFound
 	}
 	if err := s.store.Erase(key); err != nil {
-		return fmt.Errorf("error deleting AK from disk: %w", err)
+		return fmt.Errorf("failed deleting AK from disk: %w", err)
 	}
 	return nil
 }
 
 func (s *Dirstore) Persist() error {
+	// writes are persisted directly
 	return nil
 }
 
 func (s *Dirstore) Load() error {
+	// reads are performed directly
 	return nil
 }
 

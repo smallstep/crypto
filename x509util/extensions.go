@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -125,7 +126,7 @@ type asn1PermanentIdentifier struct {
 	Assigner        asn1.ObjectIdentifier `asn1:"optional"`
 }
 
-func (p *PermanentIdentifier) ans1Type() asn1PermanentIdentifier {
+func (p *PermanentIdentifier) asn1Type() asn1PermanentIdentifier {
 	return asn1PermanentIdentifier{
 		IdentifierValue: p.Identifier,
 		Assigner:        asn1.ObjectIdentifier(p.Assigner),
@@ -153,7 +154,7 @@ type asn1HardwareModuleName struct {
 	SerialNumber []byte `asn1:"tag:4"`
 }
 
-func (h *HardwareModuleName) ans1Type() asn1HardwareModuleName {
+func (h *HardwareModuleName) asn1Type() asn1HardwareModuleName {
 	return asn1HardwareModuleName{
 		Type:         asn1.ObjectIdentifier(h.Type),
 		SerialNumber: h.SerialNumber,
@@ -349,7 +350,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			v.Identifier = s.Value
 		default: // continue, both identifierValue and assigner are optional
 		}
-		otherName, err := marshalOtherName(oidPermanentIdentifier, v.ans1Type())
+		otherName, err := marshalOtherName(oidPermanentIdentifier, v.asn1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling PermanentIdentifier SAN")
 		}
@@ -362,7 +363,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
 		}
-		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.ans1Type())
+		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.asn1Type())
 		if err != nil {
 			return zero, errors.Wrap(err, "error marshaling HardwareModuleName SAN")
 		}
@@ -380,7 +381,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			return zero, errors.Wrap(err, "error marshaling DirectoryName SAN")
 		}
 		if bytes.Equal(rdn, emptyASN1Subject) {
-			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed ans1Value")
+			return zero, errors.New("error parsing DirectoryName SAN: empty or malformed asn1Value")
 		}
 		return asn1.RawValue{
 			Class:      asn1.ClassContextSpecific,
@@ -439,28 +440,65 @@ func marshalOtherName(oid asn1.ObjectIdentifier, value interface{}) (asn1.RawVal
 	return asn1.RawValue{FullBytes: b}, nil
 }
 
-// marshalExplicitValue marshals the given value with given type and returns the
-// raw bytes to use.
+type asn1Params struct {
+	Type   string
+	Params string
+}
+
+func parseFieldParameters(str string) (p asn1Params) {
+	var part string
+	var params []string
+	for len(str) > 0 {
+		part, str, _ = strings.Cut(str, ",")
+		switch part {
+		// string types
+		case "utf8", "ia5", "numeric", "printable":
+			p.Type = part
+			params = append(params, part)
+		// types that are parsed from the string.
+		// int and oid are not a type that can be set in a tag.
+		case "int", "oid":
+			p.Type = part
+		// types parsed from the string as a time
+		case "utc", "generalized":
+			p.Type = part
+			params = append(params, part)
+		// base64 encoded asn1 value
+		case "raw":
+			p.Type = part
+		case "":
+			// skip
+		default:
+			params = append(params, part)
+		}
+	}
+	p.Params = strings.Join(params, ",")
+	return p
+}
+
+// marshalValue marshals the given value with the given params.
 //
-// The return value value can be any type depending on the OID ASN supports a great
-// number of formats, but Golang's ans1 package supports much fewer -- for now
-// support anything the golang asn1 marshaller supports.
+// The return value value can be any type depending on the OID. ASN supports a
+// great number of formats, but Golang's asn1 package supports much fewer -- for
+// now support anything the Golang asn1 marshaller supports.
 //
 // See https://www.openssl.org/docs/man1.0.2/man3/ASN1_generate_nconf.html
-func marshalExplicitValue(value, typ string) ([]byte, error) {
-	switch typ {
+func marshalValue(value, params string) ([]byte, error) {
+	p := parseFieldParameters(params)
+	// Marshal types without a tag support.
+	switch p.Type {
 	case "int":
 		i, err := strconv.Atoi(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid int value")
 		}
-		return asn1.MarshalWithParams(i, "explicit")
+		return asn1.MarshalWithParams(i, p.Params)
 	case "oid":
 		oid, err := parseObjectIdentifier(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid oid value")
 		}
-		return asn1.MarshalWithParams(oid, "explicit")
+		return asn1.MarshalWithParams(oid, p.Params)
 	case "raw":
 		// the raw type accepts a base64 encoded byte array which is passed unaltered into the ASN
 		// marshaller. By using this type users can add ASN1 data types manually into templates
@@ -470,30 +508,45 @@ func marshalExplicitValue(value, typ string) ([]byte, error) {
 		if !isUTF8String(value) {
 			return nil, fmt.Errorf("invalid utf8 value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,utf8")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "ia5":
 		if !isIA5String(value) {
 			return nil, fmt.Errorf("invalid ia5 value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,ia5")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "numeric":
 		if !isNumericString(value) {
 			return nil, fmt.Errorf("invalid numeric value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,numeric")
+		return asn1.MarshalWithParams(value, p.Params)
 	case "printable":
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,printable")
-	default:
-		// if it's an unknown type, default to printable - but use the entire
-		// value specified in case there is a semicolon in the value
+		return asn1.MarshalWithParams(value, p.Params)
+	case "utc", "generalized":
+		// This is the layout of Time.String() function
+		const defaultLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
+		t, err := time.Parse(defaultLayout, value)
+		if err != nil {
+			var err2 error
+			if t, err2 = time.Parse(time.RFC3339, value); err2 != nil {
+				return nil, errors.Wrapf(err, "invalid %s value", p.Type)
+			}
+		}
+		return asn1.MarshalWithParams(t, p.Params)
+	default: // if it's an unknown type, default to printable
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
-		return asn1.MarshalWithParams(value, "explicit,printable")
+		return asn1.MarshalWithParams(value, p.Params)
 	}
+}
+
+// marshalExplicitValue marshals the given value with given type and returns the
+// raw bytes to use. It will add the explicit tag to the final parameters.
+func marshalExplicitValue(value, typ string) ([]byte, error) {
+	return marshalValue(value, "explicit,"+typ)
 }
 
 // KeyUsage type represents the JSON array used to represent the key usages of a
@@ -1007,4 +1060,172 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 		Critical: subjectIsEmpty,
 		Value:    rawBytes,
 	}, nil
+}
+
+// SubjectAlternativeNames is a container for names extracted
+// from the X.509 Subject Alternative Names extension.
+type SubjectAlternativeNames struct {
+	DNSNames             []string
+	EmailAddresses       []string
+	IPAddresses          []net.IP
+	URIs                 []*url.URL
+	PermanentIdentifiers []PermanentIdentifier
+	HardwareModuleNames  []HardwareModuleName
+	TPMHardwareDetails   TPMHardwareDetails
+	//OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
+}
+
+// TPMHardwareDetails is a container for some details
+// for TPM hardware.
+type TPMHardwareDetails struct {
+	Manufacturer string // TODO(hs): use Manufacturer from TPM package? Need to fix import cycle, though
+	Model        string
+	Version      string
+}
+
+var (
+	oidTPMManufacturer = asn1.ObjectIdentifier{2, 23, 133, 2, 1}
+	oidTPMModel        = asn1.ObjectIdentifier{2, 23, 133, 2, 2}
+	oidTPMVersion      = asn1.ObjectIdentifier{2, 23, 133, 2, 3}
+)
+
+// ParseSubjectAlternativeNames parses the Subject Alternative Names
+// from the X.509 certificate `c`. SAN types supported by the Go stdlib,
+// including DNS names, IP addresses, email addresses and URLs, are copied
+// to the result first. After that, the raw extension bytes are parsed to
+// extract PermanentIdentifiers and HardwareModuleNames SANs.
+func ParseSubjectAlternativeNames(c *x509.Certificate) (sans SubjectAlternativeNames, err error) {
+	// the Certificate c is expected to have been processed before, so the
+	// SANs known by the Go stdlib are expected to have been populated already.
+	// These SANs are copied over to the result.
+	sans.DNSNames = c.DNSNames
+	sans.IPAddresses = c.IPAddresses
+	sans.EmailAddresses = c.EmailAddresses
+	sans.URIs = c.URIs
+
+	var sanExtension pkix.Extension
+	for _, ext := range c.Extensions {
+		if ext.Id.Equal(oidExtensionSubjectAltName) {
+			sanExtension = ext
+			break
+		}
+	}
+
+	if sanExtension.Value == nil {
+		return
+	}
+
+	directoryNames, otherNames, err := parseSubjectAltName(sanExtension)
+	if err != nil {
+		return sans, fmt.Errorf("failed parsing SubjectAltName extension: %w", err)
+	}
+
+	for _, otherName := range otherNames {
+		switch {
+		case otherName.TypeID.Equal(oidPermanentIdentifier):
+			permanentIdentifier, err := parsePermanentIdentifier(otherName.Value.FullBytes)
+			if err != nil {
+				return sans, fmt.Errorf("failed parsing PermanentIdentifier: %w", err)
+			}
+			sans.PermanentIdentifiers = append(sans.PermanentIdentifiers, permanentIdentifier)
+		case otherName.TypeID.Equal(oidHardwareModuleNameIdentifier):
+			hardwareModuleName, err := parseHardwareModuleName(otherName.Value.FullBytes)
+			if err != nil {
+				return sans, fmt.Errorf("failed parsing HardwareModuleName: %w", err)
+			}
+			sans.HardwareModuleNames = append(sans.HardwareModuleNames, hardwareModuleName)
+		default:
+			// TODO(hs): handle other types; defaulting to otherName?
+		}
+	}
+
+	tpmDetails := TPMHardwareDetails{}
+	for _, directoryName := range directoryNames {
+		for _, name := range directoryName.Names {
+			switch {
+			case name.Type.Equal(oidTPMManufacturer):
+				tpmDetails.Manufacturer = name.Value.(string)
+			case name.Type.Equal(oidTPMModel):
+				tpmDetails.Model = name.Value.(string)
+			case name.Type.Equal(oidTPMVersion):
+				tpmDetails.Version = name.Value.(string)
+			default:
+				// TODO(hs): handle other directoryNames?
+			}
+		}
+	}
+	sans.TPMHardwareDetails = tpmDetails
+
+	return
+}
+
+// https://datatracker.ietf.org/doc/html/rfc5280#page-35
+func parseSubjectAltName(ext pkix.Extension) (dirNames []pkix.Name, otherNames []otherName, err error) {
+	err = forEachSAN(ext.Value, func(generalName asn1.RawValue) error {
+		switch generalName.Tag {
+		case 0: // otherName
+			var on otherName
+			if _, err := asn1.UnmarshalWithParams(generalName.FullBytes, &on, "tag:0"); err != nil {
+				return fmt.Errorf("failed unmarshaling otherName: %w", err)
+			}
+			otherNames = append(otherNames, on)
+		case 4: // directoryName
+			var rdns pkix.RDNSequence
+			if _, err := asn1.Unmarshal(generalName.Bytes, &rdns); err != nil {
+				return fmt.Errorf("failed unmarshaling directoryName: %w", err)
+			}
+			var dirName pkix.Name
+			dirName.FillFromRDNSequence(&rdns)
+			dirNames = append(dirNames, dirName)
+		default:
+			// skipping the other tag values intentionally
+		}
+		return nil
+	})
+	return
+}
+
+func parsePermanentIdentifier(der []byte) (PermanentIdentifier, error) {
+	var permID asn1PermanentIdentifier
+	if _, err := asn1.UnmarshalWithParams(der, &permID, "explicit,tag:0"); err != nil {
+		return PermanentIdentifier{}, fmt.Errorf("failed unmarshaling der data: %w", err)
+	}
+	return PermanentIdentifier{Identifier: permID.IdentifierValue, Assigner: ObjectIdentifier(permID.Assigner)}, nil
+}
+
+func parseHardwareModuleName(der []byte) (HardwareModuleName, error) {
+	var hardwareModuleName asn1HardwareModuleName
+	if _, err := asn1.UnmarshalWithParams(der, &hardwareModuleName, "explicit,tag:0"); err != nil {
+		return HardwareModuleName{}, fmt.Errorf("failed unmarshaling der data: %w", err)
+	}
+	return HardwareModuleName{Type: ObjectIdentifier(hardwareModuleName.Type), SerialNumber: hardwareModuleName.SerialNumber}, nil
+}
+
+// Borrowed from the x509 package.
+func forEachSAN(extension []byte, callback func(ext asn1.RawValue) error) error {
+	var seq asn1.RawValue
+	rest, err := asn1.Unmarshal(extension, &seq)
+	if err != nil {
+		return err
+	} else if len(rest) != 0 {
+		return errors.New("x509: trailing data after X.509 extension")
+	}
+	if !seq.IsCompound || seq.Tag != 16 || seq.Class != 0 {
+		return asn1.StructuralError{Msg: "bad SAN sequence"}
+	}
+
+	rest = seq.Bytes
+	for len(rest) > 0 {
+		var v asn1.RawValue
+		rest, err = asn1.Unmarshal(rest, &v)
+		if err != nil {
+			return err
+		}
+
+		if err := callback(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

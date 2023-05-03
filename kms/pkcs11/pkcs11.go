@@ -228,7 +228,9 @@ func (k *PKCS11) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return errors.Wrap(err, "storeCertificate failed")
 	}
 	if req.Extractable {
-		template.Set(crypto11.CkaExtractable, true)
+		if err := template.Set(crypto11.CkaExtractable, true); err != nil {
+			return errors.Wrap(err, "storeCertificate failed")
+		}
 	}
 	if err := k.p11.ImportCertificateWithAttributes(template, req.Certificate); err != nil {
 		return errors.Wrap(err, "storeCertificate failed")
@@ -326,7 +328,9 @@ func generateKey(ctx P11, req *apiv1.CreateKeyRequest) (crypto11.Signer, error) 
 	}
 	private := public.Copy()
 	if req.Extractable {
-		private.Set(crypto11.CkaExtractable, true)
+		if err := private.Set(crypto11.CkaExtractable, true); err != nil {
+			return nil, err
+		}
 	}
 
 	bits := req.Bits

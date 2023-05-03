@@ -1,36 +1,24 @@
 //go:build windows
 // +build windows
 
-//nolint:errorlint,revive // copied code from github.com/google/go-attestation
 package key
 
 import (
 	"fmt"
+	"io"
 )
 
-func create(_, keyName string, config CreateConfig) ([]byte, error) {
+func create(_ io.ReadWriteCloser, keyName string, config CreateConfig) ([]byte, error) {
 	pcp, err := openPCP()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PCP: %w", err)
 	}
 	defer pcp.Close()
 
-	hnd, pub, blob, err := pcp.NewKey(keyName, &KeyConfig{Algorithm: Algorithm(config.Algorithm), Size: config.Size})
+	_, pub, _, err := pcp.NewKey(keyName, &KeyConfig{Algorithm: Algorithm(config.Algorithm), Size: config.Size})
 	if err != nil {
 		return nil, fmt.Errorf("pcp failed to mint application key: %w", err)
 	}
-
-	_, _ = hnd, blob
-
-	// tpmPub, err := tpm2.DecodePublic(pub)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("decode public key: %v", err)
-	// }
-
-	// pubKey, err := tpmPub.Key()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("access public key: %v", err)
-	// }
 
 	out := serializedKey{
 		Encoding:   keyEncodingOSManaged,

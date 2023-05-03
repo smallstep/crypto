@@ -11,6 +11,9 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_convertName(t *testing.T) {
@@ -349,10 +352,19 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"otherName printable", fields{"1.2.3.4", "printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
+		{"otherName utc", fields{"1.2.3.4", "utc:2023-03-29T02:03:57Z", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 22, 6, 3, 42, 3, 4, 160, 15, 23, 13}, []byte("230329020357Z")...),
+		}, false},
+		{"otherName generalizd", fields{"1.2.3.4", "generalized:2023-03-29T02:03:57Z", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 24, 6, 3, 42, 3, 4, 160, 17, 24, 15}, []byte("20230329020357Z")...),
+		}, false},
 		{"otherName default", fields{"1.2.3.4", "foo:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
 		{"otherName no type", fields{"1.2.3.4", "abc1234", nil}, asn1.RawValue{
+			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
+		}, false},
+		{"otherName whitespaces", fields{"1.2.3.4", ",,printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
 		{"fail dn", fields{"dn", "1234", nil}, asn1.RawValue{}, true},
@@ -387,6 +399,8 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"fail otherName ia5", fields{"1.2.3.4", "ia5:nötia5", nil}, asn1.RawValue{}, true},
 		{"fail otherName numeric", fields{"1.2.3.4", "numeric:abc", nil}, asn1.RawValue{}, true},
 		{"fail otherName printable", fields{"1.2.3.4", "printable:nötprintable", nil}, asn1.RawValue{}, true},
+		{"fail otherName utc", fields{"1.2.3.4", "utc:2023", nil}, asn1.RawValue{}, true},
+		{"fail otherName generalized", fields{"1.2.3.4", "generalized:2023-12-12", nil}, asn1.RawValue{}, true},
 		{"fail otherName default", fields{"1.2.3.4", "foo:nötprintable", nil}, asn1.RawValue{}, true},
 		{"fail otherName no type", fields{"1.2.3.4", "nötprintable", nil}, asn1.RawValue{}, true},
 	}
@@ -464,7 +478,9 @@ func TestKeyUsage_MarshalJSON(t *testing.T) {
 				t.Errorf("KeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
 			}
 			var unmarshaled KeyUsage
-			unmarshaled.UnmarshalJSON(got)
+			if err := unmarshaled.UnmarshalJSON(got); err != nil {
+				t.Errorf("KeyUsage.UnmarshalJSON() error = %v", err)
+			}
 			if unmarshaled != tt.k {
 				t.Errorf("KeyUsage.UnmarshalJSON(keyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.k)
 			}
@@ -582,7 +598,7 @@ func TestExtKeyUsage_MarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.eku.MarshalJSON()
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("ExtKeyUsage.MarshalJSON() = error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("ExtKeyUsage.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
 				return
@@ -591,7 +607,9 @@ func TestExtKeyUsage_MarshalJSON(t *testing.T) {
 				t.Errorf("ExtKeyUsage.MarshalJSON() = %q, want %q", string(got), tt.want)
 			}
 			var unmarshaled ExtKeyUsage
-			unmarshaled.UnmarshalJSON(got)
+			if err := unmarshaled.UnmarshalJSON(got); err != nil {
+				t.Errorf("ExtKeyUsage.UnmarshalJSON() error = %v", err)
+			}
 			if !reflect.DeepEqual(unmarshaled, tt.eku) {
 				t.Errorf("ExtKeyUsage.UnmarshalJSON(ExtKeyUsage.MarshalJSON) = %v, want %v", unmarshaled, tt.eku)
 			}
@@ -1348,6 +1366,107 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 			if !reflect.DeepEqual(gotCSR, tt.want) {
 				t.Errorf("createCertificateRequestSubjectAltNameExtension() = %v, want %v", gotCSR, tt.want)
 			}
+		})
+	}
+}
+
+func mustParseURL(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	require.NoError(t, err)
+	return u
+}
+
+func TestParseSubjectAlternativeNames(t *testing.T) {
+	permanentIdentifierSAN := SubjectAlternativeName{
+		Type:  PermanentIdentifierType,
+		Value: "12345",
+	}
+	permanentIdentifierSANExtension, err := createSubjectAltNameExtension([]string{"test"}, nil, nil, nil, []SubjectAlternativeName{permanentIdentifierSAN}, true)
+	require.NoError(t, err)
+	hardwareModuleNameSAN := SubjectAlternativeName{
+		Type:      HardwareModuleNameType,
+		ASN1Value: []byte(`{"type": "1.2.3.4", "serialNumber": "MTIzNDU2Nzg="}`),
+	}
+	hardwareModuleNameSANExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{hardwareModuleNameSAN}, true)
+	require.NoError(t, err)
+	tests := []struct {
+		name     string
+		cert     *x509.Certificate
+		wantSans SubjectAlternativeNames
+		expErr   error
+	}{
+		{
+			name: "ok/stdlib",
+			cert: &x509.Certificate{
+				DNSNames:       []string{"example.com"},
+				IPAddresses:    []net.IP{net.ParseIP("127.0.0.1")},
+				EmailAddresses: []string{"test@example.com"},
+				URIs:           []*url.URL{mustParseURL(t, "https://127.0.0.1")},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames:       []string{"example.com"},
+				IPAddresses:    []net.IP{net.ParseIP("127.0.0.1")},
+				EmailAddresses: []string{"test@example.com"},
+				URIs:           []*url.URL{mustParseURL(t, "https://127.0.0.1")},
+			},
+		},
+		{
+			name: "ok/permanent-identifier",
+			cert: &x509.Certificate{
+				DNSNames: []string{"example.com"},
+				Extensions: []pkix.Extension{
+					{
+						Id:       asn1.ObjectIdentifier(permanentIdentifierSANExtension.ID),
+						Critical: permanentIdentifierSANExtension.Critical,
+						Value:    permanentIdentifierSANExtension.Value,
+					},
+				},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames: []string{"example.com"},
+				PermanentIdentifiers: []PermanentIdentifier{
+					{
+						Identifier: "12345",
+					},
+				},
+			},
+		},
+		{
+			name: "ok/hardware-module-name",
+			cert: &x509.Certificate{
+				DNSNames: []string{"example.com"},
+				Extensions: []pkix.Extension{
+					{
+						Id:       asn1.ObjectIdentifier(hardwareModuleNameSANExtension.ID),
+						Critical: hardwareModuleNameSANExtension.Critical,
+						Value:    hardwareModuleNameSANExtension.Value,
+					},
+				},
+			},
+			wantSans: SubjectAlternativeNames{
+				DNSNames: []string{"example.com"},
+				HardwareModuleNames: []HardwareModuleName{
+					{
+						Type:         ObjectIdentifier([]int{1, 2, 3, 4}),
+						SerialNumber: []byte("12345678"),
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSans, err := ParseSubjectAlternativeNames(tt.cert)
+			if tt.expErr != nil {
+				if assert.Error(t, err) {
+					assert.EqualError(t, err, tt.expErr.Error())
+				}
+				assert.Empty(t, gotSans)
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantSans, gotSans)
 		})
 	}
 }

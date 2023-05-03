@@ -17,10 +17,14 @@ var (
 // ID models a TPM Manufacturer (or Vendor) ID.
 type ID uint32
 
+// MarshalJSON marshals the (numeric) TPM Manufacturer ID to
+// a JSON string representation, including quotes.
 func (id ID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strconv.FormatUint(uint64(id), 10))
 }
 
+// GetEncodings returns the ASCII and hexadecimal representations
+// of the manufacturer ID.
 func GetEncodings(id ID) (ascii, hexa string) {
 	b := [4]byte{}
 	binary.BigEndian.PutUint32(b[:], uint32(id))
@@ -31,6 +35,8 @@ func GetEncodings(id ID) (ascii, hexa string) {
 	return
 }
 
+// GetNameByASCII returns the manufacturer name based on its
+// ASCII identifier.
 func GetNameByASCII(ascii string) string {
 	if name, ok := manufacturerByASCII[ascii]; ok {
 		return name
@@ -88,6 +94,10 @@ func init() {
 		"TST5": "Test 5",
 		"TST6": "Test 6",
 		"TST7": "Test 7",
+
+		// FIDO Alliance; 0xFFFFF1D0; does not conform to the ASCII naming scheme
+		// Also see https://github.com/fido-alliance/conformance-test-tools-resources/issues/537
+		"FIDO": "FIDO Alliance", // NOTE: FIDO is not the official ASCII representation
 
 		// Others
 		"PRLS": "Parallels Desktop",

@@ -1,3 +1,19 @@
+// CODE COPIED FROM github.com/google/go-attestation; DO NOT EDIT!
+//
+// Copyright 2019 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
 //nolint:errorlint,revive // copied code from github.com/google/go-attestation
 package key
 
@@ -90,23 +106,6 @@ type CreateConfig struct {
 	// Size is used to specify the bit size of the key or elliptic curve. For
 	// example, '256' is used to specify curve P-256.
 	Size int
-}
-
-// Create creates a new TPM key without attesting it and returns a
-// serialized representation of it. The serialized format is compatible
-// with the `go-attestation` format. Most of the code in this package
-// is in fact copied from `go-attestation`, as large parts of its code
-// are not publicly available at the moment. The code is useful, as it
-// allows keys to be created in exactly the same way `go-attestation`
-// creates them, except without attesting them. Both types of keys can
-// be used for similar purposes, but only key attested by an AK can be
-// proved to be actually only resident in a TPM.
-//
-// TODO: it might be an option to make some more things public in the
-// `go-attestation` package, or to change some of the logic of the
-// `NewKey` function that makes the AK optional.
-func Create(deviceName, keyName string, config CreateConfig) ([]byte, error) {
-	return create(deviceName, keyName, config)
 }
 
 var tpmEkTemplate *tpm2.Public
@@ -270,8 +269,8 @@ func templateFromConfig(opts *KeyConfig) (tpm2.Public, error) {
 			tmpl.ECCParameters.Sign.Hash = tpm2.AlgSHA512
 			tmpl.ECCParameters.CurveID = tpm2.CurveNISTP521
 			tmpl.ECCParameters.Point = tpm2.ECPoint{
-				XRaw: make([]byte, 65),
-				YRaw: make([]byte, 65),
+				XRaw: make([]byte, 66),
+				YRaw: make([]byte, 66),
 			}
 		default:
 			return tmpl, fmt.Errorf("unsupported key size: %v", opts.Size)

@@ -1,24 +1,31 @@
 package azurekms
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/base64"
 	"io"
 	"reflect"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	"github.com/golang/mock/gomock"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
+
+type FuncMatcher func(x interface{}) bool
+
+func (f FuncMatcher) Matches(x interface{}) bool {
+	return f(x)
+}
+
+func (FuncMatcher) String() string { return "matches using a function" }
 
 func TestNewSigner(t *testing.T) {
 	key, err := keyutil.GenerateDefaultSigner()
@@ -28,23 +35,36 @@ func TestNewSigner(t *testing.T) {
 	pub := key.Public()
 	jwk := createJWK(t, pub)
 
-	client := mockClient(t)
-	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", "").Return(keyvault.KeyBundle{
-		Key: jwk,
+	m := mockClient(t)
+	m.EXPECT().GetKey(gomock.Any(), "my-key", "", nil).Return(azkeys.GetKeyResponse{
+		KeyBundle: azkeys.KeyBundle{
+			Key: jwk,
+		},
 	}, nil)
-	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", "my-version").Return(keyvault.KeyBundle{
-		Key: jwk,
+	m.EXPECT().GetKey(gomock.Any(), "my-key", "my-version", nil).Return(azkeys.GetKeyResponse{
+		KeyBundle: azkeys.KeyBundle{
+			Key: jwk,
+		},
 	}, nil)
-	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", "my-version").Return(keyvault.KeyBundle{
-		Key: jwk,
+	m.EXPECT().GetKey(gomock.Any(), "my-key", "my-version", nil).Return(azkeys.GetKeyResponse{
+		KeyBundle: azkeys.KeyBundle{
+			Key: jwk,
+		},
 	}, nil)
-	client.EXPECT().GetKey(gomock.Any(), "https://my-vault.vault.azure.net/", "not-found", "my-version").Return(keyvault.KeyBundle{}, errTest)
+	m.EXPECT().GetKey(gomock.Any(), "not-found", "my-version", nil).Return(azkeys.GetKeyResponse{}, errTest)
 
-	var noOptions DefaultOptions
+	client := newLazyClient("vault.azure.net", func(vaultURL string) (KeyVaultClient, error) {
+		if vaultURL == "https://fail.vault.azure.net/" {
+			return nil, errTest
+		}
+		return m, nil
+	})
+
+	var noOptions defaultOptions
 	type args struct {
-		client     KeyVaultClient
+		client     *lazyClient
 		signingKey string
-		defaults   DefaultOptions
+		defaults   defaultOptions
 	}
 	tests := []struct {
 		name    string
@@ -53,29 +73,27 @@ func TestNewSigner(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{client, "azurekms:vault=my-vault;name=my-key", noOptions}, &Signer{
-			client:       client,
-			vaultBaseURL: "https://my-vault.vault.azure.net/",
-			name:         "my-key",
-			version:      "",
-			publicKey:    pub,
+			client:    m,
+			name:      "my-key",
+			version:   "",
+			publicKey: pub,
 		}, false},
 		{"ok with version", args{client, "azurekms:name=my-key;vault=my-vault?version=my-version", noOptions}, &Signer{
-			client:       client,
-			vaultBaseURL: "https://my-vault.vault.azure.net/",
-			name:         "my-key",
-			version:      "my-version",
-			publicKey:    pub,
+			client:    m,
+			name:      "my-key",
+			version:   "my-version",
+			publicKey: pub,
 		}, false},
-		{"ok with options", args{client, "azurekms:name=my-key?version=my-version", DefaultOptions{Vault: "my-vault", ProtectionLevel: apiv1.HSM}}, &Signer{
-			client:       client,
-			vaultBaseURL: "https://my-vault.vault.azure.net/",
-			name:         "my-key",
-			version:      "my-version",
-			publicKey:    pub,
+		{"ok with options", args{client, "azurekms:name=my-key?version=my-version", defaultOptions{Vault: "my-vault", ProtectionLevel: apiv1.HSM}}, &Signer{
+			client:    m,
+			name:      "my-key",
+			version:   "my-version",
+			publicKey: pub,
 		}, false},
 		{"fail GetKey", args{client, "azurekms:name=not-found;vault=my-vault?version=my-version", noOptions}, nil, true},
 		{"fail vault", args{client, "azurekms:name=not-found;vault=", noOptions}, nil, true},
 		{"fail id", args{client, "azurekms:name=;vault=my-vault?version=my-version", noOptions}, nil, true},
+		{"fail get client", args{client, "azurekms:vault=fail;name=my-key", noOptions}, nil, true},
 		{"fail scheme", args{client, "kms:name=not-found;vault=my-vault?version=my-version", noOptions}, nil, true},
 	}
 	for _, tt := range tests {
@@ -122,7 +140,7 @@ func TestSigner_Public(t *testing.T) {
 }
 
 func TestSigner_Sign(t *testing.T) {
-	sign := func(kty, crv string, bits int, opts crypto.SignerOpts) (crypto.PublicKey, []byte, string, []byte) {
+	sign := func(kty, crv string, bits int, opts crypto.SignerOpts) (crypto.PublicKey, []byte, []byte, []byte) {
 		key, err := keyutil.GenerateSigner(kty, crv, bits)
 		if err != nil {
 			t.Fatal(err)
@@ -169,7 +187,7 @@ func TestSigner_Sign(t *testing.T) {
 			resultSig = sig
 		}
 
-		return key.Public(), h.Sum(nil), base64.RawURLEncoding.EncodeToString(resultSig), sig
+		return key.Public(), h.Sum(nil), resultSig, sig
 	}
 
 	p256, p256Digest, p256ResultSig, p256Sig := sign("EC", "P-256", 0, crypto.SHA256)
@@ -200,64 +218,60 @@ func TestSigner_Sign(t *testing.T) {
 	expects := []struct {
 		name       string
 		keyVersion string
-		alg        keyvault.JSONWebKeySignatureAlgorithm
+		alg        azkeys.JSONWebKeySignatureAlgorithm
 		digest     []byte
-		result     keyvault.KeyOperationResult
+		result     azkeys.SignResponse
 		err        error
 	}{
-		{"P-256", "", keyvault.ES256, p256Digest, keyvault.KeyOperationResult{
-			Result: &p256ResultSig,
+		{"P-256", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p256ResultSig},
 		}, nil},
-		{"P-384", "my-version", keyvault.ES384, p384Digest, keyvault.KeyOperationResult{
-			Result: &p386ResultSig,
+		{"P-384", "my-version", azkeys.JSONWebKeySignatureAlgorithmES384, p384Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p386ResultSig},
 		}, nil},
-		{"P-521", "my-version", keyvault.ES512, p521Digest, keyvault.KeyOperationResult{
-			Result: &p521ResultSig,
+		{"P-521", "my-version", azkeys.JSONWebKeySignatureAlgorithmES512, p521Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p521ResultSig},
 		}, nil},
-		{"RSA SHA256", "", keyvault.RS256, rsaSHA256Digest, keyvault.KeyOperationResult{
-			Result: &rsaSHA256ResultSig,
+		{"RSA SHA256", "", azkeys.JSONWebKeySignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA256ResultSig},
 		}, nil},
-		{"RSA SHA384", "", keyvault.RS384, rsaSHA384Digest, keyvault.KeyOperationResult{
-			Result: &rsaSHA384ResultSig,
+		{"RSA SHA384", "", azkeys.JSONWebKeySignatureAlgorithmRS384, rsaSHA384Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA384ResultSig},
 		}, nil},
-		{"RSA SHA512", "", keyvault.RS512, rsaSHA512Digest, keyvault.KeyOperationResult{
-			Result: &rsaSHA512ResultSig,
+		{"RSA SHA512", "", azkeys.JSONWebKeySignatureAlgorithmRS512, rsaSHA512Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA512ResultSig},
 		}, nil},
-		{"RSA-PSS SHA256", "", keyvault.PS256, rsaPSSSHA256Digest, keyvault.KeyOperationResult{
-			Result: &rsaPSSSHA256ResultSig,
+		{"RSA-PSS SHA256", "", azkeys.JSONWebKeySignatureAlgorithmPS256, rsaPSSSHA256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA256ResultSig},
 		}, nil},
-		{"RSA-PSS SHA384", "", keyvault.PS384, rsaPSSSHA384Digest, keyvault.KeyOperationResult{
-			Result: &rsaPSSSHA384ResultSig,
+		{"RSA-PSS SHA384", "", azkeys.JSONWebKeySignatureAlgorithmPS384, rsaPSSSHA384Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA384ResultSig},
 		}, nil},
-		{"RSA-PSS SHA512", "", keyvault.PS512, rsaPSSSHA512Digest, keyvault.KeyOperationResult{
-			Result: &rsaPSSSHA512ResultSig,
+		{"RSA-PSS SHA512", "", azkeys.JSONWebKeySignatureAlgorithmPS512, rsaPSSSHA512Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA512ResultSig},
 		}, nil},
 		// Errors
-		{"fail Sign", "", keyvault.RS256, rsaSHA256Digest, keyvault.KeyOperationResult{}, errTest},
-		{"fail sign length", "", keyvault.ES256, p256Digest, keyvault.KeyOperationResult{
-			Result: &rsaSHA256ResultSig,
+		{"fail Sign", "", azkeys.JSONWebKeySignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{}, errTest},
+		{"fail sign length", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA256ResultSig},
 		}, nil},
-		{"fail base64", "", keyvault.ES256, p256Digest, keyvault.KeyOperationResult{
-			Result: func() *string {
-				v := "😎"
-				return &v
-			}(),
+		{"fail base64", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: func() []byte { return []byte("😎") }()},
 		}, nil},
 	}
 	for _, e := range expects {
-		value := base64.RawURLEncoding.EncodeToString(e.digest)
-		client.EXPECT().Sign(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", e.keyVersion, keyvault.KeySignParameters{
-			Algorithm: e.alg,
-			Value:     &value,
-		}).Return(e.result, e.err)
+		ee := e
+		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x interface{}) bool {
+			p, ok := x.(azkeys.SignParameters)
+			return ok && *p.Algorithm == ee.alg && bytes.Equal(p.Value, ee.digest)
+		}), nil).Return(e.result, e.err)
 	}
 
 	type fields struct {
-		client       KeyVaultClient
-		vaultBaseURL string
-		name         string
-		version      string
-		publicKey    crypto.PublicKey
+		client    KeyVaultClient
+		name      string
+		version   string
+		publicKey crypto.PublicKey
 	}
 	type args struct {
 		rand   io.Reader
@@ -271,75 +285,74 @@ func TestSigner_Sign(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-		{"ok P-256", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", p256}, args{
+		{"ok P-256", fields{client, "my-key", "", p256}, args{
 			rand.Reader, p256Digest, crypto.SHA256,
 		}, p256Sig, false},
-		{"ok P-384", fields{client, "https://my-vault.vault.azure.net/", "my-key", "my-version", p384}, args{
+		{"ok P-384", fields{client, "my-key", "my-version", p384}, args{
 			rand.Reader, p384Digest, crypto.SHA384,
 		}, p384Sig, false},
-		{"ok P-521", fields{client, "https://my-vault.vault.azure.net/", "my-key", "my-version", p521}, args{
+		{"ok P-521", fields{client, "my-key", "my-version", p521}, args{
 			rand.Reader, p521Digest, crypto.SHA512,
 		}, p521Sig, false},
-		{"ok RSA SHA256", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaSHA256}, args{
+		{"ok RSA SHA256", fields{client, "my-key", "", rsaSHA256}, args{
 			rand.Reader, rsaSHA256Digest, crypto.SHA256,
 		}, rsaSHA256Sig, false},
-		{"ok RSA SHA384", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaSHA384}, args{
+		{"ok RSA SHA384", fields{client, "my-key", "", rsaSHA384}, args{
 			rand.Reader, rsaSHA384Digest, crypto.SHA384,
 		}, rsaSHA384Sig, false},
-		{"ok RSA SHA512", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaSHA512}, args{
+		{"ok RSA SHA512", fields{client, "my-key", "", rsaSHA512}, args{
 			rand.Reader, rsaSHA512Digest, crypto.SHA512,
 		}, rsaSHA512Sig, false},
-		{"ok RSA-PSS SHA256", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaPSSSHA256}, args{
+		{"ok RSA-PSS SHA256", fields{client, "my-key", "", rsaPSSSHA256}, args{
 			rand.Reader, rsaPSSSHA256Digest, &rsa.PSSOptions{
 				SaltLength: rsa.PSSSaltLengthAuto,
 				Hash:       crypto.SHA256,
 			},
 		}, rsaPSSSHA256Sig, false},
-		{"ok RSA-PSS SHA384", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaPSSSHA384}, args{
+		{"ok RSA-PSS SHA384", fields{client, "my-key", "", rsaPSSSHA384}, args{
 			rand.Reader, rsaPSSSHA384Digest, &rsa.PSSOptions{
 				SaltLength: rsa.PSSSaltLengthEqualsHash,
 				Hash:       crypto.SHA384,
 			},
 		}, rsaPSSSHA384Sig, false},
-		{"ok RSA-PSS SHA512", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaPSSSHA512}, args{
+		{"ok RSA-PSS SHA512", fields{client, "my-key", "", rsaPSSSHA512}, args{
 			rand.Reader, rsaPSSSHA512Digest, &rsa.PSSOptions{
 				SaltLength: 64,
 				Hash:       crypto.SHA512,
 			},
 		}, rsaPSSSHA512Sig, false},
-		{"fail Sign", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaSHA256}, args{
+		{"fail Sign", fields{client, "my-key", "", rsaSHA256}, args{
 			rand.Reader, rsaSHA256Digest, crypto.SHA256,
 		}, nil, true},
-		{"fail sign length", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", p256}, args{
+		{"fail sign length", fields{client, "my-key", "", p256}, args{
 			rand.Reader, p256Digest, crypto.SHA256,
 		}, nil, true},
-		{"fail base64", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", p256}, args{
+		{"fail base64", fields{client, "my-key", "", p256}, args{
 			rand.Reader, p256Digest, crypto.SHA256,
 		}, nil, true},
-		{"fail RSA-PSS salt length", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaPSSSHA256}, args{
+		{"fail RSA-PSS salt length", fields{client, "my-key", "", rsaPSSSHA256}, args{
 			rand.Reader, rsaPSSSHA256Digest, &rsa.PSSOptions{
 				SaltLength: 64,
 				Hash:       crypto.SHA256,
 			},
 		}, nil, true},
-		{"fail RSA Hash", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", rsaSHA256}, args{
+		{"fail RSA Hash", fields{client, "my-key", "", rsaSHA256}, args{
 			rand.Reader, rsaSHA256Digest, crypto.SHA1,
 		}, nil, true},
-		{"fail ECDSA Hash", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", p256}, args{
+		{"fail ECDSA Hash", fields{client, "my-key", "", p256}, args{
 			rand.Reader, p256Digest, crypto.MD5,
 		}, nil, true},
-		{"fail Ed25519", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", ed25519Key}, args{
+		{"fail Ed25519", fields{client, "my-key", "", ed25519Key}, args{
 			rand.Reader, []byte("message"), crypto.Hash(0),
 		}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Signer{
-				client:       tt.fields.client,
-				vaultBaseURL: tt.fields.vaultBaseURL,
-				name:         tt.fields.name,
-				version:      tt.fields.version,
-				publicKey:    tt.fields.publicKey,
+				client:    tt.fields.client,
+				name:      tt.fields.name,
+				version:   tt.fields.version,
+				publicKey: tt.fields.publicKey,
 			}
 			got, err := s.Sign(tt.args.rand, tt.args.digest, tt.args.opts)
 			if (err != nil) != tt.wantErr {
@@ -354,7 +367,7 @@ func TestSigner_Sign(t *testing.T) {
 }
 
 func TestSigner_Sign_signWithRetry(t *testing.T) {
-	sign := func(kty, crv string, bits int, opts crypto.SignerOpts) (crypto.PublicKey, []byte, string, []byte) {
+	sign := func(kty, crv string, bits int, opts crypto.SignerOpts) (crypto.PublicKey, []byte, []byte, []byte) {
 		key, err := keyutil.GenerateSigner(kty, crv, bits)
 		if err != nil {
 			t.Fatal(err)
@@ -401,56 +414,47 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 			resultSig = sig
 		}
 
-		return key.Public(), h.Sum(nil), base64.RawURLEncoding.EncodeToString(resultSig), sig
+		return key.Public(), h.Sum(nil), resultSig, sig
 	}
 
 	p256, p256Digest, p256ResultSig, p256Sig := sign("EC", "P-256", 0, crypto.SHA256)
-	okResult := keyvault.KeyOperationResult{
-		Result: &p256ResultSig,
+	okResult := azkeys.SignResponse{
+		KeyOperationResult: azkeys.KeyOperationResult{Result: p256ResultSig},
 	}
-	failResult := keyvault.KeyOperationResult{}
-	retryError := autorest.DetailedError{
-		Original: &azure.RequestError{
-			ServiceError: &azure.ServiceError{
-				InnerError: map[string]interface{}{
-					"code": "KeyNotYetValid",
-				},
-			},
-		},
-	}
+	failResult := azkeys.SignResponse{}
+	retryError := &azcore.ResponseError{StatusCode: 429}
 
 	client := mockClient(t)
 	expects := []struct {
 		name       string
 		keyVersion string
-		alg        keyvault.JSONWebKeySignatureAlgorithm
+		alg        azkeys.JSONWebKeySignatureAlgorithm
 		digest     []byte
-		result     keyvault.KeyOperationResult
+		result     azkeys.SignResponse
 		err        error
 	}{
-		{"ok 1", "", keyvault.ES256, p256Digest, failResult, retryError},
-		{"ok 2", "", keyvault.ES256, p256Digest, failResult, retryError},
-		{"ok 3", "", keyvault.ES256, p256Digest, failResult, retryError},
-		{"ok 4", "", keyvault.ES256, p256Digest, okResult, nil},
-		{"fail", "fail-version", keyvault.ES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", keyvault.ES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", keyvault.ES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", keyvault.ES256, p256Digest, failResult, retryError},
+		{"ok 1", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 2", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 3", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 4", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, okResult, nil},
+		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
 	}
 	for _, e := range expects {
-		value := base64.RawURLEncoding.EncodeToString(e.digest)
-		client.EXPECT().Sign(gomock.Any(), "https://my-vault.vault.azure.net/", "my-key", e.keyVersion, keyvault.KeySignParameters{
-			Algorithm: e.alg,
-			Value:     &value,
-		}).Return(e.result, e.err)
+		ee := e
+		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x interface{}) bool {
+			p, ok := x.(azkeys.SignParameters)
+			return ok && *p.Algorithm == ee.alg && bytes.Equal(p.Value, ee.digest)
+		}), nil).Return(e.result, e.err)
 	}
 
 	type fields struct {
-		client       KeyVaultClient
-		vaultBaseURL string
-		name         string
-		version      string
-		publicKey    crypto.PublicKey
+		client    KeyVaultClient
+		name      string
+		version   string
+		publicKey crypto.PublicKey
 	}
 	type args struct {
 		rand   io.Reader
@@ -464,21 +468,20 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-		{"ok", fields{client, "https://my-vault.vault.azure.net/", "my-key", "", p256}, args{
+		{"ok", fields{client, "my-key", "", p256}, args{
 			rand.Reader, p256Digest, crypto.SHA256,
 		}, p256Sig, false},
-		{"fail", fields{client, "https://my-vault.vault.azure.net/", "my-key", "fail-version", p256}, args{
+		{"fail", fields{client, "my-key", "fail-version", p256}, args{
 			rand.Reader, p256Digest, crypto.SHA256,
 		}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Signer{
-				client:       tt.fields.client,
-				vaultBaseURL: tt.fields.vaultBaseURL,
-				name:         tt.fields.name,
-				version:      tt.fields.version,
-				publicKey:    tt.fields.publicKey,
+				client:    tt.fields.client,
+				name:      tt.fields.name,
+				version:   tt.fields.version,
+				publicKey: tt.fields.publicKey,
 			}
 			got, err := s.Sign(tt.args.rand, tt.args.digest, tt.args.opts)
 			if (err != nil) != tt.wantErr {

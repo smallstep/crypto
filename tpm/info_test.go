@@ -28,7 +28,7 @@ func TestInterface_MarshalJSON(t *testing.T) {
 
 	b, err = json.Marshal(Interface(255))
 	require.NoError(t, err)
-	require.JSONEq(t, `"unknown"`, string(b))
+	require.JSONEq(t, `"unknown (255)"`, string(b))
 }
 
 func TestFirmwareVersion_MarshalJSON(t *testing.T) {
@@ -52,13 +52,13 @@ func TestVersion_MarshalJSON(t *testing.T) {
 
 	b, err = json.Marshal(Version(0))
 	require.NoError(t, err)
-	require.JSONEq(t, `"unknown"`, string(b))
+	require.JSONEq(t, `"unknown (0)"`, string(b))
 }
 
 func TestVersion_String(t *testing.T) {
 	require.Equal(t, "TPM 1.2", Version(attest.TPMVersion12).String())
 	require.Equal(t, "TPM 2.0", Version(attest.TPMVersion20).String())
-	require.Equal(t, "unknown", Version(0).String())
+	require.Equal(t, "unknown (0)", Version(0).String())
 }
 
 func Test_GetManufacturerByID(t *testing.T) {
@@ -69,6 +69,7 @@ func Test_GetManufacturerByID(t *testing.T) {
 	}{
 		{"infineon", 1229346816, Manufacturer{1229346816, "Infineon", "IFX", "49465800"}},
 		{"intel", 1229870147, Manufacturer{1229870147, "Intel", "INTC", "494E5443"}},
+		{"fido", 4294963664, Manufacturer{4294963664, "FIDO Alliance", "FIDO", "FFFFF1D0"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

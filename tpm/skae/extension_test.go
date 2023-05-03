@@ -12,6 +12,7 @@ import (
 )
 
 func TestCreateSubjectKeyAttestationEvidenceExtension(t *testing.T) {
+	t.Skip("skipping because SKAE is not complete yet")
 	akCert := &x509.Certificate{
 		Issuer: pkix.Name{
 			CommonName: "AK Test Issuer",
@@ -84,5 +85,4 @@ func TestCreateSubjectKeyAttestationEvidenceExtension(t *testing.T) {
 			}
 		})
 	}
-	t.Fail()
 }

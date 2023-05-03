@@ -1,6 +1,7 @@
 package jose
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -27,6 +29,22 @@ func TestThumbprint(t *testing.T) {
 			t.Fatal(err)
 		}
 		return jwk
+	}
+
+	x25519Key := x25519.PrivateKey{
+		0xe9, 0xc5, 0xce, 0xce, 0xf8, 0x2b, 0xd5, 0xee,
+		0x98, 0x72, 0xea, 0xd4, 0xc9, 0x66, 0xab, 0x3d,
+		0xc3, 0x19, 0xe5, 0xbd, 0xce, 0xe3, 0xcb, 0x03,
+		0x6c, 0xdc, 0xaf, 0x04, 0x61, 0xe1, 0xe3, 0x5d,
+	}
+
+	jwk := parse("testdata/p256.priv.json")
+	s, ok := jwk.Key.(crypto.Signer)
+	if !ok {
+		t.Fatalf("type %T does not implement crypto.Signer", jwk.Key)
+	}
+	opaqueKey := &JSONWebKey{
+		Key: NewOpaqueSigner(s),
 	}
 
 	type args struct {
@@ -44,7 +62,11 @@ func TestThumbprint(t *testing.T) {
 		{"rsa pub", args{parse("testdata/rsa.pub.json")}, "CIsktcixZ5GyfkoWFyEV0tp5foASmBV4D-W7clYrCu8", false},
 		{"okp", args{parse("testdata/okp.priv.json")}, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", false},
 		{"okp pub", args{parse("testdata/okp.pub.json")}, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", false},
+		{"x25519", args{&JSONWebKey{Key: x25519Key}}, "ir3T3GeoaZWjfhX-K_7c6E01N4mwLPehV_FyBAk28Vk", false},
+		{"x25519 pub", args{&JSONWebKey{Key: x25519Key.Public()}}, "ir3T3GeoaZWjfhX-K_7c6E01N4mwLPehV_FyBAk28Vk", false},
+		{"opaque", args{opaqueKey}, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", false},
 		{"fail oct", args{parse("testdata/oct.json")}, "", true},
+		{"fail x25519", args{&JSONWebKey{Key: x25519.PrivateKey("foobar")}}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -33,7 +34,7 @@ func (s *Filestore) AddKey(k *Key) error {
 	if err := s.store.Get(kk, nil); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
-			return s.store.Set(kk, serializedKey{Name: k.Name, Type: typeKey, Data: k.Data, AttestedBy: k.AttestedBy, CreatedAt: k.CreatedAt})
+			return s.store.Set(kk, k)
 		}
 		return err
 	}
@@ -42,11 +43,11 @@ func (s *Filestore) AddKey(k *Key) error {
 }
 
 func (s *Filestore) AddAK(ak *AK) error {
-	ka := keyForAK(ak.Name)
-	if err := s.store.Get(ka, nil); err != nil {
+	akKey := keyForAK(ak.Name)
+	if err := s.store.Get(akKey, nil); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
-			return s.store.Set(ka, serializedAK{Name: ak.Name, Type: typeKey, Data: ak.Data, CreatedAt: ak.CreatedAt})
+			return s.store.Set(akKey, ak)
 		}
 		return err
 	}
@@ -55,8 +56,8 @@ func (s *Filestore) AddAK(ak *AK) error {
 }
 
 func (s *Filestore) GetKey(name string) (*Key, error) {
-	sk := &serializedKey{}
-	if err := s.store.Get(keyForKey(name), sk); err != nil {
+	key := &Key{}
+	if err := s.store.Get(keyForKey(name), key); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
 			return nil, ErrNotFound
@@ -64,11 +65,11 @@ func (s *Filestore) GetKey(name string) (*Key, error) {
 		return nil, err
 	}
 
-	return &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt}, nil
+	return key, nil
 }
 
 func (s *Filestore) GetAK(name string) (*AK, error) {
-	ak := &serializedAK{}
+	ak := &AK{}
 	if err := s.store.Get(keyForAK(name), ak); err != nil {
 		nsk := &jsonstore.NoSuchKeyError{}
 		if errors.As(err, nsk) {
@@ -77,7 +78,33 @@ func (s *Filestore) GetAK(name string) (*AK, error) {
 		return nil, err
 	}
 
-	return &AK{Name: ak.Name, Data: ak.Data, CreatedAt: ak.CreatedAt}, nil
+	return ak, nil
+}
+
+func (s *Filestore) UpdateKey(k *Key) error {
+	kk := keyForKey(k.Name)
+	if err := s.store.Get(kk, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	return s.store.Set(kk, k)
+}
+
+func (s *Filestore) UpdateAK(ak *AK) error {
+	akKey := keyForAK(ak.Name)
+	if err := s.store.Get(akKey, nil); err != nil {
+		nsk := &jsonstore.NoSuchKeyError{}
+		if errors.As(err, nsk) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	return s.store.Set(akKey, ak)
 }
 
 func (s *Filestore) DeleteKey(name string) error {
@@ -112,12 +139,12 @@ func (s *Filestore) ListKeys() ([]*Key, error) {
 	keys := s.store.GetAll(regexp.MustCompile(keyPrefix))
 	var result = make([]*Key, 0, len(keys))
 	for _, v := range keys {
-		sk := &serializedKey{}
-		err := json.Unmarshal(v, sk)
+		key := &Key{}
+		err := json.Unmarshal(v, key)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed unmarshaling key: %w", err)
 		}
-		result = append(result, &Key{Name: sk.Name, Data: sk.Data, AttestedBy: sk.AttestedBy, CreatedAt: sk.CreatedAt})
+		result = append(result, key)
 	}
 
 	return result, nil
@@ -127,12 +154,12 @@ func (s *Filestore) ListAKs() ([]*AK, error) {
 	aks := s.store.GetAll(regexp.MustCompile(akPrefix))
 	var result = make([]*AK, 0, len(aks))
 	for _, v := range aks {
-		ak := &serializedAK{}
+		ak := &AK{}
 		err := json.Unmarshal(v, ak)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed unmarshaling AK: %w", err)
 		}
-		result = append(result, &AK{Name: ak.Name, Data: ak.Data, CreatedAt: ak.CreatedAt})
+		result = append(result, ak)
 	}
 
 	return result, nil
