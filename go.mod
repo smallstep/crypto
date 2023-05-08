@@ -25,7 +25,7 @@ require (
 	golang.org/x/crypto v0.8.0
 	golang.org/x/net v0.9.0
 	golang.org/x/sys v0.7.0
-	google.golang.org/api v0.120.0
+	google.golang.org/api v0.121.0
 	google.golang.org/grpc v1.54.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
@@ -47,7 +47,7 @@ require (
 	github.com/google/certificate-transparency-go v1.1.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-tspi v0.2.1-0.20190423175329-115dea689aad // indirect
-	github.com/google/s2a-go v0.1.2 // indirect
+	github.com/google/s2a-go v0.1.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/huandu/xstrings v1.3.3 // indirect
