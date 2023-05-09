@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/go-attestation/attest"
+	"github.com/smallstep/go-attestation/attest"
 )
 
 func TestCreateSubjectKeyAttestationEvidenceExtension(t *testing.T) {

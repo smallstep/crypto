@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-attestation/attest"
+	"github.com/smallstep/go-attestation/attest"
 	internalkey "go.step.sm/crypto/tpm/internal/key"
 	"go.step.sm/crypto/tpm/storage"
 )
