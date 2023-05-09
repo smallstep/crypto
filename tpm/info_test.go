@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/google/go-attestation/attest"
+	"github.com/smallstep/go-attestation/attest"
 	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/tpm/manufacturer"
 )

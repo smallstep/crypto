@@ -13,7 +13,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.259
 	github.com/go-piv/piv-go v1.11.0
 	github.com/golang/mock v1.6.0
-	github.com/google/go-attestation v0.4.4-0.20220404204839-8820d49b18d9
 	github.com/google/go-tpm v0.3.3
 	github.com/google/go-tpm-tools v0.3.11
 	github.com/googleapis/gax-go/v2 v2.8.0
@@ -21,6 +20,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
+	github.com/smallstep/go-attestation v0.4.4-0.20230509120429-e17291421738
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.8.0
 	golang.org/x/net v0.9.0
@@ -46,7 +46,7 @@ require (
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/certificate-transparency-go v1.1.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
-	github.com/google/go-tspi v0.2.1-0.20190423175329-115dea689aad // indirect
+	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/google/s2a-go v0.1.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
@@ -71,6 +71,3 @@ require (
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// relying on fork till changes get upstreamed.
-replace github.com/google/go-attestation => github.com/smallstep/go-attestation v0.4.4-0.20230224121042-1bcb20a75add

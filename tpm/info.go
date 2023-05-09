@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/google/go-attestation/attest"
+	"github.com/smallstep/go-attestation/attest"
 
 	"go.step.sm/crypto/tpm/manufacturer"
 )
