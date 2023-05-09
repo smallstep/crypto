@@ -731,8 +731,8 @@ github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrf
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262 h1:unQFBIznI+VYD1/1fApl1A+9VcBk+9dcqGfnePY87LY=
 github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262/go.mod h1:MyOHs9Po2fbM1LHej6sBUT8ozbxmMOFG+E+rx/GSGuc=
-github.com/smallstep/go-attestation v0.4.4-0.20230508132245-c6e083ccca74 h1:Fe8Jh/OYQJEG4DG4Lqsoxk/M7t1CoC1sLfbDJLvR2PM=
-github.com/smallstep/go-attestation v0.4.4-0.20230508132245-c6e083ccca74/go.mod h1:mk2hyNbyai1oon+ilW9t42BuBVw7ee8elDdgrPq4394=
+github.com/smallstep/go-attestation v0.4.4-0.20230509120429-e17291421738 h1:h+cZgVniTaE0uuRMdxTThLaJeuxsv4aas6oStz6f5VQ=
+github.com/smallstep/go-attestation v0.4.4-0.20230509120429-e17291421738/go.mod h1:mk2hyNbyai1oon+ilW9t42BuBVw7ee8elDdgrPq4394=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
 github.com/smartystreets/assertions v1.0.0/go.mod h1:kHHU4qYBaI3q23Pp3VPrmWhuIUrLW/7eUrw0BU5VaoM=
 github.com/smartystreets/go-aws-auth v0.0.0-20180515143844-0c1422d1fdb9/go.mod h1:SnhjPscd9TpLiy1LpzGSKh3bXCfxxXuqd9xmQJy3slM=
