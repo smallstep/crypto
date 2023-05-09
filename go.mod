@@ -3,9 +3,9 @@ module go.step.sm/crypto
 go 1.18
 
 require (
-	cloud.google.com/go/kms v1.10.1
+	cloud.google.com/go/kms v1.10.2
 	filippo.io/edwards25519 v1.0.0
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.5.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.6.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.2
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.10.0
 	github.com/Masterminds/sprig/v3 v3.2.3
@@ -26,7 +26,7 @@ require (
 	golang.org/x/net v0.9.0
 	golang.org/x/sys v0.7.0
 	google.golang.org/api v0.121.0
-	google.golang.org/grpc v1.54.0
+	google.golang.org/grpc v1.55.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
