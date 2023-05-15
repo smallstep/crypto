@@ -18,7 +18,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/google/go-attestation/attest"
+	"github.com/smallstep/go-attestation/attest"
 )
 
 // EK models a TPM Endorsement Key. The EK can be used to

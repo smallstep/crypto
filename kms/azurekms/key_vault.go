@@ -201,8 +201,13 @@ var createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.To
 	//    - Client credentials: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
 	//    - Client certificate: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_CERTIFICATE_PATH, AZURE_CLIENT_CERTIFICATE_PASSWORD (optional)
 	//    - Username and password: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_USERNAME, AZURE_PASSWORD
-	// 2. Managed identity credentials (MSI).
-	// 3. Azure CLI credential
+	// 2. Workload Identity, requires the following environment variables:
+	//    - AZURE_CLIENT_ID
+	//    - AZURE_FEDERATED_TOKEN_FILE
+	//    - AZURE_TENANT_ID
+	//    - AZURE_AUTHORITY_HOST (defaults to the environment ActiveDirectoryAuthorityHost)
+	// 3. Managed identity credentials (MSI).
+	// 4. Azure CLI credential
 	return azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
 		ClientOptions: clientOptions,
 		TenantID:      tenantID,

@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-attestation/attest"
-	x509ext "github.com/google/go-attestation/x509"
+	"github.com/smallstep/go-attestation/attest"
+	x509ext "github.com/smallstep/go-attestation/x509"
 
 	"go.step.sm/crypto/tpm/storage"
 )
