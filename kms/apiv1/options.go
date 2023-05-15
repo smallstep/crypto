@@ -61,7 +61,7 @@ func (e NotImplementedError) Error() string {
 }
 
 // AlreadyExistsError is the type of error returned if a key already exists. This
-// is currently only implmented on pkcs11.
+// is currently only implmented for pkcs11 and tpmkms.
 type AlreadyExistsError struct {
 	Message string
 }
@@ -144,7 +144,7 @@ func (o *Options) Validate() error {
 	switch Type(typ) {
 	case DefaultKMS, SoftKMS: // Go crypto based kms.
 	case CloudKMS, AmazonKMS, AzureKMS: // Cloud based kms.
-	case YubiKey, PKCS11: // Hardware based kms.
+	case YubiKey, PKCS11, TPMKMS: // Hardware based kms.
 	case SSHAgentKMS, CAPIKMS: // Others
 	default:
 		return fmt.Errorf("unsupported kms type %s", o.Type)
