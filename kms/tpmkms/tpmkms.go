@@ -1,5 +1,5 @@
-//go:build cgo && !notpmkms
-// +build cgo,!notpmkms
+//go:build !notpmkms
+// +build !notpmkms
 
 package tpmkms
 
@@ -7,10 +7,8 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"strings"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -57,7 +55,7 @@ func New(ctx context.Context, opts apiv1.Options) (*TPMKMS, error) {
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
 		}
 		if device := u.Get("device"); device != "" {
 			tpmOpts = append(tpmOpts, tpm.WithDeviceName(device))
@@ -65,21 +63,21 @@ func New(ctx context.Context, opts apiv1.Options) (*TPMKMS, error) {
 		if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
 			tpmOpts = append(tpmOpts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
 		}
+		// TODO(hs): initialisation settings for attestation CA; see CLI implementation
 	}
 
-	tpm, err := tpm.New(tpmOpts...)
+	instance, err := tpm.New(tpmOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new TPM: %w", err)
 	}
 
 	return &TPMKMS{
-		tpm: tpm,
+		tpm: instance,
 	}, nil
 }
 
 // CreateKey generates a new key in the TPM KMS and returns the public key.
 func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
-
 	switch {
 	case req.Name == "":
 		return nil, errors.New("createKeyRequest 'name' cannot be empty")
@@ -89,14 +87,9 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 	properties, err := parseNameURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing 'name': %w", err)
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	if properties.ak && properties.attestBy != "" {
-		return nil, errors.New(`"ak" and "attestBy" are mutually exclusive`)
-	}
-
-	ctx := context.Background()
 	v, ok := signatureAlgorithmMapping[req.SignatureAlgorithm]
 	if !ok {
 		return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", req.SignatureAlgorithm)
@@ -111,19 +104,18 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		size = v.Curve
 	}
 
+	ctx := context.Background()
 	if properties.ak {
 		ak, err := k.tpm.CreateAK(ctx, properties.name)
 		if err != nil {
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
 			}
-			return nil, fmt.Errorf("failing creating ak: %w", err)
+			return nil, fmt.Errorf("failed creating AK: %w", err)
 		}
+		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
 		return &apiv1.CreateKeyResponse{
-			Name: ak.Name(),
-			CreateSignerRequest: apiv1.CreateSignerRequest{
-				SigningKey: ak.Name(),
-			},
+			Name: createdAKURI,
 		}, nil
 	}
 
@@ -139,7 +131,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
 			}
-			return nil, fmt.Errorf("failing creating attested key: %w", err)
+			return nil, fmt.Errorf("failed creating attested key: %w", err)
 		}
 	} else {
 		config := tpm.CreateKeyConfig{
@@ -151,23 +143,23 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
 			}
-			return nil, fmt.Errorf("failing creating key: %w", err)
+			return nil, fmt.Errorf("failed creating key: %w", err)
 		}
 	}
 
 	signer, err := key.Signer(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failing getting signer for key: %w", err)
+		return nil, fmt.Errorf("failed getting signer for key: %w", err)
 	}
 
 	priv, ok := signer.(crypto.PrivateKey)
 	if !ok {
-		return nil, errors.New("failing getting private key")
+		return nil, errors.New("failed getting private key")
 	}
 
-	createdKeyURI := fmt.Sprintf("%s:name=%s", Scheme, key.Name())
-	if properties.ak {
-		createdKeyURI = fmt.Sprintf("%s;ak=true", createdKeyURI)
+	createdKeyURI := fmt.Sprintf("tpmkms:name=%s", key.Name())
+	if properties.attestBy != "" {
+		createdKeyURI = fmt.Sprintf("%s;attest-by=%s", createdKeyURI, key.AttestedBy())
 	}
 
 	return &apiv1.CreateKeyResponse{
@@ -178,41 +170,6 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			SigningKey: createdKeyURI,
 		},
 	}, nil
-}
-
-type objectProperties struct {
-	uri            string
-	name           string
-	ak             bool
-	attestBy       string
-	qualifyingData []byte
-}
-
-func parseNameURI(nameURI string) (o objectProperties, err error) {
-	o.uri = nameURI
-
-	if nameURI == "" {
-		return
-	}
-
-	if strings.HasPrefix(nameURI, "tpmkms:") {
-		u, err := uri.Parse(nameURI)
-		if err != nil {
-			return o, fmt.Errorf("failed parsing %q as URL: %w", nameURI, err)
-		}
-		o.name = u.Get("name")
-		o.ak = u.GetBool("ak")
-		o.attestBy = u.Get("attestBy")
-		if qualifyingData := u.Get("qualifying-data"); qualifyingData != "" {
-			b, err := base64.StdEncoding.DecodeString(qualifyingData)
-			if err != nil {
-				return o, fmt.Errorf("failed decoding qualifying-data: %w", err)
-			}
-			o.qualifyingData = b
-		}
-	}
-
-	return
 }
 
 // CreateSigner creates a signer using a key present in the TPM KMS.
@@ -227,7 +184,7 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 
 	properties, err := parseNameURI(req.SigningKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing 'SigningKey': %w", err)
+		return nil, fmt.Errorf("failed parsing %q: %w", req.SigningKey, err)
 	}
 
 	if properties.ak {
@@ -237,12 +194,12 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	ctx := context.Background()
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting key %q: %w", properties.name, err)
+		return nil, err
 	}
 
 	signer, err := key.Signer(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failing getting signer for key %q: %w", properties.name, err)
+		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
 	}
 
 	return signer, nil
@@ -256,7 +213,7 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 
 	properties, err := parseNameURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing 'name': %w", err)
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
 	if properties.ak {
@@ -266,7 +223,7 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 	ctx := context.Background()
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting key %q: %w", properties.name, err)
+		return nil, err
 	}
 
 	signer, err := key.Signer(ctx)
@@ -284,11 +241,11 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 
 	properties, err := parseNameURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing 'name': %w", err)
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
 	ctx := context.Background()
-	var cert *x509.Certificate
+	var cert *x509.Certificate // TODO: support returning chain?
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
@@ -298,13 +255,13 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	} else {
 		key, err := k.tpm.GetKey(ctx, properties.name)
 		if err != nil {
-			return nil, fmt.Errorf("failed getting key %q: %w", properties.name, err)
+			return nil, err
 		}
-		cert = key.Certificate() // TODO: support returning chain?
+		cert = key.Certificate()
 	}
 
 	if cert == nil {
-		return nil, fmt.Errorf("failed getting certificate for key %q: %w", properties.name, err)
+		return nil, fmt.Errorf("failed getting certificate for key %q: no certificate stored", properties.name)
 	}
 
 	return cert, nil
@@ -316,7 +273,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	properties, err := parseNameURI(req.Name)
 	if err != nil {
-		return fmt.Errorf("failed parsing 'name': %w", err)
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
 	ctx := context.Background()
@@ -332,7 +289,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	} else {
 		key, err := k.tpm.GetKey(ctx, properties.name)
 		if err != nil {
-			return fmt.Errorf("failed getting key %q: %w", properties.name, err)
+			return err
 		}
 
 		err = key.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate}) // TODO: support chain in request?
@@ -349,13 +306,12 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, errors.New("CreateAttestationRequest 'name' cannot be empty")
 	}
 
-	ctx := context.Background()
-
 	properties, err := parseNameURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing 'name': %w", err)
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
+	ctx := context.Background()
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting key %q: %w", properties.name, err)
