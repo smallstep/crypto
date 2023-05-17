@@ -103,10 +103,10 @@ func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.Decry
 	}
 
 	if !response.VerifiedCiphertextCrc32C {
-		return nil, fmt.Errorf("cloudKMS AsymmetricDecrypt: request corrupted in-transit")
+		return nil, errors.New("cloudKMS AsymmetricDecrypt: request corrupted in-transit")
 	}
 	if int64(crc32c(response.Plaintext)) != response.PlaintextCrc32C.Value {
-		return nil, fmt.Errorf("cloudKMS AsymmetricDecrypt: response corrupted in-transit")
+		return nil, errors.New("cloudKMS AsymmetricDecrypt: response corrupted in-transit")
 	}
 
 	return response.Plaintext, nil
