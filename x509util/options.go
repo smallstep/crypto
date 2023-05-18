@@ -92,6 +92,53 @@ func WithTemplateFile(path string, data TemplateData) Option {
 	}
 }
 
+// Options are the options that can be passed to NewCertificate.
+type FromX509Options struct {
+	CertBuffer *bytes.Buffer
+}
+
+func (o *FromX509Options) apply(c *x509.Certificate, opts []NewCertificateFromX509Option) (*FromX509Options, error) {
+	for _, fn := range opts {
+		if err := fn(c, o); err != nil {
+			return o, err
+		}
+	}
+	return o, nil
+}
+
+// NewCertificateFromX509Option is the type used as a variadic argument in NewCertificateFromX509Option.
+type NewCertificateFromX509Option func(c *x509.Certificate, o *FromX509Options) error
+
+// FromX509 WithTemplate is an options that executes the given template text with the
+// given data.
+func FromX509WithTemplate(text string, data TemplateData) NewCertificateFromX509Option {
+	return func(c *x509.Certificate, o *FromX509Options) error {
+		terr := new(TemplateError)
+		funcMap := templates.GetFuncMap(&terr.Message)
+		// asn1 methods
+		funcMap["asn1Enc"] = asn1Encode
+		funcMap["asn1Marshal"] = asn1Marshal
+		funcMap["asn1Seq"] = asn1Sequence
+		funcMap["asn1Set"] = asn1Set
+
+		// Parse template
+		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
+		if err != nil {
+			return errors.Wrapf(err, "error parsing template")
+		}
+
+		buf := new(bytes.Buffer)
+		if err := tmpl.Execute(buf, data); err != nil {
+			if terr.Message != "" {
+				return terr
+			}
+			return errors.Wrapf(err, "error executing template")
+		}
+		o.CertBuffer = buf
+		return nil
+	}
+}
+
 func asn1Encode(str string) (string, error) {
 	value, params := str, "printable"
 	if strings.Contains(value, sanTypeSeparator) {
