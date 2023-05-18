@@ -41,6 +41,16 @@ func NewFile(path string) *URI {
 	}
 }
 
+// NewOpaque returns a uri with the given scheme and the given opaque.
+func NewOpaque(scheme, opaque string) *URI {
+	return &URI{
+		URL: &url.URL{
+			Scheme: scheme,
+			Opaque: opaque,
+		},
+	}
+}
+
 // HasScheme returns true if the given uri has the given scheme, false otherwise.
 func HasScheme(scheme, rawuri string) bool {
 	u, err := url.Parse(rawuri)
