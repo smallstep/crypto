@@ -168,6 +168,7 @@ func TestDecrypter_Decrypt(t *testing.T) {
 			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(int64(crc32c([]byte("wrong")))), VerifiedCiphertextCrc32C: true}, nil
 		},
 	}
+	var nilOpts *rsa.OAEPOptions
 	type fields struct {
 		client        KeyManagementClient
 		decryptionKey string
@@ -212,6 +213,20 @@ func TestDecrypter_Decrypt(t *testing.T) {
 			args: args{
 				rand:       rand.Reader,
 				ciphertext: []byte("data"),
+			},
+			want: []byte("decrypted"),
+		},
+		{
+			name: "ok/nil-oaep-opts",
+			fields: fields{
+				client:        okClient,
+				decryptionKey: keyName,
+				publicKey:     pk,
+			},
+			args: args{
+				rand:       rand.Reader,
+				ciphertext: []byte("data"),
+				opts:       nilOpts,
 			},
 			want: []byte("decrypted"),
 		},

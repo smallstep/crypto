@@ -72,7 +72,7 @@ func (d *Decrypter) Public() crypto.PublicKey {
 //
 // Also see https://cloud.google.com/kms/docs/algorithms#asymmetric_encryption_algorithms.
 func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
-	if ropts, ok := opts.(*rsa.OAEPOptions); ok {
+	if ropts, ok := opts.(*rsa.OAEPOptions); ok && ropts != nil {
 		if len(ropts.Label) > 0 {
 			return nil, errors.New("cloudKMS does not support RSA-OAEP label")
 		}
