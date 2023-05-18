@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -84,7 +85,7 @@ func (k *SoftKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 		return sig, nil
 	case req.SigningKey != "":
-		v, err := pemutil.Read(req.SigningKey, opts...)
+		v, err := pemutil.Read(filename(req.SigningKey), opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +128,7 @@ func (k *SoftKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 // GetPublicKey returns the public key from the file passed in the request name.
 func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	v, err := pemutil.Read(req.Name)
+	v, err := pemutil.Read(filename(req.Name))
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +164,7 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 		}
 		return decrypter, nil
 	case req.DecryptionKey != "":
-		v, err := pemutil.Read(req.DecryptionKey, opts...)
+		v, err := pemutil.Read(filename(req.DecryptionKey), opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -175,4 +176,11 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	default:
 		return nil, errors.New("failed to load softKMS: please define decryptionKeyPEM or decryptionKey")
 	}
+}
+
+func filename(s string) string {
+	if u, err := uri.ParseWithScheme(string(apiv1.SoftKMS), s); err == nil {
+		return u.Opaque
+	}
+	return s
 }
