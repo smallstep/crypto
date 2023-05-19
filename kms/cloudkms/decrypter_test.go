@@ -352,7 +352,7 @@ func TestDecrypter_Decrypt(t *testing.T) {
 func Test_crc32c(t *testing.T) {
 	tests := []struct {
 		name string
-		want uint32
+		want int64
 	}{
 		{"123456789", 0xe3069283},
 		{"The quick brown fox jumps over the lazy dog", 0x22620404},

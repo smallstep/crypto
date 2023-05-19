@@ -68,7 +68,8 @@ func (d *Decrypter) Public() crypto.PublicKey {
 
 // Decrypt decrypts ciphertext using the decryption key backed by Google Cloud KMS and returns
 // the plaintext bytes. An error is returned when decryption fails. Google Cloud KMS only supports
-// RSA keys with 2048, 3072 or 4096 bits and will always use OAEP. Labels are not supported.
+// RSA keys with 2048, 3072 or 4096 bits and will always use OAEP. It supports SHA1, SHA256 and
+// SHA512. Labels are not supported.
 //
 // Also see https://cloud.google.com/kms/docs/algorithms#asymmetric_encryption_algorithms.
 func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
@@ -87,11 +88,10 @@ func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.Decry
 		return nil, errors.New("cloudKMS does not support PKCS #1 v1.5 decryption")
 	}
 
-	ciphertextCRC32C := crc32c(ciphertext)
 	req := &kmspb.AsymmetricDecryptRequest{
 		Name:             d.decryptionKey,
 		Ciphertext:       ciphertext,
-		CiphertextCrc32C: wrapperspb.Int64(int64(ciphertextCRC32C)),
+		CiphertextCrc32C: wrapperspb.Int64(crc32c(ciphertext)),
 	}
 
 	ctx, cancel := defaultContext()
@@ -105,16 +105,16 @@ func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.Decry
 	if !response.VerifiedCiphertextCrc32C {
 		return nil, errors.New("cloudKMS AsymmetricDecrypt: request corrupted in-transit")
 	}
-	if int64(crc32c(response.Plaintext)) != response.PlaintextCrc32C.Value {
+	if crc32c(response.Plaintext) != response.PlaintextCrc32C.Value {
 		return nil, errors.New("cloudKMS AsymmetricDecrypt: response corrupted in-transit")
 	}
 
 	return response.Plaintext, nil
 }
 
-func crc32c(data []byte) uint32 {
+func crc32c(data []byte) int64 {
 	t := crc32.MakeTable(crc32.Castagnoli)
-	return crc32.Checksum(data, t)
+	return int64(crc32.Checksum(data, t))
 }
 
 var _ apiv1.Decrypter = (*CloudKMS)(nil)
