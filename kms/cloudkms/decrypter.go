@@ -68,6 +68,9 @@ func (d *Decrypter) Public() crypto.PublicKey {
 
 // validateOAEPOptions validates the RSA OAEP options provided.
 func validateOAEPOptions(o *rsa.OAEPOptions) error {
+	if o == nil { // var o *rsa.OAEPOptions; nothing to verify
+		return nil
+	}
 	if len(o.Label) > 0 {
 		return errors.New("cloudKMS does not support RSA-OAEP label")
 	}
@@ -93,9 +96,6 @@ func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.Decry
 	}
 	switch o := opts.(type) {
 	case *rsa.OAEPOptions:
-		if o == nil { // var o *rsa.OAEPOptions; nothing to verify
-			break
-		}
 		if err := validateOAEPOptions(o); err != nil {
 			return nil, err
 		}
