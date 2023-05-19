@@ -66,26 +66,43 @@ func (d *Decrypter) Public() crypto.PublicKey {
 	return d.publicKey
 }
 
+// validateOAEPOptions validates the RSA OAEP options provided.
+func validateOAEPOptions(o *rsa.OAEPOptions) error {
+	if len(o.Label) > 0 {
+		return errors.New("cloudKMS does not support RSA-OAEP label")
+	}
+	switch o.Hash {
+	case crypto.Hash(0), crypto.SHA1, crypto.SHA256, crypto.SHA512:
+		return nil
+	default:
+		return fmt.Errorf("cloudKMS does not support hash algorithm %q with RSA-OAEP", o.Hash)
+	}
+}
+
 // Decrypt decrypts ciphertext using the decryption key backed by Google Cloud KMS and returns
 // the plaintext bytes. An error is returned when decryption fails. Google Cloud KMS only supports
 // RSA keys with 2048, 3072 or 4096 bits and will always use OAEP. It supports SHA1, SHA256 and
-// SHA512. Labels are not supported.
+// SHA512. Labels are not supported. Before calling out to GCP, some validation is performed
+// so that known bad parameters are detected client-side and a more meaningful error is returned
+// for those cases.
 //
 // Also see https://cloud.google.com/kms/docs/algorithms#asymmetric_encryption_algorithms.
 func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
-	if ropts, ok := opts.(*rsa.OAEPOptions); ok && ropts != nil {
-		if len(ropts.Label) > 0 {
-			return nil, errors.New("cloudKMS does not support RSA-OAEP label")
-		}
-		switch ropts.Hash {
-		case crypto.SHA1, crypto.SHA256, crypto.SHA512:
-			break
-		default:
-			return nil, fmt.Errorf("cloudKMS does not support hash algorithm %q with RSA-OAEP", ropts.Hash)
-		}
+	if opts == nil {
+		opts = &rsa.OAEPOptions{}
 	}
-	if _, ok := opts.(*rsa.PKCS1v15DecryptOptions); ok {
+	switch o := opts.(type) {
+	case *rsa.OAEPOptions:
+		if o == nil { // var o *rsa.OAEPOptions; nothing to verify
+			break
+		}
+		if err := validateOAEPOptions(o); err != nil {
+			return nil, err
+		}
+	case *rsa.PKCS1v15DecryptOptions:
 		return nil, errors.New("cloudKMS does not support PKCS #1 v1.5 decryption")
+	default:
+		return nil, errors.New("invalid options for Decrypt")
 	}
 
 	req := &kmspb.AsymmetricDecryptRequest{
