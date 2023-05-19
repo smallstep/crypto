@@ -150,7 +150,7 @@ func TestDecrypter_Decrypt(t *testing.T) {
 	keyName := "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"
 	okClient := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
-			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(int64(crc32c([]byte("decrypted")))), VerifiedCiphertextCrc32C: true}, nil
+			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("decrypted"))), VerifiedCiphertextCrc32C: true}, nil
 		},
 	}
 	failClient := &MockClient{
@@ -160,12 +160,12 @@ func TestDecrypter_Decrypt(t *testing.T) {
 	}
 	requestCRC32Client := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
-			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(int64(crc32c([]byte("decrypted")))), VerifiedCiphertextCrc32C: false}, nil
+			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("decrypted"))), VerifiedCiphertextCrc32C: false}, nil
 		},
 	}
 	responseCRC32Client := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
-			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(int64(crc32c([]byte("wrong")))), VerifiedCiphertextCrc32C: true}, nil
+			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("wrong"))), VerifiedCiphertextCrc32C: true}, nil
 		},
 	}
 	var nilOpts *rsa.OAEPOptions
