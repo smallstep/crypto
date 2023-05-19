@@ -11,6 +11,7 @@ type MockClient struct {
 	close                  func() error
 	getPublicKey           func(context.Context, *kmspb.GetPublicKeyRequest, ...gax.CallOption) (*kmspb.PublicKey, error)
 	asymmetricSign         func(context.Context, *kmspb.AsymmetricSignRequest, ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error)
+	asymmetricDecrypt      func(context.Context, *kmspb.AsymmetricDecryptRequest, ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error)
 	createCryptoKey        func(context.Context, *kmspb.CreateCryptoKeyRequest, ...gax.CallOption) (*kmspb.CryptoKey, error)
 	getKeyRing             func(context.Context, *kmspb.GetKeyRingRequest, ...gax.CallOption) (*kmspb.KeyRing, error)
 	createKeyRing          func(context.Context, *kmspb.CreateKeyRingRequest, ...gax.CallOption) (*kmspb.KeyRing, error)
@@ -27,6 +28,10 @@ func (m *MockClient) GetPublicKey(ctx context.Context, req *kmspb.GetPublicKeyRe
 
 func (m *MockClient) AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRequest, opts ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
 	return m.asymmetricSign(ctx, req, opts...)
+}
+
+func (m *MockClient) AsymmetricDecrypt(ctx context.Context, req *kmspb.AsymmetricDecryptRequest, opts ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
+	return m.asymmetricDecrypt(ctx, req, opts...)
 }
 
 func (m *MockClient) CreateCryptoKey(ctx context.Context, req *kmspb.CreateCryptoKeyRequest, opts ...gax.CallOption) (*kmspb.CryptoKey, error) {
