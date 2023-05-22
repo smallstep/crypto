@@ -249,7 +249,7 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
-			return nil, fmt.Errorf("failed getting AK %q: %w", properties.name, err)
+			return nil, err
 		}
 		cert = ak.Certificate()
 	} else {
@@ -261,7 +261,7 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	}
 
 	if cert == nil {
-		return nil, fmt.Errorf("failed getting certificate for key %q: no certificate stored", properties.name)
+		return nil, fmt.Errorf("failed getting certificate for %q: no certificate stored", properties.name)
 	}
 
 	return cert, nil
@@ -280,7 +280,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
-			return fmt.Errorf("failed getting AK %q: %w", properties.name, err)
+			return err
 		}
 		err = ak.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate})
 		if err != nil {

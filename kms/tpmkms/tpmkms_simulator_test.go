@@ -528,7 +528,11 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 	}
 	key, err := instance.CreateKey(ctx, "key1", config)
 	require.NoError(t, err)
+	ak, err := instance.CreateAK(ctx, "ak1")
+	require.NoError(t, err)
 	_, err = instance.CreateKey(ctx, "keyWithoutCertificate", config)
+	require.NoError(t, err)
+	_, err = instance.CreateAK(ctx, "akWithoutCertificate")
 	require.NoError(t, err)
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
@@ -552,6 +556,17 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 	require.NotNil(t, cert)
 	err = key.SetCertificateChain(ctx, []*x509.Certificate{cert, ca.Intermediate})
 	require.NoError(t, err)
+	akPub := ak.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+	template = &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testak",
+		},
+		PublicKey: akPub,
+	}
+	akCert, err := ca.Sign(template)
+	err = ak.SetCertificateChain(ctx, []*x509.Certificate{akCert})
+	require.NoError(t, err)
 	type fields struct {
 		tpm *tpm.TPM
 	}
@@ -565,7 +580,18 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		expErr error
 	}{
 		{
-			name: "ok",
+			name: "ok/ak",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.LoadCertificateRequest{
+					Name: "tpmkms:name=ak1;ak=true",
+				},
+			},
+		},
+		{
+			name: "ok/key",
 			fields: fields{
 				tpm: instance,
 			},
@@ -588,6 +614,18 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 			expErr: errors.New("loadCertificateRequest 'name' cannot be empty"),
 		},
 		{
+			name: "fail/unknown-ak",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.LoadCertificateRequest{
+					Name: "tpmkms:name=unknown-ak;ak=true",
+				},
+			},
+			expErr: fmt.Errorf(`failed getting AK "unknown-ak": not found`),
+		},
+		{
 			name: "fail/unknown-key",
 			fields: fields{
 				tpm: instance,
@@ -600,6 +638,18 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 			expErr: fmt.Errorf(`failed getting key "unknown-key": not found`),
 		},
 		{
+			name: "fail/ak-without-certificate",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.LoadCertificateRequest{
+					Name: "tpmkms:name=akWithoutCertificate;ak=true",
+				},
+			},
+			expErr: fmt.Errorf(`failed getting certificate for "akWithoutCertificate": no certificate stored`),
+		},
+		{
 			name: "fail/key-without-certificate",
 			fields: fields{
 				tpm: instance,
@@ -609,7 +659,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 					Name: "tpmkms:name=keyWithoutCertificate",
 				},
 			},
-			expErr: fmt.Errorf(`failed getting certificate for key "keyWithoutCertificate": no certificate stored`),
+			expErr: fmt.Errorf(`failed getting certificate for "keyWithoutCertificate": no certificate stored`),
 		},
 	}
 	for _, tt := range tests {
@@ -638,7 +688,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 	}
 	key, err := instance.CreateKey(ctx, "key1", config)
 	require.NoError(t, err)
-	_, err = instance.CreateAK(ctx, "ak1")
+	ak, err := instance.CreateAK(ctx, "ak1")
 	require.NoError(t, err)
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
@@ -670,7 +720,18 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 	}
 	anotherCert, err := ca.Sign(template)
 	require.NoError(t, err)
-	require.NotNil(t, cert)
+	require.NotNil(t, anotherCert)
+	akPub := ak.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+	template = &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testak",
+		},
+		PublicKey: akPub,
+	}
+	akCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, akCert)
 	type fields struct {
 		tpm *tpm.TPM
 	}
@@ -684,7 +745,19 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		expErr error
 	}{
 		{
-			name: "ok",
+			name: "ok/ak",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateRequest{
+					Name:        "tpmkms:name=ak1;ak=true",
+					Certificate: akCert,
+				},
+			},
+		},
+		{
+			name: "ok/key",
 			fields: fields{
 				tpm: instance,
 			},
@@ -708,6 +781,19 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 			expErr: errors.New("storeCertificateRequest 'name' cannot be empty"),
 		},
 		{
+			name: "fail/unknown-ak",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateRequest{
+					Name:        "tpmkms:name=unknown-ak;ak=true",
+					Certificate: akCert,
+				},
+			},
+			expErr: fmt.Errorf(`failed getting AK "unknown-ak": not found`),
+		},
+		{
 			name: "fail/unknown-key",
 			fields: fields{
 				tpm: instance,
@@ -721,7 +807,20 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 			expErr: fmt.Errorf(`failed getting key "unknown-key": not found`),
 		},
 		{
-			name: "fail/wrong-certificate",
+			name: "fail/wrong-certificate-for-ak",
+			fields: fields{
+				tpm: instance,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateRequest{
+					Name:        "tpmkms:name=ak1;ak=true",
+					Certificate: anotherCert,
+				},
+			},
+			expErr: errors.New(`failed storing certificate for AK "ak1": AK public key does not match the leaf certificate public key`),
+		},
+		{
+			name: "fail/wrong-certificate-for-key",
 			fields: fields{
 				tpm: instance,
 			},
