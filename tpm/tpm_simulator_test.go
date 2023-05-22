@@ -252,6 +252,28 @@ func TestAK_Blobs(t *testing.T) {
 	require.Len(t, public, int(size)+2)
 }
 
+func TestAK_Public(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	ak, err := tpm.CreateAK(context.Background(), "first-ak")
+	require.NoError(t, err)
+	require.NotNil(t, ak)
+	require.Same(t, tpm, ak.tpm)
+
+	akPub := ak.Public()
+	require.NoError(t, err)
+	require.NotNil(t, akPub)
+	require.Implements(t, (*crypto.PublicKey)(nil), ak)
+	_, ok := akPub.(crypto.Signer)
+	require.False(t, ok)
+
+	newAK := &AK{
+		tpm:  tpm,
+		name: "second-ak", // non-existent AK; results in error
+	}
+	newAKPub := newAK.Public()
+	require.Nil(t, newAKPub)
+}
+
 func TestAK_CertificateOperations(t *testing.T) {
 
 	tpm := newSimulatedTPM(t)
@@ -260,7 +282,7 @@ func TestAK_CertificateOperations(t *testing.T) {
 	require.NotNil(t, ak)
 	require.Same(t, tpm, ak.tpm)
 
-	akPub, err := ak.public(context.Background())
+	akPub := ak.Public()
 	require.NoError(t, err)
 	require.NotNil(t, akPub)
 
