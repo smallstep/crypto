@@ -22,8 +22,8 @@ func init() {
 	})
 }
 
-// Scheme is the scheme used in TPM KMS URIs.
-const Scheme = "tpmkms"
+// Scheme is the scheme used in TPM KMS URIs, the string "tpmkms".
+const Scheme = string(apiv1.TPMKMS)
 
 // TPMKMS is a KMS implementation backed by a TPM
 type TPMKMS struct {
@@ -35,7 +35,6 @@ type algorithmAttributes struct {
 	Curve int
 }
 
-// TODO: remove ones that are not valid for TPMs
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes{
 	apiv1.UnspecifiedSignAlgorithm: {"RSA", -1},
 	apiv1.SHA256WithRSA:            {"RSA", -1},

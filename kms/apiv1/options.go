@@ -111,7 +111,7 @@ type Options struct {
 	// https://tools.ietf.org/html/rfc7512 and represents the configuration used
 	// to connect to the KMS.
 	//
-	// Used by: pkcs11
+	// Used by: pkcs11, tpmkms
 	URI string `json:"uri,omitempty"`
 
 	// Pin used to access the PKCS11 module. It can be defined in the URI using
