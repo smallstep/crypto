@@ -21,8 +21,8 @@ import (
 	"go.step.sm/crypto/kms/uri"
 )
 
-// Scheme is the scheme used in uris.
-const Scheme = "pkcs11"
+// Scheme is the scheme used in uris, the string "pkcs11".
+const Scheme = string(apiv1.PKCS11)
 
 // DefaultRSASize is the number of bits of a new RSA key if no size has been
 // specified.

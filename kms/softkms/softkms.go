@@ -20,6 +20,9 @@ type algorithmAttributes struct {
 	Curve string
 }
 
+// Scheme is the scheme used in uris, the string "softkms".
+const Scheme = string(apiv1.SoftKMS)
+
 // DefaultRSAKeySize is the default size for RSA keys.
 const DefaultRSAKeySize = 3072
 
@@ -179,7 +182,7 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 }
 
 func filename(s string) string {
-	if u, err := uri.ParseWithScheme(string(apiv1.SoftKMS), s); err == nil {
+	if u, err := uri.ParseWithScheme(Scheme, s); err == nil {
 		return u.Opaque
 	}
 	return s

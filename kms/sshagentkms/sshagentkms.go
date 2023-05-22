@@ -26,6 +26,9 @@ import (
 	"go.step.sm/crypto/pemutil"
 )
 
+// Scheme is the scheme used in uris, the string "sshagentkms".
+const Scheme = string(apiv1.SSHAgentKMS)
+
 // SSHAgentKMS is a key manager that uses keys provided by ssh-agent
 type SSHAgentKMS struct {
 	agentClient agent.Agent
