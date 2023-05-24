@@ -190,7 +190,7 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 
 	var crytoKeyName string
 
-	// resource is the plain Gloud KMS resource name
+	// resource is the plain Google Cloud KMS resource name
 	resource := resourceName(req.Name)
 
 	// Split `projects/PROJECT_ID/locations/global/keyRings/RING_ID/cryptoKeys/KEY_ID`
