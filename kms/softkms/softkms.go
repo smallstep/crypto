@@ -13,6 +13,7 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 type algorithmAttributes struct {
@@ -139,8 +140,10 @@ func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 	switch vv := v.(type) {
 	case *x509.Certificate:
 		return vv.PublicKey, nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return vv, nil
+	case crypto.Signer:
+		return vv.Public(), nil
 	default:
 		return nil, errors.Errorf("unsupported public key type %T", v)
 	}
