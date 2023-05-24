@@ -120,7 +120,7 @@ func (k *SoftKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	return &apiv1.CreateKeyResponse{
-		Name:       req.Name,
+		Name:       filename(req.Name),
 		PublicKey:  pub,
 		PrivateKey: priv,
 		CreateSignerRequest: apiv1.CreateSignerRequest{

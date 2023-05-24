@@ -197,6 +197,12 @@ func TestSoftKMS_CreateKey(t *testing.T) {
 		{"default", args{&apiv1.CreateKeyRequest{Name: "default"}}, func() (interface{}, interface{}, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
+		{"uri", args{&apiv1.CreateKeyRequest{Name: "softkms:default"}}, func() (interface{}, interface{}, error) {
+			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
+		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
+		{"path uri", args{&apiv1.CreateKeyRequest{Name: "softkms:path=default"}}, func() (interface{}, interface{}, error) {
+			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
+		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
 		{"fail algorithm", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.SignatureAlgorithm(100)}}, func() (interface{}, interface{}, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, nil, params{}, true},
