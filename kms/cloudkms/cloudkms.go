@@ -238,6 +238,9 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		crytoKeyName = response.Name + "/cryptoKeyVersions/1"
 	}
 
+	// Use uri format for the keys
+	crytoKeyName = uri.NewOpaque(Scheme, crytoKeyName).String()
+
 	// Sleep deterministically to avoid retries because of PENDING_GENERATING.
 	// One second is often enough.
 	if protectionLevel == kmspb.ProtectionLevel_HSM {
@@ -362,10 +365,16 @@ func parent(name string) (string, string) {
 }
 
 // resourceName returns the resource name in the given string. The resource name
-// can be the same string or the encoded opaque data of an uri like
-// "cloudkms:projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1"
+// can be the same string, the value of the resource field or the encoded opaque
+// data:
+//   - projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
+//   - cloudkms:resource=projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
+//   - cloudkms:projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
 func resourceName(name string) string {
 	if u, err := uri.ParseWithScheme(Scheme, name); err == nil {
+		if r := u.Get("resource"); r != "" {
+			return r
+		}
 		return u.Opaque
 	}
 	return name

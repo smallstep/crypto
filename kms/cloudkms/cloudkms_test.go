@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"net/url"
 	"os"
 	"reflect"
 	"testing"
@@ -269,7 +270,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
-			&apiv1.CreateKeyResponse{Name: keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: keyName + "/cryptoKeyVersions/1"}}, false},
+			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"ok with uri", fields{
 			&MockClient{
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
@@ -283,7 +284,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyURI, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
-			&apiv1.CreateKeyResponse{Name: keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: keyName + "/cryptoKeyVersions/1"}}, false},
+			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"ok new key ring", fields{
 			&MockClient{
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
@@ -300,7 +301,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.Software, SignatureAlgorithm: apiv1.SHA256WithRSA, Bits: 3072}},
-			&apiv1.CreateKeyResponse{Name: keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: keyName + "/cryptoKeyVersions/1"}}, false},
+			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"ok new key version", fields{
 			&MockClient{
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
@@ -317,7 +318,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
-			&apiv1.CreateKeyResponse{Name: keyName + "/cryptoKeyVersions/2", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: keyName + "/cryptoKeyVersions/2"}}, false},
+			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/2", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/2"}}, false},
 		{"ok with retries", fields{
 			&MockClient{
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
@@ -335,7 +336,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
-			&apiv1.CreateKeyResponse{Name: keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: keyName + "/cryptoKeyVersions/1"}}, false},
+			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"fail name", fields{&MockClient{}}, args{&apiv1.CreateKeyRequest{}}, nil, true},
 		{"fail protection level", fields{&MockClient{}}, args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.ProtectionLevel(100)}}, nil, true},
 		{"fail signature algorithm", fields{&MockClient{}}, args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.Software, SignatureAlgorithm: apiv1.SignatureAlgorithm(100)}}, nil, true},
@@ -412,6 +413,9 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 func TestCloudKMS_GetPublicKey(t *testing.T) {
 	keyName := "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"
 	keyURI := uri.NewOpaque(Scheme, keyName).String()
+	keyResource := uri.New(Scheme, url.Values{
+		"resource": []string{keyName},
+	}).String()
 	testError := fmt.Errorf("an error")
 
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
@@ -451,6 +455,13 @@ func TestCloudKMS_GetPublicKey(t *testing.T) {
 				},
 			}},
 			args{&apiv1.GetPublicKeyRequest{Name: keyURI}}, pk, false},
+		{"ok with resource uri", fields{
+			&MockClient{
+				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
+				},
+			}},
+			args{&apiv1.GetPublicKeyRequest{Name: keyResource}}, pk, false},
 		{"ok with retries", fields{
 			&MockClient{
 				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {

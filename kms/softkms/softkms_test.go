@@ -116,6 +116,7 @@ func TestSoftKMS_CreateSigner(t *testing.T) {
 		{"pem password", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, pk, false},
 		{"file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
 		{"file uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
+		{"path uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:path=testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
 		{"fail", args{&apiv1.CreateSignerRequest{}}, nil, true},
 		{"fail bad pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: []byte("bad pem")}}, nil, true},
 		{"fail bad password", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("bad-pass")}}, nil, true},
@@ -256,8 +257,10 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 	}{
 		{"key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/pub.pem"}}, pub, false},
 		{"key uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/pub.pem"}}, pub, false},
+		{"key path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/pub.pem"}}, pub, false},
 		{"cert", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.crt"}}, pub, false},
 		{"cert uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/cert.crt"}}, pub, false},
+		{"cert path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/cert.crt"}}, pub, false},
 		{"fail not exists", args{&apiv1.GetPublicKeyRequest{Name: "testdata/missing"}}, nil, true},
 		{"fail type", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.key"}}, nil, true},
 	}
@@ -360,6 +363,7 @@ func TestSoftKMS_CreateDecrypter(t *testing.T) {
 		{"decrypter", args{&apiv1.CreateDecrypterRequest{Decrypter: privateKey}}, privateKey, false},
 		{"file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
 		{"file uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
+		{"path uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:path=testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
 		{"pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlock)}}, privateKey, false},
 		{"pem password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, privateKey, false},
 		{"fail none", args{&apiv1.CreateDecrypterRequest{}}, nil, true},

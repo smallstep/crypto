@@ -183,6 +183,9 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 
 func filename(s string) string {
 	if u, err := uri.ParseWithScheme(Scheme, s); err == nil {
+		if f := u.Get("path"); f != "" {
+			return f
+		}
 		return u.Opaque
 	}
 	return s
