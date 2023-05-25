@@ -17,12 +17,32 @@ import (
 	"go.step.sm/crypto/internal/templates"
 )
 
-// Options are the options that can be passed to NewCertificate.
-type Options[T Templatable] struct {
+type Options TOptions[*x509.CertificateRequest]
+
+func (o *Options) apply(cr *x509.CertificateRequest, opts []Option) (*Options, error) {
+	to := &TOptions[*x509.CertificateRequest]{}
+	for _, fn := range opts {
+		if err := fn(cr, to); err != nil {
+			return o, err
+		}
+	}
+	o.CertBuffer = to.CertBuffer
+	return o, nil
+}
+
+type Templatable interface {
+	*x509.CertificateRequest | *x509.Certificate
+}
+
+type Option TOption[*x509.CertificateRequest]
+
+type TOptions[T Templatable] struct {
 	CertBuffer *bytes.Buffer
 }
 
-func (o *Options[T]) apply(t T, opts []Option[T]) (*Options[T], error) {
+type TOption[T Templatable] func(t T, o *TOptions[T]) error
+
+func (o *TOptions[T]) apply(t T, opts []TOption[T]) (*TOptions[T], error) {
 	for _, fn := range opts {
 		if err := fn(t, o); err != nil {
 			return o, err
@@ -31,16 +51,8 @@ func (o *Options[T]) apply(t T, opts []Option[T]) (*Options[T], error) {
 	return o, nil
 }
 
-type Templatable interface {
-	*x509.CertificateRequest | *x509.Certificate
-}
-
-type Option[T Templatable] func(t T, o *Options[T]) error
-
-// WithTemplate is an options that executes the given template text with the
-// given data.
-func WithTemplate[T Templatable](text string, data TemplateData) Option[T] {
-	return func(t T, o *Options[T]) error {
+func WithTemplatable[T Templatable](text string, data TemplateData) TOption[T] {
+	return func(t T, o *TOptions[T]) error {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
 		// asn1 methods
@@ -70,30 +82,37 @@ func WithTemplate[T Templatable](text string, data TemplateData) Option[T] {
 	}
 }
 
+// WithTemplate is an options that executes the given template text with the
+// given data.
+func WithTemplate(text string, data TemplateData) Option {
+	o := WithTemplatable[*x509.CertificateRequest](text, data)
+	return Option(o)
+}
+
 // WithTemplateBase64 is an options that executes the given template base64
 // string with the given data.
-func WithTemplateBase64[T Templatable](s string, data TemplateData) Option[T] {
-	return func(t T, o *Options[T]) error {
+func WithTemplateBase64(s string, data TemplateData) Option {
+	return func(cr *x509.CertificateRequest, o *TOptions[*x509.CertificateRequest]) error {
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
 			return errors.Wrap(err, "error decoding template")
 		}
-		fn := WithTemplate[T](string(b), data)
-		return fn(t, o)
+		fn := WithTemplatable[*x509.CertificateRequest](string(b), data)
+		return fn(cr, o)
 	}
 }
 
 // WithTemplateFile is an options that reads the template file and executes it
 // with the given data.
-func WithTemplateFile[T Templatable](path string, data TemplateData) Option[T] {
-	return func(t T, o *Options[T]) error {
+func WithTemplateFile(path string, data TemplateData) Option {
+	return func(cr *x509.CertificateRequest, o *TOptions[*x509.CertificateRequest]) error {
 		filename := step.Abs(path)
 		b, err := os.ReadFile(filename)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}
-		fn := WithTemplate[T](string(b), data)
-		return fn(t, o)
+		fn := WithTemplatable[*x509.CertificateRequest](string(b), data)
+		return fn(cr, o)
 	}
 }
 

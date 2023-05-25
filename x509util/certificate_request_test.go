@@ -67,7 +67,7 @@ func TestNewCertificateRequest(t *testing.T) {
 
 	type args struct {
 		signer crypto.Signer
-		opts   []Option[*x509.CertificateRequest]
+		opts   []Option
 	}
 	tests := []struct {
 		name    string
@@ -75,12 +75,12 @@ func TestNewCertificateRequest(t *testing.T) {
 		want    *CertificateRequest
 		wantErr bool
 	}{
-		{"ok simple", args{signer, []Option[*x509.CertificateRequest]{}}, &CertificateRequest{
+		{"ok simple", args{signer, []Option{}}, &CertificateRequest{
 			PublicKey: signer.Public(),
 			Signer:    signer,
 		}, false},
-		{"ok default", args{signer, []Option[*x509.CertificateRequest]{
-			WithTemplate[*x509.CertificateRequest](DefaultCertificateRequestTemplate, CreateTemplateData("commonName", []string{"foo.com", "3.14.15.92", "root@foo.com", "mailto:root@foo.com"})),
+		{"ok default", args{signer, []Option{
+			WithTemplate(DefaultCertificateRequestTemplate, CreateTemplateData("commonName", []string{"foo.com", "3.14.15.92", "root@foo.com", "mailto:root@foo.com"})),
 		}}, &CertificateRequest{
 			Subject: Subject{CommonName: "commonName"},
 			SANs: []SubjectAlternativeName{
@@ -92,8 +92,8 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey: signer.Public(),
 			Signer:    signer,
 		}, false},
-		{"ok extended sans", args{signer, []Option[*x509.CertificateRequest]{
-			WithTemplate[*x509.CertificateRequest](DefaultCertificateRequestTemplate, extendedSANs),
+		{"ok extended sans", args{signer, []Option{
+			WithTemplate(DefaultCertificateRequestTemplate, extendedSANs),
 		}}, &CertificateRequest{
 			Subject: Subject{CommonName: "123456789"},
 			SANs: []SubjectAlternativeName{
@@ -107,8 +107,8 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey:  signer.Public(),
 			Signer:     signer,
 		}, false},
-		{"ok extended sans and extension", args{signer, []Option[*x509.CertificateRequest]{
-			WithTemplate[*x509.CertificateRequest](extendedSANsAndExtensionsTemplate, extendedSANs),
+		{"ok extended sans and extension", args{signer, []Option{
+			WithTemplate(extendedSANsAndExtensionsTemplate, extendedSANs),
 		}}, &CertificateRequest{
 			Subject: Subject{CommonName: "123456789"},
 			SANs: []SubjectAlternativeName{
@@ -122,8 +122,8 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey:  signer.Public(),
 			Signer:     signer,
 		}, false},
-		{"ok permanent identifier template", args{signer, []Option[*x509.CertificateRequest]{
-			WithTemplate[*x509.CertificateRequest](permanentIdentifierTemplate, CreateTemplateData("123456789", []string{})),
+		{"ok permanent identifier template", args{signer, []Option{
+			WithTemplate(permanentIdentifierTemplate, CreateTemplateData("123456789", []string{})),
 		}}, &CertificateRequest{
 			Subject: Subject{CommonName: "123456789"},
 			SANs: []SubjectAlternativeName{
@@ -133,9 +133,9 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey:  signer.Public(),
 			Signer:     signer,
 		}, false},
-		{"fail apply", args{signer, []Option[*x509.CertificateRequest]{WithTemplateFile[*x509.CertificateRequest]("testdata/missing.tpl", NewTemplateData())}}, nil, true},
-		{"fail unmarshal", args{signer, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest]("{badjson", NewTemplateData())}}, nil, true},
-		{"fail extended sans", args{signer, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](DefaultCertificateRequestTemplate, failExtendedSANs)}}, nil, true},
+		{"fail apply", args{signer, []Option{WithTemplateFile("testdata/missing.tpl", NewTemplateData())}}, nil, true},
+		{"fail unmarshal", args{signer, []Option{WithTemplate("{badjson", NewTemplateData())}}, nil, true},
+		{"fail extended sans", args{signer, []Option{WithTemplate(DefaultCertificateRequestTemplate, failExtendedSANs)}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

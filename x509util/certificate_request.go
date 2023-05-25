@@ -32,9 +32,9 @@ type CertificateRequest struct {
 }
 
 // NewCertificateRequest creates a certificate request from a template.
-func NewCertificateRequest(signer crypto.Signer, opts ...Option[*x509.CertificateRequest]) (*CertificateRequest, error) {
+func NewCertificateRequest(signer crypto.Signer, opts ...Option) (*CertificateRequest, error) {
 	pub := signer.Public()
-	o, err := new(Options[*x509.CertificateRequest]).apply(&x509.CertificateRequest{
+	o, err := new(Options).apply(&x509.CertificateRequest{
 		PublicKey: pub,
 	}, opts)
 	if err != nil {
