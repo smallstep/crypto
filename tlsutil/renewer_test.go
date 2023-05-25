@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	cert, err := x509util.NewCertificate(issuerCsr,
-		x509util.WithTemplate(x509util.DefaultRootTemplate, x509util.CreateTemplateData("RootCA", []string{})))
+		x509util.WithTemplate[*x509.CertificateRequest](x509util.DefaultRootTemplate, x509util.CreateTemplateData("RootCA", []string{})))
 	if err != nil {
 		panic(err)
 	}
@@ -66,7 +66,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	cert, err = x509util.NewCertificate(leafCsr,
-		x509util.WithTemplate(x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
+		x509util.WithTemplate[*x509.CertificateRequest](x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func TestMain(m *testing.M) {
 
 func testRenewFunc() (*tls.Certificate, *tls.Config, error) {
 	cert, err := x509util.NewCertificate(leafCsr,
-		x509util.WithTemplate(x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
+		x509util.WithTemplate[*x509.CertificateRequest](x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -419,7 +419,7 @@ func TestRenewer_RenewFunc_error(t *testing.T) {
 		t.Fatal(err)
 	}
 	cert, err := x509util.NewCertificate(leafCsr,
-		x509util.WithTemplate(x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
+		x509util.WithTemplate[*x509.CertificateRequest](x509util.DefaultLeafTemplate, x509util.CreateTemplateData("Leaf", []string{"127.0.0.1", "localhost"})))
 	if err != nil {
 		t.Fatal(err)
 	}

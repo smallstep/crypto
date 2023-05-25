@@ -42,12 +42,12 @@ type Certificate struct {
 
 // NewCertificate creates a new Certificate from an x509.Certificate request and
 // some template options.
-func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, error) {
+func NewCertificate(cr *x509.CertificateRequest, opts ...Option[*x509.CertificateRequest]) (*Certificate, error) {
 	if err := cr.CheckSignature(); err != nil {
 		return nil, errors.Wrap(err, "error validating certificate request")
 	}
 
-	o, err := new(Options).apply(cr, opts)
+	o, err := new(Options[*x509.CertificateRequest]).apply(cr, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,8 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	return &cert, nil
 }
 
-func NewCertificateFromX509(template *x509.Certificate, opts ...NewCertificateFromX509Option) (*Certificate, error) {
-	o, err := new(FromX509Options).apply(template, opts)
+func NewCertificateFromX509(template *x509.Certificate, opts ...Option[*x509.Certificate]) (*Certificate, error) {
+	o, err := new(Options[*x509.Certificate]).apply(template, opts)
 	if err != nil {
 		return nil, err
 	}

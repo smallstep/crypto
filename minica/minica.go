@@ -37,7 +37,7 @@ func New(opts ...Option) (*CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	cert, err := x509util.NewCertificate(rootCR, x509util.WithTemplate(o.RootTemplate, x509util.CreateTemplateData(rootSubject, []string{})))
+	cert, err := x509util.NewCertificate(rootCR, x509util.WithTemplate[*x509.CertificateRequest](o.RootTemplate, x509util.CreateTemplateData(rootSubject, []string{})))
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func New(opts ...Option) (*CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	cert, err = x509util.NewCertificate(intCR, x509util.WithTemplate(o.IntermediateTemplate, x509util.CreateTemplateData(intSubject, []string{})))
+	cert, err = x509util.NewCertificate(intCR, x509util.WithTemplate[*x509.CertificateRequest](o.IntermediateTemplate, x509util.CreateTemplateData(intSubject, []string{})))
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Ce
 	}
 
 	o := newSignOptions().apply(opts)
-	crt, err := x509util.NewCertificate(csr, x509util.WithTemplate(o.Template, x509util.CreateTemplateData(csr.Subject.CommonName, sans)))
+	crt, err := x509util.NewCertificate(csr, x509util.WithTemplate[*x509.CertificateRequest](o.Template, x509util.CreateTemplateData(csr.Subject.CommonName, sans)))
 	if err != nil {
 		return nil, err
 	}

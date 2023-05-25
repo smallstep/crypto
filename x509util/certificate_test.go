@@ -131,7 +131,7 @@ func TestNewCertificate(t *testing.T) {
 
 	type args struct {
 		cr   *x509.CertificateRequest
-		opts []Option
+		opts []Option[*x509.CertificateRequest]
 	}
 	tests := []struct {
 		name    string
@@ -153,7 +153,7 @@ func TestNewCertificate(t *testing.T) {
 			PublicKeyAlgorithm: x509.Ed25519,
 			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
 		}, false},
-		{"okDefaultTemplate", args{cr, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
+		{"okDefaultTemplate", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
 			Subject:  Subject{CommonName: "commonName"},
 			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
 			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
@@ -164,7 +164,7 @@ func TestNewCertificate(t *testing.T) {
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.Ed25519,
 		}, false},
-		{"okCustomSANs", args{cr, []Option{WithTemplate(DefaultLeafTemplate, customSANsData)}}, &Certificate{
+		{"okCustomSANs", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](DefaultLeafTemplate, customSANsData)}}, &Certificate{
 			Subject: Subject{CommonName: "commonName"},
 			SANs: []SubjectAlternativeName{
 				{Type: PermanentIdentifierType, Value: "123456"},
@@ -183,7 +183,7 @@ func TestNewCertificate(t *testing.T) {
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.Ed25519,
 		}, false},
-		{"okExample", args{cr, []Option{WithTemplateFile("./testdata/example.tpl", TemplateData{
+		{"okExample", args{cr, []Option[*x509.CertificateRequest]{WithTemplateFile[*x509.CertificateRequest]("./testdata/example.tpl", TemplateData{
 			SANsKey: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 			},
@@ -204,7 +204,7 @@ func TestNewCertificate(t *testing.T) {
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.Ed25519,
 		}, false},
-		{"okFullSimple", args{cr, []Option{WithTemplateFile("./testdata/fullsimple.tpl", TemplateData{})}}, &Certificate{
+		{"okFullSimple", args{cr, []Option[*x509.CertificateRequest]{WithTemplateFile[*x509.CertificateRequest]("./testdata/fullsimple.tpl", TemplateData{})}}, &Certificate{
 			Version:               3,
 			Subject:               Subject{CommonName: "subjectCommonName"},
 			SerialNumber:          SerialNumber{big.NewInt(78187493520)},
@@ -244,7 +244,7 @@ func TestNewCertificate(t *testing.T) {
 			PublicKeyAlgorithm: x509.Ed25519,
 		},
 			false},
-		{"okOPCUA", args{cr, []Option{WithTemplateFile("./testdata/opcua.tpl", TemplateData{
+		{"okOPCUA", args{cr, []Option[*x509.CertificateRequest]{WithTemplateFile[*x509.CertificateRequest]("./testdata/opcua.tpl", TemplateData{
 			SANsKey: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 			},
@@ -268,10 +268,10 @@ func TestNewCertificate(t *testing.T) {
 			PublicKeyAlgorithm: x509.Ed25519,
 		}, false},
 		{"badSignature", args{crBadSignateure, nil}, nil, true},
-		{"failTemplate", args{cr, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
-		{"missingTemplate", args{cr, []Option{WithTemplateFile("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
-		{"badJson", args{cr, []Option{WithTemplate(`"this is not a json object"`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
-		{"failCustomSANs", args{cr, []Option{WithTemplate(DefaultLeafTemplate, badCustomSANsData)}}, nil, true},
+		{"failTemplate", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"missingTemplate", args{cr, []Option[*x509.CertificateRequest]{WithTemplateFile[*x509.CertificateRequest]("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"badJson", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](`"this is not a json object"`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"failCustomSANs", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](DefaultLeafTemplate, badCustomSANsData)}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -498,15 +498,15 @@ func TestCreateCertificate_criticalSANs(t *testing.T) {
 
 	type args struct {
 		cr   *x509.CertificateRequest
-		opts []Option
+		opts []Option[*x509.CertificateRequest]
 	}
 	tests := []struct {
 		name string
 		args args
 	}{
 		{"okNoOptions", args{cr, nil}},
-		{"okDefaultLeafTemplate", args{cr, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
-		{"okCertificateRequestTemplate", args{cr, []Option{WithTemplate(CertificateRequestTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
+		{"okDefaultLeafTemplate", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](DefaultLeafTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
+		{"okCertificateRequestTemplate", args{cr, []Option[*x509.CertificateRequest]{WithTemplate[*x509.CertificateRequest](CertificateRequestTemplate, CreateTemplateData("", []string{"foo.com"}))}}},
 	}
 
 	for _, tt := range tests {
@@ -637,7 +637,7 @@ func TestCreateCertificate_debug(t *testing.T) {
 			data := CreateTemplateData("rocket", nil)
 			data.Set(SANsKey, tt.sans)
 
-			c, err := NewCertificate(csr, WithTemplate(DefaultLeafTemplate, data))
+			c, err := NewCertificate(csr, WithTemplate[*x509.CertificateRequest](DefaultLeafTemplate, data))
 			if err != nil {
 				t.Fatal(err)
 			}
