@@ -71,13 +71,13 @@ func TestWithTemplate(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Options
+		want    Options[*x509.CertificateRequest]
 		wantErr bool
 	}{
 		{"leaf", args{DefaultLeafTemplate, TemplateData{
 			SubjectKey: Subject{CommonName: "foo"},
 			SANsKey:    []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
-		}, cr}, Options{
+		}, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
@@ -88,7 +88,7 @@ func TestWithTemplate(t *testing.T) {
 		{"leafRSA", args{DefaultLeafTemplate, TemplateData{
 			SubjectKey: Subject{CommonName: "foo"},
 			SANsKey:    []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
-		}, crRSA}, Options{
+		}, crRSA}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
@@ -96,7 +96,7 @@ func TestWithTemplate(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"iid", args{DefaultIIDLeafTemplate, TemplateData{}, cr}, Options{
+		{"iid", args{DefaultIIDLeafTemplate, TemplateData{}, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName": "foo"},
 	"dnsNames": ["foo.com"],
@@ -109,7 +109,7 @@ func TestWithTemplate(t *testing.T) {
 		}, false},
 		{"iidRSAAndEnforced", args{DefaultIIDLeafTemplate, TemplateData{
 			SANsKey: []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
-		}, crRSA}, Options{
+		}, crRSA}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName": "foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
@@ -117,7 +117,7 @@ func TestWithTemplate(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"iidEscape", args{DefaultIIDLeafTemplate, TemplateData{}, crQuotes}, Options{
+		{"iidEscape", args{DefaultIIDLeafTemplate, TemplateData{}, crQuotes}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName": "foo\"}"},
 	"dnsNames": ["foo.com"],
@@ -128,7 +128,7 @@ func TestWithTemplate(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"admin", args{DefaultAdminLeafTemplate, TemplateData{}, cr}, Options{
+		{"admin", args{DefaultAdminLeafTemplate, TemplateData{}, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"dnsNames": ["foo.com"],
@@ -138,7 +138,7 @@ func TestWithTemplate(t *testing.T) {
 	"keyUsage": ["digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`)}, false},
-		{"adminRSA", args{DefaultAdminLeafTemplate, TemplateData{}, crRSA}, Options{
+		{"adminRSA", args{DefaultAdminLeafTemplate, TemplateData{}, crRSA}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"dnsNames": ["foo.com"],
@@ -151,7 +151,7 @@ func TestWithTemplate(t *testing.T) {
 		{"extensions", args{templateWithExtensions, TemplateData{
 			SubjectKey: Subject{CommonName: "foo"},
 			SANsKey:    []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
-		}, cr}, Options{
+		}, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
@@ -165,15 +165,15 @@ func TestWithTemplate(t *testing.T) {
 	]
 }`),
 		}, false},
-		{"fail", args{`{{ fail "a message" }}`, TemplateData{}, cr}, Options{}, true},
+		{"fail", args{`{{ fail "a message" }}`, TemplateData{}, cr}, Options[*x509.CertificateRequest]{}, true},
 		{"error", args{`{{ mustHas 3 .Data }}`, TemplateData{
 			"Data": 3,
-		}, cr}, Options{}, true},
+		}, cr}, Options[*x509.CertificateRequest]{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var got Options
-			fn := WithTemplate(tt.args.text, tt.args.data)
+			var got Options[*x509.CertificateRequest]
+			fn := WithTemplate[*x509.CertificateRequest](tt.args.text, tt.args.data)
 			if err := fn(tt.args.cr, &got); (err != nil) != tt.wantErr {
 				t.Errorf("WithTemplate() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -194,13 +194,13 @@ func TestWithTemplateBase64(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Options
+		want    Options[*x509.CertificateRequest]
 		wantErr bool
 	}{
 		{"leaf", args{base64.StdEncoding.EncodeToString([]byte(DefaultLeafTemplate)), TemplateData{
 			SubjectKey: Subject{CommonName: "foo"},
 			SANsKey:    []SubjectAlternativeName{{Type: "dns", Value: "foo.com"}},
-		}, cr}, Options{
+		}, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"}],
@@ -208,12 +208,12 @@ func TestWithTemplateBase64(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"badBase64", args{"foobar", TemplateData{}, cr}, Options{}, true},
+		{"badBase64", args{"foobar", TemplateData{}, cr}, Options[*x509.CertificateRequest]{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var got Options
-			fn := WithTemplateBase64(tt.args.s, tt.args.data)
+			var got Options[*x509.CertificateRequest]
+			fn := WithTemplateBase64[*x509.CertificateRequest](tt.args.s, tt.args.data)
 			if err := fn(tt.args.cr, &got); (err != nil) != tt.wantErr {
 				t.Errorf("WithTemplateBase64() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -249,10 +249,10 @@ func TestWithTemplateFile(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Options
+		want    Options[*x509.CertificateRequest]
 		wantErr bool
 	}{
-		{"example", args{"./testdata/example.tpl", data, cr}, Options{
+		{"example", args{"./testdata/example.tpl", data, cr}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"},{"type":"email","value":"root@foo.com"},{"type":"ip","value":"127.0.0.1"},{"type":"uri","value":"uri:foo:bar"}],
@@ -262,7 +262,7 @@ func TestWithTemplateFile(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"exampleRSA3072", args{"./testdata/example.tpl", data, rsa3072}, Options{
+		{"exampleRSA3072", args{"./testdata/example.tpl", data, rsa3072}, Options[*x509.CertificateRequest]{
 			CertBuffer: bytes.NewBufferString(`{
 	"subject": {"commonName":"foo"},
 	"sans": [{"type":"dns","value":"foo.com"},{"type":"email","value":"root@foo.com"},{"type":"ip","value":"127.0.0.1"},{"type":"uri","value":"uri:foo:bar"}],
@@ -272,13 +272,13 @@ func TestWithTemplateFile(t *testing.T) {
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
 		}, false},
-		{"exampleRSA2048", args{"./testdata/example.tpl", data, rsa2048}, Options{}, true},
-		{"missing", args{"./testdata/missing.tpl", data, cr}, Options{}, true},
+		{"exampleRSA2048", args{"./testdata/example.tpl", data, rsa2048}, Options[*x509.CertificateRequest]{}, true},
+		{"missing", args{"./testdata/missing.tpl", data, cr}, Options[*x509.CertificateRequest]{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var got Options
-			fn := WithTemplateFile(tt.args.path, tt.args.data)
+			var got Options[*x509.CertificateRequest]
+			fn := WithTemplateFile[*x509.CertificateRequest](tt.args.path, tt.args.data)
 			if err := fn(tt.args.cr, &got); (err != nil) != tt.wantErr {
 				t.Errorf("WithTemplateFile() error = %v, wantErr %v", err, tt.wantErr)
 			}

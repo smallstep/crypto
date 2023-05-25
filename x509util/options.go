@@ -18,26 +18,29 @@ import (
 )
 
 // Options are the options that can be passed to NewCertificate.
-type Options struct {
+type Options[T templatable] struct {
 	CertBuffer *bytes.Buffer
 }
 
-func (o *Options) apply(cr *x509.CertificateRequest, opts []Option) (*Options, error) {
+func (o *Options[T]) apply(t T, opts []Option[T]) (*Options[T], error) {
 	for _, fn := range opts {
-		if err := fn(cr, o); err != nil {
+		if err := fn(t, o); err != nil {
 			return o, err
 		}
 	}
 	return o, nil
 }
 
-// Option is the type used as a variadic argument in NewCertificate.
-type Option func(cr *x509.CertificateRequest, o *Options) error
+type templatable interface {
+	*x509.CertificateRequest | *x509.Certificate
+}
+
+type Option[T templatable] func(t T, o *Options[T]) error
 
 // WithTemplate is an options that executes the given template text with the
 // given data.
-func WithTemplate(text string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+func WithTemplate[T templatable](text string, data TemplateData) Option[T] {
+	return func(t T, o *Options[T]) error {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
 		// asn1 methods
@@ -53,7 +56,9 @@ func WithTemplate(text string, data TemplateData) Option {
 		}
 
 		buf := new(bytes.Buffer)
-		data.SetCertificateRequest(cr)
+		if cr, ok := any(t).(*x509.CertificateRequest); ok {
+			data.SetCertificateRequest(cr)
+		}
 		if err := tmpl.Execute(buf, data); err != nil {
 			if terr.Message != "" {
 				return terr
@@ -67,75 +72,28 @@ func WithTemplate(text string, data TemplateData) Option {
 
 // WithTemplateBase64 is an options that executes the given template base64
 // string with the given data.
-func WithTemplateBase64(s string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+func WithTemplateBase64[T templatable](s string, data TemplateData) Option[T] {
+	return func(t T, o *Options[T]) error {
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
 			return errors.Wrap(err, "error decoding template")
 		}
-		fn := WithTemplate(string(b), data)
-		return fn(cr, o)
+		fn := WithTemplate[T](string(b), data)
+		return fn(t, o)
 	}
 }
 
 // WithTemplateFile is an options that reads the template file and executes it
 // with the given data.
-func WithTemplateFile(path string, data TemplateData) Option {
-	return func(cr *x509.CertificateRequest, o *Options) error {
+func WithTemplateFile[T templatable](path string, data TemplateData) Option[T] {
+	return func(t T, o *Options[T]) error {
 		filename := step.Abs(path)
 		b, err := os.ReadFile(filename)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}
-		fn := WithTemplate(string(b), data)
-		return fn(cr, o)
-	}
-}
-
-// Options are the options that can be passed to NewCertificate.
-type FromX509Options struct {
-	CertBuffer *bytes.Buffer
-}
-
-func (o *FromX509Options) apply(c *x509.Certificate, opts []NewCertificateFromX509Option) (*FromX509Options, error) {
-	for _, fn := range opts {
-		if err := fn(c, o); err != nil {
-			return o, err
-		}
-	}
-	return o, nil
-}
-
-// NewCertificateFromX509Option is the type used as a variadic argument in NewCertificateFromX509Option.
-type NewCertificateFromX509Option func(c *x509.Certificate, o *FromX509Options) error
-
-// FromX509 WithTemplate is an options that executes the given template text with the
-// given data.
-func FromX509WithTemplate(text string, data TemplateData) NewCertificateFromX509Option {
-	return func(c *x509.Certificate, o *FromX509Options) error {
-		terr := new(TemplateError)
-		funcMap := templates.GetFuncMap(&terr.Message)
-		// asn1 methods
-		funcMap["asn1Enc"] = asn1Encode
-		funcMap["asn1Marshal"] = asn1Marshal
-		funcMap["asn1Seq"] = asn1Sequence
-		funcMap["asn1Set"] = asn1Set
-
-		// Parse template
-		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
-		if err != nil {
-			return errors.Wrapf(err, "error parsing template")
-		}
-
-		buf := new(bytes.Buffer)
-		if err := tmpl.Execute(buf, data); err != nil {
-			if terr.Message != "" {
-				return terr
-			}
-			return errors.Wrapf(err, "error executing template")
-		}
-		o.CertBuffer = buf
-		return nil
+		fn := WithTemplate[T](string(b), data)
+		return fn(t, o)
 	}
 }
 
