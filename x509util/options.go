@@ -18,7 +18,7 @@ import (
 )
 
 // Options are the options that can be passed to NewCertificate.
-type Options[T templatable] struct {
+type Options[T Templatable] struct {
 	CertBuffer *bytes.Buffer
 }
 
@@ -31,15 +31,15 @@ func (o *Options[T]) apply(t T, opts []Option[T]) (*Options[T], error) {
 	return o, nil
 }
 
-type templatable interface {
+type Templatable interface {
 	*x509.CertificateRequest | *x509.Certificate
 }
 
-type Option[T templatable] func(t T, o *Options[T]) error
+type Option[T Templatable] func(t T, o *Options[T]) error
 
 // WithTemplate is an options that executes the given template text with the
 // given data.
-func WithTemplate[T templatable](text string, data TemplateData) Option[T] {
+func WithTemplate[T Templatable](text string, data TemplateData) Option[T] {
 	return func(t T, o *Options[T]) error {
 		terr := new(TemplateError)
 		funcMap := templates.GetFuncMap(&terr.Message)
@@ -72,7 +72,7 @@ func WithTemplate[T templatable](text string, data TemplateData) Option[T] {
 
 // WithTemplateBase64 is an options that executes the given template base64
 // string with the given data.
-func WithTemplateBase64[T templatable](s string, data TemplateData) Option[T] {
+func WithTemplateBase64[T Templatable](s string, data TemplateData) Option[T] {
 	return func(t T, o *Options[T]) error {
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
@@ -85,7 +85,7 @@ func WithTemplateBase64[T templatable](s string, data TemplateData) Option[T] {
 
 // WithTemplateFile is an options that reads the template file and executes it
 // with the given data.
-func WithTemplateFile[T templatable](path string, data TemplateData) Option[T] {
+func WithTemplateFile[T Templatable](path string, data TemplateData) Option[T] {
 	return func(t T, o *Options[T]) error {
 		filename := step.Abs(path)
 		b, err := os.ReadFile(filename)
