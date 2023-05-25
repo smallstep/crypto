@@ -29,8 +29,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Scheme is the scheme used in uris.
-const Scheme = "capi"
+// Scheme is the scheme used in uris, the string "capi".
+const Scheme = string(apiv1.CAPIKMS)
 
 const (
 	ProviderNameArg  = "provider"

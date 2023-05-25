@@ -11,13 +11,18 @@ import (
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 type algorithmAttributes struct {
 	Type  string
 	Curve string
 }
+
+// Scheme is the scheme used in uris, the string "softkms".
+const Scheme = string(apiv1.SoftKMS)
 
 // DefaultRSAKeySize is the default size for RSA keys.
 const DefaultRSAKeySize = 3072
@@ -84,7 +89,7 @@ func (k *SoftKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 		return sig, nil
 	case req.SigningKey != "":
-		v, err := pemutil.Read(req.SigningKey, opts...)
+		v, err := pemutil.Read(filename(req.SigningKey), opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +121,7 @@ func (k *SoftKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	return &apiv1.CreateKeyResponse{
-		Name:       req.Name,
+		Name:       filename(req.Name),
 		PublicKey:  pub,
 		PrivateKey: priv,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
@@ -127,7 +132,7 @@ func (k *SoftKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 // GetPublicKey returns the public key from the file passed in the request name.
 func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	v, err := pemutil.Read(req.Name)
+	v, err := pemutil.Read(filename(req.Name))
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +140,10 @@ func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 	switch vv := v.(type) {
 	case *x509.Certificate:
 		return vv.PublicKey, nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return vv, nil
+	case crypto.Signer:
+		return vv.Public(), nil
 	default:
 		return nil, errors.Errorf("unsupported public key type %T", v)
 	}
@@ -163,7 +170,7 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 		}
 		return decrypter, nil
 	case req.DecryptionKey != "":
-		v, err := pemutil.Read(req.DecryptionKey, opts...)
+		v, err := pemutil.Read(filename(req.DecryptionKey), opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -175,4 +182,14 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	default:
 		return nil, errors.New("failed to load softKMS: please define decryptionKeyPEM or decryptionKey")
 	}
+}
+
+func filename(s string) string {
+	if u, err := uri.ParseWithScheme(Scheme, s); err == nil {
+		if f := u.Get("path"); f != "" {
+			return f
+		}
+		return u.Opaque
+	}
+	return s
 }

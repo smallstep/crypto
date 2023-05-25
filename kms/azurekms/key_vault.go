@@ -25,8 +25,9 @@ func init() {
 	})
 }
 
-// Scheme is the scheme used for the Azure Key Vault uris.
-const Scheme = "azurekms"
+// Scheme is the scheme used for the Azure Key Vault uris, the string
+// "azurekms".
+const Scheme = string(apiv1.AzureKMS)
 
 var (
 	valueTrue       = true
