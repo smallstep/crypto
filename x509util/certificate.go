@@ -40,8 +40,8 @@ type Certificate struct {
 	PublicKey             interface{}              `json:"-"`
 }
 
-// NewCertificate creates a new Certificate from an x509.Certificate request and
-// some template options.
+// NewCertificate creates a new Certificate from an x509.CertificateRequest and
+// will apply some template options.
 func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, error) {
 	if err := cr.CheckSignature(); err != nil {
 		return nil, errors.Wrap(err, "error validating certificate request")
@@ -83,16 +83,29 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 	return &cert, nil
 }
 
+// NewCertificateFromX509 creates a new Certificate from an x509.Certificate and
+// will apply template options. A new (unsigned) x509.CertificateRequest is created,
+// with date from the x509.Certificate template. This function is primarily useful
+// when signing a certificate for a key that can't sign a CSR or when the private
+// key is not available.
 func NewCertificateFromX509(template *x509.Certificate, opts ...Option) (*Certificate, error) {
+	// Copy data from the template to a new, unsigned CSR.
 	o, err := new(Options).apply(&x509.CertificateRequest{
-		PublicKey: template.PublicKey,
+		PublicKey:          template.PublicKey,
+		PublicKeyAlgorithm: template.PublicKeyAlgorithm,
+		Subject:            template.Subject,
+		DNSNames:           template.DNSNames,
+		EmailAddresses:     template.EmailAddresses,
+		IPAddresses:        template.IPAddresses,
+		URIs:               template.URIs,
+		Extensions:         template.ExtraExtensions,
 	}, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// If no template use only the certificate request with the default leaf key
-	// usages.
+	// If no template use only the certificate request with the
+	// default leaf key usages.
 	if o.CertBuffer == nil {
 		return nil, errors.New("not implemented yet; use FromX509WithTemplate option")
 	}
@@ -103,6 +116,7 @@ func NewCertificateFromX509(template *x509.Certificate, opts ...Option) (*Certif
 		return nil, errors.Wrap(err, "error unmarshaling certificate")
 	}
 
+	// Enforce the public key from the template
 	cert.PublicKey = template.PublicKey
 	cert.PublicKeyAlgorithm = template.PublicKeyAlgorithm
 
