@@ -17,6 +17,7 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
+	"go.step.sm/crypto/x25519"
 )
 
 func TestNew(t *testing.T) {
@@ -115,6 +116,8 @@ func TestSoftKMS_CreateSigner(t *testing.T) {
 		{"pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlock)}}, pk, false},
 		{"pem password", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, pk, false},
 		{"file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
+		{"file uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
+		{"path uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:path=testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
 		{"fail", args{&apiv1.CreateSignerRequest{}}, nil, true},
 		{"fail bad pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: []byte("bad pem")}}, nil, true},
 		{"fail bad password", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("bad-pass")}}, nil, true},
@@ -195,6 +198,12 @@ func TestSoftKMS_CreateKey(t *testing.T) {
 		{"default", args{&apiv1.CreateKeyRequest{Name: "default"}}, func() (interface{}, interface{}, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
+		{"uri", args{&apiv1.CreateKeyRequest{Name: "softkms:default"}}, func() (interface{}, interface{}, error) {
+			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
+		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
+		{"path uri", args{&apiv1.CreateKeyRequest{Name: "softkms:path=default"}}, func() (interface{}, interface{}, error) {
+			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
+		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256}}, params{"EC", "P-256", 0}, false},
 		{"fail algorithm", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.SignatureAlgorithm(100)}}, func() (interface{}, interface{}, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, nil, params{}, true},
@@ -244,6 +253,13 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	nebulaPub := x25519.PublicKey{
+		0x7c, 0x7f, 0x14, 0xf3, 0xe2, 0x44, 0x63, 0xa6,
+		0xb3, 0x1d, 0x71, 0xce, 0xc1, 0x1a, 0x1b, 0xba,
+		0xb7, 0x1f, 0xdb, 0x95, 0x86, 0xfe, 0xe7, 0x8a,
+		0xc6, 0xf4, 0x3b, 0xb1, 0x0a, 0xd4, 0x54, 0x0f,
+	}
+
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
 	}
@@ -254,9 +270,17 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 		wantErr bool
 	}{
 		{"key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/pub.pem"}}, pub, false},
+		{"key uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/pub.pem"}}, pub, false},
+		{"key path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/pub.pem"}}, pub, false},
 		{"cert", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.crt"}}, pub, false},
+		{"cert uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/cert.crt"}}, pub, false},
+		{"cert path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/cert.crt"}}, pub, false},
+		{"private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.key"}}, pub, false},
+		{"x25519 key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.pem"}}, nebulaPub, false},
+		{"x25519 private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.key"}}, nebulaPub, false},
 		{"fail not exists", args{&apiv1.GetPublicKeyRequest{Name: "testdata/missing"}}, nil, true},
-		{"fail type", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.key"}}, nil, true},
+		{"fail encrypted key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/priv.pem"}}, nil, true},
+		{"fail unsupported key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/dsa.pem"}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -356,6 +380,8 @@ func TestSoftKMS_CreateDecrypter(t *testing.T) {
 	}{
 		{"decrypter", args{&apiv1.CreateDecrypterRequest{Decrypter: privateKey}}, privateKey, false},
 		{"file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
+		{"file uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
+		{"path uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:path=testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
 		{"pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlock)}}, privateKey, false},
 		{"pem password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, privateKey, false},
 		{"fail none", args{&apiv1.CreateDecrypterRequest{}}, nil, true},

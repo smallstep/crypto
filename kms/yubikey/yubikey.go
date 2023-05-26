@@ -19,8 +19,8 @@ import (
 	"go.step.sm/crypto/kms/uri"
 )
 
-// Scheme is the scheme used in uris.
-const Scheme = "yubikey"
+// Scheme is the scheme used in uris, the string "yubikey".
+const Scheme = string(apiv1.YubiKey)
 
 // Yubico PIV attestation serial number, encoded as an integer.
 // https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
