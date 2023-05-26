@@ -133,7 +133,6 @@ func NewCertificateFromX509(template *x509.Certificate, opts ...Option) (*Certif
 	}
 
 	return &cert, nil
-
 }
 
 // GetCertificate returns the x509.Certificate representation of the
