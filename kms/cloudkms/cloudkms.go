@@ -24,8 +24,8 @@ import (
 	"google.golang.org/api/option"
 )
 
-// Scheme is the scheme used in uris.
-const Scheme = "cloudkms"
+// Scheme is the scheme used in uris, the string "cloudkms".
+const Scheme = string(apiv1.CloudKMS)
 
 const pendingGenerationRetries = 10
 
@@ -158,7 +158,7 @@ func (k *CloudKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, 
 	if req.SigningKey == "" {
 		return nil, errors.New("signing key cannot be empty")
 	}
-	return NewSigner(k.client, req.SigningKey)
+	return NewSigner(k.client, resourceName(req.SigningKey))
 }
 
 // CreateKey creates in Google's Cloud KMS a new asymmetric key for signing.
@@ -190,9 +190,12 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 
 	var crytoKeyName string
 
+	// resource is the plain Google Cloud KMS resource name
+	resource := resourceName(req.Name)
+
 	// Split `projects/PROJECT_ID/locations/global/keyRings/RING_ID/cryptoKeys/KEY_ID`
 	// to `projects/PROJECT_ID/locations/global/keyRings/RING_ID` and `KEY_ID`.
-	keyRing, keyID := Parent(req.Name)
+	keyRing, keyID := Parent(resource)
 	if err := k.createKeyRingIfNeeded(keyRing); err != nil {
 		return nil, err
 	}
@@ -221,7 +224,7 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		// Note that it will have the same purpose, protection level and
 		// algorithm than as previous one.
 		req := &kmspb.CreateCryptoKeyVersionRequest{
-			Parent: req.Name,
+			Parent: resource,
 			CryptoKeyVersion: &kmspb.CryptoKeyVersion{
 				State: kmspb.CryptoKeyVersion_ENABLED,
 			},
@@ -234,6 +237,9 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 	} else {
 		crytoKeyName = response.Name + "/cryptoKeyVersions/1"
 	}
+
+	// Use uri format for the keys
+	crytoKeyName = uri.NewOpaque(Scheme, crytoKeyName).String()
 
 	// Sleep deterministically to avoid retries because of PENDING_GENERATING.
 	// One second is often enough.
@@ -290,7 +296,7 @@ func (k *CloudKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKe
 		return nil, errors.New("createKeyRequest 'name' cannot be empty")
 	}
 
-	response, err := k.getPublicKeyWithRetries(req.Name, pendingGenerationRetries)
+	response, err := k.getPublicKeyWithRetries(resourceName(req.Name), pendingGenerationRetries)
 	if err != nil {
 		return nil, errors.Wrap(err, "cloudKMS GetPublicKey failed")
 	}
@@ -356,4 +362,20 @@ func parent(name string) (string, string) {
 	default:
 		return name[:i], name[i+1:]
 	}
+}
+
+// resourceName returns the resource name in the given string. The resource name
+// can be the same string, the value of the resource field or the encoded opaque
+// data:
+//   - projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
+//   - cloudkms:resource=projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
+//   - cloudkms:projects/id/locations/global/keyRings/ring/cryptoKeys/root-key/cryptoKeyVersions/1
+func resourceName(name string) string {
+	if u, err := uri.ParseWithScheme(Scheme, name); err == nil {
+		if r := u.Get("resource"); r != "" {
+			return r
+		}
+		return u.Opaque
+	}
+	return name
 }

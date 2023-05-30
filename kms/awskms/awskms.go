@@ -20,8 +20,8 @@ import (
 	"go.step.sm/crypto/pemutil"
 )
 
-// Scheme is the scheme used in uris.
-const Scheme = "awskms"
+// Scheme is the scheme used in uris, the string "awskms".
+const Scheme = string(apiv1.AmazonKMS)
 
 // KMS implements a KMS using AWS Key Management Service.
 type KMS struct {
