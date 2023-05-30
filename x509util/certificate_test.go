@@ -326,6 +326,20 @@ func TestNewCertificateFromX509(t *testing.T) {
 		want    *Certificate
 		wantErr bool
 	}{
+		{"okSimple", args{template, nil}, &Certificate{
+			Subject:        Subject{CommonName: "commonName"},
+			DNSNames:       []string{"foo.com"},
+			EmailAddresses: []string{"root@foo.com"},
+			KeyUsage:       KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			Extensions:         newExtensions(template.Extensions),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
+		}, false},
 		{"okDefaultTemplate", args{template, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
 			Subject:  Subject{CommonName: "commonName"},
 			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
@@ -416,7 +430,6 @@ func TestNewCertificateFromX509(t *testing.T) {
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.ECDSA,
 		}, false},
-		{"failNoTemplate", args{template, nil}, nil, true},
 		{"failTemplate", args{template, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
 		{"missingTemplate", args{template, []Option{WithTemplateFile("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
 		{"badJson", args{template, []Option{WithTemplate(`"this is not a json object"`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
