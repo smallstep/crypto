@@ -3,7 +3,9 @@ package x509util
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -17,6 +19,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createCertificateRequest(t *testing.T, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
@@ -283,6 +288,163 @@ func TestNewCertificate(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCertificate() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestNewCertificateFromX509(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{ // similar template as the certificate request for TestNewCertificate
+		PublicKey:          priv.Public(),
+		PublicKeyAlgorithm: x509.ECDSA,
+		Subject:            pkix.Name{CommonName: "commonName"},
+		DNSNames:           []string{"foo.com"},
+		EmailAddresses:     []string{"root@foo.com"},
+	}
+	customSANsData := CreateTemplateData("commonName", nil)
+	customSANsData.Set(SANsKey, []SubjectAlternativeName{
+		{Type: PermanentIdentifierType, Value: "123456"},
+		{Type: "1.2.3.4", Value: "utf8:otherName"},
+	})
+	badCustomSANsData := CreateTemplateData("commonName", nil)
+	badCustomSANsData.Set(SANsKey, []SubjectAlternativeName{
+		{Type: "1.2.3.4", Value: "int:not-an-int"},
+	})
+	ipNet := func(s string) *net.IPNet {
+		_, ipNet, err := net.ParseCIDR(s)
+		require.NoError(t, err)
+		return ipNet
+	}
+	type args struct {
+		template *x509.Certificate
+		opts     []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *Certificate
+		wantErr bool
+	}{
+		{"okSimple", args{template, nil}, &Certificate{
+			Subject:        Subject{CommonName: "commonName"},
+			DNSNames:       []string{"foo.com"},
+			EmailAddresses: []string{"root@foo.com"},
+			KeyUsage:       KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			Extensions:         newExtensions(template.Extensions),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
+		}, false},
+		{"okDefaultTemplate", args{template, []Option{WithTemplate(DefaultLeafTemplate, CreateTemplateData("commonName", []string{"foo.com"}))}}, &Certificate{
+			Subject:  Subject{CommonName: "commonName"},
+			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
+			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+		}, false},
+		{"okCustomSANs", args{template, []Option{WithTemplate(DefaultLeafTemplate, customSANsData)}}, &Certificate{
+			Subject: Subject{CommonName: "commonName"},
+			SANs: []SubjectAlternativeName{
+				{Type: PermanentIdentifierType, Value: "123456"},
+				{Type: "1.2.3.4", Value: "utf8:otherName"},
+			},
+			Extensions: []Extension{{
+				ID:       ObjectIdentifier{2, 5, 29, 17},
+				Critical: false,
+				Value:    []byte{48, 44, 160, 22, 6, 8, 43, 6, 1, 5, 5, 7, 8, 3, 160, 10, 48, 8, 12, 6, 49, 50, 51, 52, 53, 54, 160, 18, 6, 3, 42, 3, 4, 160, 11, 12, 9, 111, 116, 104, 101, 114, 78, 97, 109, 101},
+			}},
+			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+		}, false},
+		{"okExample", args{template, []Option{WithTemplateFile("./testdata/example.tpl", TemplateData{
+			SANsKey: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+			},
+			TokenKey: map[string]interface{}{
+				"iss": "https://iss",
+				"sub": "sub",
+			},
+		})}}, &Certificate{
+			Subject:        Subject{CommonName: "commonName"},
+			SANs:           []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
+			EmailAddresses: []string{"root@foo.com"},
+			URIs:           []*url.URL{{Scheme: "https", Host: "iss", Fragment: "sub"}},
+			KeyUsage:       KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+		}, false},
+		{"okFullSimple", args{template, []Option{WithTemplateFile("./testdata/fullsimple.tpl", TemplateData{})}}, &Certificate{
+			Version:               3,
+			Subject:               Subject{CommonName: "subjectCommonName"},
+			SerialNumber:          SerialNumber{big.NewInt(78187493520)},
+			Issuer:                Issuer{CommonName: "issuerCommonName"},
+			DNSNames:              []string{"doe.com"},
+			IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+			EmailAddresses:        []string{"jane@doe.com"},
+			URIs:                  []*url.URL{{Scheme: "https", Host: "doe.com"}},
+			SANs:                  []SubjectAlternativeName{{Type: DNSType, Value: "www.doe.com"}},
+			Extensions:            []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("extension")}},
+			KeyUsage:              KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage:           ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+			UnknownExtKeyUsage:    []asn1.ObjectIdentifier{[]int{1, 3, 6, 1, 4, 1, 44924, 1, 6}, []int{1, 3, 6, 1, 4, 1, 44924, 1, 7}},
+			SubjectKeyID:          []byte("subjectKeyId"),
+			AuthorityKeyID:        []byte("authorityKeyId"),
+			OCSPServer:            []string{"https://ocsp.server"},
+			IssuingCertificateURL: []string{"https://ca.com"},
+			CRLDistributionPoints: []string{"https://ca.com/ca.crl"},
+			PolicyIdentifiers:     PolicyIdentifiers{[]int{1, 2, 3, 4, 5, 6}},
+			BasicConstraints: &BasicConstraints{
+				IsCA:       false,
+				MaxPathLen: 0,
+			},
+			NameConstraints: &NameConstraints{
+				Critical:                true,
+				PermittedDNSDomains:     []string{"jane.doe.com"},
+				ExcludedDNSDomains:      []string{"john.doe.com"},
+				PermittedIPRanges:       []*net.IPNet{ipNet("127.0.0.1/32")},
+				ExcludedIPRanges:        []*net.IPNet{ipNet("0.0.0.0/0")},
+				PermittedEmailAddresses: []string{"jane@doe.com"},
+				ExcludedEmailAddresses:  []string{"john@doe.com"},
+				PermittedURIDomains:     []string{"https://jane.doe.com"},
+				ExcludedURIDomains:      []string{"https://john.doe.com"},
+			},
+			SignatureAlgorithm: SignatureAlgorithm(x509.PureEd25519),
+			PublicKey:          priv.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
+		}, false},
+		{"failTemplate", args{template, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"missingTemplate", args{template, []Option{WithTemplateFile("./testdata/missing.tpl", CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"badJson", args{template, []Option{WithTemplate(`"this is not a json object"`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
+		{"failCustomSANs", args{template, []Option{WithTemplate(DefaultLeafTemplate, badCustomSANsData)}}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewCertificateFromX509(tt.args.template, tt.args.opts...)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

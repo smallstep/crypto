@@ -40,8 +40,8 @@ type Certificate struct {
 	PublicKey             interface{}              `json:"-"`
 }
 
-// NewCertificate creates a new Certificate from an x509.Certificate request and
-// some template options.
+// NewCertificate creates a new Certificate from an x509.CertificateRequest and
+// will apply some template options.
 func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, error) {
 	if err := cr.CheckSignature(); err != nil {
 		return nil, errors.Wrap(err, "error validating certificate request")
@@ -52,10 +52,44 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 		return nil, err
 	}
 
-	// If no template use only the certificate request with the default leaf key
-	// usages.
+	return newCertificateWithOptions(cr, o)
+}
+
+// NewCertificateFromX509 creates a new Certificate from an x509.Certificate and
+// will apply template options. A new (unsigned) x509.CertificateRequest is created,
+// with data from the x509.Certificate template. This function is primarily useful
+// when signing a certificate for a key that can't sign a CSR or when the private
+// key is not available.
+func NewCertificateFromX509(template *x509.Certificate, opts ...Option) (*Certificate, error) {
+	// Copy data from the template to a new, unsigned CSR.
+	csr := &x509.CertificateRequest{
+		PublicKey:          template.PublicKey,
+		PublicKeyAlgorithm: template.PublicKeyAlgorithm,
+		Subject:            template.Subject,
+		DNSNames:           template.DNSNames,
+		EmailAddresses:     template.EmailAddresses,
+		IPAddresses:        template.IPAddresses,
+		URIs:               template.URIs,
+		Extensions:         template.ExtraExtensions,
+	}
+
+	o, err := new(Options).apply(csr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return newCertificateWithOptions(csr, o)
+}
+
+// newCertificateWithOptions creates a new Certificate from an x509.CertificateRequest
+// with options applied. If no template was applied, the data from the x509.CertificateRequest
+// will simply be copied over and returned with the default leaf key usages. Otherwise, the
+// data from the template will be filled in.
+func newCertificateWithOptions(csr *x509.CertificateRequest, o *Options) (*Certificate, error) {
+	// If no template is set, use only the certificate request with the
+	// default leaf key usages.
 	if o.CertBuffer == nil {
-		return NewCertificateRequestFromX509(cr).GetLeafCertificate(), nil
+		return NewCertificateRequestFromX509(csr).GetLeafCertificate(), nil
 	}
 
 	// With templates
@@ -64,9 +98,9 @@ func NewCertificate(cr *x509.CertificateRequest, opts ...Option) (*Certificate, 
 		return nil, errors.Wrap(err, "error unmarshaling certificate")
 	}
 
-	// Complete with certificate request
-	cert.PublicKey = cr.PublicKey
-	cert.PublicKeyAlgorithm = cr.PublicKeyAlgorithm
+	// Enforce the public key
+	cert.PublicKey = csr.PublicKey
+	cert.PublicKeyAlgorithm = csr.PublicKeyAlgorithm
 
 	// Generate the subjectAltName extension if the certificate contains SANs
 	// that are not supported in the Go standard library.
