@@ -6,6 +6,7 @@ package tpmkms
 import (
 	"context"
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
+	"go.step.sm/crypto/tpm/attestation"
 	"go.step.sm/crypto/tpm/storage"
 )
 
@@ -25,9 +27,12 @@ func init() {
 // Scheme is the scheme used in TPM KMS URIs, the string "tpmkms".
 const Scheme = string(apiv1.TPMKMS)
 
-// TPMKMS is a KMS implementation backed by a TPM
+// TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
-	tpm *tpm.TPM
+	tpm                   *tpm.TPM
+	attestationCABaseURL  string
+	attestationCARootFile string
+	attestationCAInsecure bool
 }
 
 type algorithmAttributes struct {
@@ -49,7 +54,8 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 }
 
 // New returns a new TPM KMS.
-func New(ctx context.Context, opts apiv1.Options) (*TPMKMS, error) {
+func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
+	kms = &TPMKMS{}
 	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO: use some default storage location instead?
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
@@ -62,17 +68,17 @@ func New(ctx context.Context, opts apiv1.Options) (*TPMKMS, error) {
 		if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
 			tpmOpts = append(tpmOpts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
 		}
-		// TODO(hs): initialisation settings for attestation CA; see CLI implementation
+		kms.attestationCABaseURL = u.Get("attestation-ca-url")
+		kms.attestationCARootFile = u.Get("attestation-ca-root")
+		kms.attestationCAInsecure = u.GetBool("attestation-ca-insecure")
 	}
 
-	instance, err := tpm.New(tpmOpts...)
+	kms.tpm, err = tpm.New(tpmOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new TPM: %w", err)
 	}
 
-	return &TPMKMS{
-		tpm: instance,
-	}, nil
+	return
 }
 
 // CreateKey generates a new key in the TPM KMS and returns the public key.
@@ -300,6 +306,35 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
+type attestationClient struct {
+	c  *attestation.Client
+	t  *tpm.TPM
+	ek *tpm.EK
+	ak *tpm.AK
+}
+
+func (k *TPMKMS) newAttestorClient(ek *tpm.EK, ak *tpm.AK) (*attestationClient, error) {
+	// prepare a client to perform attestation with an Attestation CA
+	attestationClientOptions := []attestation.Option{attestation.WithRootsFile(k.attestationCARootFile)}
+	if k.attestationCAInsecure {
+		attestationClientOptions = append(attestationClientOptions, attestation.WithInsecure())
+	}
+	client, err := attestation.NewClient(k.attestationCABaseURL, attestationClientOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating attestation client: %w", err)
+	}
+	return &attestationClient{
+		c:  client,
+		t:  k.tpm,
+		ek: ek,
+		ak: ak,
+	}, nil
+}
+
+func (ac *attestationClient) Attest(ctx context.Context) ([]*x509.Certificate, error) {
+	return ac.c.Attest(ctx, ac.t, ac.ek, ac.ak)
+}
+
 func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
 	if req.Name == "" {
 		return nil, errors.New("CreateAttestationRequest 'name' cannot be empty")
@@ -325,7 +360,19 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("failed getting AK for key %q: %w", key.Name(), err)
 	}
 
-	_ = ak
+	// TODO: verify the below logic is OK and complete
+	akChain := ak.CertificateChain()
+	if len(akChain) > 0 {
+		akCert := akChain[0]
+		resp := &apiv1.CreateAttestationResponse{
+			Certificate:      akCert,           // TODO: verify this is the correct one to set here
+			CertificateChain: akChain,          // TODO: verify this is the correct one to set here
+			PublicKey:        akCert.PublicKey, // TODO: verify this is the correct one to set here
+			// PermanentIdentifier string
+		}
+
+		return resp, nil
+	}
 
 	// TODO: check if there's a certificate available already. If not, try
 	// creating an attestation by enrolling with an attestation CA; return the
@@ -334,10 +381,41 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// With the CreateAttestationRequest? Parsed from the name, or a new property?
 	// New property somewhat makes sense to me.
 
+	// TODO: only perform the below call to Attest() when required, so when
+	// no attestation chain with for the right values / identifiers is available yet.
+	var ac apiv1.AttestationClient
+	if req.AttestationClient != nil {
+		// TODO: check if it makes sense to have this; it doesn't capture all
+		// behaviour that the built-in attestorClient does.
+		ac = req.AttestationClient
+	} else {
+		eks, err := k.tpm.GetEKs(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed getting EKs: %w", err)
+		}
+		ek := getPreferredEK(eks)
+		ac, err = k.newAttestorClient(ek, ak)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating attestor client: %w", err)
+		}
+	}
+
+	akChain, err = ac.Attest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed attesting AK for key %q: %w", key.Name(), err)
+	}
+
+	// store the result with the AK, so that it can be reused for future
+	// attestations.
+	if err := ak.SetCertificateChain(ctx, akChain); err != nil {
+		return nil, fmt.Errorf("failed storing AK certificate: %w", err)
+	}
+
+	akCert := akChain[0]
 	resp := &apiv1.CreateAttestationResponse{
-		// 	Certificate         *x509.Certificate
-		// CertificateChain    []*x509.Certificate
-		// PublicKey           crypto.PublicKey
+		Certificate:      akCert,           // TODO: verify this is the correct one to set here
+		CertificateChain: akChain,          // TODO: verify this is the correct one to set here
+		PublicKey:        akCert.PublicKey, // TODO: verify this is the correct one to set here
 		// PermanentIdentifier string
 	}
 
@@ -349,6 +427,22 @@ func (k *TPMKMS) Close() (err error) {
 	return
 }
 
+// getPreferredEK returns the first RSA TPM EK found. If no RSA
+// EK exists, it returns the first ECDSA EK found.
+func getPreferredEK(eks []*tpm.EK) (ek *tpm.EK) {
+	var fallback *tpm.EK
+	for _, ek = range eks {
+		if _, isRSA := ek.Public().(*rsa.PublicKey); isRSA {
+			return
+		}
+		if fallback == nil {
+			fallback = ek
+		}
+	}
+	return fallback
+}
+
 var _ apiv1.KeyManager = (*TPMKMS)(nil)
 var _ apiv1.Attester = (*TPMKMS)(nil)
 var _ apiv1.CertificateManager = (*TPMKMS)(nil)
+var _ apiv1.AttestationClient = (*attestationClient)(nil)
