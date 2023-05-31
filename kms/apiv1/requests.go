@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"context"
 	"crypto"
 	"crypto/x509"
 	"fmt"
@@ -129,7 +130,7 @@ type GetPublicKeyRequest struct {
 type CreateKeyRequest struct {
 	// Name represents the key name or label used to identify a key.
 	//
-	// Used by: awskms, cloudkms, azurekms, pkcs11, yubikey.
+	// Used by: awskms, cloudkms, azurekms, pkcs11, yubikey, tpmkms.
 	Name string
 
 	// SignatureAlgorithm represents the type of key to create.
@@ -215,7 +216,12 @@ type StoreCertificateRequest struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type CreateAttestationRequest struct {
-	Name string
+	Name              string
+	AttestationClient AttestationClient // TODO(hs): a better name; Attestor perhaps, but that's already taken
+}
+
+type AttestationClient interface {
+	Attest(context.Context) ([]*x509.Certificate, error)
 }
 
 // CreateAttestationResponse is the response value of the kms.CreateAttestation
