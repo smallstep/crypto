@@ -223,7 +223,7 @@ func (ac *Client) attest(ctx context.Context, info *tpm.Info, ek *tpm.EK, attest
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 300 {
+	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("POST %q failed with HTTP status %q", attestURL, resp.Status)
 	}
 
@@ -267,7 +267,7 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 300 {
+	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("POST %q failed with HTTP status %q", secretURL, resp.Status)
 	}
 
