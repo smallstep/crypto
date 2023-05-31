@@ -7,9 +7,13 @@ import (
 	"context"
 	"crypto"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -33,6 +37,7 @@ type TPMKMS struct {
 	attestationCABaseURL  string
 	attestationCARootFile string
 	attestationCAInsecure bool
+	permanentIdentifier   string
 }
 
 type algorithmAttributes struct {
@@ -56,7 +61,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // New returns a new TPM KMS.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{}
-	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO: use some default storage location instead?
+	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO(hs): use some default storage location instead?
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
@@ -71,6 +76,7 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		kms.attestationCABaseURL = u.Get("attestation-ca-url")
 		kms.attestationCARootFile = u.Get("attestation-ca-root")
 		kms.attestationCAInsecure = u.GetBool("attestation-ca-insecure")
+		kms.permanentIdentifier = u.Get("permanent-identifier") // TODO(hs): determine if this is needed
 	}
 
 	kms.tpm, err = tpm.New(tpmOpts...)
@@ -250,7 +256,7 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	}
 
 	ctx := context.Background()
-	var cert *x509.Certificate // TODO: support returning chain?
+	var cert *x509.Certificate // TODO(hs): support returning chain?
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
@@ -297,7 +303,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 			return err
 		}
 
-		err = key.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate}) // TODO: support chain in request?
+		err = key.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate}) // TODO(hs): support chain in request?
 		if err != nil {
 			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
 		}
@@ -306,6 +312,9 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
+// attestationClient is a wrapper for [attestation.Client], containing
+// all of the required references to perform attestation agains the
+// Smallstep Attestation CA.
 type attestationClient struct {
 	c  *attestation.Client
 	t  *tpm.TPM
@@ -313,7 +322,12 @@ type attestationClient struct {
 	ak *tpm.AK
 }
 
+// newAttestorClient creates a new [attestationClient], wrapping references
+// to the [tpm.TPM] instance, the EK and the AK to use when attesting.
 func (k *TPMKMS) newAttestorClient(ek *tpm.EK, ak *tpm.AK) (*attestationClient, error) {
+	if k.attestationCABaseURL == "" {
+		return nil, errors.New("failed creating attestation client: attestation CA base URL must not be empty")
+	}
 	// prepare a client to perform attestation with an Attestation CA
 	attestationClientOptions := []attestation.Option{attestation.WithRootsFile(k.attestationCARootFile)}
 	if k.attestationCAInsecure {
@@ -331,6 +345,9 @@ func (k *TPMKMS) newAttestorClient(ek *tpm.EK, ak *tpm.AK) (*attestationClient, 
 	}, nil
 }
 
+// Attest implements the [apiv1.AttestationClient] interface, calling into the
+// underlying [attestation.Client] to perform an attestation flow with the
+// Smallstep Attestation CA.
 func (ac *attestationClient) Attest(ctx context.Context) ([]*x509.Certificate, error) {
 	return ac.c.Attest(ctx, ac.t, ac.ek, ac.ak)
 }
@@ -360,63 +377,74 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("failed getting AK for key %q: %w", key.Name(), err)
 	}
 
-	// TODO: verify the below logic is OK and complete
-	akChain := ak.CertificateChain()
-	if len(akChain) > 0 {
-		akCert := akChain[0]
-		resp := &apiv1.CreateAttestationResponse{
-			Certificate:      akCert,           // TODO: verify this is the correct one to set here
-			CertificateChain: akChain,          // TODO: verify this is the correct one to set here
-			PublicKey:        akCert.PublicKey, // TODO: verify this is the correct one to set here
-			// PermanentIdentifier string
-		}
-
-		return resp, nil
-	}
-
-	// TODO: check if there's a certificate available already. If not, try
-	// creating an attestation by enrolling with an attestation CA; return the
-	// certificate, chain, public key and permanent identifier if successful.
-	// How to provide the attestation CA details? At KMS initialization time?
-	// With the CreateAttestationRequest? Parsed from the name, or a new property?
-	// New property somewhat makes sense to me.
-
-	// TODO: only perform the below call to Attest() when required, so when
-	// no attestation chain with for the right values / identifiers is available yet.
-	var ac apiv1.AttestationClient
-	if req.AttestationClient != nil {
-		// TODO: check if it makes sense to have this; it doesn't capture all
-		// behaviour that the built-in attestorClient does.
-		ac = req.AttestationClient
-	} else {
-		eks, err := k.tpm.GetEKs(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed getting EKs: %w", err)
-		}
-		ek := getPreferredEK(eks)
-		ac, err = k.newAttestorClient(ek, ak)
-		if err != nil {
-			return nil, fmt.Errorf("failed creating attestor client: %w", err)
-		}
-	}
-
-	akChain, err = ac.Attest(ctx)
+	eks, err := k.tpm.GetEKs(ctx) // TODO(hs): control the EK used as the caller of this method?
 	if err != nil {
-		return nil, fmt.Errorf("failed attesting AK for key %q: %w", key.Name(), err)
+		return nil, fmt.Errorf("failed getting EKs: %w", err)
+	}
+	ek := getPreferredEK(eks)
+	ekPublic := ek.Public()
+	ekKeyID, err := generateKeyID(ekPublic)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting EK public key ID: %w", err)
+	}
+	ekKeyURL := ekURL(ekKeyID)
+
+	// check if the derived EK URI fingerprint representation matches the provided
+	// permanent identifier value. The current implementation requires the EK URI to
+	// be used as the AK identity, so an error is returned if there's no match. This
+	// could be changed in the future, so that another attestation flow takes place,
+	// instead, for example.
+	if k.permanentIdentifier != "" && !strings.EqualFold(ekKeyURL.String(), k.permanentIdentifier) {
+		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, ekKeyURL.String())
 	}
 
-	// store the result with the AK, so that it can be reused for future
-	// attestations.
-	if err := ak.SetCertificateChain(ctx, akChain); err != nil {
-		return nil, fmt.Errorf("failed storing AK certificate: %w", err)
+	// check if a (valid) AK certificate (chain) is available. Perform attestation flow
+	// otherwise. If an AK certificate is available, but not considered valid, e.g. due
+	// to it not having the right identity, a new attestation flow will be performed and
+	// the old certificate (chain) will be overwritten with the result of that flow.
+	akChain := ak.CertificateChain()
+	if len(akChain) == 0 || !hasValidIdentity(ak, ekKeyURL) {
+		var ac apiv1.AttestationClient
+		if req.AttestationClient != nil {
+			// TODO(hs): check if it makes sense to have this; it doesn't capture all
+			// behaviour of the built-in attestorClient, but at least it does provide
+			// a basic extension point for other ways of performing attestation that
+			// might be useful for testing or attestation flows against other systems.
+			// For it to be truly useful, the logic for determining the AK identity
+			// would have to be updated too, though.
+			ac = req.AttestationClient
+		} else {
+			ac, err = k.newAttestorClient(ek, ak)
+			if err != nil {
+				return nil, fmt.Errorf("failed creating attestor client: %w", err)
+			}
+		}
+		// perform the attestation flow with a (remote) attestation CA
+		if akChain, err = ac.Attest(ctx); err != nil {
+			return nil, fmt.Errorf("failed performing AK attestation: %w", err)
+		}
+		// store the result with the AK, so that it can be reused for future
+		// attestations.
+		if err := ak.SetCertificateChain(ctx, akChain); err != nil {
+			return nil, fmt.Errorf("failed storing AK certificate chain: %w", err)
+		}
 	}
 
+	// when a new certificate was issued for the AK, it is possible the
+	// certificate that was issued doesn't include the expected and/or required
+	// identity, so this is checked before continuing.
+	if !hasValidIdentity(ak, ekKeyURL) {
+		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
+	}
+
+	// prepare the response to return
 	akCert := akChain[0]
+	permanentIdentifier := ekKeyURL.String() // TODO(hs): should always match the valid value of the AK identity
 	resp := &apiv1.CreateAttestationResponse{
-		Certificate:      akCert,           // TODO: verify this is the correct one to set here
-		CertificateChain: akChain,          // TODO: verify this is the correct one to set here
-		PublicKey:        akCert.PublicKey, // TODO: verify this is the correct one to set here
-		// PermanentIdentifier string
+		Certificate:         akCert,
+		CertificateChain:    akChain, // TODO(hs): should this include the leaf or not?
+		PublicKey:           akCert.PublicKey,
+		PermanentIdentifier: permanentIdentifier,
 	}
 
 	return resp, nil
@@ -440,6 +468,53 @@ func getPreferredEK(eks []*tpm.EK) (ek *tpm.EK) {
 		}
 	}
 	return fallback
+}
+
+// hasValidIdentity indicates if the AK has an associated certificate
+// that includes a valid identity. Currently we only consider certificates
+// that encode the TPM EK public key ID as one of its URI SANs, which is
+// the default behavior of the Smallstep Attestation CA.
+func hasValidIdentity(ak *tpm.AK, ekURL *url.URL) bool {
+	chain := ak.CertificateChain()
+	if len(chain) == 0 {
+		return false
+	}
+	akCert := chain[0]
+
+	// TODO(hs): before continuing, add check if the cert is still valid?
+
+	// the Smallstep Attestation CA will issue AK certifiates that
+	// contain the EK public key ID encoded as an URN by default.
+	for _, u := range akCert.URIs {
+		if strings.EqualFold(ekURL.String(), u.String()) {
+			return true
+		}
+	}
+
+	// TODO(hs): we could consider checking other values to contain
+	// a usable identity too.
+
+	return false
+}
+
+// generateKeyID generates a key identifier from the
+// SHA256 hash of the public key.
+func generateKeyID(pub crypto.PublicKey) ([]byte, error) {
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling public key: %w", err)
+	}
+	hash := sha256.Sum256(b)
+	return hash[:], nil
+}
+
+// ekURL generates an EK URI containing the encoded key identifier
+// for the EK.
+func ekURL(keyID []byte) *url.URL {
+	return &url.URL{
+		Scheme: "urn",
+		Opaque: "ek:sha256:" + base64.StdEncoding.EncodeToString(keyID),
+	}
 }
 
 var _ apiv1.KeyManager = (*TPMKMS)(nil)

@@ -40,7 +40,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 	}
 
 	if o.ak && o.attestBy != "" {
-		return o, errors.New(`"ak" and "attestBy" are mutually exclusive`)
+		return o, errors.New(`"ak" and "attest-by" are mutually exclusive`)
 	}
 
 	return

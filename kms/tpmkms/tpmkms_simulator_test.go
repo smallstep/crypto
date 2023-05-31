@@ -243,7 +243,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				}
 				return false
 			},
-			expErr: fmt.Errorf(`failed parsing "tpmkms:name=akx;ak=true;attest-by=ak1": "ak" and "attestBy" are mutually exclusive`),
+			expErr: fmt.Errorf(`failed parsing "tpmkms:name=akx;ak=true;attest-by=ak1": "ak" and "attest-by" are mutually exclusive`),
 		},
 		{
 			name: "fail/invalid-algorithm",

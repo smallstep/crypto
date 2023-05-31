@@ -30,7 +30,8 @@ type Options struct {
 type Option func(o *Options) error
 
 // WithRootsFile can be used to set the trusted roots when
-// setting up a TLS connection.
+// setting up a TLS connection. An empty filename will
+// be ignored.
 func WithRootsFile(filename string) Option {
 	return func(o *Options) error {
 		if filename == "" {
