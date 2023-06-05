@@ -27,7 +27,8 @@ func New(opts ...tpmp.NewTPMOption) (io.Reader, error) {
 
 func (g *generator) Read(p []byte) (n int, err error) {
 	if g.readError != nil {
-		return 0, fmt.Errorf("failed generating random bytes in previous call to Read: %w: %w", g.readError, io.EOF)
+		errMsg := g.readError.Error() // multiple wrapped errors not (yet) allowed
+		return 0, fmt.Errorf("failed generating random bytes in previous call to Read: %s: %w", errMsg, io.EOF)
 	}
 	if len(p) > math.MaxUint16 {
 		return 0, fmt.Errorf("number of random bytes to read cannot exceed %d", math.MaxUint16)
