@@ -13,12 +13,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/smallstep/go-attestation/attest"
 	"go.step.sm/crypto/tpm"
+
+	"github.com/smallstep/go-attestation/attest"
 )
 
 type Client struct {
-	client  http.Client
+	client  *http.Client
 	baseURL *url.URL
 }
 
@@ -75,7 +76,7 @@ func NewClient(tpmAttestationCABaseURL string, options ...Option) (*Client, erro
 		}
 	}
 
-	client := http.Client{
+	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
