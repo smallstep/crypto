@@ -2,7 +2,10 @@ package tpm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"math"
 
 	"github.com/google/go-tpm/tpm2"
 )
@@ -34,3 +37,49 @@ func (t *TPM) GenerateRandom(ctx context.Context, size uint16) (random []byte, e
 
 	return
 }
+
+type generator struct {
+	t         *TPM
+	readError error
+}
+
+func (t *TPM) RandomReader() (io.Reader, error) {
+	return &generator{
+		t: t,
+	}, nil
+}
+
+func (g *generator) Read(p []byte) (n int, err error) {
+	if g.readError != nil {
+		errMsg := g.readError.Error() // multiple wrapped errors not (yet) allowed
+		return 0, fmt.Errorf("failed generating random bytes in previous call to Read: %s: %w", errMsg, io.EOF)
+	}
+	if len(p) > math.MaxUint16 {
+		return 0, fmt.Errorf("number of random bytes to read cannot exceed %d", math.MaxUint16)
+	}
+	ctx := context.Background()
+	var result []byte
+	requestedLength := len(p)
+	singleRequestLength := uint16(len(p))
+	for len(result) < requestedLength {
+		if r, err := g.t.GenerateRandom(ctx, singleRequestLength); err == nil {
+			result = append(result, r...)
+		} else {
+			var s ShortRandomReadError
+			if errors.As(err, &s) && s.Generated > 0 {
+				// adjust number of bytes to request if at least some data was read and continue loop
+				singleRequestLength = uint16(s.Generated)
+				result = append(result, r...)
+			} else {
+				g.readError = err // store the error to be returned for future calls to Read
+				n = copy(p, result)
+				return n, nil // return the result recorded so far and no error
+			}
+		}
+	}
+
+	n = copy(p, result)
+	return
+}
+
+var _ io.Reader = (*generator)(nil)
