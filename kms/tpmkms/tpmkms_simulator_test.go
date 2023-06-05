@@ -27,37 +27,37 @@ import (
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
-	"go.step.sm/crypto/tpm"
+	tpmp "go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
 )
 
-type newSimulatedTPMOption func(t *testing.T, tpm *tpm.TPM)
+type newSimulatedTPMOption func(t *testing.T, tpm *tpmp.TPM)
 
 func withAK(name string) newSimulatedTPMOption {
-	return func(t *testing.T, instance *tpm.TPM) {
+	return func(t *testing.T, tpm *tpmp.TPM) {
 		t.Helper()
-		_, err := instance.CreateAK(context.Background(), name)
+		_, err := tpm.CreateAK(context.Background(), name)
 		require.NoError(t, err)
 	}
 }
 
 func withKey(name string) newSimulatedTPMOption {
-	return func(t *testing.T, instance *tpm.TPM) {
+	return func(t *testing.T, tpm *tpmp.TPM) {
 		t.Helper()
-		config := tpm.CreateKeyConfig{
+		config := tpmp.CreateKeyConfig{
 			Algorithm: "RSA",
 			Size:      1024,
 		}
-		_, err := instance.CreateKey(context.Background(), name, config)
+		_, err := tpm.CreateKey(context.Background(), name, config)
 		require.NoError(t, err)
 	}
 }
 
-func newSimulatedTPM(t *testing.T, opts ...newSimulatedTPMOption) *tpm.TPM {
+func newSimulatedTPM(t *testing.T, opts ...newSimulatedTPMOption) *tpmp.TPM {
 	t.Helper()
 	tmpDir := t.TempDir()
-	tpm, err := tpm.New(withSimulator(t), tpm.WithStore(storage.NewDirstore(tmpDir)))
+	tpm, err := tpmp.New(withSimulator(t), tpmp.WithStore(storage.NewDirstore(tmpDir)))
 	require.NoError(t, err)
 	for _, applyTo := range opts {
 		applyTo(t, tpm)
@@ -65,7 +65,7 @@ func newSimulatedTPM(t *testing.T, opts ...newSimulatedTPMOption) *tpm.TPM {
 	return tpm
 }
 
-func withSimulator(t *testing.T) tpm.NewTPMOption {
+func withSimulator(t *testing.T) tpmp.NewTPMOption {
 	t.Helper()
 	var sim simulator.Simulator
 	t.Cleanup(func() {
@@ -78,13 +78,13 @@ func withSimulator(t *testing.T) tpm.NewTPMOption {
 	sim = simulator.New()
 	err := sim.Open()
 	require.NoError(t, err)
-	return tpm.WithSimulator(sim)
+	return tpmp.WithSimulator(sim)
 }
 
 func TestTPMKMS_CreateKey(t *testing.T) {
 	tpmWithAK := newSimulatedTPM(t, withAK("ak1"))
 	type fields struct {
-		tpm *tpm.TPM
+		tpm *tpmp.TPM
 	}
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -358,7 +358,7 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	type fields struct {
-		tpm *tpm.TPM
+		tpm *tpmp.TPM
 	}
 	type args struct {
 		req *apiv1.CreateSignerRequest
@@ -448,7 +448,7 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 func TestTPMKMS_GetPublicKey(t *testing.T) {
 	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
 	type fields struct {
-		tpm *tpm.TPM
+		tpm *tpmp.TPM
 	}
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
@@ -527,18 +527,18 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 
 func TestTPMKMS_LoadCertificate(t *testing.T) {
 	ctx := context.Background()
-	instance := newSimulatedTPM(t)
-	config := tpm.CreateKeyConfig{
+	tpm := newSimulatedTPM(t)
+	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
 	}
-	key, err := instance.CreateKey(ctx, "key1", config)
+	key, err := tpm.CreateKey(ctx, "key1", config)
 	require.NoError(t, err)
-	ak, err := instance.CreateAK(ctx, "ak1")
+	ak, err := tpm.CreateAK(ctx, "ak1")
 	require.NoError(t, err)
-	_, err = instance.CreateKey(ctx, "keyWithoutCertificate", config)
+	_, err = tpm.CreateKey(ctx, "keyWithoutCertificate", config)
 	require.NoError(t, err)
-	_, err = instance.CreateAK(ctx, "akWithoutCertificate")
+	_, err = tpm.CreateAK(ctx, "akWithoutCertificate")
 	require.NoError(t, err)
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
@@ -574,7 +574,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 	err = ak.SetCertificateChain(ctx, []*x509.Certificate{akCert})
 	require.NoError(t, err)
 	type fields struct {
-		tpm *tpm.TPM
+		tpm *tpmp.TPM
 	}
 	type args struct {
 		req *apiv1.LoadCertificateRequest
@@ -588,7 +588,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "ok/ak",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -599,7 +599,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "ok/key",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -610,7 +610,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "fail/empty",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -622,7 +622,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "fail/unknown-ak",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -634,7 +634,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "fail/unknown-key",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -646,7 +646,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "fail/ak-without-certificate",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -658,7 +658,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 		{
 			name: "fail/key-without-certificate",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.LoadCertificateRequest{
@@ -687,14 +687,14 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 
 func TestTPMKMS_StoreCertificate(t *testing.T) {
 	ctx := context.Background()
-	instance := newSimulatedTPM(t)
-	config := tpm.CreateKeyConfig{
+	tpm := newSimulatedTPM(t)
+	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
 	}
-	key, err := instance.CreateKey(ctx, "key1", config)
+	key, err := tpm.CreateKey(ctx, "key1", config)
 	require.NoError(t, err)
-	ak, err := instance.CreateAK(ctx, "ak1")
+	ak, err := tpm.CreateAK(ctx, "ak1")
 	require.NoError(t, err)
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
@@ -739,7 +739,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, akCert)
 	type fields struct {
-		tpm *tpm.TPM
+		tpm *tpmp.TPM
 	}
 	type args struct {
 		req *apiv1.StoreCertificateRequest
@@ -753,7 +753,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "ok/ak",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -765,7 +765,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "ok/key",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -777,7 +777,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "fail/empty",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -789,7 +789,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "fail/unknown-ak",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -802,7 +802,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "fail/unknown-key",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -815,7 +815,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "fail/wrong-certificate-for-ak",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -828,7 +828,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 		{
 			name: "fail/wrong-certificate-for-key",
 			fields: fields{
-				tpm: instance,
+				tpm: tpm,
 			},
 			args: args{
 				req: &apiv1.StoreCertificateRequest{
@@ -856,7 +856,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 }
 
 // TODO(hs): dedupe these structs by creating some shared helper
-// functions for running a fake attestation ca instance.
+// functions for running a fake attestation ca tpm.
 type tpmInfo struct {
 	Version         attest.TPMVersion `json:"version,omitempty"`
 	Manufacturer    string            `json:"manufacturer,omitempty"`
@@ -903,48 +903,18 @@ func (c *customAttestationClient) Attest(context.Context) ([]*x509.Certificate, 
 
 func TestTPMKMS_CreateAttestation(t *testing.T) {
 	ctx := context.Background()
-	instance := newSimulatedTPM(t)
-	eks, err := instance.GetEKs(ctx)
+	tpm := newSimulatedTPM(t)
+	eks, err := tpm.GetEKs(ctx)
 	require.NoError(t, err)
 	ek := getPreferredEK(eks)
 	ekKeyID, err := generateKeyID(ek.Public())
 	require.NoError(t, err)
 	ekKeyURL := ekURL(ekKeyID)
-	akWithExistingCert, err := instance.CreateAK(ctx, "akWithExistingCert")
-	require.NoError(t, err)
-	akWithoutCert, err := instance.CreateAK(ctx, "akWithoutCert")
-	require.NoError(t, err)
-	_, err = instance.CreateAK(ctx, "ak2WithoutCert")
-	require.NoError(t, err)
-	_, err = instance.CreateAK(ctx, "ak3WithoutCert")
-	require.NoError(t, err)
-	ak4WithoutCert, err := instance.CreateAK(ctx, "ak4WithoutCert")
-	require.NoError(t, err)
-	ak5WithoutCert, err := instance.CreateAK(ctx, "ak5WithoutCert")
-	require.NoError(t, err)
-	ak6WithoutCert, err := instance.CreateAK(ctx, "ak6WithoutCert")
-	require.NoError(t, err)
-	config := tpm.AttestKeyConfig{
+	config := tpmp.AttestKeyConfig{
 		Algorithm:      "RSA",
 		Size:           1024,
 		QualifyingData: []byte{1, 2, 3, 4},
 	}
-	_, err = instance.AttestKey(ctx, "akWithExistingCert", "key1", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "akWithoutCert", "key2", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "ak2WithoutCert", "key3", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "ak3WithoutCert", "key4", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "ak4WithoutCert", "key5", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "ak5WithoutCert", "key6", config)
-	require.NoError(t, err)
-	_, err = instance.AttestKey(ctx, "ak6WithoutCert", "key7", config)
-	require.NoError(t, err)
-	createConfig := tpm.CreateKeyConfig{Algorithm: "RSA", Size: 1024}
-	_, err = instance.CreateKey(ctx, "nonAttestedKey", createConfig)
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
 			func() (crypto.Signer, error) {
@@ -952,58 +922,8 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			},
 		),
 	)
-	require.NoError(t, err)
-	akPub := akWithExistingCert.Public()
-	require.Implements(t, (*crypto.PublicKey)(nil), akPub)
-	template := &x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "testak",
-		},
-		URIs:      []*url.URL{ekKeyURL},
-		PublicKey: akPub,
-	}
-	validAKCert, err := ca.Sign(template)
-	require.NoError(t, err)
-	require.NotNil(t, validAKCert)
-	err = akWithExistingCert.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
-	require.NoError(t, err)
-	akPubNew := akWithoutCert.Public()
-	require.Implements(t, (*crypto.PublicKey)(nil), akPubNew)
-	template = &x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "testnewak",
-		},
-		URIs:      []*url.URL{ekKeyURL},
-		PublicKey: akPubNew,
-	}
-	newAKCert, err := ca.Sign(template)
-	require.NoError(t, err)
-	require.NotNil(t, newAKCert)
-	ak5Pub := ak5WithoutCert.Public()
-	require.Implements(t, (*crypto.PublicKey)(nil), ak5Pub)
-	template = &x509.Certificate{ // NOTE: missing EK URI SAN
-		Subject: pkix.Name{
-			CommonName: "testinvalidak",
-		},
-		PublicKey: ak5Pub,
-	}
-	invalidAKIdentityCert, err := ca.Sign(template)
-	require.NoError(t, err)
-	require.NotNil(t, invalidAKIdentityCert)
-	ak6Pub := ak6WithoutCert.Public()
-	require.Implements(t, (*crypto.PublicKey)(nil), ak6Pub)
-	template = &x509.Certificate{ // NOTE: missing EK URI SAN
-		Subject: pkix.Name{
-			CommonName: "testak6",
-		},
-		URIs:      []*url.URL{ekKeyURL},
-		PublicKey: ak6Pub,
-	}
-	ak6Cert, err := ca.Sign(template)
-	require.NoError(t, err)
-	require.NotNil(t, ak6Cert)
 	type fields struct {
-		tpm                   *tpm.TPM
+		tpm                   *tpmp.TPM
 		attestationCABaseURL  string
 		attestationCARootFile string
 		attestationCAInsecure bool
@@ -1043,7 +963,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		"fail/unknown-key": func(t *testing.T) test {
 			return test{
 				fields: fields{
-					tpm: instance,
+					tpm: tpm,
 				},
 				args: args{
 					req: &apiv1.CreateAttestationRequest{
@@ -1054,9 +974,11 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"fail/non-attested-key": func(t *testing.T) test {
+			createConfig := tpmp.CreateKeyConfig{Algorithm: "RSA", Size: 1024}
+			_, err = tpm.CreateKey(ctx, "nonAttestedKey", createConfig)
 			return test{
 				fields: fields{
-					tpm: instance,
+					tpm: tpm,
 				},
 				args: args{
 					req: &apiv1.CreateAttestationRequest{
@@ -1067,23 +989,31 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"fail/non-matching-permanent-identifier": func(t *testing.T) test {
+			_, err = tpm.CreateAK(ctx, "newAKWithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "akWithoutCert", "newkey", config)
+			require.NoError(t, err)
 			return test{
 				fields: fields{
-					tpm:                 instance,
+					tpm:                 tpm,
 					permanentIdentifier: "wrong-provided-permanent-identifier",
 				},
 				args: args{
 					req: &apiv1.CreateAttestationRequest{
-						Name: "tpmkms:name=key2", // key2 was attested by the akWithoutCert at creation time
+						Name: "tpmkms:name=newkey", // key2 was attested by the akWithoutCert at creation time
 					},
 				},
 				expErr: fmt.Errorf(`the provided permanent identifier "wrong-provided-permanent-identifier" does not match the EK URL %q`, ekKeyURL.String()),
 			}
 		},
 		"fail/create-attestor-client": func(t *testing.T) test {
+			_, err = tpm.CreateAK(ctx, "ak2WithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "ak2WithoutCert", "key3", config)
+			require.NoError(t, err)
 			return test{
 				fields: fields{
-					tpm:                 instance,
+					tpm:                 tpm,
 					permanentIdentifier: ekKeyURL.String(),
 				},
 				args: args{
@@ -1095,6 +1025,10 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"fail/attest": func(t *testing.T) test {
+			_, err = tpm.CreateAK(ctx, "ak3WithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "ak3WithoutCert", "key4", config)
+			require.NoError(t, err)
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/attest":
@@ -1107,7 +1041,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			return test{
 				server: s,
 				fields: fields{
-					tpm:                  instance,
+					tpm:                  tpm,
 					attestationCABaseURL: s.URL,
 					permanentIdentifier:  ekKeyURL.String(),
 				},
@@ -1120,6 +1054,10 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"fail/set-ak-certificate-chain": func(t *testing.T) test {
+			ak4WithoutCert, err := tpm.CreateAK(ctx, "ak4WithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "ak4WithoutCert", "key5", config)
+			require.NoError(t, err)
 			params, err := ak4WithoutCert.AttestationParameters(context.Background())
 			require.NoError(t, err)
 			require.NotNil(t, params)
@@ -1176,7 +1114,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			return test{
 				server: s,
 				fields: fields{
-					tpm:                  instance,
+					tpm:                  tpm,
 					attestationCABaseURL: s.URL,
 					permanentIdentifier:  ekKeyURL.String(),
 				},
@@ -1190,6 +1128,21 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"fail/ak-certificate-chain-has-invalid-identity": func(t *testing.T) test {
+			ak5WithoutCert, err := tpm.CreateAK(ctx, "ak5WithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "ak5WithoutCert", "key6", config)
+			require.NoError(t, err)
+			ak5Pub := ak5WithoutCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), ak5Pub)
+			template := &x509.Certificate{ // NOTE: missing EK URI SAN
+				Subject: pkix.Name{
+					CommonName: "testinvalidak",
+				},
+				PublicKey: ak5Pub,
+			}
+			invalidAKIdentityCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, invalidAKIdentityCert)
 			params, err := ak5WithoutCert.AttestationParameters(context.Background())
 			require.NoError(t, err)
 			require.NotNil(t, params)
@@ -1247,7 +1200,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			return test{
 				server: s,
 				fields: fields{
-					tpm:                  instance,
+					tpm:                  tpm,
 					attestationCABaseURL: s.URL,
 					permanentIdentifier:  ekKeyURL.String(),
 				},
@@ -1261,9 +1214,27 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"ok": func(t *testing.T) test {
+			akWithExistingCert, err := tpm.CreateAK(ctx, "akWithExistingCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "akWithExistingCert", "key1", config)
+			require.NoError(t, err)
+			akPub := akWithExistingCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: akPub,
+			}
+			validAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, validAKCert)
+			err = akWithExistingCert.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
+			require.NoError(t, err)
 			return test{
 				fields: fields{
-					tpm:                 instance,
+					tpm:                 tpm,
 					permanentIdentifier: ekKeyURL.String(),
 				},
 				args: args{
@@ -1281,6 +1252,22 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"ok/new-chain": func(t *testing.T) test {
+			akWithoutCert, err := tpm.CreateAK(ctx, "akWithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "akWithoutCert", "key2", config)
+			require.NoError(t, err)
+			akPubNew := akWithoutCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), akPubNew)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testnewak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: akPubNew,
+			}
+			newAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, newAKCert)
 			params, err := akWithoutCert.AttestationParameters(context.Background())
 			require.NoError(t, err)
 			require.NotNil(t, params)
@@ -1339,7 +1326,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			return test{
 				server: s,
 				fields: fields{
-					tpm:                  instance,
+					tpm:                  tpm,
 					attestationCABaseURL: s.URL,
 					permanentIdentifier:  ekKeyURL.String(),
 				},
@@ -1358,9 +1345,25 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 			}
 		},
 		"ok/new-chain-with-custom-attestor-client": func(t *testing.T) test {
+			ak6WithoutCert, err := tpm.CreateAK(ctx, "ak6WithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "ak6WithoutCert", "key7", config)
+			require.NoError(t, err)
+			ak6Pub := ak6WithoutCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), ak6Pub)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak6",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: ak6Pub,
+			}
+			ak6Cert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, ak6Cert)
 			return test{
 				fields: fields{
-					tpm:                 instance,
+					tpm:                 tpm,
 					permanentIdentifier: ekKeyURL.String(),
 				},
 				args: args{
