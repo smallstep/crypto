@@ -220,6 +220,8 @@ type CreateAttestationRequest struct {
 	AttestationClient AttestationClient // TODO(hs): a better name; Attestor perhaps, but that's already taken
 }
 
+// AttestationClient is an interface that provides a pluggable method for
+// attesting Attestation Keys (AKs).
 type AttestationClient interface {
 	Attest(context.Context) ([]*x509.Certificate, error)
 }

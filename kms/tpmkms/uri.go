@@ -26,6 +26,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		return
 	}
 
+	// TODO(hs): support case in which `name` key is not provided
 	if strings.HasPrefix(nameURI, "tpmkms:") {
 		u, err := uri.Parse(nameURI)
 		if err != nil {

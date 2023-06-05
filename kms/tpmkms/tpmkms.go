@@ -313,7 +313,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 }
 
 // attestationClient is a wrapper for [attestation.Client], containing
-// all of the required references to perform attestation agains the
+// all of the required references to perform attestation against the
 // Smallstep Attestation CA.
 type attestationClient struct {
 	c  *attestation.Client
@@ -354,7 +354,7 @@ func (ac *attestationClient) Attest(ctx context.Context) ([]*x509.Certificate, e
 
 func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
 	if req.Name == "" {
-		return nil, errors.New("CreateAttestationRequest 'name' cannot be empty")
+		return nil, errors.New("createAttestationRequest 'name' cannot be empty")
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -365,7 +365,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	ctx := context.Background()
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting key %q: %w", properties.name, err)
+		return nil, err
 	}
 
 	if !key.WasAttested() {
@@ -407,7 +407,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		var ac apiv1.AttestationClient
 		if req.AttestationClient != nil {
 			// TODO(hs): check if it makes sense to have this; it doesn't capture all
-			// behaviour of the built-in attestorClient, but at least it does provide
+			// behavior of the built-in attestorClient, but at least it does provide
 			// a basic extension point for other ways of performing attestation that
 			// might be useful for testing or attestation flows against other systems.
 			// For it to be truly useful, the logic for determining the AK identity
@@ -439,7 +439,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 
 	// prepare the response to return
 	akCert := akChain[0]
-	permanentIdentifier := ekKeyURL.String() // TODO(hs): should always match the valid value of the AK identity
+	permanentIdentifier := ekKeyURL.String() // TODO(hs): should always match the valid value of the AK identity (for now)
 	resp := &apiv1.CreateAttestationResponse{
 		Certificate:         akCert,
 		CertificateChain:    akChain, // TODO(hs): should this include the leaf or not?

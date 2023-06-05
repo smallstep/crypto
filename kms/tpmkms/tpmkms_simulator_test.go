@@ -11,12 +11,18 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/smallstep/go-attestation/attest"
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
@@ -845,6 +851,557 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
+		})
+	}
+}
+
+// TODO(hs): dedupe these structs by creating some shared helper
+// functions for running a fake attestation ca instance.
+type tpmInfo struct {
+	Version         attest.TPMVersion `json:"version,omitempty"`
+	Manufacturer    string            `json:"manufacturer,omitempty"`
+	Model           string            `json:"model,omitempty"`
+	FirmwareVersion string            `json:"firmwareVersion,omitempty"`
+}
+
+type attestationParameters struct {
+	Public                  []byte `json:"public,omitempty"`
+	UseTCSDActivationFormat bool   `json:"useTCSDActivationFormat,omitempty"`
+	CreateData              []byte `json:"createData,omitempty"`
+	CreateAttestation       []byte `json:"createAttestation,omitempty"`
+	CreateSignature         []byte `json:"createSignature,omitempty"`
+}
+
+type attestationRequest struct {
+	TPMInfo      tpmInfo               `json:"tpmInfo"`
+	EK           []byte                `json:"ek,omitempty"`
+	EKCerts      [][]byte              `json:"ekCerts,omitempty"`
+	AKCert       []byte                `json:"akCert,omitempty"`
+	AttestParams attestationParameters `json:"params,omitempty"`
+}
+
+type attestationResponse struct {
+	Credential []byte `json:"credential"`
+	Secret     []byte `json:"secret"` // encrypted secret
+}
+
+type secretRequest struct {
+	Secret []byte `json:"secret"` // decrypted secret
+}
+
+type secretResponse struct {
+	CertificateChain [][]byte `json:"chain"`
+}
+
+type customAttestationClient struct {
+	chain []*x509.Certificate
+}
+
+func (c *customAttestationClient) Attest(context.Context) ([]*x509.Certificate, error) {
+	return c.chain, nil
+}
+
+func TestTPMKMS_CreateAttestation(t *testing.T) {
+	ctx := context.Background()
+	instance := newSimulatedTPM(t)
+	eks, err := instance.GetEKs(ctx)
+	require.NoError(t, err)
+	ek := getPreferredEK(eks)
+	ekKeyID, err := generateKeyID(ek.Public())
+	require.NoError(t, err)
+	ekKeyURL := ekURL(ekKeyID)
+	akWithExistingCert, err := instance.CreateAK(ctx, "akWithExistingCert")
+	require.NoError(t, err)
+	akWithoutCert, err := instance.CreateAK(ctx, "akWithoutCert")
+	require.NoError(t, err)
+	_, err = instance.CreateAK(ctx, "ak2WithoutCert")
+	require.NoError(t, err)
+	_, err = instance.CreateAK(ctx, "ak3WithoutCert")
+	require.NoError(t, err)
+	ak4WithoutCert, err := instance.CreateAK(ctx, "ak4WithoutCert")
+	require.NoError(t, err)
+	ak5WithoutCert, err := instance.CreateAK(ctx, "ak5WithoutCert")
+	require.NoError(t, err)
+	ak6WithoutCert, err := instance.CreateAK(ctx, "ak6WithoutCert")
+	require.NoError(t, err)
+	config := tpm.AttestKeyConfig{
+		Algorithm:      "RSA",
+		Size:           1024,
+		QualifyingData: []byte{1, 2, 3, 4},
+	}
+	_, err = instance.AttestKey(ctx, "akWithExistingCert", "key1", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "akWithoutCert", "key2", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "ak2WithoutCert", "key3", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "ak3WithoutCert", "key4", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "ak4WithoutCert", "key5", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "ak5WithoutCert", "key6", config)
+	require.NoError(t, err)
+	_, err = instance.AttestKey(ctx, "ak6WithoutCert", "key7", config)
+	require.NoError(t, err)
+	createConfig := tpm.CreateKeyConfig{Algorithm: "RSA", Size: 1024}
+	_, err = instance.CreateKey(ctx, "nonAttestedKey", createConfig)
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	require.NoError(t, err)
+	akPub := akWithExistingCert.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testak",
+		},
+		URIs:      []*url.URL{ekKeyURL},
+		PublicKey: akPub,
+	}
+	validAKCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, validAKCert)
+	err = akWithExistingCert.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
+	require.NoError(t, err)
+	akPubNew := akWithoutCert.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), akPubNew)
+	template = &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testnewak",
+		},
+		URIs:      []*url.URL{ekKeyURL},
+		PublicKey: akPubNew,
+	}
+	newAKCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, newAKCert)
+	ak5Pub := ak5WithoutCert.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), ak5Pub)
+	template = &x509.Certificate{ // NOTE: missing EK URI SAN
+		Subject: pkix.Name{
+			CommonName: "testinvalidak",
+		},
+		PublicKey: ak5Pub,
+	}
+	invalidAKIdentityCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, invalidAKIdentityCert)
+	ak6Pub := ak6WithoutCert.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), ak6Pub)
+	template = &x509.Certificate{ // NOTE: missing EK URI SAN
+		Subject: pkix.Name{
+			CommonName: "testak6",
+		},
+		URIs:      []*url.URL{ekKeyURL},
+		PublicKey: ak6Pub,
+	}
+	ak6Cert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, ak6Cert)
+	type fields struct {
+		tpm                   *tpm.TPM
+		attestationCABaseURL  string
+		attestationCARootFile string
+		attestationCAInsecure bool
+		permanentIdentifier   string
+	}
+	type args struct {
+		req *apiv1.CreateAttestationRequest
+	}
+	type test struct {
+		server *httptest.Server
+		fields fields
+		args   args
+		want   *apiv1.CreateAttestationResponse
+		expErr error
+	}
+	tests := map[string]func(t *testing.T) test{
+		"fail/empty-name": func(t *testing.T) test {
+			return test{
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "",
+					},
+				},
+				expErr: errors.New("createAttestationRequest 'name' cannot be empty"),
+			}
+		},
+		"fail/ak-attestby-mutually-exclusive": func(t *testing.T) test {
+			return test{
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=keyx;ak=true;attest-by=ak1",
+					},
+				},
+				expErr: errors.New(`failed parsing "tpmkms:name=keyx;ak=true;attest-by=ak1": "ak" and "attest-by" are mutually exclusive`),
+			}
+		},
+		"fail/unknown-key": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm: instance,
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=keyx",
+					},
+				},
+				expErr: errors.New(`failed getting key "keyx": not found`),
+			}
+		},
+		"fail/non-attested-key": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm: instance,
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=nonAttestedKey",
+					},
+				},
+				expErr: errors.New(`key "nonAttestedKey" was not attested`),
+			}
+		},
+		"fail/non-matching-permanent-identifier": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm:                 instance,
+					permanentIdentifier: "wrong-provided-permanent-identifier",
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key2", // key2 was attested by the akWithoutCert at creation time
+					},
+				},
+				expErr: fmt.Errorf(`the provided permanent identifier "wrong-provided-permanent-identifier" does not match the EK URL %q`, ekKeyURL.String()),
+			}
+		},
+		"fail/create-attestor-client": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm:                 instance,
+					permanentIdentifier: ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key3", // key3 was attested by the ak2WithoutCert at creation time
+					},
+				},
+				expErr: fmt.Errorf(`failed creating attestor client: failed creating attestation client: attestation CA base URL must not be empty`),
+			}
+		},
+		"fail/attest": func(t *testing.T) test {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					w.WriteHeader(http.StatusBadRequest)
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  instance,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key4", // key4 was attested by the ak3WithoutCert at creation time
+					},
+				},
+				expErr: fmt.Errorf(`failed performing AK attestation: failed attesting AK: POST %q failed with HTTP status "400 Bad Request"`, fmt.Sprintf("%s/attest", s.URL)),
+			}
+		},
+		"fail/set-ak-certificate-chain": func(t *testing.T) test {
+			params, err := ak4WithoutCert.AttestationParameters(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			activation := attest.ActivationParameters{
+				TPMVersion: attest.TPMVersion20,
+				EK:         ek.Public(),
+				AK:         params,
+			}
+			expectedSecret, encryptedCredentials, err := activation.Generate()
+			require.NoError(t, err)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					var ar attestationRequest
+					err := json.NewDecoder(r.Body).Decode(&ar)
+					require.NoError(t, err)
+					parsedEK, err := x509.ParsePKIXPublicKey(ar.EK)
+					require.NoError(t, err)
+					assert.Equal(t, ek.Public(), parsedEK)
+					attestParams := attest.AttestationParameters{
+						Public:                  ar.AttestParams.Public,
+						UseTCSDActivationFormat: ar.AttestParams.UseTCSDActivationFormat,
+						CreateData:              ar.AttestParams.CreateData,
+						CreateAttestation:       ar.AttestParams.CreateAttestation,
+						CreateSignature:         ar.AttestParams.CreateSignature,
+					}
+					activationParams := attest.ActivationParameters{
+						TPMVersion: ar.TPMInfo.Version,
+						EK:         parsedEK,
+						AK:         attestParams,
+					}
+					assert.Equal(t, activation, activationParams)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&attestationResponse{
+						Credential: encryptedCredentials.Credential,
+						Secret:     encryptedCredentials.Secret,
+					})
+				case "/secret":
+					var sr secretRequest
+					err := json.NewDecoder(r.Body).Decode(&sr)
+					require.NoError(t, err)
+					assert.Equal(t, expectedSecret, sr.Secret)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&secretResponse{
+						CertificateChain: [][]byte{
+							ca.Intermediate.Raw, // No leaf returned
+						},
+					})
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  instance,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key5", // key5 was attested by ak3WithoutCert at creation time
+					},
+				},
+				want:   nil,
+				expErr: fmt.Errorf(`failed storing AK certificate chain: AK public key does not match the leaf certificate public key`),
+			}
+		},
+		"fail/ak-certificate-chain-has-invalid-identity": func(t *testing.T) test {
+			params, err := ak5WithoutCert.AttestationParameters(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			activation := attest.ActivationParameters{
+				TPMVersion: attest.TPMVersion20,
+				EK:         ek.Public(),
+				AK:         params,
+			}
+			expectedSecret, encryptedCredentials, err := activation.Generate()
+			require.NoError(t, err)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					var ar attestationRequest
+					err := json.NewDecoder(r.Body).Decode(&ar)
+					require.NoError(t, err)
+					parsedEK, err := x509.ParsePKIXPublicKey(ar.EK)
+					require.NoError(t, err)
+					assert.Equal(t, ek.Public(), parsedEK)
+					attestParams := attest.AttestationParameters{
+						Public:                  ar.AttestParams.Public,
+						UseTCSDActivationFormat: ar.AttestParams.UseTCSDActivationFormat,
+						CreateData:              ar.AttestParams.CreateData,
+						CreateAttestation:       ar.AttestParams.CreateAttestation,
+						CreateSignature:         ar.AttestParams.CreateSignature,
+					}
+					activationParams := attest.ActivationParameters{
+						TPMVersion: ar.TPMInfo.Version,
+						EK:         parsedEK,
+						AK:         attestParams,
+					}
+					assert.Equal(t, activation, activationParams)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&attestationResponse{
+						Credential: encryptedCredentials.Credential,
+						Secret:     encryptedCredentials.Secret,
+					})
+				case "/secret":
+					var sr secretRequest
+					err := json.NewDecoder(r.Body).Decode(&sr)
+					require.NoError(t, err)
+					assert.Equal(t, expectedSecret, sr.Secret)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&secretResponse{
+						CertificateChain: [][]byte{
+							invalidAKIdentityCert.Raw, // AK certificate without EK URI SAN
+							ca.Intermediate.Raw,
+						},
+					})
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  instance,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key6", // key6 was attested by ak5WithoutCert at creation time
+					},
+				},
+				want:   nil,
+				expErr: fmt.Errorf(`AK certificate (chain) not valid for EK %q`, ekKeyURL.String()),
+			}
+		},
+		"ok": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm:                 instance,
+					permanentIdentifier: ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key1", // key1 was attested by the akWithExistingCert at creation time
+					},
+				},
+				want: &apiv1.CreateAttestationResponse{
+					Certificate:         validAKCert,
+					CertificateChain:    []*x509.Certificate{validAKCert, ca.Intermediate},
+					PublicKey:           validAKCert.PublicKey,
+					PermanentIdentifier: ekKeyURL.String(),
+				},
+				expErr: nil,
+			}
+		},
+		"ok/new-chain": func(t *testing.T) test {
+			params, err := akWithoutCert.AttestationParameters(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			activation := attest.ActivationParameters{
+				TPMVersion: attest.TPMVersion20,
+				EK:         ek.Public(),
+				AK:         params,
+			}
+			expectedSecret, encryptedCredentials, err := activation.Generate()
+			require.NoError(t, err)
+			akChain := [][]byte{
+				newAKCert.Raw,
+				ca.Intermediate.Raw,
+			}
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					var ar attestationRequest
+					err := json.NewDecoder(r.Body).Decode(&ar)
+					require.NoError(t, err)
+					parsedEK, err := x509.ParsePKIXPublicKey(ar.EK)
+					require.NoError(t, err)
+					assert.Equal(t, ek.Public(), parsedEK)
+					attestParams := attest.AttestationParameters{
+						Public:                  ar.AttestParams.Public,
+						UseTCSDActivationFormat: ar.AttestParams.UseTCSDActivationFormat,
+						CreateData:              ar.AttestParams.CreateData,
+						CreateAttestation:       ar.AttestParams.CreateAttestation,
+						CreateSignature:         ar.AttestParams.CreateSignature,
+					}
+					activationParams := attest.ActivationParameters{
+						TPMVersion: ar.TPMInfo.Version,
+						EK:         parsedEK,
+						AK:         attestParams,
+					}
+					assert.Equal(t, activation, activationParams)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&attestationResponse{
+						Credential: encryptedCredentials.Credential,
+						Secret:     encryptedCredentials.Secret,
+					})
+				case "/secret":
+					var sr secretRequest
+					err := json.NewDecoder(r.Body).Decode(&sr)
+					require.NoError(t, err)
+					assert.Equal(t, expectedSecret, sr.Secret)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&secretResponse{
+						CertificateChain: akChain,
+					})
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  instance,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key2", // key2 was attested by akWithoutCert at creation time
+					},
+				},
+				want: &apiv1.CreateAttestationResponse{
+					Certificate:         newAKCert,
+					CertificateChain:    []*x509.Certificate{newAKCert, ca.Intermediate},
+					PublicKey:           newAKCert.PublicKey,
+					PermanentIdentifier: ekKeyURL.String(),
+				},
+				expErr: nil,
+			}
+		},
+		"ok/new-chain-with-custom-attestor-client": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm:                 instance,
+					permanentIdentifier: ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=key7", // key7 was attested by ak6WithoutCert at creation time
+						AttestationClient: &customAttestationClient{
+							chain: []*x509.Certificate{ak6Cert, ca.Intermediate},
+						},
+					},
+				},
+				want: &apiv1.CreateAttestationResponse{
+					Certificate:         ak6Cert,
+					CertificateChain:    []*x509.Certificate{ak6Cert, ca.Intermediate},
+					PublicKey:           ak6Cert.PublicKey,
+					PermanentIdentifier: ekKeyURL.String(),
+				},
+				expErr: nil,
+			}
+		},
+	}
+	for name, tt := range tests {
+		tc := tt(t)
+		t.Run(name, func(t *testing.T) {
+			k := &TPMKMS{
+				tpm:                   tc.fields.tpm,
+				attestationCABaseURL:  tc.fields.attestationCABaseURL,
+				attestationCARootFile: tc.fields.attestationCARootFile,
+				attestationCAInsecure: tc.fields.attestationCAInsecure,
+				permanentIdentifier:   tc.fields.permanentIdentifier,
+			}
+			if tc.server != nil {
+				defer tc.server.Close()
+			}
+			got, err := k.CreateAttestation(tc.args.req)
+			if tc.expErr != nil {
+				assert.EqualError(t, err, tc.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
