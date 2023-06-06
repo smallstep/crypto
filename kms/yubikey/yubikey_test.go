@@ -976,7 +976,7 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 			Name: "yubikey:slot-id=9a",
 		}}, &apiv1.CreateAttestationResponse{
 			Certificate:         yk.attestMap[piv.SlotAuthentication],
-			CertificateChain:    []*x509.Certificate{yk.attestCA.Intermediate},
+			CertificateChain:    []*x509.Certificate{yk.attestMap[piv.SlotAuthentication], yk.attestCA.Intermediate},
 			PublicKey:           yk.attestMap[piv.SlotAuthentication].PublicKey,
 			PermanentIdentifier: "112233",
 		}, false},
