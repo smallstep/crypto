@@ -324,7 +324,7 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 
 	return &apiv1.CreateAttestationResponse{
 		Certificate:         cert,
-		CertificateChain:    []*x509.Certificate{intermediate},
+		CertificateChain:    []*x509.Certificate{intermediate}, // TODO(hs): separate commit that includes the cert here
 		PublicKey:           cert.PublicKey,
 		PermanentIdentifier: getSerialNumber(cert),
 	}, nil
@@ -490,3 +490,5 @@ func getSerialNumber(cert *x509.Certificate) string {
 	}
 	return ""
 }
+
+var _ apiv1.CertificateManager = (*YubiKey)(nil)

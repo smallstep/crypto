@@ -30,6 +30,16 @@ type CertificateManager interface {
 	StoreCertificate(req *StoreCertificateRequest) error
 }
 
+// CertificateChainManager is the interface implemented by KMS implementations
+// that can load certificate chains. The LoadCertificateChain method uses the
+// same request object as the LoadCertificate method of the CertificateManager
+// interfaces. When the LoadCertificateChain method is called, the certificate
+// chain stored through the CertificateChain property in the StoreCertificateRequest
+// will be returned, partially reusing the StoreCertificateRequest object.
+type CertificateChainManager interface {
+	LoadCertificateChain(req *LoadCertificateRequest) ([]*x509.Certificate, error)
+}
+
 // NameValidator is an interface that KeyManager can implement to validate a
 // given name or URI.
 type NameValidator interface {

@@ -42,6 +42,8 @@ func (f *fakeCM) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
+var _ apiv1.CertificateManager = (*fakeCM)(nil)
+
 func TestMain(m *testing.M) {
 	apiv1.Register(apiv1.Type("fake"), func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		return &fakeCM{}, nil

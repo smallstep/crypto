@@ -31,8 +31,13 @@ func init() {
 const Scheme = string(apiv1.TPMKMS)
 
 const (
-	defaultRSAKeySize = 3072
-	defaultRSAAKSize  = 2048
+	// DefaultRSASize is the number of bits of a new RSA key if no size has been
+	// specified.
+	DefaultRSASize = 3072
+	// defaultRSAAKSize is the default number of bits for a new RSA Attestation
+	// Key. It is currently set to 2048, because that's what's mentioned in the
+	// TCG TPM specification and is used by the AK template in `go-attestation`.
+	defaultRSAAKSize = 2048
 )
 
 // TPMKMS is a KMS implementation backed by a TPM.
@@ -177,7 +182,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("creating %d bit AKs is not supported; only %d is supported", req.Bits, defaultRSAAKSize)
 	}
 
-	size := defaultRSAKeySize // 3072
+	size := DefaultRSASize // defaults to 3072
 	if req.Bits > 0 {
 		size = req.Bits
 	}
@@ -344,6 +349,40 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 
 	return cert, nil
 }
+
+func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
+	if req.Name == "" {
+		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
+	}
+
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	var chain []*x509.Certificate // TODO(hs): support returning chain?
+	if properties.ak {
+		ak, err := k.tpm.GetAK(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		chain = ak.CertificateChain()
+	} else {
+		key, err := k.tpm.GetKey(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		chain = key.CertificateChain()
+	}
+
+	if len(chain) == 0 {
+		return nil, fmt.Errorf("failed getting certificate chain for %q: no certificate chain stored", properties.name)
+	}
+
+	return chain, nil
+}
+
 func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	switch {
 	case req.Name == "":
@@ -592,4 +631,5 @@ func ekURL(keyID []byte) *url.URL {
 var _ apiv1.KeyManager = (*TPMKMS)(nil)
 var _ apiv1.Attester = (*TPMKMS)(nil)
 var _ apiv1.CertificateManager = (*TPMKMS)(nil)
+var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
 var _ apiv1.AttestationClient = (*attestationClient)(nil)
