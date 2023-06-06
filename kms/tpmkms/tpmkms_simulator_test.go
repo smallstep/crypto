@@ -159,7 +159,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				req: &apiv1.CreateKeyRequest{
 					Name:               "tpmkms:name=ak2;ak=true",
 					SignatureAlgorithm: apiv1.SHA256WithRSA,
-					Bits:               1024,
+					Bits:               2048,
 				},
 			},
 			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
@@ -248,7 +248,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				req: &apiv1.CreateKeyRequest{
 					Name:               "tpmkms:name=akx;ak=true;attest-by=ak1",
 					SignatureAlgorithm: apiv1.SHA256WithRSA,
-					Bits:               1024,
+					Bits:               2048,
 				},
 			},
 			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
@@ -332,7 +332,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				req: &apiv1.CreateKeyRequest{
 					Name:               "tpmkms:name=ak2;ak=true",
 					SignatureAlgorithm: apiv1.SHA256WithRSA,
-					Bits:               1024,
+					Bits:               2048,
 				},
 			},
 			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {

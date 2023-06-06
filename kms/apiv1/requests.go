@@ -199,8 +199,9 @@ type LoadCertificateRequest struct {
 // StoreCertificateRequest is the parameter used in the StoreCertificate method
 // of a CertificateManager.
 type StoreCertificateRequest struct {
-	Name        string
-	Certificate *x509.Certificate
+	Name             string
+	Certificate      *x509.Certificate
+	CertificateChain []*x509.Certificate
 
 	// Extractable defines if the new certificate may be exported from the HSM
 	// under a wrap key. On pkcs11 sets the CKA_EXTRACTABLE bit.
@@ -229,6 +230,9 @@ type AttestationClient interface {
 
 // CreateAttestationResponse is the response value of the kms.CreateAttestation
 // method.
+//
+// If a non-empty CertificateChain is returned, the first x509.Certificate is
+// the same as the one in the Certificate property.
 //
 // # Experimental
 //

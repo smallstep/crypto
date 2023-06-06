@@ -30,6 +30,11 @@ func init() {
 // Scheme is the scheme used in TPM KMS URIs, the string "tpmkms".
 const Scheme = string(apiv1.TPMKMS)
 
+const (
+	defaultRSAKeySize = 3072
+	defaultRSAAKSize  = 2048
+)
+
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
 	tpm                   *tpm.TPM
@@ -57,10 +62,51 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 	apiv1.ECDSAWithSHA512:          {"ECDSA", 521},
 }
 
-// New returns a new TPM KMS.
+// New initializes a new KMS backed by a TPM.
+//
+// A new TPMKMS can be initialized with a configuration by providing
+// a URI in the options:
+//
+//	New(ctx, &apiv1.Options{
+//	    URI: tpmkms:device=/dev/tpmrm0;storage-directory=/path/to/tpmstorage/directory
+//	})
+//
+// The system default TPM device will be used when not configured. A
+// specific TPM device can be selected by setting the device:
+//
+//	tpmkms:device=/dev/tpmrm0
+//
+// By default newly created TPM objects won't be persisted, so can't
+// be readily used. The location for storage can be set using
+// storage-directory:
+//
+//	tpmkms:storage-directory=/path/to/tpmstorage/directory
+//
+// For attestation use cases that involve the Smallstep Attestation CA
+// or a compatible one, several properties can be set. The following
+// specify the Attestation CA base URL, the path to a bundle of root CAs
+// to trust when setting up a TLS connection to the Attestation CA and
+// disable TLS certificate validation, respectively.
+//
+//	tpmkms:attestation-ca-url=https://my.attestation.ca
+//	tpmkms:attestation-ca-root=/path/to/trusted/roots.pem
+//	tpmkms:attestation-ca-insecure=true
+//
+// The system may not always have a PermanentIdentifier assigned, so
+// when initializing the TPMKMS, it's possible to set this value:
+//
+//	tpmkms:permanent-identifier=<some-unique-identifier>
+//
+// Attestation support in the TPMKMS is considered EXPERIMENTAL. It
+// is expected that there will be changes to the configuration that
+// be provided and the attestation flow.
+//
+// The TPMKMS implementation is backed by an instance of the TPM from
+// the `tpm` package. If the TPMKMS operations aren't sufficient for
+// your use case, use a tpm.TPM instance instead.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{}
-	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO(hs): use some default storage location instead?
+	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO(hs): use some default storage location instead? Or in-memory implementation?
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
@@ -87,6 +133,28 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 }
 
 // CreateKey generates a new key in the TPM KMS and returns the public key.
+//
+// The `name` in the [apiv1.CreateKeyRequest] can be used to specify
+// some key properties. These are as follows:
+//
+//   - name=<name>: specify the name to identify the key with
+//   - ak=true: if set to true, an Attestation Key (AK) will be created instead of an application key
+//   - attest-by=<akName>: attest an application key at creation time with the AK identified by `akName`
+//   - qualifying-data=<random>: hexadecimal coded binary data that can be used to guarantee freshness when attesting creation of a key
+//
+// Some examples usages:
+//
+// Create an application key, without attesting it:
+//
+//	tpmkms:name=my-key
+//
+// Create an Attestation Key (AK):
+//
+//	tpmkms:name=my-ak;ak=true
+//
+// Create an application key, attested by `my-ak` with "1234" as the Qualifying Data:
+//
+//	tpmkms:name=my-attested-key;attest-by=my-ak;qualifying-data=61626364
 func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
 	switch {
 	case req.Name == "":
@@ -105,7 +173,11 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", req.SignatureAlgorithm)
 	}
 
-	size := 2048
+	if properties.ak && req.Bits != defaultRSAAKSize { // 2048
+		return nil, fmt.Errorf("creating %d bit AKs is not supported; only %d is supported", req.Bits, defaultRSAAKSize)
+	}
+
+	size := defaultRSAKeySize // 3072
 	if req.Bits > 0 {
 		size = req.Bits
 	}
@@ -116,7 +188,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 	ctx := context.Background()
 	if properties.ak {
-		ak, err := k.tpm.CreateAK(ctx, properties.name)
+		ak, err := k.tpm.CreateAK(ctx, properties.name) // NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower levels.
 		if err != nil {
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
@@ -276,8 +348,8 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	switch {
 	case req.Name == "":
 		return errors.New("storeCertificateRequest 'name' cannot be empty")
-	case req.Certificate == nil:
-		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
+	case req.Certificate == nil && len(req.CertificateChain) == 0:
+		return errors.New("storeCertificateRequest 'certificate' or 'certificateChain' must be provided")
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -285,13 +357,17 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
+	chain := req.CertificateChain
+	if len(chain) == 0 {
+		chain = []*x509.Certificate{req.Certificate}
+	}
 	ctx := context.Background()
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
 			return err
 		}
-		err = ak.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate})
+		err = ak.SetCertificateChain(ctx, chain)
 		if err != nil {
 			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
 		}
@@ -301,7 +377,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 			return err
 		}
 
-		err = key.SetCertificateChain(ctx, []*x509.Certificate{req.Certificate}) // TODO(hs): support chain in request?
+		err = key.SetCertificateChain(ctx, chain)
 		if err != nil {
 			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
 		}
@@ -437,10 +513,10 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 
 	// prepare the response to return
 	akCert := akChain[0]
-	permanentIdentifier := ekKeyURL.String() // TODO(hs): should always match the valid value of the AK identity (for now)
+	permanentIdentifier := ekKeyURL.String() // NOTE: should always match the valid value of the AK identity (for now)
 	return &apiv1.CreateAttestationResponse{
 		Certificate:         akCert,
-		CertificateChain:    akChain, // TODO(hs): should this include the leaf or not?
+		CertificateChain:    akChain, // chain including the leaf
 		PublicKey:           akCert.PublicKey,
 		PermanentIdentifier: permanentIdentifier,
 	}, nil
