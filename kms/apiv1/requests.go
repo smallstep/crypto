@@ -164,8 +164,9 @@ type CreateKeyRequest struct {
 
 // CreateKeyResponse is the response value of the kms.CreateKey method.
 type CreateKeyResponse struct {
-	Name                string
-	PublicKey           crypto.PublicKey
+	Name      string
+	PublicKey crypto.PublicKey
+	// PrivateKey is only used by softkms
 	PrivateKey          crypto.PrivateKey
 	CreateSignerRequest CreateSignerRequest
 }

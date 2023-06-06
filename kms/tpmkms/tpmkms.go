@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strings"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -126,7 +125,8 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
 		return &apiv1.CreateKeyResponse{
-			Name: createdAKURI,
+			Name:      createdAKURI,
+			PublicKey: ak.Public(),
 		}, nil
 	}
 
@@ -163,22 +163,17 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("failed getting signer for key: %w", err)
 	}
 
-	priv, ok := signer.(crypto.PrivateKey)
-	if !ok {
-		return nil, errors.New("failed getting private key")
-	}
-
 	createdKeyURI := fmt.Sprintf("tpmkms:name=%s", key.Name())
 	if properties.attestBy != "" {
 		createdKeyURI = fmt.Sprintf("%s;attest-by=%s", createdKeyURI, key.AttestedBy())
 	}
 
 	return &apiv1.CreateKeyResponse{
-		Name:       createdKeyURI,
-		PublicKey:  signer.Public(),
-		PrivateKey: priv,
+		Name:      createdKeyURI,
+		PublicKey: signer.Public(),
 		CreateSignerRequest: apiv1.CreateSignerRequest{
 			SigningKey: createdKeyURI,
+			Signer:     signer,
 		},
 	}, nil
 }
@@ -278,8 +273,11 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	return cert, nil
 }
 func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
-	if req.Name == "" {
+	switch {
+	case req.Name == "":
 		return errors.New("storeCertificateRequest 'name' cannot be empty")
+	case req.Certificate == nil:
+		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -394,7 +392,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// be used as the AK identity, so an error is returned if there's no match. This
 	// could be changed in the future, so that another attestation flow takes place,
 	// instead, for example.
-	if k.permanentIdentifier != "" && !strings.EqualFold(ekKeyURL.String(), k.permanentIdentifier) {
+	if k.permanentIdentifier != "" && ekKeyURL.String() != k.permanentIdentifier {
 		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, ekKeyURL.String())
 	}
 
@@ -440,14 +438,12 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// prepare the response to return
 	akCert := akChain[0]
 	permanentIdentifier := ekKeyURL.String() // TODO(hs): should always match the valid value of the AK identity (for now)
-	resp := &apiv1.CreateAttestationResponse{
+	return &apiv1.CreateAttestationResponse{
 		Certificate:         akCert,
 		CertificateChain:    akChain, // TODO(hs): should this include the leaf or not?
 		PublicKey:           akCert.PublicKey,
 		PermanentIdentifier: permanentIdentifier,
-	}
-
-	return resp, nil
+	}, nil
 }
 
 // Close releases the connection to the TPM.
@@ -486,7 +482,7 @@ func hasValidIdentity(ak *tpm.AK, ekURL *url.URL) bool {
 	// the Smallstep Attestation CA will issue AK certifiates that
 	// contain the EK public key ID encoded as an URN by default.
 	for _, u := range akCert.URIs {
-		if strings.EqualFold(ekURL.String(), u.String()) {
+		if ekURL.String() == u.String() {
 			return true
 		}
 	}

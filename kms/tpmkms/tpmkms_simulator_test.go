@@ -113,7 +113,10 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
 						assert.Equal(t, "tpmkms:name=key1", r.Name)
-						assert.Equal(t, apiv1.CreateSignerRequest{SigningKey: "tpmkms:name=key1"}, r.CreateSignerRequest)
+						assert.Equal(t, "tpmkms:name=key1", r.CreateSignerRequest.SigningKey)
+						if assert.NotNil(t, r.CreateSignerRequest.Signer) {
+							assert.Implements(t, (*crypto.Signer)(nil), r.CreateSignerRequest.Signer)
+						}
 						return true
 					}
 				}
@@ -137,7 +140,10 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
 						assert.Equal(t, "tpmkms:name=key2;attest-by=ak1", r.Name)
-						assert.Equal(t, apiv1.CreateSignerRequest{SigningKey: "tpmkms:name=key2;attest-by=ak1"}, r.CreateSignerRequest)
+						assert.Equal(t, "tpmkms:name=key2;attest-by=ak1", r.CreateSignerRequest.SigningKey)
+						if assert.NotNil(t, r.CreateSignerRequest.Signer) {
+							assert.Implements(t, (*crypto.Signer)(nil), r.CreateSignerRequest.Signer)
+						}
 						return true
 					}
 				}
@@ -184,7 +190,10 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
 						assert.Equal(t, "tpmkms:name=ecdsa-key", r.Name)
-						assert.Equal(t, apiv1.CreateSignerRequest{SigningKey: "tpmkms:name=ecdsa-key"}, r.CreateSignerRequest)
+						assert.Equal(t, "tpmkms:name=ecdsa-key", r.CreateSignerRequest.SigningKey)
+						if assert.NotNil(t, r.CreateSignerRequest.Signer) {
+							assert.Implements(t, (*crypto.Signer)(nil), r.CreateSignerRequest.Signer)
+						}
 						return true
 					}
 				}
@@ -991,7 +1000,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		"fail/non-matching-permanent-identifier": func(t *testing.T) test {
 			_, err = tpm.CreateAK(ctx, "newAKWithoutCert")
 			require.NoError(t, err)
-			_, err = tpm.AttestKey(ctx, "akWithoutCert", "newkey", config)
+			_, err = tpm.AttestKey(ctx, "newAKWithoutCert", "newkey", config)
 			require.NoError(t, err)
 			return test{
 				fields: fields{
@@ -1000,7 +1009,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 				},
 				args: args{
 					req: &apiv1.CreateAttestationRequest{
-						Name: "tpmkms:name=newkey", // key2 was attested by the akWithoutCert at creation time
+						Name: "tpmkms:name=newkey", // newkey was attested by the newAKWithoutCert at creation time
 					},
 				},
 				expErr: fmt.Errorf(`the provided permanent identifier "wrong-provided-permanent-identifier" does not match the EK URL %q`, ekKeyURL.String()),
