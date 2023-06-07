@@ -13,7 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 
+	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -111,7 +113,8 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // your use case, use a tpm.TPM instance instead.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{}
-	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.BlackHole())} // TODO(hs): use some default storage location instead? Or in-memory implementation?
+	storageDirectory := filepath.Join(step.Path(), "tpm") // store TPM objects in $STEPPATH/tpm by default
+	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.NewDirstore(storageDirectory))}
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
