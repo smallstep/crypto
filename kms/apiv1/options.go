@@ -37,7 +37,8 @@ type CertificateManager interface {
 // chain stored through the CertificateChain property in the StoreCertificateRequest
 // will be returned, partially reusing the StoreCertificateRequest object.
 type CertificateChainManager interface {
-	LoadCertificateChain(req *LoadCertificateRequest) ([]*x509.Certificate, error)
+	LoadCertificateChain(req *LoadCertificateChainRequest) ([]*x509.Certificate, error)
+	StoreCertificateChain(req *StoreCertificateChainRequest) error
 }
 
 // NameValidator is an interface that KeyManager can implement to validate a

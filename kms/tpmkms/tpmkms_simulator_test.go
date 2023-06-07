@@ -792,7 +792,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 		tpm *tpmp.TPM
 	}
 	type args struct {
-		req *apiv1.LoadCertificateRequest
+		req *apiv1.LoadCertificateChainRequest
 	}
 	tests := []struct {
 		name   string
@@ -807,7 +807,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=ak1;ak=true",
 				},
 			},
@@ -822,7 +822,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=key1",
 				},
 			},
@@ -837,11 +837,11 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "",
 				},
 			},
-			expErr: errors.New("loadCertificateRequest 'name' cannot be empty"),
+			expErr: errors.New("loadCertificateChainRequest 'name' cannot be empty"),
 		},
 		{
 			name: "fail/unknown-ak",
@@ -849,7 +849,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=unknown-ak;ak=true",
 				},
 			},
@@ -861,7 +861,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=unknown-key",
 				},
 			},
@@ -873,7 +873,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=akWithoutCertificate;ak=true",
 				},
 			},
@@ -885,7 +885,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 				tpm: tpm,
 			},
 			args: args{
-				req: &apiv1.LoadCertificateRequest{
+				req: &apiv1.LoadCertificateChainRequest{
 					Name: "tpmkms:name=keyWithoutCertificate",
 				},
 			},
@@ -1071,6 +1071,176 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 				tpm: tt.fields.tpm,
 			}
 			err := k.StoreCertificate(tt.args.req)
+			if tt.expErr != nil {
+				assert.EqualError(t, err, tt.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestTPMKMS_StoreCertificateChain(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := tpmp.CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      1024,
+	}
+	key, err := tpm.CreateKey(ctx, "key1", config)
+	require.NoError(t, err)
+	ak, err := tpm.CreateAK(ctx, "ak1")
+	require.NoError(t, err)
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	require.NoError(t, err)
+	signer, err := key.Signer(ctx)
+	require.NoError(t, err)
+	publicKey := signer.Public()
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testkey",
+		},
+		PublicKey: publicKey,
+	}
+	cert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+	anotherPublicKey, _, err := keyutil.GenerateDefaultKeyPair()
+	require.NoError(t, err)
+	template = &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testanotherkey",
+		},
+		PublicKey: anotherPublicKey,
+	}
+	anotherCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, anotherCert)
+	akPub := ak.Public()
+	require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+	template = &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "testak",
+		},
+		PublicKey: akPub,
+	}
+	akCert, err := ca.Sign(template)
+	require.NoError(t, err)
+	require.NotNil(t, akCert)
+	type fields struct {
+		tpm *tpmp.TPM
+	}
+	type args struct {
+		req *apiv1.StoreCertificateChainRequest
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		expErr error
+	}{
+		{
+			name: "ok/ak",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=ak1;ak=true",
+					CertificateChain: []*x509.Certificate{akCert, ca.Intermediate},
+				},
+			},
+		},
+		{
+			name: "ok/key",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=key1",
+					CertificateChain: []*x509.Certificate{cert, ca.Intermediate},
+				},
+			},
+		},
+		{
+			name: "fail/empty",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name: "",
+				},
+			},
+			expErr: errors.New("storeCertificateChainRequest 'name' cannot be empty"),
+		},
+		{
+			name: "fail/unknown-ak",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=unknown-ak;ak=true",
+					CertificateChain: []*x509.Certificate{akCert, ca.Intermediate},
+				},
+			},
+			expErr: fmt.Errorf(`failed getting AK "unknown-ak": not found`),
+		},
+		{
+			name: "fail/unknown-key",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=unknown-key",
+					CertificateChain: []*x509.Certificate{cert, ca.Intermediate},
+				},
+			},
+			expErr: fmt.Errorf(`failed getting key "unknown-key": not found`),
+		},
+		{
+			name: "fail/wrong-certificate-for-ak",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=ak1;ak=true",
+					CertificateChain: []*x509.Certificate{anotherCert, ca.Intermediate},
+				},
+			},
+			expErr: errors.New(`failed storing certificate for AK "ak1": AK public key does not match the leaf certificate public key`),
+		},
+		{
+			name: "fail/wrong-certificate-for-key",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=key1",
+					CertificateChain: []*x509.Certificate{anotherCert, ca.Intermediate},
+				},
+			},
+			expErr: errors.New(`failed storing certificate for key "key1": public key does not match the leaf certificate public key`),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &TPMKMS{
+				tpm: tt.fields.tpm,
+			}
+			err := k.StoreCertificateChain(tt.args.req)
 			if tt.expErr != nil {
 				assert.EqualError(t, err, tt.expErr.Error())
 				return

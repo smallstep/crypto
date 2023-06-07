@@ -196,18 +196,28 @@ type LoadCertificateRequest struct {
 	Name string
 }
 
+// LoadCertificateChainRequest is the parameter used in the LoadCertificateChain method of
+// a CertificateChainManager. It's an alias for LoadCertificateRequest.
+type LoadCertificateChainRequest LoadCertificateRequest
+
 // StoreCertificateRequest is the parameter used in the StoreCertificate method
 // of a CertificateManager.
 type StoreCertificateRequest struct {
-	Name             string
-	Certificate      *x509.Certificate
-	CertificateChain []*x509.Certificate
+	Name        string
+	Certificate *x509.Certificate
 
 	// Extractable defines if the new certificate may be exported from the HSM
 	// under a wrap key. On pkcs11 sets the CKA_EXTRACTABLE bit.
 	//
 	// Used by: pkcs11
 	Extractable bool
+}
+
+// StoreCertificateChainRequest is the parameter used in the StoreCertificateChain method
+// of a CertificateChainManager.
+type StoreCertificateChainRequest struct {
+	Name             string
+	CertificateChain []*x509.Certificate
 }
 
 // CreateAttestationRequest is the parameter used in the kms.CreateAttestation

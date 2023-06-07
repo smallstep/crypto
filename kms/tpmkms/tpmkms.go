@@ -354,9 +354,9 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	return cert, nil
 }
 
-func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
+func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
 	if req.Name == "" {
-		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
+		return nil, errors.New("loadCertificateChainRequest 'name' cannot be empty")
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -391,8 +391,8 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	switch {
 	case req.Name == "":
 		return errors.New("storeCertificateRequest 'name' cannot be empty")
-	case req.Certificate == nil && len(req.CertificateChain) == 0:
-		return errors.New("storeCertificateRequest 'certificate' or 'certificateChain' must be provided")
+	case req.Certificate == nil:
+		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -400,10 +400,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	chain := req.CertificateChain
-	if len(chain) == 0 {
-		chain = []*x509.Certificate{req.Certificate}
-	}
+	chain := []*x509.Certificate{req.Certificate}
 	ctx := context.Background()
 	if properties.ak {
 		ak, err := k.tpm.GetAK(ctx, properties.name)
@@ -421,6 +418,44 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		}
 
 		err = key.SetCertificateChain(ctx, chain)
+		if err != nil {
+			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
+		}
+	}
+
+	return nil
+}
+
+func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
+	switch {
+	case req.Name == "":
+		return errors.New("storeCertificateChainRequest 'name' cannot be empty")
+	case len(req.CertificateChain) == 0:
+		return errors.New("storeCertificateChainRequest 'certificateChain' cannot be empty")
+	}
+
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	if properties.ak {
+		ak, err := k.tpm.GetAK(ctx, properties.name)
+		if err != nil {
+			return err
+		}
+		err = ak.SetCertificateChain(ctx, req.CertificateChain)
+		if err != nil {
+			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
+		}
+	} else {
+		key, err := k.tpm.GetKey(ctx, properties.name)
+		if err != nil {
+			return err
+		}
+
+		err = key.SetCertificateChain(ctx, req.CertificateChain)
 		if err != nil {
 			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
 		}
