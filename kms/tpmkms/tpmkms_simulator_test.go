@@ -1612,7 +1612,11 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		"ok": func(t *testing.T) test {
 			akWithExistingCert, err := tpm.CreateAK(ctx, "akWithExistingCert")
 			require.NoError(t, err)
-			_, err = tpm.AttestKey(ctx, "akWithExistingCert", "key1", config)
+			key, err := tpm.AttestKey(ctx, "akWithExistingCert", "key1", config)
+			require.NoError(t, err)
+			keyParams, err := key.CertificationParameters(ctx)
+			require.NoError(t, err)
+			signer, err := key.Signer(ctx)
 			require.NoError(t, err)
 			akPub := akWithExistingCert.Public()
 			require.Implements(t, (*crypto.PublicKey)(nil), akPub)
@@ -1639,9 +1643,15 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				want: &apiv1.CreateAttestationResponse{
-					Certificate:         validAKCert,
-					CertificateChain:    []*x509.Certificate{validAKCert, ca.Intermediate},
-					PublicKey:           validAKCert.PublicKey,
+					Certificate:      validAKCert,
+					CertificateChain: []*x509.Certificate{validAKCert, ca.Intermediate},
+					PublicKey:        signer.Public(),
+					CertificationParameters: &apiv1.CertificationParameters{
+						Public:            keyParams.Public,
+						CreateData:        keyParams.CreateData,
+						CreateAttestation: keyParams.CreateAttestation,
+						CreateSignature:   keyParams.CreateSignature,
+					},
 					PermanentIdentifier: ekKeyURL.String(),
 				},
 				expErr: nil,
@@ -1650,7 +1660,11 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		"ok/new-chain": func(t *testing.T) test {
 			akWithoutCert, err := tpm.CreateAK(ctx, "akWithoutCert")
 			require.NoError(t, err)
-			_, err = tpm.AttestKey(ctx, "akWithoutCert", "key2", config)
+			key, err := tpm.AttestKey(ctx, "akWithoutCert", "key2", config)
+			require.NoError(t, err)
+			keyParams, err := key.CertificationParameters(ctx)
+			require.NoError(t, err)
+			signer, err := key.Signer(ctx)
 			require.NoError(t, err)
 			akPubNew := akWithoutCert.Public()
 			require.Implements(t, (*crypto.PublicKey)(nil), akPubNew)
@@ -1732,9 +1746,15 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				want: &apiv1.CreateAttestationResponse{
-					Certificate:         newAKCert,
-					CertificateChain:    []*x509.Certificate{newAKCert, ca.Intermediate},
-					PublicKey:           newAKCert.PublicKey,
+					Certificate:      newAKCert,
+					CertificateChain: []*x509.Certificate{newAKCert, ca.Intermediate},
+					PublicKey:        signer.Public(),
+					CertificationParameters: &apiv1.CertificationParameters{
+						Public:            keyParams.Public,
+						CreateData:        keyParams.CreateData,
+						CreateAttestation: keyParams.CreateAttestation,
+						CreateSignature:   keyParams.CreateSignature,
+					},
 					PermanentIdentifier: ekKeyURL.String(),
 				},
 				expErr: nil,
@@ -1743,7 +1763,11 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		"ok/new-chain-with-custom-attestor-client": func(t *testing.T) test {
 			ak6WithoutCert, err := tpm.CreateAK(ctx, "ak6WithoutCert")
 			require.NoError(t, err)
-			_, err = tpm.AttestKey(ctx, "ak6WithoutCert", "key7", config)
+			key, err := tpm.AttestKey(ctx, "ak6WithoutCert", "key7", config)
+			require.NoError(t, err)
+			keyParams, err := key.CertificationParameters(ctx)
+			require.NoError(t, err)
+			signer, err := key.Signer(ctx)
 			require.NoError(t, err)
 			ak6Pub := ak6WithoutCert.Public()
 			require.Implements(t, (*crypto.PublicKey)(nil), ak6Pub)
@@ -1771,9 +1795,15 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				want: &apiv1.CreateAttestationResponse{
-					Certificate:         ak6Cert,
-					CertificateChain:    []*x509.Certificate{ak6Cert, ca.Intermediate},
-					PublicKey:           ak6Cert.PublicKey,
+					Certificate:      ak6Cert,
+					CertificateChain: []*x509.Certificate{ak6Cert, ca.Intermediate},
+					PublicKey:        signer.Public(),
+					CertificationParameters: &apiv1.CertificationParameters{
+						Public:            keyParams.Public,
+						CreateData:        keyParams.CreateData,
+						CreateAttestation: keyParams.CreateAttestation,
+						CreateSignature:   keyParams.CreateSignature,
+					},
 					PermanentIdentifier: ekKeyURL.String(),
 				},
 				expErr: nil,

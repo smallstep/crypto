@@ -541,13 +541,29 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
 	}
 
+	signer, err := key.Signer(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
+	}
+
+	params, err := key.CertificationParameters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting key certification parameters for %q: %w", key.Name(), err)
+	}
+
 	// prepare the response to return
 	akCert := akChain[0]
 	permanentIdentifier := ekKeyURL.String() // NOTE: should always match the valid value of the AK identity (for now)
 	return &apiv1.CreateAttestationResponse{
-		Certificate:         akCert,
-		CertificateChain:    akChain, // chain including the leaf
-		PublicKey:           akCert.PublicKey,
+		Certificate:      akCert,          // certificate for the AK that attested the key
+		CertificateChain: akChain,         // chain for the AK that attested the key, including the leaf
+		PublicKey:        signer.Public(), // returns the public key of the attested key
+		CertificationParameters: &apiv1.CertificationParameters{ // key certification parameters
+			Public:            params.Public,
+			CreateData:        params.CreateData,
+			CreateAttestation: params.CreateAttestation,
+			CreateSignature:   params.CreateSignature,
+		},
 		PermanentIdentifier: permanentIdentifier,
 	}, nil
 }

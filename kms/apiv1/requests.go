@@ -238,19 +238,44 @@ type AttestationClient interface {
 	Attest(context.Context) ([]*x509.Certificate, error)
 }
 
+// CertificationParameters encapsulates the inputs for certifying an application key.
+// Only TPM 2.0 is supported at this point.
+//
+// This struct was copied from github.com/google/go-attestation, preventing an
+// additional dependency in this package.
+type CertificationParameters struct {
+	// Public represents the key's canonical encoding (a TPMT_PUBLIC structure).
+	// It includes the public key and signing parameters.
+	Public []byte
+	// CreateData represents the properties of a TPM 2.0 key. It is encoded
+	// as a TPMS_CREATION_DATA structure.
+	CreateData []byte
+	// CreateAttestation represents an assertion as to the details of the key.
+	// It is encoded as a TPMS_ATTEST structure.
+	CreateAttestation []byte
+	// CreateSignature represents a signature of the CreateAttestation structure.
+	// It is encoded as a TPMT_SIGNATURE structure.
+	CreateSignature []byte
+}
+
 // CreateAttestationResponse is the response value of the kms.CreateAttestation
 // method.
 //
 // If a non-empty CertificateChain is returned, the first x509.Certificate is
 // the same as the one in the Certificate property.
 //
+// When an attestation is created for a TPM key, the CertificationParameters
+// property will have a record of the certification parameters at the time of
+// key attestation.
+//
 // # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type CreateAttestationResponse struct {
-	Certificate         *x509.Certificate
-	CertificateChain    []*x509.Certificate
-	PublicKey           crypto.PublicKey
-	PermanentIdentifier string
+	Certificate             *x509.Certificate
+	CertificateChain        []*x509.Certificate
+	PublicKey               crypto.PublicKey
+	CertificationParameters *CertificationParameters
+	PermanentIdentifier     string
 }
