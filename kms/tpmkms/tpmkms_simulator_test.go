@@ -240,7 +240,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 			expErr: errors.New("createKeyRequest 'bits' cannot be negative"),
 		},
 		{
-			name: "fail/invalid-algorithm",
+			name: "fail/ak-cannot-be-attested",
 			fields: fields{
 				tpm: tpmWithAK,
 			},
@@ -280,6 +280,47 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				return false
 			},
 			expErr: errors.New(`TPMKMS does not support signature algorithm "unknown(-1)"`),
+		},
+		{
+			name: "fail/ecdsa-ak",
+			fields: fields{
+				tpm: tpmWithAK,
+			},
+			args: args{
+				req: &apiv1.CreateKeyRequest{
+					Name:               "tpmkms:name=invalidAK;ak=true",
+					SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+				},
+			},
+			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
+					r, _ := i1.(*apiv1.CreateKeyResponse)
+					return assert.Nil(t, r)
+				}
+				return false
+			},
+			expErr: errors.New(`AKs must be RSA keys`),
+		},
+		{
+			name: "fail/ak-3072-bits",
+			fields: fields{
+				tpm: tpmWithAK,
+			},
+			args: args{
+				req: &apiv1.CreateKeyRequest{
+					Name:               "tpmkms:name=invalidAK;ak=true",
+					SignatureAlgorithm: apiv1.SHA256WithRSA,
+					Bits:               3072,
+				},
+			},
+			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
+					r, _ := i1.(*apiv1.CreateKeyResponse)
+					return assert.Nil(t, r)
+				}
+				return false
+			},
+			expErr: errors.New(`creating 3072 bit AKs is not supported; AKs must be RSA 2048 bits`),
 		},
 		{
 			name: "fail/key-exists",

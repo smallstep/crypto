@@ -178,8 +178,12 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", req.SignatureAlgorithm)
 	}
 
+	if properties.ak && v.Type == "ECDSA" {
+		return nil, errors.New("AKs must be RSA keys")
+	}
+
 	if properties.ak && req.Bits != defaultRSAAKSize { // 2048
-		return nil, fmt.Errorf("creating %d bit AKs is not supported; only %d is supported", req.Bits, defaultRSAAKSize)
+		return nil, fmt.Errorf("creating %d bit AKs is not supported; AKs must be RSA 2048 bits", req.Bits)
 	}
 
 	size := DefaultRSASize // defaults to 3072
