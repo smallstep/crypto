@@ -76,15 +76,15 @@ func NewClient(tpmAttestationCABaseURL string, options ...Option) (*Client, erro
 		}
 	}
 
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		RootCAs:            opts.rootCAs,
+		InsecureSkipVerify: opts.insecure, //nolint:gosec // intentional insecure if provided as option
+	}
+
 	client := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			TLSClientConfig: &tls.Config{
-				RootCAs:            opts.rootCAs,
-				InsecureSkipVerify: opts.insecure, //nolint:gosec // intentional insecure if provided as option
-			},
-		},
+		Timeout:   10 * time.Second,
+		Transport: transport,
 	}
 
 	return &Client{
