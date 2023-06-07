@@ -26,6 +26,10 @@ func (t *TPM) GenerateRandom(ctx context.Context, size uint16) (random []byte, e
 	}
 	defer closeTPM(ctx, t, &err)
 
+	return t.generateRandom(ctx, size)
+}
+
+func (t *TPM) generateRandom(ctx context.Context, size uint16) (random []byte, err error) {
 	random, err = tpm2.GetRandom(t.rwc, size)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating random data: %w", err)
@@ -57,12 +61,18 @@ func (g *generator) Read(p []byte) (n int, err error) {
 	if len(p) > math.MaxUint16 {
 		return 0, fmt.Errorf("number of random bytes to read cannot exceed %d", math.MaxUint16)
 	}
+
 	ctx := context.Background()
+	if err = g.t.open(goTPMCall(ctx)); err != nil {
+		return 0, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer closeTPM(ctx, g.t, &err)
+
 	var result []byte
 	requestedLength := len(p)
-	singleRequestLength := uint16(len(p))
+	singleRequestLength := uint16(requestedLength)
 	for len(result) < requestedLength {
-		if r, err := g.t.GenerateRandom(ctx, singleRequestLength); err == nil {
+		if r, err := g.t.generateRandom(ctx, singleRequestLength); err == nil {
 			result = append(result, r...)
 		} else {
 			var s ShortRandomReadError
