@@ -706,7 +706,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 					Name: "tpmkms:name=akWithoutCertificate;ak=true",
 				},
 			},
-			expErr: fmt.Errorf(`failed getting certificate for "akWithoutCertificate": no certificate stored`),
+			expErr: fmt.Errorf(`failed getting certificate chain for "akWithoutCertificate": no certificate chain stored`),
 		},
 		{
 			name: "fail/key-without-certificate",
@@ -718,7 +718,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 					Name: "tpmkms:name=keyWithoutCertificate",
 				},
 			},
-			expErr: fmt.Errorf(`failed getting certificate for "keyWithoutCertificate": no certificate stored`),
+			expErr: fmt.Errorf(`failed getting certificate chain for "keyWithoutCertificate": no certificate chain stored`),
 		},
 	}
 	for _, tt := range tests {

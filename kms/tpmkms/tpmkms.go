@@ -182,7 +182,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, errors.New("AKs must be RSA keys")
 	}
 
-	if properties.ak && req.Bits != defaultRSAAKSize { // 2048
+	if properties.ak && req.Bits != 0 && req.Bits != defaultRSAAKSize { // 2048
 		return nil, fmt.Errorf("creating %d bit AKs is not supported; AKs must be RSA 2048 bits", req.Bits)
 	}
 
@@ -326,32 +326,12 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
 	}
 
-	properties, err := parseNameURI(req.Name)
+	chain, err := k.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{Name: req.Name})
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
+		return nil, err
 	}
 
-	ctx := context.Background()
-	var cert *x509.Certificate // TODO(hs): support returning chain?
-	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
-		if err != nil {
-			return nil, err
-		}
-		cert = ak.Certificate()
-	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
-		if err != nil {
-			return nil, err
-		}
-		cert = key.Certificate()
-	}
-
-	if cert == nil {
-		return nil, fmt.Errorf("failed getting certificate for %q: no certificate stored", properties.name)
-	}
-
-	return cert, nil
+	return chain[0], nil
 }
 
 func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
@@ -395,35 +375,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
-	properties, err := parseNameURI(req.Name)
-	if err != nil {
-		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
-	}
-
-	chain := []*x509.Certificate{req.Certificate}
-	ctx := context.Background()
-	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
-		if err != nil {
-			return err
-		}
-		err = ak.SetCertificateChain(ctx, chain)
-		if err != nil {
-			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
-		}
-	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
-		if err != nil {
-			return err
-		}
-
-		err = key.SetCertificateChain(ctx, chain)
-		if err != nil {
-			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
-		}
-	}
-
-	return nil
+	return k.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{Name: req.Name, CertificateChain: []*x509.Certificate{req.Certificate}})
 }
 
 func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
