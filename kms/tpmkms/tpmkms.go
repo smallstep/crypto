@@ -78,6 +78,16 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //	    URI: tpmkms:device=/dev/tpmrm0;storage-directory=/path/to/tpmstorage/directory
 //	})
 //
+// It's also possible to set the storage directory as follows:
+//
+//	New(ctx, &apiv1.Options{
+//	    URI: tpmkms:device=/dev/tpmrm0
+//		StorageDirectory: /path/to/tpmstorage/directory
+//	})
+//
+// The default storage location for serialized TPM objects when
+// an instance of TPMKMS is created, is $STEPPATH/tpm.
+//
 // The system default TPM device will be used when not configured. A
 // specific TPM device can be selected by setting the device:
 //
@@ -114,6 +124,9 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{}
 	storageDirectory := filepath.Join(step.Path(), "tpm") // store TPM objects in $STEPPATH/tpm by default
+	if opts.StorageDirectory != "" {
+		storageDirectory = opts.StorageDirectory
+	}
 	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.NewDirstore(storageDirectory))}
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)

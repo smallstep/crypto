@@ -143,6 +143,10 @@ type Options struct {
 
 	// Profile to use in AmazonKMS.
 	Profile string `json:"profile,omitempty"`
+
+	// StorageDirectory is the path to a directory to
+	// store serialized TPM objects. Only used by the TPMKMS.
+	StorageDirectory string `json:"storageDirectory,omitempty"`
 }
 
 // Validate checks the fields in Options.
