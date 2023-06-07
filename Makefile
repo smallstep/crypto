@@ -29,10 +29,11 @@ defaulttest:
 	$Q $(GOFLAGS) gotestsum -- -coverpkg=./... -coverprofile=defaultcoverage.out -covermode=atomic ./...
 
 simulatortest:
-	$Q $(GOFLAGS) CGO_ENABLED=1 gotestsum -- -coverpkg=./tpm,./kms/tpmkms -coverprofile=simulatorcoverage.out -covermode=atomic -tags tpmsimulator ./tpm
+	$Q $(GOFLAGS) CGO_ENABLED=1 gotestsum -- -coverpkg=./tpm/...,./kms/tpmkms -coverprofile=simulatorcoverage.out -covermode=atomic -tags tpmsimulator ./tpm ./kms/tpmkms
 
 combinecoverage:
-	cat defaultcoverage.out simulatorcoverage.out > coverage.out
+	cat defaultcoverage.out > coverage.out
+	tail -n +2 simulatorcoverage.out >> coverage.out
 
 race:
 	$Q $(GOFLAGS) gotestsum -- -race ./...
