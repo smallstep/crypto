@@ -401,3 +401,5 @@ func findCertificate(ctx P11, rawuri string) (*x509.Certificate, error) {
 	}
 	return cert, nil
 }
+
+var _ apiv1.CertificateManager = (*PKCS11)(nil)

@@ -67,6 +67,20 @@ func (ak *AK) CertificateChain() []*x509.Certificate {
 	return ak.chain
 }
 
+// Public returns the AK public key. This is backed
+// by a call to the TPM, so it can fail. If it fails,
+// nil is returned.
+//
+// TODO: see improvement described in the private method
+// to always return a non-nil crypto.PublicKey.
+func (ak *AK) Public() crypto.PublicKey {
+	pub, err := ak.public(context.Background())
+	if err != nil {
+		return nil
+	}
+	return pub
+}
+
 // public returns the AK public key. This can fail, because
 // retrieval relies on the TPM.
 //

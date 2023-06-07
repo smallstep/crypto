@@ -30,6 +30,17 @@ type CertificateManager interface {
 	StoreCertificate(req *StoreCertificateRequest) error
 }
 
+// CertificateChainManager is the interface implemented by KMS implementations
+// that can load certificate chains. The LoadCertificateChain method uses the
+// same request object as the LoadCertificate method of the CertificateManager
+// interfaces. When the LoadCertificateChain method is called, the certificate
+// chain stored through the CertificateChain property in the StoreCertificateRequest
+// will be returned, partially reusing the StoreCertificateRequest object.
+type CertificateChainManager interface {
+	LoadCertificateChain(req *LoadCertificateChainRequest) ([]*x509.Certificate, error)
+	StoreCertificateChain(req *StoreCertificateChainRequest) error
+}
+
 // NameValidator is an interface that KeyManager can implement to validate a
 // given name or URI.
 type NameValidator interface {
@@ -61,7 +72,7 @@ func (e NotImplementedError) Error() string {
 }
 
 // AlreadyExistsError is the type of error returned if a key already exists. This
-// is currently only implmented on pkcs11.
+// is currently only implmented for pkcs11 and tpmkms.
 type AlreadyExistsError struct {
 	Message string
 }
@@ -95,6 +106,8 @@ const (
 	AzureKMS Type = "azurekms"
 	// CAPIKMS
 	CAPIKMS Type = "capi"
+	// TPMKMS
+	TPMKMS Type = "tpmkms"
 )
 
 // Options are the KMS options. They represent the kms object in the ca.json.
@@ -109,7 +122,7 @@ type Options struct {
 	// https://tools.ietf.org/html/rfc7512 and represents the configuration used
 	// to connect to the KMS.
 	//
-	// Used by: pkcs11
+	// Used by: pkcs11, tpmkms
 	URI string `json:"uri,omitempty"`
 
 	// Pin used to access the PKCS11 module. It can be defined in the URI using
@@ -130,6 +143,10 @@ type Options struct {
 
 	// Profile to use in AmazonKMS.
 	Profile string `json:"profile,omitempty"`
+
+	// StorageDirectory is the path to a directory to
+	// store serialized TPM objects. Only used by the TPMKMS.
+	StorageDirectory string `json:"storageDirectory,omitempty"`
 }
 
 // Validate checks the fields in Options.
@@ -142,7 +159,7 @@ func (o *Options) Validate() error {
 	switch Type(typ) {
 	case DefaultKMS, SoftKMS: // Go crypto based kms.
 	case CloudKMS, AmazonKMS, AzureKMS: // Cloud based kms.
-	case YubiKey, PKCS11: // Hardware based kms.
+	case YubiKey, PKCS11, TPMKMS: // Hardware based kms.
 	case SSHAgentKMS, CAPIKMS: // Others
 	default:
 		return fmt.Errorf("unsupported kms type %s", o.Type)

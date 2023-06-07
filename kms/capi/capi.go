@@ -755,3 +755,5 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 func (s *CAPISigner) Public() crypto.PublicKey {
 	return s.PublicKey
 }
+
+var _ apiv1.CertificateManager = (*CAPIKMS)(nil)

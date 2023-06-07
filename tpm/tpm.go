@@ -40,7 +40,9 @@ type NewTPMOption func(t *TPM) error
 // device.
 func WithDeviceName(name string) NewTPMOption {
 	return func(t *TPM) error {
-		t.deviceName = name
+		if name != "" {
+			t.deviceName = name
+		}
 		return nil
 	}
 }
