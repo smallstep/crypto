@@ -8,8 +8,10 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -76,9 +78,11 @@ func TestEK_MarshalJSON(t *testing.T) {
 	keyID, err := generateKeyID(signer.Public())
 	require.NoError(t, err)
 	fp := "sha256:" + base64.StdEncoding.EncodeToString(keyID)
+	fpURI := "urn:ek:" + fp
 
 	require.Equal(t, m["type"], "RSA 2048")
 	require.Equal(t, m["fingerprint"], fp)
+	require.Equal(t, m["fingerprintURI"], fpURI)
 	require.Equal(t, m["der"], base64.StdEncoding.EncodeToString(cert.Raw))
 	require.Equal(t, m["url"], "https://certificate.example.com")
 }
@@ -192,4 +196,75 @@ func TestEK_FingerprintURI(t *testing.T) {
 	u, err = invalidEK.FingerprintURI()
 	assert.Error(t, err)
 	assert.Nil(t, u)
+}
+
+func TestEK_PEM(t *testing.T) {
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	require.NoError(t, err)
+
+	signer, err := keyutil.GenerateSigner("RSA", "", 2048)
+	require.NoError(t, err)
+
+	cr, err := x509util.NewCertificateRequest(signer)
+	require.NoError(t, err)
+	cr.Subject.CommonName = "testek"
+
+	csr, err := cr.GetCertificateRequest()
+	require.NoError(t, err)
+
+	cert, err := ca.SignCSR(csr)
+	require.NoError(t, err)
+
+	pemString := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Raw,
+	})
+
+	type fields struct {
+		public         crypto.PublicKey
+		certificate    *x509.Certificate
+		certificateURL string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "fail/no-ek-cert",
+			fields:  fields{},
+			wantErr: true,
+		},
+		{
+			name: "ok",
+			fields: fields{
+				certificate: cert,
+			},
+			want: string(pemString),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ek := &EK{
+				public:         tt.fields.public,
+				certificate:    tt.fields.certificate,
+				certificateURL: tt.fields.certificateURL,
+			}
+			got, err := ek.PEM()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("EK.PEM() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("EK.PEM() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

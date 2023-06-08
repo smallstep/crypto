@@ -89,16 +89,22 @@ func (ek *EK) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed getting EK fingerprint: %w", err)
 	}
+	fpURI, err := ek.FingerprintURI()
+	if err != nil {
+		return nil, fmt.Errorf("failed getting EK fingerprint URI: %w", err)
+	}
 	o := struct {
-		Type        string `json:"type"`
-		Fingerprint string `json:"fingerprint"`
-		DER         []byte `json:"der,omitempty"`
-		URL         string `json:"url,omitempty"`
+		Type           string `json:"type"`
+		Fingerprint    string `json:"fingerprint"`
+		FingerprintURI string `json:"fingerprintURI"`
+		DER            []byte `json:"der,omitempty"` // TODO: support for EK certificate chain?
+		URL            string `json:"url,omitempty"`
 	}{
-		Type:        ek.Type(),
-		Fingerprint: fp,
-		DER:         der,
-		URL:         ek.certificateURL,
+		Type:           ek.Type(),
+		Fingerprint:    fp,
+		FingerprintURI: fpURI.String(),
+		DER:            der,
+		URL:            ek.certificateURL,
 	}
 	return json.Marshal(o)
 }
