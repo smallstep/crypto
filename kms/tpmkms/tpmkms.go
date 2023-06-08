@@ -491,6 +491,47 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	}
 
 	ctx := context.Background()
+	eks, err := k.tpm.GetEKs(ctx) // TODO(hs): control the EK used as the caller of this method?
+	if err != nil {
+		return nil, fmt.Errorf("failed getting EKs: %w", err)
+	}
+	ek := getPreferredEK(eks)
+	ekPublic := ek.Public()
+	ekKeyID, err := generateKeyID(ekPublic)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting EK public key ID: %w", err)
+	}
+	ekKeyURL := ekURL(ekKeyID)
+
+	if properties.ak {
+		// TODO(hs): decide if we actually want to support this case? TPM attestation
+		// is about attesting application keys using attestation keys.
+		ak, err := k.tpm.GetAK(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		akPub := ak.Public()
+		if akPub == nil {
+			return nil, fmt.Errorf("failed getting AK public key")
+		}
+		akChain := ak.CertificateChain()
+		if len(akChain) == 0 {
+			return nil, fmt.Errorf("no certificate chain available for AK %q", properties.name)
+		}
+		// TODO(hs): decide if we want/need to return these; their purpose is slightly
+		// from the key certification parameters.
+		_, err = ak.AttestationParameters(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
+		}
+		return &apiv1.CreateAttestationResponse{
+			Certificate:         akChain[0],  // certificate for the AK that attested the key
+			CertificateChain:    akChain,     // chain for the AK that attested the key, including the leaf
+			PublicKey:           ak.Public(), // returns the public key of the attestation key
+			PermanentIdentifier: ekKeyURL.String(),
+		}, nil
+	}
+
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
 		return nil, err
@@ -504,18 +545,6 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	if err != nil {
 		return nil, fmt.Errorf("failed getting AK for key %q: %w", key.Name(), err)
 	}
-
-	eks, err := k.tpm.GetEKs(ctx) // TODO(hs): control the EK used as the caller of this method?
-	if err != nil {
-		return nil, fmt.Errorf("failed getting EKs: %w", err)
-	}
-	ek := getPreferredEK(eks)
-	ekPublic := ek.Public()
-	ekKeyID, err := generateKeyID(ekPublic)
-	if err != nil {
-		return nil, fmt.Errorf("failed getting EK public key ID: %w", err)
-	}
-	ekKeyURL := ekURL(ekKeyID)
 
 	// check if the derived EK URI fingerprint representation matches the provided
 	// permanent identifier value. The current implementation requires the EK URI to
