@@ -519,7 +519,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 			return nil, fmt.Errorf("no certificate chain available for AK %q", properties.name)
 		}
 		// TODO(hs): decide if we want/need to return these; their purpose is slightly
-		// from the key certification parameters.
+		// different from the key certification parameters.
 		_, err = ak.AttestationParameters(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
