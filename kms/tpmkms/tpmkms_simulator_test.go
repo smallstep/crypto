@@ -497,6 +497,8 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 
 func TestTPMKMS_GetPublicKey(t *testing.T) {
 	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
+	_, err := tpmWithKey.CreateAK(context.Background(), "ak1")
+	require.NoError(t, err)
 	type fields struct {
 		tpm *tpmp.TPM
 	}
@@ -511,13 +513,24 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 		expErr error
 	}{
 		{
-			name: "ok",
+			name: "ok/key",
 			fields: fields{
 				tpm: tpmWithKey,
 			},
 			args: args{
 				req: &apiv1.GetPublicKeyRequest{
 					Name: "tpmkms:name=key1",
+				},
+			},
+		},
+		{
+			name: "ok/ak",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:name=ak1;ak=true",
 				},
 			},
 		},
@@ -534,18 +547,6 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 			expErr: errors.New("getPublicKeyRequest 'name' cannot be empty"),
 		},
 		{
-			name: "fail/ak",
-			fields: fields{
-				tpm: tpmWithKey,
-			},
-			args: args{
-				req: &apiv1.GetPublicKeyRequest{
-					Name: "tpmkms:name=ak1;ak=true",
-				},
-			},
-			expErr: errors.New("retrieving AK public key currently not supported"),
-		},
-		{
 			name: "fail/unknown-key",
 			fields: fields{
 				tpm: tpmWithKey,
@@ -556,6 +557,18 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 				},
 			},
 			expErr: fmt.Errorf(`failed getting key "unknown-key": not found`),
+		},
+		{
+			name: "fail/unknown-ak",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:name=unknown-ak;ak=true",
+				},
+			},
+			expErr: fmt.Errorf(`failed getting AK "unknown-ak": not found`),
 		},
 	}
 	for _, tt := range tests {

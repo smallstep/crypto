@@ -319,11 +319,19 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
+	ctx := context.Background()
 	if properties.ak {
-		return nil, fmt.Errorf("retrieving AK public key currently not supported")
+		ak, err := k.tpm.GetAK(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		akPub := ak.Public()
+		if akPub == nil {
+			return nil, errors.New("failed getting AK public key")
+		}
+		return akPub, nil
 	}
 
-	ctx := context.Background()
 	key, err := k.tpm.GetKey(ctx, properties.name)
 	if err != nil {
 		return nil, err
