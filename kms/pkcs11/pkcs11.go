@@ -412,7 +412,7 @@ func findCertificate(ctx P11, rawuri string) (*x509.Certificate, error) {
 }
 
 // findP11KitProxy uses pkg-config to locate p11-kit-proxy.so
-func findP11KitProxy(ctx context.Context) string {
+var findP11KitProxy = func(ctx context.Context) string {
 	var out strings.Builder
 
 	// It should be more than enough even in constraint VMs

@@ -25,15 +25,18 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	tmp := p11Configure
+	tmp0 := p11Configure
+	tmp1 := findP11KitProxy
 	t.Cleanup(func() {
-		p11Configure = tmp
+		p11Configure = tmp0
+		findP11KitProxy = tmp1
 	})
 
 	k := mustPKCS11(t)
 	t.Cleanup(func() {
 		k.Close()
 	})
+
 	p11Configure = func(config *crypto11.Config) (P11, error) {
 		if strings.Contains(config.Path, "fail") {
 			return nil, errors.New("an error")
@@ -41,13 +44,16 @@ func TestNew(t *testing.T) {
 		return k.p11, nil
 	}
 
-	var (
-		wantMissingModule    *PKCS11
-		wantErrMissingModule = true
-	)
-	if findP11KitProxy(context.Background()) != "" {
-		wantMissingModule = k
-		wantErrMissingModule = false
+	findP11KitProxy = func(ctx context.Context) string {
+		select {
+		case <-ctx.Done():
+			return ""
+		default:
+			if fail, _ := ctx.Value("fail").(bool); fail {
+				return ""
+			}
+			return "/usr/local/lib/p11-kit-proxy.so"
+		}
 	}
 
 	canceledContext, cancel := context.WithCancel(context.Background())
@@ -80,11 +86,16 @@ func TestNew(t *testing.T) {
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
 			Pin:  "passowrd",
 		}}, k, false},
-		{"perhaps with missing module", args{context.Background(), apiv1.Options{
+		{"ok with missing module", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:token=pkcs11-test",
 			Pin:  "passowrd",
-		}}, wantMissingModule, wantErrMissingModule},
+		}}, k, false},
+		{"fail with missing module", args{context.WithValue(context.Background(), "fail", true), apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:token=pkcs11-test",
+			Pin:  "passowrd",
+		}}, nil, true},
 		{"fail findP11KitProxy", args{canceledContext, apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:token=pkcs11-test?pin-value=password",
@@ -846,6 +857,32 @@ func TestPKCS11_Close(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := k.Close(); (err != nil) != tt.wantErr {
 				t.Errorf("PKCS11.Close() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func Test_findP11KitProxy(t *testing.T) {
+	expected := findP11KitProxy(context.Background())
+
+	canceledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"expected", args{context.Background()}, expected},
+		{"fail", args{canceledContext}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := findP11KitProxy(tt.args.ctx); got != tt.want {
+				t.Errorf("findP11KitProxy() = %v, want %v", got, tt.want)
 			}
 		})
 	}
