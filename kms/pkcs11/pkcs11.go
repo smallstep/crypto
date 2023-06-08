@@ -12,13 +12,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	"os"
-	"os/exec"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/ThalesIgnite/crypto11"
 	"github.com/pkg/errors"
@@ -75,9 +71,13 @@ func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 			}
 			config.SlotNumber = &n
 		}
-		// Get module or default to use p11-kit-proxy.so
+		// Get module or default to use p11-kit-proxy.so.
+		//
+		// pkcs11.New(module string) will use dlopen that will look for the
+		// given library in the appropriate paths, so there's no need to provide
+		// the full path.
 		if config.Path = u.Get("module-path"); config.Path == "" {
-			config.Path = findP11KitProxy(ctx)
+			config.Path = defaultModule
 		}
 	}
 	if config.Pin == "" && opts.Pin != "" {
@@ -109,7 +109,14 @@ func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 	}, nil
 }
 
+// defaultModule defines the defaultModule used, in this case is the
+// p11-kit-proxy provided by p11-kit.
+var defaultModule = "p11-kit-proxy.so"
+
 func init() {
+	if runtime.GOOS == "darwin" {
+		defaultModule = "p11-kit-proxy.dylib"
+	}
 	apiv1.Register(apiv1.PKCS11, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		return New(ctx, opts)
 	})
@@ -409,36 +416,6 @@ func findCertificate(ctx P11, rawuri string) (*x509.Certificate, error) {
 		return nil, errors.Errorf("certificate with uri %s not found", rawuri)
 	}
 	return cert, nil
-}
-
-// findP11KitProxy uses pkg-config to locate p11-kit-proxy.so
-var findP11KitProxy = func(ctx context.Context) string {
-	var out strings.Builder
-
-	// It should be more than enough even in constraint VMs
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "pkg-config", "--variable=proxy_module", "p11-kit-1")
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return ""
-	}
-
-	path := strings.TrimSpace(out.String())
-	if _, err := os.Stat(path); err != nil {
-		if runtime.GOOS != "darwin" {
-			return ""
-		}
-
-		// pkg-config might return an .so file instead of a .dylib on macOs.
-		path = strings.Replace(path, ".so", ".dylib", 1)
-		if _, err := os.Stat(path); err != nil {
-			return ""
-		}
-	}
-
-	return path
 }
 
 var _ apiv1.CertificateManager = (*PKCS11)(nil)
