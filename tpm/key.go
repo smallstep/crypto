@@ -144,7 +144,7 @@ type AttestKeyConfig struct {
 // a random 10 character name is generated. If a Key with the same name exists,
 // `ErrExists` is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (key *Key, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
