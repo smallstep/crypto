@@ -76,7 +76,7 @@ func TestNew(t *testing.T) {
 		}}, k, false},
 		{"fail missing module", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
-		}}, k, false},
+		}}, nil, true},
 		{"fail missing pin", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
