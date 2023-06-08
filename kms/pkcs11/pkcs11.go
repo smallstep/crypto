@@ -12,11 +12,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/ThalesIgnite/crypto11"
 	"github.com/pkg/errors"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 )
@@ -60,7 +66,6 @@ func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 		}
 
 		config.Pin = u.Pin()
-		config.Path = u.Get("module-path")
 		config.TokenLabel = u.Get("token")
 		config.TokenSerial = u.Get("serial")
 		if v := u.Get("slot-id"); v != "" {
@@ -69,6 +74,10 @@ func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 				return nil, errors.Wrap(err, "kms uri 'slot-id' is not valid")
 			}
 			config.SlotNumber = &n
+		}
+		// Get module or default to use p11-kit-proxy.so
+		if config.Path = u.Get("module-path"); config.Path == "" {
+			config.Path = findP11KitProxy(ctx)
 		}
 	}
 	if config.Pin == "" && opts.Pin != "" {
@@ -400,6 +409,36 @@ func findCertificate(ctx P11, rawuri string) (*x509.Certificate, error) {
 		return nil, errors.Errorf("certificate with uri %s not found", rawuri)
 	}
 	return cert, nil
+}
+
+// findP11KitProxy uses pkg-config to locate p11-kit-proxy.so
+func findP11KitProxy(ctx context.Context) string {
+	var out strings.Builder
+
+	// It should be more than enough even in constraint VMs
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pkg-config", "--variable=proxy_module", "p11-kit-1")
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+
+	path := strings.TrimSpace(out.String())
+	if _, err := os.Stat(path); err != nil {
+		if runtime.GOOS != "darwin" {
+			return ""
+		}
+
+		// pkg-config might return an .so file instead of a .dylib on macOs.
+		path = strings.Replace(path, ".so", ".dylib", 1)
+		if _, err := os.Stat(path); err != nil {
+			return ""
+		}
+	}
+
+	return path
 }
 
 var _ apiv1.CertificateManager = (*PKCS11)(nil)

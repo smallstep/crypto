@@ -41,6 +41,18 @@ func TestNew(t *testing.T) {
 		return k.p11, nil
 	}
 
+	var (
+		wantMissingModule    *PKCS11
+		wantErrMissingModule = true
+	)
+	if findP11KitProxy(context.Background()) != "" {
+		wantMissingModule = k
+		wantErrMissingModule = false
+	}
+
+	canceledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+
 	type args struct {
 		ctx  context.Context
 		opts apiv1.Options
@@ -68,10 +80,14 @@ func TestNew(t *testing.T) {
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
 			Pin:  "passowrd",
 		}}, k, false},
-		{"fail missing module", args{context.Background(), apiv1.Options{
+		{"perhaps with missing module", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:token=pkcs11-test",
 			Pin:  "passowrd",
+		}}, wantMissingModule, wantErrMissingModule},
+		{"fail findP11KitProxy", args{canceledContext, apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:token=pkcs11-test?pin-value=password",
 		}}, nil, true},
 		{"fail missing pin", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
