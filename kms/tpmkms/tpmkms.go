@@ -525,8 +525,8 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
 		}
 		return &apiv1.CreateAttestationResponse{
-			Certificate:         akChain[0],  // certificate for the AK that attested the key
-			CertificateChain:    akChain,     // chain for the AK that attested the key, including the leaf
+			Certificate:         akChain[0],  // certificate for the AK
+			CertificateChain:    akChain,     // chain for the AK, including the leaf
 			PublicKey:           ak.Public(), // returns the public key of the attestation key
 			PermanentIdentifier: ekKeyURL.String(),
 		}, nil
