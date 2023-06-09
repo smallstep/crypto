@@ -54,39 +54,41 @@ type PKCS11 struct {
 
 // New returns a new PKCS11 KMS.
 func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
-	var config crypto11.Config
-	if opts.URI != "" {
-		u, err := uri.ParseWithScheme(Scheme, opts.URI)
-		if err != nil {
-			return nil, err
-		}
-
-		config.Pin = u.Pin()
-		config.TokenLabel = u.Get("token")
-		config.TokenSerial = u.Get("serial")
-		if v := u.Get("slot-id"); v != "" {
-			n, err := strconv.Atoi(v)
-			if err != nil {
-				return nil, errors.Wrap(err, "kms uri 'slot-id' is not valid")
-			}
-			config.SlotNumber = &n
-		}
-		// Get module or default to use p11-kit-proxy.so.
-		//
-		// pkcs11.New(module string) will use dlopen that will look for the
-		// given library in the appropriate paths, so there's no need to provide
-		// the full path.
-		if config.Path = u.Get("module-path"); config.Path == "" {
-			config.Path = defaultModule
-		}
+	if opts.URI == "" {
+		return nil, errors.New("kms uri is required")
 	}
+
+	var config crypto11.Config
+	u, err := uri.ParseWithScheme(Scheme, opts.URI)
+	if err != nil {
+		return nil, err
+	}
+
+	config.TokenLabel = u.Get("token")
+	config.TokenSerial = u.Get("serial")
+	if v := u.Get("slot-id"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, errors.Wrap(err, "kms uri 'slot-id' is not valid")
+		}
+		config.SlotNumber = &n
+	}
+
+	// Get module or default to use p11-kit-proxy.so.
+	//
+	// pkcs11.New(module string) will use dlopen that will look for the
+	// given library in the appropriate paths, so there's no need to provide
+	// the full path.
+	if config.Path = u.Get("module-path"); config.Path == "" {
+		config.Path = defaultModule
+	}
+
+	config.Pin = u.Pin()
 	if config.Pin == "" && opts.Pin != "" {
 		config.Pin = opts.Pin
 	}
 
 	switch {
-	case config.Path == "":
-		return nil, errors.New("kms uri 'module-path' are required")
 	case config.TokenLabel == "" && config.TokenSerial == "" && config.SlotNumber == nil:
 		return nil, errors.New("kms uri 'token', 'serial' or 'slot-id' are required")
 	case config.Pin == "":
@@ -114,8 +116,11 @@ func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 var defaultModule = "p11-kit-proxy.so"
 
 func init() {
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		defaultModule = "p11-kit-proxy.dylib"
+	case "windows":
+		defaultModule = "p11-kit-proxy.dll"
 	}
 	apiv1.Register(apiv1.PKCS11, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
 		return New(ctx, opts)

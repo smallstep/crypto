@@ -74,7 +74,7 @@ func TestNew(t *testing.T) {
 			URI:  "pkcs11:token=pkcs11-test",
 			Pin:  "passowrd",
 		}}, k, false},
-		{"fail missing module", args{context.Background(), apiv1.Options{
+		{"fail missing uri", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 		}}, nil, true},
 		{"fail missing pin", args{context.Background(), apiv1.Options{
