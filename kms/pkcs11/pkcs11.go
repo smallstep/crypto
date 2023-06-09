@@ -52,7 +52,30 @@ type PKCS11 struct {
 	closed sync.Once
 }
 
-// New returns a new PKCS11 KMS.
+// New returns a new PKCS#11 KMS. To initialize it, you need to provide a URI
+// with the following format:
+//
+//   - pkcs11:token=smallstep?pin-value=password
+//   - pkcs11:serial=1a2b3c4d5e6f?pin-source=/path/to/pin.txt
+//   - pkcs11:slot-id=5?pin-value=password
+//   - pkcs11:module-path=/path/to/module.so;token=smallstep?pin-value=password
+//
+// The scheme is "pkcs11"; "token", "serial", or "slot-id" defines the
+// cryptographic device to use, "module-path" is the path of the PKCS#11 module
+// to use, it will default to the proxy module of the p11-kit project if none is
+// specified (p11-kit-proxy.so), "pin-value" provides the user's PIN, and
+// "pin-source" defines a file that contains the PIN.
+//
+// A cryptographic key or object is identified by its "id" or "object"
+// attributes. The "id" is the key identifier for the object, it's a hexadecimal
+// string, and it will set the CKA_ID attribute of the object. The "object" is
+// the name of the object, and it will set the CKA_LABEL attribute. Only one
+// attribute is required to identify a key, but this package requires both to
+// create a new key. The complete URI for a key looks like this:
+//
+//   - pkcs11:token=smallstep;id=0a10;object=ec-key?pin-value=password
+//   - pkcs11:token=smallstep;id=0a10?pin-source=/path/to/pin.txt
+//   - pkcs11:token=smallstep;object=ec=key?pin-value=password
 func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 	if opts.URI == "" {
 		return nil, errors.New("kms uri is required")
@@ -127,7 +150,7 @@ func init() {
 	})
 }
 
-// GetPublicKey returns the public key ....
+// GetPublicKey returns the public key in stored in the given object.
 func (k *PKCS11) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
 	if req.Name == "" {
 		return nil, errors.New("getPublicKeyRequest 'name' cannot be empty")
