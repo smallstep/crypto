@@ -18,6 +18,7 @@ import (
 var (
 	testModule        = ""
 	testObject        = "pkcs11:id=7370;object=test-name"
+	testObjectPercent = "pkcs11:id=%73%70;object=test-name"
 	testObjectAlt     = "pkcs11:id=7377;object=alt-test-name"
 	testObjectByID    = "pkcs11:id=7370"
 	testObjectByLabel = "pkcs11:object=test-name"
@@ -27,9 +28,9 @@ var (
 		Bits               int
 	}{
 		{"pkcs11:id=7371;object=rsa-key", apiv1.SHA256WithRSA, 2048},
-		{"pkcs11:id=7372;object=rsa-pss-key", apiv1.SHA256WithRSAPSS, DefaultRSASize},
+		{"pkcs11:id=%73%72;object=rsa-pss-key", apiv1.SHA256WithRSAPSS, DefaultRSASize},
 		{"pkcs11:id=7373;object=ecdsa-p256-key", apiv1.ECDSAWithSHA256, 0},
-		{"pkcs11:id=7374;object=ecdsa-p384-key", apiv1.ECDSAWithSHA384, 0},
+		{"pkcs11:id=%73%74;object=ecdsa-p384-key", apiv1.ECDSAWithSHA384, 0},
 		{"pkcs11:id=7375;object=ecdsa-p521-key", apiv1.ECDSAWithSHA512, 0},
 	}
 

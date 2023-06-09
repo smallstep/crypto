@@ -157,7 +157,7 @@ func TestPKCS11_GetPublicKey(t *testing.T) {
 			Name: "pkcs11:id=7373;object=ecdsa-p256-key",
 		}}, &ecdsa.PublicKey{}, false},
 		{"ECDSA by id", args{&apiv1.GetPublicKeyRequest{
-			Name: "pkcs11:id=7373",
+			Name: "pkcs11:id=%73%73",
 		}}, &ecdsa.PublicKey{}, false},
 		{"ECDSA by label", args{&apiv1.GetPublicKeyRequest{
 			Name: "pkcs11:object=ecdsa-p256-key",
@@ -221,6 +221,15 @@ func TestPKCS11_CreateKey(t *testing.T) {
 			PublicKey: &ecdsa.PublicKey{},
 			CreateSignerRequest: apiv1.CreateSignerRequest{
 				SigningKey: testObject,
+			},
+		}, false},
+		{"default with percent URI", args{&apiv1.CreateKeyRequest{
+			Name: testObjectPercent,
+		}}, &apiv1.CreateKeyResponse{
+			Name:      testObjectPercent,
+			PublicKey: &ecdsa.PublicKey{},
+			CreateSignerRequest: apiv1.CreateSignerRequest{
+				SigningKey: testObjectPercent,
 			},
 		}, false},
 		{"RSA SHA256WithRSA", args{&apiv1.CreateKeyRequest{
@@ -428,7 +437,7 @@ func TestPKCS11_CreateSigner(t *testing.T) {
 			SigningKey: "pkcs11:id=7371;object=rsa-key",
 		}}, apiv1.SHA256WithRSA, crypto.SHA256, false},
 		{"RSA PSS", args{&apiv1.CreateSignerRequest{
-			SigningKey: "pkcs11:id=7372;object=rsa-pss-key",
+			SigningKey: "pkcs11:id=%73%72;object=rsa-pss-key",
 		}}, apiv1.SHA256WithRSAPSS, &rsa.PSSOptions{
 			SaltLength: rsa.PSSSaltLengthEqualsHash,
 			Hash:       crypto.SHA256,
@@ -437,7 +446,7 @@ func TestPKCS11_CreateSigner(t *testing.T) {
 			SigningKey: "pkcs11:id=7373;object=ecdsa-p256-key",
 		}}, apiv1.ECDSAWithSHA256, crypto.SHA256, false},
 		{"ECDSA P384", args{&apiv1.CreateSignerRequest{
-			SigningKey: "pkcs11:id=7374;object=ecdsa-p384-key",
+			SigningKey: "pkcs11:id=%73%74;object=ecdsa-p384-key",
 		}}, apiv1.ECDSAWithSHA384, crypto.SHA384, false},
 		{"ECDSA P521", args{&apiv1.CreateSignerRequest{
 			SigningKey: "pkcs11:id=7375;object=ecdsa-p521-key",
@@ -512,7 +521,7 @@ func TestPKCS11_CreateDecrypter(t *testing.T) {
 			DecryptionKey: "pkcs11:id=7371;object=rsa-key",
 		}}, false},
 		{"RSA PSS", args{&apiv1.CreateDecrypterRequest{
-			DecryptionKey: "pkcs11:id=7372;object=rsa-pss-key",
+			DecryptionKey: "pkcs11:id=%73%72;object=rsa-pss-key",
 		}}, false},
 		{"ECDSA P256", args{&apiv1.CreateDecrypterRequest{
 			DecryptionKey: "pkcs11:id=7373;object=ecdsa-p256-key",

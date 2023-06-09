@@ -74,7 +74,7 @@ type PKCS11 struct {
 // create a new key. The complete URI for a key looks like this:
 //
 //   - pkcs11:token=smallstep;id=0a10;object=ec-key?pin-value=password
-//   - pkcs11:token=smallstep;id=0a10?pin-source=/path/to/pin.txt
+//   - pkcs11:token=smallstep;id=%0a%10?pin-source=/path/to/pin.txt
 //   - pkcs11:token=smallstep;object=ec=key?pin-value=password
 func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 	if opts.URI == "" {
