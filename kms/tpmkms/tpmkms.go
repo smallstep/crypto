@@ -34,8 +34,12 @@ const Scheme = string(apiv1.TPMKMS)
 
 const (
 	// DefaultRSASize is the number of bits of a new RSA key if no size has been
-	// specified.
-	DefaultRSASize = 3072
+	// specified. Whereas we're generally defaulting to 3072 bits for new RSA keys,
+	// 2048 is used as the default for the TPMKMS, because we've observed the TPMs
+	// we're testing with to be supporting this as the maximum RSA key size. We might
+	// increase the default in the (near) future, but we want to be more confident
+	// about the supported size for a specific TPM (model) in that case.
+	DefaultRSASize = 2048
 	// defaultRSAAKSize is the default number of bits for a new RSA Attestation
 	// Key. It is currently set to 2048, because that's what's mentioned in the
 	// TCG TPM specification and is used by the AK template in `go-attestation`.
@@ -202,7 +206,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("creating %d bit AKs is not supported; AKs must be RSA 2048 bits", req.Bits)
 	}
 
-	size := DefaultRSASize // defaults to 3072
+	size := DefaultRSASize // defaults to 2048
 	if req.Bits > 0 {
 		size = req.Bits
 	}
