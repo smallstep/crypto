@@ -203,6 +203,14 @@ func (t *TPM) close(ctx context.Context) error {
 	return nil
 }
 
+type validatableConfig interface {
+	Validate() error
+}
+
+func (t *TPM) validate(config validatableConfig) error {
+	return config.Validate()
+}
+
 // closeTPM closes TPM `t`. It must be called as a deferred function
 // every time TPM `t` is opened. If `ep` is nil and closing the TPM
 // returned an error, `ep` will be pointed to the latter. In practice

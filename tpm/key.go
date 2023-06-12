@@ -162,6 +162,9 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		Algorithm: config.Algorithm,
 		Size:      config.Size,
 	}
+	if err := t.validate(&createConfig); err != nil {
+		return nil, fmt.Errorf("invalid key creation parameters: %w", err)
+	}
 	data, err := internalkey.Create(t.rwc, prefixKey(name), createConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
@@ -183,6 +186,22 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	return
+}
+
+type attestValidationWrapper attest.KeyConfig
+
+func (w attestValidationWrapper) Validate() error {
+	switch w.Algorithm {
+	case "RSA":
+		if w.Size > 2048 {
+			return fmt.Errorf("%d bits RSA keys are (currently) not supported; maximum is 2048", w.Size)
+		}
+	case "ECDSA":
+		break
+	default:
+		return fmt.Errorf("unsupported algorithm %q", w.Algorithm)
+	}
+	return nil
 }
 
 // AttestKey creates a new Key identified by `name` and attested by the AK
@@ -215,13 +234,16 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 	defer loadedAK.Close(t.attestTPM)
 
-	keyConfig := &attest.KeyConfig{
+	keyConfig := attest.KeyConfig{
 		Algorithm:      attest.Algorithm(config.Algorithm),
 		Size:           config.Size,
 		QualifyingData: config.QualifyingData,
 		Name:           prefixKey(name),
 	}
-	akey, err := t.attestTPM.NewKey(loadedAK, keyConfig)
+	if err := t.validate(attestValidationWrapper(keyConfig)); err != nil {
+		return nil, fmt.Errorf("invalid key attestation parameters: %w", err)
+	}
+	akey, err := t.attestTPM.NewKey(loadedAK, &keyConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
