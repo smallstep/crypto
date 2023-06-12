@@ -61,9 +61,9 @@ type PKCS11 struct {
 //   - pkcs11:module-path=/path/to/module.so;token=smallstep?pin-value=password
 //
 // The scheme is "pkcs11"; "token", "serial", or "slot-id" defines the
-// cryptographic device to use, "module-path" is the path of the PKCS#11 module
-// to use, it will default to the proxy module of the p11-kit project if none is
-// specified (p11-kit-proxy.so), "pin-value" provides the user's PIN, and
+// cryptographic device to use. "module-path" is the path of the PKCS#11 module
+// to use. It will default to the proxy module of the p11-kit project if none is
+// specified (p11-kit-proxy.so). "pin-value" provides the user's PIN, and
 // "pin-source" defines a file that contains the PIN.
 //
 // A cryptographic key or object is identified by its "id" or "object"
@@ -75,7 +75,7 @@ type PKCS11 struct {
 //
 //   - pkcs11:token=smallstep;id=0a10;object=ec-key?pin-value=password
 //   - pkcs11:token=smallstep;id=%0a%10?pin-source=/path/to/pin.txt
-//   - pkcs11:token=smallstep;object=ec=key?pin-value=password
+//   - pkcs11:token=smallstep;object=ec-key?pin-value=password
 func New(ctx context.Context, opts apiv1.Options) (*PKCS11, error) {
 	if opts.URI == "" {
 		return nil, errors.New("kms uri is required")
@@ -150,7 +150,7 @@ func init() {
 	})
 }
 
-// GetPublicKey returns the public key in stored in the given object.
+// GetPublicKey returns the public key stored in the object identified by the name URI.
 func (k *PKCS11) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
 	if req.Name == "" {
 		return nil, errors.New("getPublicKeyRequest 'name' cannot be empty")
