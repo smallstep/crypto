@@ -497,6 +497,8 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 
 func TestTPMKMS_GetPublicKey(t *testing.T) {
 	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
+	_, err := tpmWithKey.CreateAK(context.Background(), "ak1")
+	require.NoError(t, err)
 	type fields struct {
 		tpm *tpmp.TPM
 	}
@@ -511,13 +513,24 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 		expErr error
 	}{
 		{
-			name: "ok",
+			name: "ok/key",
 			fields: fields{
 				tpm: tpmWithKey,
 			},
 			args: args{
 				req: &apiv1.GetPublicKeyRequest{
 					Name: "tpmkms:name=key1",
+				},
+			},
+		},
+		{
+			name: "ok/ak",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:name=ak1;ak=true",
 				},
 			},
 		},
@@ -534,18 +547,6 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 			expErr: errors.New("getPublicKeyRequest 'name' cannot be empty"),
 		},
 		{
-			name: "fail/ak",
-			fields: fields{
-				tpm: tpmWithKey,
-			},
-			args: args{
-				req: &apiv1.GetPublicKeyRequest{
-					Name: "tpmkms:name=ak1;ak=true",
-				},
-			},
-			expErr: errors.New("retrieving AK public key currently not supported"),
-		},
-		{
 			name: "fail/unknown-key",
 			fields: fields{
 				tpm: tpmWithKey,
@@ -556,6 +557,18 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 				},
 			},
 			expErr: fmt.Errorf(`failed getting key "unknown-key": not found`),
+		},
+		{
+			name: "fail/unknown-ak",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:name=unknown-ak;ak=true",
+				},
+			},
+			expErr: fmt.Errorf(`failed getting AK "unknown-ak": not found`),
 		},
 	}
 	for _, tt := range tests {
@@ -1183,6 +1196,19 @@ func TestTPMKMS_StoreCertificateChain(t *testing.T) {
 			expErr: errors.New("storeCertificateChainRequest 'name' cannot be empty"),
 		},
 		{
+			name: "fail/empty-chain",
+			fields: fields{
+				tpm: tpm,
+			},
+			args: args{
+				req: &apiv1.StoreCertificateChainRequest{
+					Name:             "tpmkms:name=key1",
+					CertificateChain: []*x509.Certificate{},
+				},
+			},
+			expErr: errors.New("storeCertificateChainRequest 'certificateChain' cannot be empty"),
+		},
+		{
 			name: "fail/unknown-ak",
 			fields: fields{
 				tpm: tpm,
@@ -1354,6 +1380,37 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				expErr: errors.New(`failed parsing "tpmkms:name=keyx;ak=true;attest-by=ak1": "ak" and "attest-by" are mutually exclusive`),
+			}
+		},
+		"fail/unknown-ak": func(t *testing.T) test {
+			return test{
+				fields: fields{
+					tpm: tpm,
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=unknownAK;ak=true",
+					},
+				},
+				expErr: errors.New(`failed getting AK "unknownAK": not found`),
+			}
+		},
+		"fail/ak-withoutCertificate": func(t *testing.T) test {
+			akWithoutCert, err := tpm.CreateAK(ctx, "anotherAKWithoutCert")
+			require.NoError(t, err)
+			akPub := akWithoutCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+			return test{
+				fields: fields{
+					tpm:                 tpm,
+					permanentIdentifier: ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=anotherAKWithoutCert;ak=true", // key1 was attested by the akWithExistingCert at creation time
+					},
+				},
+				expErr: errors.New(`no certificate chain available for AK "anotherAKWithoutCert"`),
 			}
 		},
 		"fail/unknown-key": func(t *testing.T) test {
@@ -1804,6 +1861,42 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 						CreateAttestation: keyParams.CreateAttestation,
 						CreateSignature:   keyParams.CreateSignature,
 					},
+					PermanentIdentifier: ekKeyURL.String(),
+				},
+				expErr: nil,
+			}
+		},
+		"ok/ak": func(t *testing.T) test {
+			akWithCert, err := tpm.CreateAK(ctx, "akWithCert")
+			require.NoError(t, err)
+			akPub := akWithCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: akPub,
+			}
+			validAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, validAKCert)
+			err = akWithCert.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				fields: fields{
+					tpm:                 tpm,
+					permanentIdentifier: ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=akWithCert;ak=true", // key1 was attested by the akWithExistingCert at creation time
+					},
+				},
+				want: &apiv1.CreateAttestationResponse{
+					Certificate:         validAKCert,
+					CertificateChain:    []*x509.Certificate{validAKCert, ca.Intermediate},
+					PublicKey:           akWithCert.Public(),
 					PermanentIdentifier: ekKeyURL.String(),
 				},
 				expErr: nil,

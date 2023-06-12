@@ -108,6 +108,20 @@ type CreateConfig struct {
 	Size int
 }
 
+func (c *CreateConfig) Validate() error {
+	switch c.Algorithm {
+	case "RSA":
+		if c.Size > 2048 {
+			return fmt.Errorf("%d bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048", c.Size)
+		}
+	case "ECDSA":
+		break
+	default:
+		return fmt.Errorf("unsupported algorithm %q", c.Algorithm)
+	}
+	return nil
+}
+
 var tpmEkTemplate *tpm2.Public
 
 func ekTemplate(rwc io.ReadWriteCloser) (tpm2.Public, error) {
