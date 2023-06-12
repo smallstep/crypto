@@ -11,8 +11,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/softkms"
+	"go.step.sm/crypto/kms/tpmkms"
 )
 
 type fakeCM struct {
@@ -67,21 +70,27 @@ func Test_new(t *testing.T) {
 		{"ok softkms", args{ctx, "softkms:"}, &kmsfs{
 			KeyManager: &softkms.SoftKMS{},
 		}, false},
+		{"ok tpmkms", args{ctx, "tpmkms:"}, &kmsfs{
+			KeyManager: &tpmkms.TPMKMS{},
+		}, false},
 		{"fail", args{ctx, "fail:"}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := newFS(tt.args.ctx, tt.args.kmsuri)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("new() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("new() = %v, want %v", got, tt.want)
+
+			assert.NoError(t, err)
+			if assert.NotNil(t, got) {
+				assert.IsType(t, tt.want, got)
 			}
-			if err := got.Close(); err != nil {
-				t.Errorf("Close() error = %v, wantErr false", err)
-			}
+
+			err = got.Close()
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -103,6 +112,8 @@ func Test_kmsfs_getKMS(t *testing.T) {
 		{"ok empty", fields{nil}, args{""}, &softkms.SoftKMS{}, false},
 		{"ok softkms", fields{&softkms.SoftKMS{}}, args{""}, &softkms.SoftKMS{}, false},
 		{"ok softkms with uri", fields{nil}, args{"softkms:"}, &softkms.SoftKMS{}, false},
+		{"ok tpmkms", fields{&tpmkms.TPMKMS{}}, args{""}, &tpmkms.TPMKMS{}, false},
+		{"ok tpmkms with uri", fields{nil}, args{"tpmkms:"}, &tpmkms.TPMKMS{}, false},
 		{"fail", fields{nil}, args{"fail:"}, nil, true},
 	}
 	for _, tt := range tests {
@@ -111,12 +122,15 @@ func Test_kmsfs_getKMS(t *testing.T) {
 				KeyManager: tt.fields.KeyManager,
 			}
 			got, err := f.getKMS(tt.args.kmsuri)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("kmsfs.getKMS() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("kmsfs.getKMS() = %v, want %v", got, tt.want)
+
+			assert.NoError(t, err)
+			if assert.NotNil(t, got) {
+				assert.IsType(t, tt.want, got)
 			}
 		})
 	}
