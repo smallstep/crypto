@@ -459,7 +459,7 @@ func TestTPM_CreateKey(t *testing.T) {
 		Size:      3072,
 	}
 	key, err = tpm.CreateKey(context.Background(), "3072", config)
-	assert.EqualError(t, err, "invalid key creation parameters: 3072 bits RSA keys are (currently) not supported; maximum is 2048")
+	assert.EqualError(t, err, "invalid key creation parameters: 3072 bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048")
 	assert.Nil(t, key)
 
 	config = CreateKeyConfig{
@@ -467,7 +467,7 @@ func TestTPM_CreateKey(t *testing.T) {
 		Size:      4096,
 	}
 	key, err = tpm.CreateKey(context.Background(), "4096", config)
-	assert.EqualError(t, err, "invalid key creation parameters: 4096 bits RSA keys are (currently) not supported; maximum is 2048")
+	assert.EqualError(t, err, "invalid key creation parameters: 4096 bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048")
 	assert.Nil(t, key)
 }
 
@@ -497,7 +497,7 @@ func TestTPM_AttestKey(t *testing.T) {
 		Size:      3072,
 	}
 	key, err = tpm.AttestKey(context.Background(), "first-ak", "3072", config)
-	assert.EqualError(t, err, "invalid key attestation parameters: 3072 bits RSA keys are (currently) not supported; maximum is 2048")
+	assert.EqualError(t, err, "invalid key attestation parameters: 3072 bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048")
 	assert.Nil(t, key)
 }
 

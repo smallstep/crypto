@@ -194,7 +194,7 @@ func (w attestValidationWrapper) Validate() error {
 	switch w.Algorithm {
 	case "RSA":
 		if w.Size > 2048 {
-			return fmt.Errorf("%d bits RSA keys are (currently) not supported; maximum is 2048", w.Size)
+			return fmt.Errorf("%d bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048", w.Size)
 		}
 	case "ECDSA":
 		break

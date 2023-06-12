@@ -112,7 +112,7 @@ func (c *CreateConfig) Validate() error {
 	switch c.Algorithm {
 	case "RSA":
 		if c.Size > 2048 {
-			return fmt.Errorf("%d bits RSA keys are (currently) not supported; maximum is 2048", c.Size)
+			return fmt.Errorf("%d bits RSA keys are (currently) not supported in go.step.sm/crypto; maximum is 2048", c.Size)
 		}
 	case "ECDSA":
 		break
