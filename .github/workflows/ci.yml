@@ -17,8 +17,9 @@ jobs:
   ci:
     uses: smallstep/workflows/.github/workflows/goCI.yml@main
     with:
-      os-dependencies: "libpcsclite-dev"
+      only-latest-golang: false
+      os-dependencies: 'libpcsclite-dev'
       run-build: false
       run-codeql: true
-      make-test: true # run `make test` instead of the default test workflow
+      test-command: 'V=1 make test'
     secrets: inherit
