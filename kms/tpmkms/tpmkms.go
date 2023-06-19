@@ -543,74 +543,22 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, permanentIdentifier)
 	}
 
-	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
+	var key *tpm.Key
+	akName := properties.name
+	if !properties.ak {
+		key, err = k.tpm.GetKey(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
-		akPub := ak.Public()
-		if akPub == nil {
-			return nil, fmt.Errorf("failed getting AK public key")
+		if !key.WasAttested() {
+			return nil, fmt.Errorf("key %q was not attested", key.Name())
 		}
-		akChain := ak.CertificateChain()
-		if len(akChain) == 0 || !hasValidIdentity(ak, ekKeyURL) { // TODO(hs): deduplicate this logic
-			var ac apiv1.AttestationClient
-			if req.AttestationClient != nil {
-				// TODO(hs): check if it makes sense to have this; it doesn't capture all
-				// behavior of the built-in attestorClient, but at least it does provide
-				// a basic extension point for other ways of performing attestation that
-				// might be useful for testing or attestation flows against other systems.
-				// For it to be truly useful, the logic for determining the AK identity
-				// would have to be updated too, though.
-				ac = req.AttestationClient
-			} else {
-				ac, err = k.newAttestorClient(ek, ak)
-				if err != nil {
-					return nil, fmt.Errorf("failed creating attestor client: %w", err)
-				}
-			}
-			// perform the attestation flow with a (remote) attestation CA
-			if akChain, err = ac.Attest(ctx); err != nil {
-				return nil, fmt.Errorf("failed performing AK attestation: %w", err)
-			}
-			// store the result with the AK, so that it can be reused for future
-			// attestations.
-			if err := ak.SetCertificateChain(ctx, akChain); err != nil {
-				return nil, fmt.Errorf("failed storing AK certificate chain: %w", err)
-			}
-		}
-		// when a new certificate was issued for the AK, it is possible the
-		// certificate that was issued doesn't include the expected and/or required
-		// identity, so this is checked before continuing.
-		if !hasValidIdentity(ak, ekKeyURL) {
-			return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
-		}
-		// TODO(hs): decide if we want/need to return these; their purpose is slightly
-		// different from the key certification parameters.
-		_, err = ak.AttestationParameters(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
-		}
-		return &apiv1.CreateAttestationResponse{
-			Certificate:         akChain[0], // certificate for the AK
-			CertificateChain:    akChain,    // chain for the AK, including the leaf
-			PublicKey:           akPub,      // returns the public key of the attestation key
-			PermanentIdentifier: permanentIdentifier,
-		}, nil
+		akName = key.AttestedBy()
 	}
 
-	key, err := k.tpm.GetKey(ctx, properties.name)
+	ak, err := k.tpm.GetAK(ctx, akName)
 	if err != nil {
 		return nil, err
-	}
-
-	if !key.WasAttested() {
-		return nil, fmt.Errorf("key %q was not attested", key.Name())
-	}
-
-	ak, err := k.tpm.GetAK(ctx, key.AttestedBy())
-	if err != nil {
-		return nil, fmt.Errorf("failed getting AK for key %q: %w", key.Name(), err)
 	}
 
 	// check if a (valid) AK certificate (chain) is available. Perform attestation flow
@@ -650,6 +598,25 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// identity, so this is checked before continuing.
 	if !hasValidIdentity(ak, ekKeyURL) {
 		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
+	}
+
+	if properties.ak {
+		akPub := ak.Public()
+		if akPub == nil {
+			return nil, fmt.Errorf("failed getting AK public key")
+		}
+		// TODO(hs): decide if we want/need to return these; their purpose is slightly
+		// different from the key certification parameters.
+		_, err = ak.AttestationParameters(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
+		}
+		return &apiv1.CreateAttestationResponse{
+			Certificate:         akChain[0], // certificate for the AK
+			CertificateChain:    akChain,    // chain for the AK, including the leaf
+			PublicKey:           akPub,      // returns the public key of the attestation key
+			PermanentIdentifier: permanentIdentifier,
+		}, nil
 	}
 
 	signer, err := key.Signer(ctx)
