@@ -34,14 +34,14 @@ type TPM struct {
 
 // NewTPMOption is used to provide options when instantiating a new
 // instance of TPM.
-type NewTPMOption func(t *TPM) error
+type NewTPMOption func(o *options) error
 
 // WithDeviceName is used to provide the `name` or path to the TPM
 // device.
 func WithDeviceName(name string) NewTPMOption {
-	return func(t *TPM) error {
+	return func(o *options) error {
 		if name != "" {
-			t.deviceName = name
+			o.deviceName = name
 		}
 		return nil
 	}
@@ -50,12 +50,12 @@ func WithDeviceName(name string) NewTPMOption {
 // WithStore is used to set the TPMStore implementation to use for
 // persisting TPM objects, including AKs and Keys.
 func WithStore(store storage.TPMStore) NewTPMOption {
-	return func(t *TPM) error {
+	return func(o *options) error {
 		if store == nil {
 			store = storage.BlackHole() // prevent nil storage; no persistence
 		}
 
-		t.store = store
+		o.store = store
 		return nil
 	}
 }
@@ -63,8 +63,8 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 // WithDisableDownload disables EK certificates from being downloaded
 // from online hosts.
 func WithDisableDownload() NewTPMOption {
-	return func(t *TPM) error {
-		t.downloader.enabled = false
+	return func(o *options) error {
+		o.downloader.enabled = false
 		return nil
 	}
 }
@@ -73,25 +73,41 @@ func WithDisableDownload() NewTPMOption {
 // that simulates TPM operations instead of interacting with an actual
 // TPM.
 func WithSimulator(sim simulator.Simulator) NewTPMOption {
-	return func(t *TPM) error {
-		t.simulator = sim
+	return func(o *options) error {
+		o.simulator = sim
 		return nil
 	}
+}
+
+type options struct {
+	deviceName   string
+	attestConfig *attest.OpenConfig
+	simulator    simulator.Simulator
+	store        storage.TPMStore
+	downloader   *downloader
 }
 
 // New creates a new TPM instance. It takes `opts` to configure
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
-	tpm := &TPM{
+
+	tpmOptions := options{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20},                      // default configuration for TPM attestation use cases
 		store:        storage.BlackHole(),                                                      // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
 		downloader:   &downloader{enabled: true, maxDownloads: 10, client: http.DefaultClient}, // EK certificate download (if required) is enabled by default
 	}
-
 	for _, o := range opts {
-		if err := o(tpm); err != nil {
+		if err := o(&tpmOptions); err != nil {
 			return nil, err
 		}
+	}
+
+	tpm := &TPM{
+		deviceName:   tpmOptions.deviceName,
+		attestConfig: tpmOptions.attestConfig,
+		store:        tpmOptions.store,
+		downloader:   tpmOptions.downloader,
+		simulator:    tpmOptions.simulator,
 	}
 
 	return tpm, nil
