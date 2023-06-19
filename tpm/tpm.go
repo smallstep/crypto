@@ -9,6 +9,7 @@ import (
 
 	"github.com/smallstep/go-attestation/attest"
 
+	"go.step.sm/crypto/tpm/internal/close"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
@@ -110,6 +111,13 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		simulator:    tpmOptions.simulator,
 	}
 
+	if tpm.simulator != nil {
+		tpm.attestConfig = &attest.OpenConfig{
+			TPMVersion:     tpmOptions.attestConfig.TPMVersion,
+			CommandChannel: tpm.simulator,
+		}
+	}
+
 	return tpm, nil
 }
 
@@ -139,10 +147,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	// The simulator is currently only used for testing.
 	if t.simulator != nil {
 		if t.attestTPM == nil {
-			at, err := attest.OpenTPM(&attest.OpenConfig{
-				TPMVersion:     attest.TPMVersion20,
-				CommandChannel: t.simulator,
-			})
+			at, err := attest.OpenTPM(t.attestConfig)
 			if err != nil {
 				return fmt.Errorf("failed opening attest.TPM: %w", err)
 			}
@@ -209,7 +214,7 @@ func (t *TPM) close(ctx context.Context) error {
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
-		err := t.rwc.Close()
+		err := close.RWC(t.rwc)
 		t.rwc = nil
 		if err != nil {
 			return fmt.Errorf("failed closing rwc: %w", err)
