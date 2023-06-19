@@ -1382,6 +1382,24 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 				expErr: errors.New(`failed parsing "tpmkms:name=keyx;ak=true;attest-by=ak1": "ak" and "attest-by" are mutually exclusive`),
 			}
 		},
+		"fail/non-matching-permanent-identifier": func(t *testing.T) test {
+			_, err = tpm.CreateAK(ctx, "newAKWithoutCert")
+			require.NoError(t, err)
+			_, err = tpm.AttestKey(ctx, "newAKWithoutCert", "newkey", config)
+			require.NoError(t, err)
+			return test{
+				fields: fields{
+					tpm:                 tpm,
+					permanentIdentifier: "wrong-provided-permanent-identifier",
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=newkey", // newkey was attested by the newAKWithoutCert at creation time
+					},
+				},
+				expErr: fmt.Errorf(`the provided permanent identifier "wrong-provided-permanent-identifier" does not match the EK URL %q`, ekKeyURL.String()),
+			}
+		},
 		"fail/unknown-ak": func(t *testing.T) test {
 			return test{
 				fields: fields{
@@ -1395,7 +1413,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 				expErr: errors.New(`failed getting AK "unknownAK": not found`),
 			}
 		},
-		"fail/ak-withoutCertificate": func(t *testing.T) test {
+		"fail/ak-create-attestor-client": func(t *testing.T) test {
 			akWithoutCert, err := tpm.CreateAK(ctx, "anotherAKWithoutCert")
 			require.NoError(t, err)
 			akPub := akWithoutCert.Public()
@@ -1407,10 +1425,111 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 				},
 				args: args{
 					req: &apiv1.CreateAttestationRequest{
-						Name: "tpmkms:name=anotherAKWithoutCert;ak=true", // key1 was attested by the akWithExistingCert at creation time
+						Name: "tpmkms:name=anotherAKWithoutCert;ak=true",
 					},
 				},
-				expErr: errors.New(`no certificate chain available for AK "anotherAKWithoutCert"`),
+				expErr: errors.New(`failed creating attestor client: failed creating attestation client: attestation CA base URL must not be empty`),
+			}
+		},
+		"fail/ak-attest": func(t *testing.T) test {
+			akWithoutCert, err := tpm.CreateAK(ctx, "yetAnotherAKWithoutCert")
+			require.NoError(t, err)
+			akPub := akWithoutCert.Public()
+			require.Implements(t, (*crypto.PublicKey)(nil), akPub)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					w.WriteHeader(http.StatusBadRequest)
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  tpm,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=yetAnotherAKWithoutCert;ak=true",
+					},
+				},
+				expErr: fmt.Errorf(`failed performing AK attestation: failed attesting AK: POST %q failed with HTTP status "400 Bad Request"`, fmt.Sprintf("%s/attest", s.URL)),
+			}
+		},
+		"fail/ak-set-ak-certificate-chain": func(t *testing.T) test {
+			akWithoutCert, err := tpm.CreateAK(ctx, "andYetAnotherAKWithoutCert")
+			require.NoError(t, err)
+			params, err := akWithoutCert.AttestationParameters(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			activation := attest.ActivationParameters{
+				TPMVersion: attest.TPMVersion20,
+				EK:         ek.Public(),
+				AK:         params,
+			}
+			expectedSecret, encryptedCredentials, err := activation.Generate()
+			require.NoError(t, err)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/attest":
+					var ar attestationRequest
+					err := json.NewDecoder(r.Body).Decode(&ar)
+					require.NoError(t, err)
+					parsedEK, err := x509.ParsePKIXPublicKey(ar.EK)
+					require.NoError(t, err)
+					assert.Equal(t, ek.Public(), parsedEK)
+					attestParams := attest.AttestationParameters{
+						Public:                  ar.AttestParams.Public,
+						UseTCSDActivationFormat: ar.AttestParams.UseTCSDActivationFormat,
+						CreateData:              ar.AttestParams.CreateData,
+						CreateAttestation:       ar.AttestParams.CreateAttestation,
+						CreateSignature:         ar.AttestParams.CreateSignature,
+					}
+					activationParams := attest.ActivationParameters{
+						TPMVersion: ar.TPMInfo.Version,
+						EK:         parsedEK,
+						AK:         attestParams,
+					}
+					assert.Equal(t, activation, activationParams)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&attestationResponse{
+						Credential: encryptedCredentials.Credential,
+						Secret:     encryptedCredentials.Secret,
+					})
+				case "/secret":
+					var sr secretRequest
+					err := json.NewDecoder(r.Body).Decode(&sr)
+					require.NoError(t, err)
+					assert.Equal(t, expectedSecret, sr.Secret)
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(&secretResponse{
+						CertificateChain: [][]byte{
+							ca.Intermediate.Raw, // No leaf returned
+						},
+					})
+				default:
+					t.Errorf("unexpected %q request to %q", r.Method, r.URL)
+				}
+			})
+			s := httptest.NewServer(handler)
+			return test{
+				server: s,
+				fields: fields{
+					tpm:                  tpm,
+					attestationCABaseURL: s.URL,
+					permanentIdentifier:  ekKeyURL.String(),
+				},
+				args: args{
+					req: &apiv1.CreateAttestationRequest{
+						Name: "tpmkms:name=andYetAnotherAKWithoutCert;ak=true",
+					},
+				},
+				want:   nil,
+				expErr: fmt.Errorf(`failed storing AK certificate chain: AK public key does not match the leaf certificate public key`),
 			}
 		},
 		"fail/unknown-key": func(t *testing.T) test {
@@ -1439,24 +1558,6 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				expErr: errors.New(`key "nonAttestedKey" was not attested`),
-			}
-		},
-		"fail/non-matching-permanent-identifier": func(t *testing.T) test {
-			_, err = tpm.CreateAK(ctx, "newAKWithoutCert")
-			require.NoError(t, err)
-			_, err = tpm.AttestKey(ctx, "newAKWithoutCert", "newkey", config)
-			require.NoError(t, err)
-			return test{
-				fields: fields{
-					tpm:                 tpm,
-					permanentIdentifier: "wrong-provided-permanent-identifier",
-				},
-				args: args{
-					req: &apiv1.CreateAttestationRequest{
-						Name: "tpmkms:name=newkey", // newkey was attested by the newAKWithoutCert at creation time
-					},
-				},
-				expErr: fmt.Errorf(`the provided permanent identifier "wrong-provided-permanent-identifier" does not match the EK URL %q`, ekKeyURL.String()),
 			}
 		},
 		"fail/create-attestor-client": func(t *testing.T) test {
