@@ -534,56 +534,31 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	ekKeyURL := ekURL(ekKeyID)
 	permanentIdentifier := ekKeyURL.String()
 
-	if properties.ak {
-		// TODO(hs): decide if we actually want to support this case? TPM attestation
-		// is about attesting application keys using attestation keys.
-		ak, err := k.tpm.GetAK(ctx, properties.name)
-		if err != nil {
-			return nil, err
-		}
-		akPub := ak.Public()
-		if akPub == nil {
-			return nil, fmt.Errorf("failed getting AK public key")
-		}
-		akChain := ak.CertificateChain()
-		if len(akChain) == 0 {
-			return nil, fmt.Errorf("no certificate chain available for AK %q", properties.name)
-		}
-		// TODO(hs): decide if we want/need to return these; their purpose is slightly
-		// different from the key certification parameters.
-		_, err = ak.AttestationParameters(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
-		}
-		return &apiv1.CreateAttestationResponse{
-			Certificate:         akChain[0], // certificate for the AK
-			CertificateChain:    akChain,    // chain for the AK, including the leaf
-			PublicKey:           akPub,      // returns the public key of the attestation key
-			PermanentIdentifier: permanentIdentifier,
-		}, nil
-	}
-
-	key, err := k.tpm.GetKey(ctx, properties.name)
-	if err != nil {
-		return nil, err
-	}
-
-	if !key.WasAttested() {
-		return nil, fmt.Errorf("key %q was not attested", key.Name())
-	}
-
-	ak, err := k.tpm.GetAK(ctx, key.AttestedBy())
-	if err != nil {
-		return nil, fmt.Errorf("failed getting AK for key %q: %w", key.Name(), err)
-	}
-
 	// check if the derived EK URI fingerprint representation matches the provided
 	// permanent identifier value. The current implementation requires the EK URI to
 	// be used as the AK identity, so an error is returned if there's no match. This
 	// could be changed in the future, so that another attestation flow takes place,
 	// instead, for example.
-	if k.permanentIdentifier != "" && ekKeyURL.String() != k.permanentIdentifier {
-		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, ekKeyURL.String())
+	if k.permanentIdentifier != "" && permanentIdentifier != k.permanentIdentifier {
+		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, permanentIdentifier)
+	}
+
+	var key *tpm.Key
+	akName := properties.name
+	if !properties.ak {
+		key, err = k.tpm.GetKey(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		if !key.WasAttested() {
+			return nil, fmt.Errorf("key %q was not attested", key.Name())
+		}
+		akName = key.AttestedBy()
+	}
+
+	ak, err := k.tpm.GetAK(ctx, akName)
+	if err != nil {
+		return nil, err
 	}
 
 	// check if a (valid) AK certificate (chain) is available. Perform attestation flow
@@ -625,6 +600,25 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
 	}
 
+	if properties.ak {
+		akPub := ak.Public()
+		if akPub == nil {
+			return nil, fmt.Errorf("failed getting AK public key")
+		}
+		// TODO(hs): decide if we want/need to return these; their purpose is slightly
+		// different from the key certification parameters.
+		_, err = ak.AttestationParameters(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed getting AK attestation parameters: %w", err)
+		}
+		return &apiv1.CreateAttestationResponse{
+			Certificate:         akChain[0], // certificate for the AK
+			CertificateChain:    akChain,    // chain for the AK, including the leaf
+			PublicKey:           akPub,      // returns the public key of the attestation key
+			PermanentIdentifier: permanentIdentifier,
+		}, nil
+	}
+
 	signer, err := key.Signer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
@@ -645,9 +639,9 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 			Public:            params.Public,
 			CreateData:        params.CreateData,
 			CreateAttestation: params.CreateAttestation,
-			CreateSignature:   params.CreateSignature, // NOTE: should always match the valid value of the AK identity (for now)
+			CreateSignature:   params.CreateSignature,
 		},
-		PermanentIdentifier: permanentIdentifier,
+		PermanentIdentifier: permanentIdentifier, // NOTE: should always match the valid value of the AK identity (for now)
 	}, nil
 }
 
