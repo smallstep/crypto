@@ -2,6 +2,7 @@ package tpm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"go.step.sm/crypto/tpm/internal/close"
 	"go.step.sm/crypto/tpm/internal/open"
+	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
 )
@@ -21,16 +23,19 @@ import (
 // Besides that, it provides a transparent method for persisting TPM
 // objects, so that referencing and using these is simplified.
 type TPM struct {
-	deviceName   string
-	attestConfig *attest.OpenConfig
-	attestTPM    *attest.TPM
-	rwc          io.ReadWriteCloser
-	lock         sync.RWMutex
-	store        storage.TPMStore
-	simulator    simulator.Simulator
-	downloader   *downloader
-	info         *Info
-	eks          []*EK
+	deviceName             string
+	attestConfig           *attest.OpenConfig
+	attestTPM              *attest.TPM
+	rwc                    io.ReadWriteCloser
+	lock                   sync.RWMutex
+	store                  storage.TPMStore
+	simulator              simulator.Simulator
+	commandChannel         CommandChannel
+	downloader             *downloader
+	options                *options
+	initCommandChannelOnce sync.Once
+	info                   *Info
+	eks                    []*EK
 }
 
 // NewTPMOption is used to provide options when instantiating a new
@@ -80,12 +85,29 @@ func WithSimulator(sim simulator.Simulator) NewTPMOption {
 	}
 }
 
+type CommandChannel attest.CommandChannelTPM20
+
+func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
+	return func(o *options) error {
+		o.commandChannel = commandChannel
+		return nil
+	}
+}
+
 type options struct {
-	deviceName   string
-	attestConfig *attest.OpenConfig
-	simulator    simulator.Simulator
-	store        storage.TPMStore
-	downloader   *downloader
+	deviceName     string
+	attestConfig   *attest.OpenConfig
+	simulator      simulator.Simulator
+	commandChannel CommandChannel
+	store          storage.TPMStore
+	downloader     *downloader
+}
+
+func (o *options) validate() error {
+	if o.simulator != nil && o.commandChannel != nil {
+		return errors.New("WithSimulator and WithCommandChannel options are mutually exclusive")
+	}
+	return nil
 }
 
 // New creates a new TPM instance. It takes `opts` to configure
@@ -102,20 +124,18 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 			return nil, err
 		}
 	}
-
-	tpm := &TPM{
-		deviceName:   tpmOptions.deviceName,
-		attestConfig: tpmOptions.attestConfig,
-		store:        tpmOptions.store,
-		downloader:   tpmOptions.downloader,
-		simulator:    tpmOptions.simulator,
+	if err := tpmOptions.validate(); err != nil {
+		return nil, fmt.Errorf("invalid TPM options provided: %w", err)
 	}
 
-	if tpm.simulator != nil {
-		tpm.attestConfig = &attest.OpenConfig{
-			TPMVersion:     tpmOptions.attestConfig.TPMVersion,
-			CommandChannel: tpm.simulator,
-		}
+	tpm := &TPM{
+		deviceName:     tpmOptions.deviceName,
+		attestConfig:   tpmOptions.attestConfig,
+		store:          tpmOptions.store,
+		downloader:     tpmOptions.downloader,
+		simulator:      tpmOptions.simulator,
+		commandChannel: tpmOptions.commandChannel,
+		options:        &tpmOptions,
 	}
 
 	return tpm, nil
@@ -141,6 +161,14 @@ func (t *TPM) open(ctx context.Context) (err error) {
 
 	if err := t.store.Load(); err != nil { // TODO(hs): load this once? Or abstract this away.
 		return fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
+
+	// initialize the command channel
+	t.initCommandChannelOnce.Do(func() {
+		err = t.initializeCommandChannel()
+	})
+	if err != nil {
+		return fmt.Errorf("failed initalizing command channel: %w", err)
 	}
 
 	// if a simulator was set, use it as the backing TPM device.
@@ -181,6 +209,56 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	return nil
 }
 
+func (t *TPM) initializeCommandChannel() error {
+	if t.commandChannel != nil {
+		t.attestConfig = &attest.OpenConfig{
+			TPMVersion:     t.options.attestConfig.TPMVersion,
+			CommandChannel: t.commandChannel,
+		}
+		return nil
+	}
+
+	if t.options.simulator != nil {
+		t.commandChannel = t.simulator
+	}
+
+	if t.options.commandChannel != nil {
+		t.commandChannel = t.options.commandChannel
+	}
+
+	if t.commandChannel == nil {
+		socketCommandChannel, err := trySocketCommandChannel(t.deviceName)
+		if err != nil {
+			return err
+		}
+		if socketCommandChannel != nil {
+			t.commandChannel = socketCommandChannel
+		}
+	}
+
+	t.attestConfig = &attest.OpenConfig{
+		TPMVersion:     t.options.attestConfig.TPMVersion,
+		CommandChannel: t.commandChannel,
+	}
+
+	return nil
+}
+
+// trySocketCommandChannel tries
+func trySocketCommandChannel(path string) (*socket.CommandChannelWithoutMeasurementLog, error) {
+	if path == "" {
+		return nil, nil
+	}
+	rwc, err := socket.New(path)
+	if err != nil {
+		return nil, err
+	}
+	if rwc == nil {
+		return nil, nil
+	}
+	return &socket.CommandChannelWithoutMeasurementLog{ReadWriteCloser: rwc}, nil
+}
+
 // Close closes the TPM instance, cleaning up resources and
 // marking it ready to be use again.
 func (t *TPM) close(ctx context.Context) error {
@@ -205,18 +283,16 @@ func (t *TPM) close(ctx context.Context) error {
 
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
-		err := t.attestTPM.Close()
-		t.attestTPM = nil
-		if err != nil {
+		defer func() { t.attestTPM = nil }()
+		if err := close.AttestTPM(t.attestTPM, t.attestConfig); err != nil {
 			return fmt.Errorf("failed closing attest.TPM: %w", err)
 		}
 	}
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
-		err := close.RWC(t.rwc)
-		t.rwc = nil
-		if err != nil {
+		defer func() { t.rwc = nil }()
+		if err := close.RWC(t.rwc); err != nil {
 			return fmt.Errorf("failed closing rwc: %w", err)
 		}
 	}
