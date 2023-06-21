@@ -7,6 +7,6 @@ import (
 	"io"
 )
 
-func new(_ string) (io.ReadWriteCloser, error) {
-	return nil, errors.New("connecting to a TPM using a UNIX socket is not supported on Windows")
+func newSocket(_ string) (io.ReadWriteCloser, error) {
+	return nil, ErrNotSupported
 }

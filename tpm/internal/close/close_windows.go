@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package close
+package closer
 
 import (
 	"io"

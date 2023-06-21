@@ -10,7 +10,7 @@ import (
 
 	"github.com/smallstep/go-attestation/attest"
 
-	"go.step.sm/crypto/tpm/internal/close"
+	closer "go.step.sm/crypto/tpm/internal/close"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
@@ -113,7 +113,6 @@ func (o *options) validate() error {
 // New creates a new TPM instance. It takes `opts` to configure
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
-
 	tpmOptions := options{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20},                      // default configuration for TPM attestation use cases
 		store:        storage.BlackHole(),                                                      // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
@@ -168,7 +167,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 		err = t.initializeCommandChannel()
 	})
 	if err != nil {
-		return fmt.Errorf("failed initalizing command channel: %w", err)
+		return fmt.Errorf("failed initializing command channel: %w", err)
 	}
 
 	// if a simulator was set, use it as the backing TPM device.
@@ -227,11 +226,11 @@ func (t *TPM) initializeCommandChannel() error {
 	}
 
 	if t.commandChannel == nil {
-		socketCommandChannel, err := trySocketCommandChannel(t.deviceName)
-		if err != nil {
-			return err
-		}
-		if socketCommandChannel != nil {
+		if socketCommandChannel, err := trySocketCommandChannel(t.deviceName); err != nil {
+			if !errors.Is(err, socket.ErrNotAvailable) {
+				return err
+			}
+		} else {
 			t.commandChannel = socketCommandChannel
 		}
 	}
@@ -246,15 +245,9 @@ func (t *TPM) initializeCommandChannel() error {
 
 // trySocketCommandChannel tries
 func trySocketCommandChannel(path string) (*socket.CommandChannelWithoutMeasurementLog, error) {
-	if path == "" {
-		return nil, nil
-	}
 	rwc, err := socket.New(path)
 	if err != nil {
 		return nil, err
-	}
-	if rwc == nil {
-		return nil, nil
 	}
 	return &socket.CommandChannelWithoutMeasurementLog{ReadWriteCloser: rwc}, nil
 }
@@ -284,7 +277,7 @@ func (t *TPM) close(ctx context.Context) error {
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
 		defer func() { t.attestTPM = nil }()
-		if err := close.AttestTPM(t.attestTPM, t.attestConfig); err != nil {
+		if err := closer.AttestTPM(t.attestTPM, t.attestConfig); err != nil {
 			return fmt.Errorf("failed closing attest.TPM: %w", err)
 		}
 	}
@@ -292,7 +285,7 @@ func (t *TPM) close(ctx context.Context) error {
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
 		defer func() { t.rwc = nil }()
-		if err := close.RWC(t.rwc); err != nil {
+		if err := closer.RWC(t.rwc); err != nil {
 			return fmt.Errorf("failed closing rwc: %w", err)
 		}
 	}
