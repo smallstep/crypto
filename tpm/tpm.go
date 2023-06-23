@@ -60,7 +60,6 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 		if store == nil {
 			store = storage.BlackHole() // prevent nil storage; no persistence
 		}
-
 		o.store = store
 		return nil
 	}
@@ -127,7 +126,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		return nil, fmt.Errorf("invalid TPM options provided: %w", err)
 	}
 
-	tpm := &TPM{
+	return &TPM{
 		deviceName:     tpmOptions.deviceName,
 		attestConfig:   tpmOptions.attestConfig,
 		store:          tpmOptions.store,
@@ -135,9 +134,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		simulator:      tpmOptions.simulator,
 		commandChannel: tpmOptions.commandChannel,
 		options:        &tpmOptions,
-	}
-
-	return tpm, nil
+	}, nil
 }
 
 // Open readies the TPM for usage and marks it as being
@@ -291,6 +288,12 @@ func (t *TPM) close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (t *TPM) Available() (err error) {
+	ctx := context.Background()
+	_, err = t.Info(ctx)
+	return
 }
 
 type validatableConfig interface {

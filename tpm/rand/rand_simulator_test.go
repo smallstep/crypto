@@ -31,12 +31,6 @@ func withSimulator(t *testing.T) tpm.NewTPMOption {
 	return tpm.WithSimulator(sim)
 }
 
-// func withNewErrorSimulator(t *testing.T) tpm.NewTPMOption {
-// 	return func(o *options) error {
-// 		return errors.New("forced new error")
-// 	}
-// }
-
 func TestNew(t *testing.T) {
 	r, err := New(withSimulator(t))
 	require.NoError(t, err)
@@ -54,7 +48,4 @@ func TestNew(t *testing.T) {
 	if assert.NotNil(t, rsaKey) {
 		require.Equal(t, 256, rsaKey.Size()) // 2048 bits; 256 bytes expected to have been read
 	}
-
-	// _, err = New(withNewErrorSimulator(t))
-	// require.Error(t, err)
 }
