@@ -11,12 +11,12 @@ import (
 type NoSimulator struct {
 }
 
-func New() Simulator {
-	return &NoSimulator{}
+func New() (Simulator, error) {
+	return &NoSimulator{}, errors.New("no simulator available")
 }
 
 func (s *NoSimulator) Open() error {
-	return errors.New("no simulator available")
+	return errors.New("cannot open: no simulator available")
 }
 
 func (s *NoSimulator) Close() error {

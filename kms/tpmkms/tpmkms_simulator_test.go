@@ -75,8 +75,9 @@ func withSimulator(t *testing.T) tpmp.NewTPMOption {
 		err := sim.Close()
 		require.NoError(t, err)
 	})
-	sim = simulator.New()
-	err := sim.Open()
+	sim, err := simulator.New()
+	require.NoError(t, err)
+	err = sim.Open()
 	require.NoError(t, err)
 	return tpmp.WithSimulator(sim)
 }

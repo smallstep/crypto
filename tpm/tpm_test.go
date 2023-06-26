@@ -37,9 +37,8 @@ var _ io.ReadWriteCloser = (*closeSimulator)(nil)
 
 func newOpenedTPM(t *testing.T) *TPM {
 	t.Helper()
-	tpm, err := New()
+	tpm, err := New(WithSimulator(&closeSimulator{}))
 	require.NoError(t, err)
-	tpm.simulator = &closeSimulator{}
 	err = tpm.open(context.Background())
 	require.NoError(t, err)
 	return tpm
@@ -47,11 +46,10 @@ func newOpenedTPM(t *testing.T) *TPM {
 
 func newCloseErrorTPM(t *testing.T) *TPM {
 	t.Helper()
-	tpm, err := New()
-	require.NoError(t, err)
-	tpm.simulator = &closeSimulator{
+	tpm, err := New(WithSimulator(&closeSimulator{
 		closeErr: errors.New("closeErr"),
-	}
+	}))
+	require.NoError(t, err)
 	err = tpm.open(context.Background())
 	require.NoError(t, err)
 	tpm.simulator = nil // required to skip returning when similator is configured

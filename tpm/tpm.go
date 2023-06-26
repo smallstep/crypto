@@ -2,6 +2,7 @@ package tpm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,7 +10,9 @@ import (
 
 	"github.com/smallstep/go-attestation/attest"
 
+	closer "go.step.sm/crypto/tpm/internal/close"
 	"go.step.sm/crypto/tpm/internal/open"
+	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
 )
@@ -20,28 +23,31 @@ import (
 // Besides that, it provides a transparent method for persisting TPM
 // objects, so that referencing and using these is simplified.
 type TPM struct {
-	deviceName   string
-	attestConfig *attest.OpenConfig
-	attestTPM    *attest.TPM
-	rwc          io.ReadWriteCloser
-	lock         sync.RWMutex
-	store        storage.TPMStore
-	simulator    simulator.Simulator
-	downloader   *downloader
-	info         *Info
-	eks          []*EK
+	deviceName             string
+	attestConfig           *attest.OpenConfig
+	attestTPM              *attest.TPM
+	rwc                    io.ReadWriteCloser
+	lock                   sync.RWMutex
+	store                  storage.TPMStore
+	simulator              simulator.Simulator
+	commandChannel         CommandChannel
+	downloader             *downloader
+	options                *options
+	initCommandChannelOnce sync.Once
+	info                   *Info
+	eks                    []*EK
 }
 
 // NewTPMOption is used to provide options when instantiating a new
 // instance of TPM.
-type NewTPMOption func(t *TPM) error
+type NewTPMOption func(o *options) error
 
 // WithDeviceName is used to provide the `name` or path to the TPM
 // device.
 func WithDeviceName(name string) NewTPMOption {
-	return func(t *TPM) error {
+	return func(o *options) error {
 		if name != "" {
-			t.deviceName = name
+			o.deviceName = name
 		}
 		return nil
 	}
@@ -50,12 +56,11 @@ func WithDeviceName(name string) NewTPMOption {
 // WithStore is used to set the TPMStore implementation to use for
 // persisting TPM objects, including AKs and Keys.
 func WithStore(store storage.TPMStore) NewTPMOption {
-	return func(t *TPM) error {
+	return func(o *options) error {
 		if store == nil {
 			store = storage.BlackHole() // prevent nil storage; no persistence
 		}
-
-		t.store = store
+		o.store = store
 		return nil
 	}
 }
@@ -63,8 +68,8 @@ func WithStore(store storage.TPMStore) NewTPMOption {
 // WithDisableDownload disables EK certificates from being downloaded
 // from online hosts.
 func WithDisableDownload() NewTPMOption {
-	return func(t *TPM) error {
-		t.downloader.enabled = false
+	return func(o *options) error {
+		o.downloader.enabled = false
 		return nil
 	}
 }
@@ -73,28 +78,63 @@ func WithDisableDownload() NewTPMOption {
 // that simulates TPM operations instead of interacting with an actual
 // TPM.
 func WithSimulator(sim simulator.Simulator) NewTPMOption {
-	return func(t *TPM) error {
-		t.simulator = sim
+	return func(o *options) error {
+		o.simulator = sim
 		return nil
 	}
+}
+
+type CommandChannel attest.CommandChannelTPM20
+
+func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
+	return func(o *options) error {
+		o.commandChannel = commandChannel
+		return nil
+	}
+}
+
+type options struct {
+	deviceName     string
+	attestConfig   *attest.OpenConfig
+	simulator      simulator.Simulator
+	commandChannel CommandChannel
+	store          storage.TPMStore
+	downloader     *downloader
+}
+
+func (o *options) validate() error {
+	if o.simulator != nil && o.commandChannel != nil {
+		return errors.New("WithSimulator and WithCommandChannel options are mutually exclusive")
+	}
+	return nil
 }
 
 // New creates a new TPM instance. It takes `opts` to configure
 // the instance.
 func New(opts ...NewTPMOption) (*TPM, error) {
-	tpm := &TPM{
+	tpmOptions := options{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20},                      // default configuration for TPM attestation use cases
 		store:        storage.BlackHole(),                                                      // default storage doesn't persist anything // TODO(hs): make this in-memory storage instead?
 		downloader:   &downloader{enabled: true, maxDownloads: 10, client: http.DefaultClient}, // EK certificate download (if required) is enabled by default
 	}
-
 	for _, o := range opts {
-		if err := o(tpm); err != nil {
+		if err := o(&tpmOptions); err != nil {
 			return nil, err
 		}
 	}
+	if err := tpmOptions.validate(); err != nil {
+		return nil, fmt.Errorf("invalid TPM options provided: %w", err)
+	}
 
-	return tpm, nil
+	return &TPM{
+		deviceName:     tpmOptions.deviceName,
+		attestConfig:   tpmOptions.attestConfig,
+		store:          tpmOptions.store,
+		downloader:     tpmOptions.downloader,
+		simulator:      tpmOptions.simulator,
+		commandChannel: tpmOptions.commandChannel,
+		options:        &tpmOptions,
+	}, nil
 }
 
 // Open readies the TPM for usage and marks it as being
@@ -119,14 +159,19 @@ func (t *TPM) open(ctx context.Context) (err error) {
 		return fmt.Errorf("failed loading from TPM storage: %w", err)
 	}
 
+	// initialize the command channel
+	t.initCommandChannelOnce.Do(func() {
+		err = t.initializeCommandChannel()
+	})
+	if err != nil {
+		return fmt.Errorf("failed initializing command channel: %w", err)
+	}
+
 	// if a simulator was set, use it as the backing TPM device.
 	// The simulator is currently only used for testing.
 	if t.simulator != nil {
 		if t.attestTPM == nil {
-			at, err := attest.OpenTPM(&attest.OpenConfig{
-				TPMVersion:     attest.TPMVersion20,
-				CommandChannel: t.simulator,
-			})
+			at, err := attest.OpenTPM(t.attestConfig)
 			if err != nil {
 				return fmt.Errorf("failed opening attest.TPM: %w", err)
 			}
@@ -160,6 +205,50 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	return nil
 }
 
+func (t *TPM) initializeCommandChannel() error {
+	if t.commandChannel != nil {
+		t.attestConfig = &attest.OpenConfig{
+			TPMVersion:     t.options.attestConfig.TPMVersion,
+			CommandChannel: t.commandChannel,
+		}
+		return nil
+	}
+
+	if t.options.simulator != nil {
+		t.commandChannel = t.simulator
+	}
+
+	if t.options.commandChannel != nil {
+		t.commandChannel = t.options.commandChannel
+	}
+
+	if t.commandChannel == nil {
+		if socketCommandChannel, err := trySocketCommandChannel(t.deviceName); err != nil {
+			if !errors.Is(err, socket.ErrNotAvailable) {
+				return err
+			}
+		} else {
+			t.commandChannel = socketCommandChannel
+		}
+	}
+
+	t.attestConfig = &attest.OpenConfig{
+		TPMVersion:     t.options.attestConfig.TPMVersion,
+		CommandChannel: t.commandChannel,
+	}
+
+	return nil
+}
+
+// trySocketCommandChannel tries
+func trySocketCommandChannel(path string) (*socket.CommandChannelWithoutMeasurementLog, error) {
+	rwc, err := socket.New(path)
+	if err != nil {
+		return nil, err
+	}
+	return &socket.CommandChannelWithoutMeasurementLog{ReadWriteCloser: rwc}, nil
+}
+
 // Close closes the TPM instance, cleaning up resources and
 // marking it ready to be use again.
 func (t *TPM) close(ctx context.Context) error {
@@ -184,23 +273,26 @@ func (t *TPM) close(ctx context.Context) error {
 
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
-		err := t.attestTPM.Close()
-		t.attestTPM = nil
-		if err != nil {
+		defer func() { t.attestTPM = nil }()
+		if err := closer.AttestTPM(t.attestTPM, t.attestConfig); err != nil {
 			return fmt.Errorf("failed closing attest.TPM: %w", err)
 		}
 	}
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
-		err := t.rwc.Close()
-		t.rwc = nil
-		if err != nil {
+		defer func() { t.rwc = nil }()
+		if err := closer.RWC(t.rwc); err != nil {
 			return fmt.Errorf("failed closing rwc: %w", err)
 		}
 	}
 
 	return nil
+}
+
+func (t *TPM) Available() (err error) {
+	_, err = t.Info(context.Background())
+	return
 }
 
 type validatableConfig interface {

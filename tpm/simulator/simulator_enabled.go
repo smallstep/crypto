@@ -4,6 +4,9 @@
 package simulator
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -12,22 +15,53 @@ import (
 
 type WrappingSimulator struct {
 	wrapped *gotpm.Simulator
+	seed    *int64
 }
 
-func New() Simulator {
-	return &WrappingSimulator{}
+type NewSimulatorOption func(ws *WrappingSimulator) error
+
+func WithSeed(seed string) NewSimulatorOption {
+	return func(ws *WrappingSimulator) error {
+		b, err := hex.DecodeString(seed)
+		if err != nil {
+			return fmt.Errorf("failed decoding %q: %w", seed, err)
+		}
+		if len(b) != 8 {
+			return fmt.Errorf("%q has wrong number of bytes (%d)", seed, len(b))
+		}
+		var intSeed int64
+		buf := bytes.NewBuffer(b)
+		if err := binary.Read(buf, binary.BigEndian, &intSeed); err != nil {
+			return fmt.Errorf("failed reading %q into int64: %w", seed, err)
+		}
+		ws.seed = &intSeed
+		return nil
+	}
+}
+
+func New(opts ...NewSimulatorOption) (Simulator, error) {
+	ws := &WrappingSimulator{}
+	for _, applyTo := range opts {
+		if err := applyTo(ws); err != nil {
+			return nil, fmt.Errorf("failed initializing TPM simulator: %w", err)
+		}
+	}
+	return ws, nil
 }
 
 func (s *WrappingSimulator) Open() error {
 	var sim *gotpm.Simulator
 	var err error
 	if s.wrapped == nil {
-		sim, err = gotpm.Get()
+		if s.seed == nil {
+			sim, err = gotpm.Get()
+		} else {
+			sim, err = gotpm.GetWithFixedSeedInsecure(*s.seed)
+		}
 		if err != nil {
 			return err
 		}
 	}
-
 	s.wrapped = sim
 	return nil
 }
