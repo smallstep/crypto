@@ -291,8 +291,7 @@ func (t *TPM) close(ctx context.Context) error {
 }
 
 func (t *TPM) Available() (err error) {
-	ctx := context.Background()
-	_, err = t.Info(ctx)
+	_, err = t.Info(context.Background())
 	return
 }
 
