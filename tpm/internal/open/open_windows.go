@@ -6,7 +6,7 @@ package open
 import (
 	"io"
 
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
 )
 
 func open(_ string) (io.ReadWriteCloser, error) {
