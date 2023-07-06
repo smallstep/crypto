@@ -80,7 +80,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 // "key-id"           X509v3 Subject Key Identifier of the certificate to load in hex format
 // "serial"           serial number of the certificate to load in hex format
 // "issuer"           Common Name of the certificate issuer
-// "key-spec"		  the (legacy) KeySpec to use - 0, 1 or 2 (or none, at_keyexchange, at_signature)
+// "key-spec"         the (legacy) KeySpec to use - 0, 1 or 2 (or none, at_keyexchange, at_signature)
 type CAPIKMS struct {
 	providerName   string
 	providerHandle uintptr
@@ -387,7 +387,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 	keySpec, err := setKeySpec(u)
 	if err != nil {
-		return nil, fmt.Errorf("failed determinging KeySpec to use: %w", err)
+		return nil, fmt.Errorf("failed determining KeySpec to use: %w", err)
 	}
 
 	//TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
