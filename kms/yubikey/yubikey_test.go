@@ -12,14 +12,17 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/go-piv/piv-go/piv"
-	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
 )
@@ -850,10 +853,10 @@ func TestYubiKey_CreateSigner(t *testing.T) {
 	}{
 		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateSignerRequest{
 			SigningKey: "yubikey:slot-id=9c",
-		}}, yk.signerMap[piv.SlotSignature].(crypto.Signer), false},
+		}}, &syncSigner{Signer: yk.signerMap[piv.SlotSignature].(crypto.Signer)}, false},
 		{"ok with pin", fields{yk, "", piv.DefaultManagementKey}, args{&apiv1.CreateSignerRequest{
 			SigningKey: "yubikey:slot-id=9c?pin-value=123456",
-		}}, yk.signerMap[piv.SlotSignature].(crypto.Signer), false},
+		}}, &syncSigner{Signer: yk.signerMap[piv.SlotSignature].(crypto.Signer)}, false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateSignerRequest{
 			SigningKey: "yubikey:slot-id=%%FF",
 		}}, nil, true},
@@ -912,10 +915,10 @@ func TestYubiKey_CreateDecrypter(t *testing.T) {
 	}{
 		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
 			DecryptionKey: "yubikey:slot-id=9c",
-		}}, yk.signerMap[piv.SlotSignature].(crypto.Decrypter), false},
+		}}, &syncDecrypter{Decrypter: yk.signerMap[piv.SlotSignature].(crypto.Decrypter)}, false},
 		{"ok with pin", fields{yk, "", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
 			DecryptionKey: "yubikey:slot-id=9c?pin-value=123456",
-		}}, yk.signerMap[piv.SlotSignature].(crypto.Decrypter), false},
+		}}, &syncDecrypter{Decrypter: yk.signerMap[piv.SlotSignature].(crypto.Decrypter)}, false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateDecrypterRequest{
 			DecryptionKey: "yubikey:slot-id=%%FF",
 		}}, nil, true},
@@ -1140,4 +1143,35 @@ func Test_getSignatureAlgorithm(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_syncSigner_Sign(t *testing.T) {
+	s, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	signer := &syncSigner{Signer: s}
+
+	sum := sha256.Sum256([]byte("the-data"))
+	sig, err := signer.Sign(rand.Reader, sum[:], crypto.SHA256)
+	require.NoError(t, err)
+	assert.True(t, ecdsa.VerifyASN1(&s.PublicKey, sum[:], sig))
+}
+
+func Test_syncDecrypter_Decrypt(t *testing.T) {
+	d, err := rsa.GenerateKey(rand.Reader, rsaKeySize)
+	require.NoError(t, err)
+
+	label := []byte("label")
+	data := []byte("the-data")
+
+	msg, err := rsa.EncryptOAEP(crypto.SHA256.New(), rand.Reader, &d.PublicKey, data, label)
+	require.NoError(t, err)
+
+	decrypter := &syncDecrypter{Decrypter: d}
+	plain, err := decrypter.Decrypt(rand.Reader, msg, &rsa.OAEPOptions{
+		Hash:  crypto.SHA256,
+		Label: label,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, data, plain)
 }
