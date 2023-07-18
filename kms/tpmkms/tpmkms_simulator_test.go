@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1646,7 +1647,7 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 					},
 				},
 				want:   nil,
-				expErr: fmt.Errorf(`AK certificate (chain) not valid for EK %q`, ekKeyURL.String()),
+				expErr: fmt.Errorf(`AK certificate (chain) not valid for EK %q: AK certificate does not contain valid identity`, ekKeyURL.String()),
 			}
 		},
 		"ok": func(t *testing.T) test {
@@ -1907,6 +1908,136 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func Test_hasValidIdentity(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	eks, err := tpm.GetEKs(ctx)
+	require.NoError(t, err)
+	ek := getPreferredEK(eks)
+	ekKeyID, err := generateKeyID(ek.Public())
+	require.NoError(t, err)
+	ekKeyURL := ekURL(ekKeyID)
+	ca, err := minica.New(
+		minica.WithGetSignerFunc(
+			func() (crypto.Signer, error) {
+				return keyutil.GenerateSigner("RSA", "", 2048)
+			},
+		),
+	)
+	type args struct {
+		ak    *tpmp.AK
+		ekURL *url.URL
+	}
+	type test struct {
+		args   args
+		expErr error
+	}
+	tests := map[string]func(t *testing.T) test{
+		"fail/no chain": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "noChain")
+			require.NoError(t, err)
+			return test{
+				args:   args{ak, ekKeyURL},
+				expErr: errors.New("AK certificate not available"),
+			}
+		},
+		"fail/not yet valid": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "notYetValid")
+			require.NoError(t, err)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: ak.Public(),
+				NotBefore: time.Now().Add(1 * time.Hour),
+			}
+			notYetValidAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, notYetValidAKCert)
+			err = ak.SetCertificateChain(ctx, []*x509.Certificate{notYetValidAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				args:   args{ak, ekKeyURL},
+				expErr: errors.New("AK certificate not yet valid"),
+			}
+		},
+		"fail/expired": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "expiredAKCert")
+			require.NoError(t, err)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: ak.Public(),
+				NotAfter:  time.Now().Add(-1 * time.Hour),
+			}
+			expiredAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, expiredAKCert)
+			err = ak.SetCertificateChain(ctx, []*x509.Certificate{expiredAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				args:   args{ak, ekKeyURL},
+				expErr: errors.New("AK certificate has expired"),
+			}
+		},
+		"fail/no valid identity": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "novalidIdentityAKCert")
+			require.NoError(t, err)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				PublicKey: ak.Public(),
+			}
+			invalidIdentityAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, invalidIdentityAKCert)
+			err = ak.SetCertificateChain(ctx, []*x509.Certificate{invalidIdentityAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				args:   args{ak, ekKeyURL},
+				expErr: errors.New("AK certificate does not contain valid identity"),
+			}
+		},
+		"ok": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "validAKCert")
+			require.NoError(t, err)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: ak.Public(),
+			}
+			validAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, validAKCert)
+			err = ak.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				args:   args{ak, ekKeyURL},
+				expErr: nil,
+			}
+		},
+	}
+
+	for name, tt := range tests {
+		tc := tt(t)
+		t.Run(name, func(t *testing.T) {
+			err := hasValidIdentity(tc.args.ak, tc.args.ekURL)
+			if tc.expErr != nil {
+				assert.EqualError(t, err, tc.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
 		})
 	}
 }
