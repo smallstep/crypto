@@ -99,6 +99,9 @@ func init() {
 		// Also see https://github.com/fido-alliance/conformance-test-tools-resources/issues/537
 		"FIDO": "FIDO Alliance", // NOTE: FIDO is not the official ASCII representation
 
+		// Amazon Web Services; NitroTPM
+		"AMZN": "Amazon Web Services",
+
 		// Others
 		"PRLS": "Parallels Desktop",
 		"VMW":  "VMWare",
