@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"time"
 
 	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/kms/apiv1"
@@ -565,8 +566,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// otherwise. If an AK certificate is available, but not considered valid, e.g. due
 	// to it not having the right identity, a new attestation flow will be performed and
 	// the old certificate (chain) will be overwritten with the result of that flow.
-	akChain := ak.CertificateChain()
-	if len(akChain) == 0 || !hasValidIdentity(ak, ekKeyURL) {
+	if err := hasValidIdentity(ak, ekKeyURL); err != nil {
 		var ac apiv1.AttestationClient
 		if req.AttestationClient != nil {
 			// TODO(hs): check if it makes sense to have this; it doesn't capture all
@@ -583,7 +583,8 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 			}
 		}
 		// perform the attestation flow with a (remote) attestation CA
-		if akChain, err = ac.Attest(ctx); err != nil {
+		akChain, err := ac.Attest(ctx)
+		if err != nil {
 			return nil, fmt.Errorf("failed performing AK attestation: %w", err)
 		}
 		// store the result with the AK, so that it can be reused for future
@@ -596,9 +597,11 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// when a new certificate was issued for the AK, it is possible the
 	// certificate that was issued doesn't include the expected and/or required
 	// identity, so this is checked before continuing.
-	if !hasValidIdentity(ak, ekKeyURL) {
-		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
+	if err := hasValidIdentity(ak, ekKeyURL); err != nil {
+		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q: %w", ekKeyURL, err)
 	}
+
+	akChain := ak.CertificateChain()
 
 	if properties.ak {
 		akPub := ak.Public()
@@ -669,27 +672,36 @@ func getPreferredEK(eks []*tpm.EK) (ek *tpm.EK) {
 // that includes a valid identity. Currently we only consider certificates
 // that encode the TPM EK public key ID as one of its URI SANs, which is
 // the default behavior of the Smallstep Attestation CA.
-func hasValidIdentity(ak *tpm.AK, ekURL *url.URL) bool {
+func hasValidIdentity(ak *tpm.AK, ekURL *url.URL) error {
 	chain := ak.CertificateChain()
 	if len(chain) == 0 {
-		return false
+		return ErrIdentityCertificateUnavailable
 	}
 	akCert := chain[0]
 
-	// TODO(hs): before continuing, add check if the cert is still valid?
+	// TODO: have a parameter on the TPMKMS for leeway; validity period/percentage?
+	now := time.Now()
+	if now.Before(akCert.NotBefore) {
+		return ErrIdentityCertificateNotYetValid
+	}
+
+	notAfter := akCert.NotAfter.Add(-1 * time.Minute).Truncate(time.Second)
+	if now.After(notAfter) {
+		return ErrIdentityCertificateExpired
+	}
 
 	// the Smallstep Attestation CA will issue AK certifiates that
 	// contain the EK public key ID encoded as an URN by default.
 	for _, u := range akCert.URIs {
 		if ekURL.String() == u.String() {
-			return true
+			return nil
 		}
 	}
 
 	// TODO(hs): we could consider checking other values to contain
 	// a usable identity too.
 
-	return false
+	return ErrIdentityCertificateInvalid
 }
 
 // generateKeyID generates a key identifier from the
