@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -113,6 +114,23 @@ func (u *URI) GetBool(key string) bool {
 		v = u.URL.Query().Get(key)
 	}
 	return strings.EqualFold(v, "true")
+}
+
+// GetInt returns the first integer value in the URI with the given key. It
+// returns nil if the field is not present or if the value can't be parsed
+// as an integer.
+func (u *URI) GetInt(key string) *int64 {
+	v := u.Values.Get(key)
+	if v == "" {
+		v = u.URL.Query().Get(key)
+	}
+	if v == "" {
+		return nil
+	}
+	if i, err := strconv.ParseInt(v, 10, 0); err == nil {
+		return &i
+	}
+	return nil
 }
 
 // GetEncoded returns the first value in the uri with the given key, it will

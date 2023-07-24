@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNew(t *testing.T) {
@@ -300,6 +302,40 @@ func TestURI_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.uri.String(); got != tt.want {
 				t.Errorf("URI.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestURI_GetInt(t *testing.T) {
+	seventy := int64(70)
+	mustParse := func(s string) *URI {
+		u, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	type args struct {
+		key string
+	}
+	tests := []struct {
+		name string
+		uri  *URI
+		args args
+		want *int64
+	}{
+		{"ok", mustParse("tpmkms:renewal-percentage=70"), args{"renewal-percentage"}, &seventy},
+		{"ok empty", mustParse("tpmkms:empty"), args{"renewal-percentage"}, nil},
+		{"ok non-integer", mustParse("tpmkms:renewal-percentage=not-an-integer"), args{"renewal-percentage"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.uri.GetInt(tt.args.key)
+			if tt.want != nil {
+				assert.Equal(t, *tt.want, *got)
+			} else {
+				assert.Nil(t, got)
 			}
 		})
 	}

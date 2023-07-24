@@ -1913,6 +1913,10 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 }
 
 func Test_hasValidIdentity(t *testing.T) {
+	k := &TPMKMS{
+		identityEarlyRenewalEnabled:     true,
+		identityRenewalPeriodPercentage: 60,
+	}
 	ctx := context.Background()
 	tpm := newSimulatedTPM(t)
 	eks, err := tpm.GetEKs(ctx)
@@ -1929,6 +1933,7 @@ func Test_hasValidIdentity(t *testing.T) {
 		),
 	)
 	type args struct {
+		k     *TPMKMS
 		ak    *tpmp.AK
 		ekURL *url.URL
 	}
@@ -1941,7 +1946,7 @@ func Test_hasValidIdentity(t *testing.T) {
 			ak, err := tpm.CreateAK(ctx, "noChain")
 			require.NoError(t, err)
 			return test{
-				args:   args{ak, ekKeyURL},
+				args:   args{k, ak, ekKeyURL},
 				expErr: errors.New("AK certificate not available"),
 			}
 		},
@@ -1962,7 +1967,7 @@ func Test_hasValidIdentity(t *testing.T) {
 			err = ak.SetCertificateChain(ctx, []*x509.Certificate{notYetValidAKCert, ca.Intermediate})
 			require.NoError(t, err)
 			return test{
-				args:   args{ak, ekKeyURL},
+				args:   args{k, ak, ekKeyURL},
 				expErr: errors.New("AK certificate not yet valid"),
 			}
 		},
@@ -1983,8 +1988,30 @@ func Test_hasValidIdentity(t *testing.T) {
 			err = ak.SetCertificateChain(ctx, []*x509.Certificate{expiredAKCert, ca.Intermediate})
 			require.NoError(t, err)
 			return test{
-				args:   args{ak, ekKeyURL},
+				args:   args{k, ak, ekKeyURL},
 				expErr: errors.New("AK certificate has expired"),
+			}
+		},
+		"fail/expiring": func(t *testing.T) test {
+			ak, err := tpm.CreateAK(ctx, "expiringAKCert")
+			require.NoError(t, err)
+			template := &x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "testak",
+				},
+				URIs:      []*url.URL{ekKeyURL},
+				PublicKey: ak.Public(),
+				NotBefore: time.Now().Add(-5 * time.Hour),
+				NotAfter:  time.Now().Add(1 * time.Hour), // less than half of the total time left
+			}
+			expiringAKCert, err := ca.Sign(template)
+			require.NoError(t, err)
+			require.NotNil(t, expiringAKCert)
+			err = ak.SetCertificateChain(ctx, []*x509.Certificate{expiringAKCert, ca.Intermediate})
+			require.NoError(t, err)
+			return test{
+				args:   args{k, ak, ekKeyURL},
+				expErr: errors.New("AK certificate will expire soon"),
 			}
 		},
 		"fail/no valid identity": func(t *testing.T) test {
@@ -1995,6 +2022,8 @@ func Test_hasValidIdentity(t *testing.T) {
 					CommonName: "testak",
 				},
 				PublicKey: ak.Public(),
+				NotBefore: time.Now().Add(-1 * time.Minute),
+				NotAfter:  time.Now().Add(24 * time.Hour),
 			}
 			invalidIdentityAKCert, err := ca.Sign(template)
 			require.NoError(t, err)
@@ -2002,7 +2031,7 @@ func Test_hasValidIdentity(t *testing.T) {
 			err = ak.SetCertificateChain(ctx, []*x509.Certificate{invalidIdentityAKCert, ca.Intermediate})
 			require.NoError(t, err)
 			return test{
-				args:   args{ak, ekKeyURL},
+				args:   args{k, ak, ekKeyURL},
 				expErr: errors.New("AK certificate does not contain valid identity"),
 			}
 		},
@@ -2015,6 +2044,8 @@ func Test_hasValidIdentity(t *testing.T) {
 				},
 				URIs:      []*url.URL{ekKeyURL},
 				PublicKey: ak.Public(),
+				NotBefore: time.Now().Add(-1 * time.Minute),
+				NotAfter:  time.Now().Add(24 * time.Hour),
 			}
 			validAKCert, err := ca.Sign(template)
 			require.NoError(t, err)
@@ -2022,7 +2053,7 @@ func Test_hasValidIdentity(t *testing.T) {
 			err = ak.SetCertificateChain(ctx, []*x509.Certificate{validAKCert, ca.Intermediate})
 			require.NoError(t, err)
 			return test{
-				args:   args{ak, ekKeyURL},
+				args:   args{k, ak, ekKeyURL},
 				expErr: nil,
 			}
 		},
@@ -2031,7 +2062,7 @@ func Test_hasValidIdentity(t *testing.T) {
 	for name, tt := range tests {
 		tc := tt(t)
 		t.Run(name, func(t *testing.T) {
-			err := hasValidIdentity(tc.args.ak, tc.args.ekURL)
+			err := tc.args.k.hasValidIdentity(tc.args.ak, tc.args.ekURL)
 			if tc.expErr != nil {
 				assert.EqualError(t, err, tc.expErr.Error())
 				return
