@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/internal/templates"
 )
 
@@ -71,8 +70,7 @@ func WithTemplateBase64(s string, data TemplateData) Option {
 // with the given data.
 func WithTemplateFile(path string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
-		filename := step.Abs(path)
-		b, err := os.ReadFile(filename)
+		b, err := os.ReadFile(path)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}
