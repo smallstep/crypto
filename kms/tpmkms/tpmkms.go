@@ -13,10 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
 	"time"
 
-	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -93,7 +91,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //	})
 //
 // The default storage location for serialized TPM objects when
-// an instance of TPMKMS is created, is $STEPPATH/tpm.
+// an instance of TPMKMS is created, is the relative path "tpm".
 //
 // The system default TPM device will be used when not configured. A
 // specific TPM device can be selected by setting the device:
@@ -146,7 +144,7 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		identityEarlyRenewalEnabled:     true,
 		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
 	}
-	storageDirectory := filepath.Join(step.Path(), "tpm") // store TPM objects in $STEPPATH/tpm by default
+	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
 	if opts.StorageDirectory != "" {
 		storageDirectory = opts.StorageDirectory
 	}
