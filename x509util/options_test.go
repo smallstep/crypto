@@ -41,6 +41,26 @@ func createRSACertificateRequest(t *testing.T, bits int, commonName string, sans
 	return cr, priv
 }
 
+func TestGetFuncMap(t *testing.T) {
+	ok := []string{
+		"fail", "contains", "split", // generic sprig functions
+		"asn1Enc", "asn1Marshal", "asn1Seq", "asn1Set", // custom functions
+	}
+	fail := []string{"env", "expandenv"}
+
+	funcMap := GetFuncMap()
+	for _, name := range ok {
+		if _, ok := funcMap[name]; !ok {
+			t.Errorf("GetFuncMap() does not contain the function %s", name)
+		}
+	}
+	for _, name := range fail {
+		if _, ok := funcMap[name]; ok {
+			t.Errorf("GetFuncMap() contains the function %s", name)
+		}
+	}
+}
+
 func TestWithTemplate(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	crRSA, _ := createRSACertificateRequest(t, 2048, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})

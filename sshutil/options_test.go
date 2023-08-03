@@ -7,6 +7,23 @@ import (
 	"testing"
 )
 
+func TestGetFuncMap(t *testing.T) {
+	ok := []string{"fail", "contains", "split"}
+	fail := []string{"env", "expandenv"}
+
+	funcMap := GetFuncMap()
+	for _, name := range ok {
+		if _, ok := funcMap[name]; !ok {
+			t.Errorf("GetFuncMap() does not contain the function %s", name)
+		}
+	}
+	for _, name := range fail {
+		if _, ok := funcMap[name]; ok {
+			t.Errorf("GetFuncMap() contains the function %s", name)
+		}
+	}
+}
+
 func TestWithTemplate(t *testing.T) {
 	key := mustGeneratePublicKey(t)
 	cr := CertificateRequest{
