@@ -191,7 +191,8 @@ func TestValidateTemplate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateTemplate(tt.data)
+			var failMessage string
+			err := ValidateTemplate(tt.data, GetFuncMap(&failMessage))
 			if tt.err != nil {
 				assert.Error(t, err)
 				assert.EqualError(t, err, tt.err.Error())
