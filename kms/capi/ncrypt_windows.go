@@ -11,8 +11,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -152,7 +153,7 @@ type BCRYPT_PKCS1_PADDING_INFO struct {
 	pszAlgID *uint16
 }
 
-//CRYPTOAPI_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
+// CRYPTOAPI_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
 type CRYPTOAPI_BLOB struct {
 	len  uint32
 	data uintptr
