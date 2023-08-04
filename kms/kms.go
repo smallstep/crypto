@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/pemutil"
 
 	// Enable default implementation
 	"go.step.sm/crypto/kms/softkms"
@@ -34,6 +35,14 @@ type Type = apiv1.Type
 
 // Default is the implementation of the default KMS.
 var Default = &softkms.SoftKMS{}
+
+var ErrNonInteractivePasswordPrompt = errors.New("password required in non-interactive context")
+
+var NonInteractivePasswordPrompter = func() (string, pemutil.PasswordPrompter) {
+	return "non-interactive", func(s string) ([]byte, error) {
+		return nil, ErrNonInteractivePasswordPrompt
+	}
+}
 
 // New initializes a new KMS from the given type.
 func New(ctx context.Context, opts apiv1.Options) (KeyManager, error) {
