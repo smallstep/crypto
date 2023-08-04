@@ -5,8 +5,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"fmt"
-
-	"go.step.sm/crypto/pemutil"
 )
 
 // ProtectionLevel specifies on some KMS how cryptographic operations are
@@ -182,7 +180,7 @@ type CreateSignerRequest struct {
 	PublicKey        string
 	PublicKeyPEM     []byte
 	Password         []byte
-	PasswordPrompter func() (string, pemutil.PasswordPrompter)
+	PasswordPrompter PasswordPrompter
 }
 
 // CreateDecrypterRequest is the parameter used in the kms.Decrypt method.
@@ -191,7 +189,7 @@ type CreateDecrypterRequest struct {
 	DecryptionKey    string
 	DecryptionKeyPEM []byte
 	Password         []byte
-	PasswordPrompter func() (string, pemutil.PasswordPrompter)
+	PasswordPrompter PasswordPrompter
 }
 
 // LoadCertificateRequest is the parameter used in the LoadCertificate method of

@@ -74,8 +74,8 @@ func (k *SoftKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
 	}
-	if req.PasswordPrompter != nil {
-		opts = append(opts, pemutil.WithPasswordPrompt(req.PasswordPrompter()))
+	if req.Password == nil && req.PasswordPrompter != nil {
+		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the signing key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
 	switch {
@@ -158,8 +158,8 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
 	}
-	if req.PasswordPrompter != nil {
-		opts = append(opts, pemutil.WithPasswordPrompt(req.PasswordPrompter()))
+	if req.Password == nil && req.PasswordPrompter != nil {
+		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the decryption key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
 	switch {

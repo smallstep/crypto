@@ -3,6 +3,7 @@ package apiv1
 import (
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -182,3 +183,13 @@ func (o *Options) GetType() (Type, error) {
 	}
 	return SoftKMS, nil
 }
+
+var ErrNonInteractivePasswordPrompt = errors.New("password required in non-interactive context")
+
+var NonInteractivePasswordPrompter = func() PasswordPrompter {
+	return func(s string) ([]byte, error) {
+		return nil, ErrNonInteractivePasswordPrompt
+	}
+}
+
+type PasswordPrompter func(s string) ([]byte, error)
