@@ -73,7 +73,7 @@ func (k *SoftKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	var opts []pemutil.Options
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
-	} else if req.Password == nil && req.PasswordPrompter != nil {
+	} else if req.PasswordPrompter != nil {
 		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the signing key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
