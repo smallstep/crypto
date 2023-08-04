@@ -156,7 +156,7 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	var opts []pemutil.Options
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
-	} else if req.Password == nil && req.PasswordPrompter != nil {
+	} else if req.PasswordPrompter != nil {
 		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the decryption key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
