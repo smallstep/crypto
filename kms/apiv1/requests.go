@@ -173,13 +173,14 @@ type CreateKeyResponse struct {
 
 // CreateSignerRequest is the parameter used in the kms.CreateSigner method.
 type CreateSignerRequest struct {
-	Signer        crypto.Signer
-	SigningKey    string
-	SigningKeyPEM []byte
-	TokenLabel    string
-	PublicKey     string
-	PublicKeyPEM  []byte
-	Password      []byte
+	Signer           crypto.Signer
+	SigningKey       string
+	SigningKeyPEM    []byte
+	TokenLabel       string
+	PublicKey        string
+	PublicKeyPEM     []byte
+	Password         []byte
+	PasswordPrompter PasswordPrompter
 }
 
 // CreateDecrypterRequest is the parameter used in the kms.Decrypt method.
@@ -188,6 +189,7 @@ type CreateDecrypterRequest struct {
 	DecryptionKey    string
 	DecryptionKeyPEM []byte
 	Password         []byte
+	PasswordPrompter PasswordPrompter
 }
 
 // LoadCertificateRequest is the parameter used in the LoadCertificate method of
