@@ -23,7 +23,7 @@ require (
 	github.com/smallstep/go-attestation v0.4.4-0.20230509120429-e17291421738
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/crypto v0.12.0
-	golang.org/x/net v0.12.0
+	golang.org/x/net v0.14.0
 	golang.org/x/sys v0.11.0
 	google.golang.org/api v0.135.0
 	google.golang.org/grpc v1.57.0
