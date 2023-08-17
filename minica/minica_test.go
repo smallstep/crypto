@@ -23,7 +23,7 @@ func (p badSigner) Public() crypto.PublicKey {
 	return []byte("foo")
 }
 
-func (p badSigner) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+func (p badSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	return nil, errors.New("foo")
 }
 

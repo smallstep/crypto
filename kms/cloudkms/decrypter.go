@@ -90,7 +90,7 @@ func validateOAEPOptions(o *rsa.OAEPOptions) error {
 // for those cases.
 //
 // Also see https://cloud.google.com/kms/docs/algorithms#asymmetric_encryption_algorithms.
-func (d *Decrypter) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
+func (d *Decrypter) Decrypt(_ io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 	if opts == nil {
 		opts = &rsa.OAEPOptions{}
 	}

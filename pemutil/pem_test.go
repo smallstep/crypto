@@ -338,6 +338,7 @@ func TestReadCertificate(t *testing.T) {
 		err  error
 	}{
 		{"testdata/ca.crt", nil, nil},
+		{"testdata/nonPEMHeaderCa.crt", nil, nil},
 		{"testdata/ca.der", nil, nil},
 		{"testdata/bundle.crt", []Options{WithFirstBlock()}, nil},
 		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM encoded block")},
@@ -370,6 +371,7 @@ func TestReadCertificateBundle(t *testing.T) {
 		err error
 	}{
 		{"testdata/ca.crt", 1, nil},
+		{"testdata/nonPEMHeaderCa.crt", 1, nil},
 		{"testdata/ca.der", 1, nil},
 		{"testdata/bundle.crt", 2, nil},
 		{"testdata/notexists.crt", 0, errors.New("error reading testdata/notexists.crt: no such file or directory")},

@@ -56,7 +56,7 @@ func (s *Signer) Public() crypto.PublicKey {
 }
 
 // Sign signs digest with the private key stored in Google's Cloud KMS.
-func (s *Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	req := &kmspb.AsymmetricSignRequest{
 		Name:   s.signingKey,
 		Digest: &kmspb.Digest{},
