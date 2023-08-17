@@ -72,7 +72,7 @@ var pivOpen = func(card string) (pivKey, error) {
 //
 // If the pin or the management-key are not provided, we will use the default
 // ones.
-func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
+func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
 	managementKey := piv.DefaultManagementKey
 

@@ -35,7 +35,7 @@ type SSHAgentKMS struct {
 }
 
 // New returns a new SSHAgentKMS.
-func New(ctx context.Context, opts apiv1.Options) (*SSHAgentKMS, error) {
+func New(_ context.Context, _ apiv1.Options) (*SSHAgentKMS, error) {
 	socket := os.Getenv("SSH_AUTH_SOCK")
 	conn, err := net.Dial("unix", socket)
 	if err != nil {
@@ -51,7 +51,7 @@ func New(ctx context.Context, opts apiv1.Options) (*SSHAgentKMS, error) {
 
 // NewFromAgent initializes an SSHAgentKMS from a given agent, this method is
 // used for testing purposes.
-func NewFromAgent(ctx context.Context, opts apiv1.Options, agentClient agent.Agent) (*SSHAgentKMS, error) {
+func NewFromAgent(_ context.Context, _ apiv1.Options, agentClient agent.Agent) (*SSHAgentKMS, error) {
 	return &SSHAgentKMS{
 		agentClient: agentClient,
 	}, nil
@@ -193,7 +193,7 @@ func (k *SSHAgentKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signe
 }
 
 // CreateKey generates a new key and returns both public and private key.
-func (k *SSHAgentKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
+func (k *SSHAgentKMS) CreateKey(_ *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
 	return nil, errors.Errorf("SSHAgentKMS doesn't support generating keys")
 }
 

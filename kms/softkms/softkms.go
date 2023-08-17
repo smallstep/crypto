@@ -53,7 +53,7 @@ var generateKey = func(kty, crv string, size int) (interface{}, interface{}, err
 type SoftKMS struct{}
 
 // New returns a new SoftKMS.
-func New(ctx context.Context, opts apiv1.Options) (*SoftKMS, error) {
+func New(_ context.Context, _ apiv1.Options) (*SoftKMS, error) {
 	return &SoftKMS{}, nil
 }
 

@@ -139,7 +139,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // The TPMKMS implementation is backed by an instance of the TPM from
 // the `tpm` package. If the TPMKMS operations aren't sufficient for
 // your use case, use a tpm.TPM instance instead.
-func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
+func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{
 		identityEarlyRenewalEnabled:     true,
 		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
