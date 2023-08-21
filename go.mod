@@ -13,14 +13,14 @@ require (
 	github.com/aws/aws-sdk-go v1.44.318
 	github.com/go-piv/piv-go v1.11.0
 	github.com/golang/mock v1.6.0
-	github.com/google/go-tpm v0.3.3
-	github.com/google/go-tpm-tools v0.3.12
+	github.com/google/go-tpm v0.9.0
+	github.com/google/go-tpm-tools v0.4.0
 	github.com/googleapis/gax-go/v2 v2.12.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/assert v0.0.0-20200723003110-82e2b9b3b262
-	github.com/smallstep/go-attestation v0.4.4-0.20230509120429-e17291421738
+	github.com/smallstep/go-attestation v0.4.4-0.20230627102604-cf579e53cbd2
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/crypto v0.12.0
 	golang.org/x/net v0.14.0
