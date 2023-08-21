@@ -12,14 +12,10 @@ import (
 // results in invalid JSON, the template is invalid. When the template
 // is valid, it can be used safely. A valid template can still result
 // in invalid JSON when non-empty template data is provided.
-func ValidateTemplate(data []byte) error {
+func ValidateTemplate(data []byte, funcMap template.FuncMap) error {
 	if len(data) == 0 {
 		return nil
 	}
-
-	// get the default supported functions
-	var failMessage string
-	funcMap := GetFuncMap(&failMessage)
 
 	// prepare the template with our template functions
 	_, err := template.New("template").Funcs(funcMap).Parse(string(data))

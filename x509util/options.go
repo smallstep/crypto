@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 
-	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/internal/templates"
 )
 
@@ -34,18 +33,39 @@ func (o *Options) apply(cr *x509.CertificateRequest, opts []Option) (*Options, e
 // Option is the type used as a variadic argument in NewCertificate.
 type Option func(cr *x509.CertificateRequest, o *Options) error
 
+// GetFuncMap returns the list of functions used by the templates. It will
+// return all the functions supported by "sprig.TxtFuncMap()" but exclude "env"
+// and "expandenv", removed to avoid the leak of information. It will also add
+// the following functions to encode data using ASN.1:
+//
+//   - asn1Enc: encodes the given string to ASN.1. By default, it will use the
+//     PrintableString format but it can be change using the suffix ":<format>".
+//     Supported formats are: "printable", "utf8", "ia5", "numeric", "int", "oid",
+//     "utc", "generalized", and "raw".
+//   - asn1Marshal: encodes the given string with the given params using Go's
+//     asn1.MarshalWithParams.
+//   - asn1Seq: encodes a sequence of the given ASN.1 data.
+//   - asn1Set: encodes a set of the given ASN.1 data.
+func GetFuncMap() template.FuncMap {
+	return getFuncMap(new(TemplateError))
+}
+
+func getFuncMap(err *TemplateError) template.FuncMap {
+	funcMap := templates.GetFuncMap(&err.Message)
+	// asn1 methods
+	funcMap["asn1Enc"] = asn1Encode
+	funcMap["asn1Marshal"] = asn1Marshal
+	funcMap["asn1Seq"] = asn1Sequence
+	funcMap["asn1Set"] = asn1Set
+	return funcMap
+}
+
 // WithTemplate is an options that executes the given template text with the
 // given data.
 func WithTemplate(text string, data TemplateData) Option {
 	return func(cr *x509.CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
-		funcMap := templates.GetFuncMap(&terr.Message)
-		// asn1 methods
-		funcMap["asn1Enc"] = asn1Encode
-		funcMap["asn1Marshal"] = asn1Marshal
-		funcMap["asn1Seq"] = asn1Sequence
-		funcMap["asn1Set"] = asn1Set
-
+		funcMap := getFuncMap(terr)
 		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {
@@ -82,8 +102,7 @@ func WithTemplateBase64(s string, data TemplateData) Option {
 // with the given data.
 func WithTemplateFile(path string, data TemplateData) Option {
 	return func(cr *x509.CertificateRequest, o *Options) error {
-		filename := step.Abs(path)
-		b, err := os.ReadFile(filename)
+		b, err := os.ReadFile(path)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}

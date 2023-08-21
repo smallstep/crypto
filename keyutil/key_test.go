@@ -50,9 +50,9 @@ yBf6oiIb/beb/pTFqSy86KUe+E4Y5SSlEz2lqg79WIosZgkHbSBsmU7hGg==
 
 type badSSHPublicKey struct{}
 
-func (k *badSSHPublicKey) Type() string                                 { return "foo" }
-func (k *badSSHPublicKey) Marshal() []byte                              { return []byte("bar") }
-func (k *badSSHPublicKey) Verify(data []byte, sig *ssh.Signature) error { return nil }
+func (k *badSSHPublicKey) Type() string                            { return "foo" }
+func (k *badSSHPublicKey) Marshal() []byte                         { return []byte("bar") }
+func (k *badSSHPublicKey) Verify(_ []byte, _ *ssh.Signature) error { return nil }
 
 func must(args ...interface{}) interface{} {
 	if err := args[len(args)-1]; err != nil {
@@ -63,6 +63,7 @@ func must(args ...interface{}) interface{} {
 
 var randReader = rand.Reader
 
+//nolint:gocritic // ignore sloppy func name due to function signature
 func cleanupRandReader(t *testing.T) {
 	rr := rand.Reader
 	t.Cleanup(func() {
@@ -81,7 +82,7 @@ func (zeroReader) Read(buf []byte) (int, error) {
 
 type eofReader struct{}
 
-func (eofReader) Read(buf []byte) (int, error) {
+func (eofReader) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
 

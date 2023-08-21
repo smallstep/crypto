@@ -53,7 +53,7 @@ var generateKey = func(kty, crv string, size int) (interface{}, interface{}, err
 type SoftKMS struct{}
 
 // New returns a new SoftKMS.
-func New(ctx context.Context, opts apiv1.Options) (*SoftKMS, error) {
+func New(_ context.Context, _ apiv1.Options) (*SoftKMS, error) {
 	return &SoftKMS{}, nil
 }
 
@@ -73,6 +73,8 @@ func (k *SoftKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	var opts []pemutil.Options
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
+	} else if req.PasswordPrompter != nil {
+		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the signing key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
 	switch {
@@ -154,6 +156,8 @@ func (k *SoftKMS) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	var opts []pemutil.Options
 	if req.Password != nil {
 		opts = append(opts, pemutil.WithPassword(req.Password))
+	} else if req.PasswordPrompter != nil {
+		opts = append(opts, pemutil.WithPasswordPrompt("Please enter the password to decrypt the decryption key", pemutil.PasswordPrompter(req.PasswordPrompter)))
 	}
 
 	switch {

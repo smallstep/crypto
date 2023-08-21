@@ -127,21 +127,21 @@ func (r *Renewer) Stop() bool {
 // GetCertificate returns the current server certificate.
 //
 // This method is set in the tls.Config GetCertificate property.
-func (r *Renewer) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (r *Renewer) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return r.getCertificate(), nil
 }
 
 // GetClientCertificate returns the current client certificate.
 //
 // This method is set in the tls.Config GetClientCertificate property.
-func (r *Renewer) GetClientCertificate(hello *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+func (r *Renewer) GetClientCertificate(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 	return r.getCertificate(), nil
 }
 
 // GetConfigForClient returns the tls.Config used per request.
 //
 // This method is set in the tls.Config GetConfigForClient property.
-func (r *Renewer) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+func (r *Renewer) GetConfigForClient(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 	return r.getConfigForClient(), nil
 }
 

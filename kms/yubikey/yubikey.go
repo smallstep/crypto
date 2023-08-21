@@ -9,9 +9,11 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-piv/piv-go/piv"
 	"github.com/pkg/errors"
@@ -70,7 +72,7 @@ var pivOpen = func(card string) (pivKey, error) {
 //
 // If the pin or the management-key are not provided, we will use the default
 // ones.
-func New(ctx context.Context, opts apiv1.Options) (*YubiKey, error) {
+func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
 	managementKey := piv.DefaultManagementKey
 
@@ -261,7 +263,9 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	if !ok {
 		return nil, errors.New("private key is not a crypto.Signer")
 	}
-	return signer, nil
+	return &syncSigner{
+		Signer: signer,
+	}, nil
 }
 
 // CreateDecrypter creates a crypto.Decrypter using the key present in the configured
@@ -297,7 +301,9 @@ func (k *YubiKey) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 	if !ok {
 		return nil, errors.New("private key is not a crypto.Decrypter")
 	}
-	return decrypter, nil
+	return &syncDecrypter{
+		Decrypter: decrypter,
+	}, nil
 }
 
 // CreateAttestation creates an attestation certificate from a YubiKey slot.
@@ -489,6 +495,41 @@ func getSerialNumber(cert *x509.Certificate) string {
 		}
 	}
 	return ""
+}
+
+// Common mutex used in syncSigner and syncDecrypter. A sync.Mutex cannot be
+// copied after the first use.
+//
+// By using it, synchronization becomes easier and avoids conflicts between the
+// two goroutines accessing the shared resources.
+//
+// This is not optimal if more than one YubiKey is used, but the overhead should
+// be small.
+var m sync.Mutex
+
+// syncSigner wraps a crypto.Signer with a mutex to avoid the error "smart card
+// error 6982: security status not satisfied" with two concurrent signs.
+type syncSigner struct {
+	crypto.Signer
+}
+
+func (s *syncSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	m.Lock()
+	defer m.Unlock()
+	return s.Signer.Sign(rand, digest, opts)
+}
+
+// syncDecrypter wraps a crypto.Decrypter with a mutex to avoid the error "smart
+// card error 6a80: incorrect parameter in command data field" with two
+// concurrent decryptions.
+type syncDecrypter struct {
+	crypto.Decrypter
+}
+
+func (s *syncDecrypter) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
+	m.Lock()
+	defer m.Unlock()
+	return s.Decrypter.Decrypt(rand, msg, opts)
 }
 
 var _ apiv1.CertificateManager = (*YubiKey)(nil)

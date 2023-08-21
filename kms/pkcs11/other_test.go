@@ -124,7 +124,7 @@ func (s *stubPKCS11) DeleteCertificate(id, label []byte, serial *big.Int) error 
 	return nil
 }
 
-func (s *stubPKCS11) GenerateRSAKeyPairWithAttributes(public, private crypto11.AttributeSet, bits int) (crypto11.SignerDecrypter, error) {
+func (s *stubPKCS11) GenerateRSAKeyPairWithAttributes(public, _ crypto11.AttributeSet, bits int) (crypto11.SignerDecrypter, error) {
 	var id, label []byte
 	if v := public[crypto11.CkaId]; v != nil {
 		id = v.Value

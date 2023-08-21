@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/internal/templates"
 )
 
@@ -29,13 +28,24 @@ func (o *Options) apply(cr CertificateRequest, opts []Option) (*Options, error) 
 // Option is the type used as a variadic argument in NewCertificate.
 type Option func(cr CertificateRequest, o *Options) error
 
+// GetFuncMap returns the list of functions used by the templates. It will
+// return all the functions supported by "sprig.TxtFuncMap()" but exclude "env"
+// and "expandenv", removed to avoid the leak of information.
+func GetFuncMap() template.FuncMap {
+	return getFuncMap(new(TemplateError))
+}
+
+func getFuncMap(err *TemplateError) template.FuncMap {
+	return templates.GetFuncMap(&err.Message)
+}
+
 // WithTemplate is an options that executes the given template text with the
 // given data.
 func WithTemplate(text string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
-		funcMap := templates.GetFuncMap(&terr.Message)
-
+		funcMap := getFuncMap(terr)
+		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {
 			return errors.Wrapf(err, "error parsing template")
@@ -71,8 +81,7 @@ func WithTemplateBase64(s string, data TemplateData) Option {
 // with the given data.
 func WithTemplateFile(path string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
-		filename := step.Abs(path)
-		b, err := os.ReadFile(filename)
+		b, err := os.ReadFile(path)
 		if err != nil {
 			return errors.Wrapf(err, "error reading %s", path)
 		}

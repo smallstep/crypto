@@ -29,7 +29,7 @@ func (t *TPM) GenerateRandom(ctx context.Context, size uint16) (random []byte, e
 	return t.generateRandom(ctx, size)
 }
 
-func (t *TPM) generateRandom(ctx context.Context, size uint16) (random []byte, err error) {
+func (t *TPM) generateRandom(_ context.Context, size uint16) (random []byte, err error) {
 	random, err = tpm2.GetRandom(t.rwc, size)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating random data: %w", err)

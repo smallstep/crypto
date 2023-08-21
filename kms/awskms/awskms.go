@@ -74,7 +74,7 @@ var customerMasterKeySpecMapping = map[apiv1.SignatureAlgorithm]interface{}{
 //
 // AWS sessions can also be configured with environment variables, see docs at
 // https://docs.aws.amazon.com/sdk-for-go/api/aws/session/ for all the options.
-func New(ctx context.Context, opts apiv1.Options) (*KMS, error) {
+func New(_ context.Context, opts apiv1.Options) (*KMS, error) {
 	var o session.Options
 
 	if opts.URI != "" {

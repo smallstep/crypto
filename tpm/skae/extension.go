@@ -1,3 +1,4 @@
+//nolint:unused // ignore unused types for now
 package skae
 
 import (
@@ -5,7 +6,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
-	"fmt"
 	"math/big"
 
 	"github.com/smallstep/go-attestation/attest"
@@ -17,100 +17,102 @@ var (
 	oidAuthorityInfoAccessIssuers    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 2}
 )
 
-func CreateSubjectKeyAttestationEvidenceExtension(akCert *x509.Certificate, params attest.CertificationParameters, shouldEncrypt bool) (pkix.Extension, error) {
+func CreateSubjectKeyAttestationEvidenceExtension(_ *x509.Certificate, _ attest.CertificationParameters, _ bool) (pkix.Extension, error) {
 	return pkix.Extension{}, errors.New("not implemented yet") // return early; not verified to be working as expected yet
 
-	asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence()) //nolint:govet // intentionally breaking early
-	if err != nil {
-		return pkix.Extension{}, fmt.Errorf("error marshaling issuer: %w", err)
-	}
-
-	skaeExtension := asn1SKAE{
-		TCGSpecVersion:         asn1TCGSpecVersion{Major: 2, Minor: 0},
-		KeyAttestationEvidence: asn1KeyAttestationEvidence{},
-	}
-
-	attestationEvidence := asn1AttestationEvidence{
-		TPMCertifyInfo: asn1TPMCertifyInfo{
-			CertifyInfo: asn1.BitString{ // TODO: check if setting the values like this is correct
-				Bytes:     params.CreateAttestation,
-				BitLength: len(params.CreateAttestation) * 8,
-			},
-			Signature: asn1.BitString{
-				Bytes:     params.CreateSignature,
-				BitLength: len(params.CreateSignature) * 8,
-			},
-		},
-		TPMIdentityCredAccessInfo: asn1TPMIdentityCredentialAccessInfo{
-			AuthorityInfoAccess: createAIA(akCert),
-			IssuerSerial: issuerAndSerial{
-				IssuerName:   asn1.RawValue{FullBytes: asn1Issuer},
-				SerialNumber: akCert.SerialNumber,
-			},
-		},
-	}
-
-	aeb, err := asn1.Marshal(attestationEvidence)
-	if err != nil {
-		return pkix.Extension{}, fmt.Errorf("error marshaling attestation evidence: %w", err)
-	}
-
-	if !shouldEncrypt {
-		//skaeExtension.KeyAttestationEvidence.AttestEvidence = attestationEvidence
-		skaeExtension.KeyAttestationEvidence.Evidence = asn1.RawValue{
-			Class:      asn1.ClassContextSpecific,
-			IsCompound: true,
-			Tag:        0, // CHOICE "0"
-			Bytes:      aeb,
-		}
-	} else {
-		// TODO: encrypt the AttestEvidence to (right) recipient; set it as the EnvelopedAttestEvidence
-		encryptedAEB := aeb
-
-		eae := asn1EnvelopedAttestationEvidence{
-			RecipientInfos: []recipientInfo{}, // TODO: fill recipient(s)
-			EncryptedAttestInfo: asn1EncryptedAttestationInfo{
-				EncryptionAlgorithm: pkix.AlgorithmIdentifier{
-					Algorithm: nil, // TODO: select and fill
-				},
-				EncryptedAttestEvidence: encryptedAEB,
-			},
-		}
-
-		eaeBytes, err := asn1.Marshal(eae)
+	/*
+		asn1Issuer, err := asn1.Marshal(akCert.Issuer.ToRDNSequence()) //nolint:govet // intentionally breaking early
 		if err != nil {
-			return pkix.Extension{}, errors.New("error marshaling EnvelopedAttestationEvidence")
+			return pkix.Extension{}, fmt.Errorf("error marshaling issuer: %w", err)
 		}
 
-		skaeExtension.KeyAttestationEvidence.Evidence = asn1.RawValue{
-			Class:      asn1.ClassContextSpecific,
-			IsCompound: true,
-			Tag:        1, // CHOICE "1"
-			Bytes:      eaeBytes,
+		skaeExtension := asn1SKAE{
+			TCGSpecVersion:         asn1TCGSpecVersion{Major: 2, Minor: 0},
+			KeyAttestationEvidence: asn1KeyAttestationEvidence{},
 		}
 
-		return pkix.Extension{}, errors.New("encrypting the AttestEvidence is not yet supported")
-	}
+		attestationEvidence := asn1AttestationEvidence{
+			TPMCertifyInfo: asn1TPMCertifyInfo{
+				CertifyInfo: asn1.BitString{ // TODO: check if setting the values like this is correct
+					Bytes:     params.CreateAttestation,
+					BitLength: len(params.CreateAttestation) * 8,
+				},
+				Signature: asn1.BitString{
+					Bytes:     params.CreateSignature,
+					BitLength: len(params.CreateSignature) * 8,
+				},
+			},
+			TPMIdentityCredAccessInfo: asn1TPMIdentityCredentialAccessInfo{
+				AuthorityInfoAccess: createAIA(akCert),
+				IssuerSerial: issuerAndSerial{
+					IssuerName:   asn1.RawValue{FullBytes: asn1Issuer},
+					SerialNumber: akCert.SerialNumber,
+				},
+			},
+		}
 
-	skaeExtensionBytes, err := asn1.Marshal(skaeExtension)
-	if err != nil {
-		return pkix.Extension{}, fmt.Errorf("creating SKAE extension failed: %w", err)
-	}
+		aeb, err := asn1.Marshal(attestationEvidence)
+		if err != nil {
+			return pkix.Extension{}, fmt.Errorf("error marshaling attestation evidence: %w", err)
+		}
 
-	result := pkix.Extension{
-		Id:       oidSubjectKeyAttestationEvidence,
-		Critical: false, // non standard extension; don't break clients
-		Value:    skaeExtensionBytes,
-	}
+		if !shouldEncrypt {
+			//skaeExtension.KeyAttestationEvidence.AttestEvidence = attestationEvidence
+			skaeExtension.KeyAttestationEvidence.Evidence = asn1.RawValue{
+				Class:      asn1.ClassContextSpecific,
+				IsCompound: true,
+				Tag:        0, // CHOICE "0"
+				Bytes:      aeb,
+			}
+		} else {
+			// TODO: encrypt the AttestEvidence to (right) recipient; set it as the EnvelopedAttestEvidence
+			encryptedAEB := aeb
 
-	b, err := asn1.Marshal(result)
-	if err != nil {
-		return result, err
-	}
+			eae := asn1EnvelopedAttestationEvidence{
+				RecipientInfos: []recipientInfo{}, // TODO: fill recipient(s)
+				EncryptedAttestInfo: asn1EncryptedAttestationInfo{
+					EncryptionAlgorithm: pkix.AlgorithmIdentifier{
+						Algorithm: nil, // TODO: select and fill
+					},
+					EncryptedAttestEvidence: encryptedAEB,
+				},
+			}
 
-	_ = b
+			eaeBytes, err := asn1.Marshal(eae)
+			if err != nil {
+				return pkix.Extension{}, errors.New("error marshaling EnvelopedAttestationEvidence")
+			}
 
-	return result, nil
+			skaeExtension.KeyAttestationEvidence.Evidence = asn1.RawValue{
+				Class:      asn1.ClassContextSpecific,
+				IsCompound: true,
+				Tag:        1, // CHOICE "1"
+				Bytes:      eaeBytes,
+			}
+
+			return pkix.Extension{}, errors.New("encrypting the AttestEvidence is not yet supported")
+		}
+
+		skaeExtensionBytes, err := asn1.Marshal(skaeExtension)
+		if err != nil {
+			return pkix.Extension{}, fmt.Errorf("creating SKAE extension failed: %w", err)
+		}
+
+		result := pkix.Extension{
+			Id:       oidSubjectKeyAttestationEvidence,
+			Critical: false, // non standard extension; don't break clients
+			Value:    skaeExtensionBytes,
+		}
+
+		b, err := asn1.Marshal(result)
+		if err != nil {
+			return result, err
+		}
+
+		_ = b
+
+		return result, nil
+	*/
 }
 
 func createAIA(ak *x509.Certificate) []asn1AuthorityInfoAccessSyntax {

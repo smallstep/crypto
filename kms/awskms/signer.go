@@ -61,7 +61,7 @@ func (s *Signer) Public() crypto.PublicKey {
 }
 
 // Sign signs digest with the private key stored in the AWS KMS.
-func (s *Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	alg, err := getSigningAlgorithm(s.Public(), opts)
 	if err != nil {
 		return nil, err

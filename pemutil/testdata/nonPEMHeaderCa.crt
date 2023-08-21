@@ -1,0 +1,45 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            fe:9f:60:35:b0:13:ba:d4:be:fb:84:ec:70:ed:3d:ed
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: CN = testroot
+        Validity
+            Not Before: Aug 15 17:50:02 2023 GMT
+            Not After : Aug 16 17:50:02 2023 GMT
+        Subject: CN = testroot
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:bf:f8:db:3c:7a:c2:a4:b2:f5:51:e9:43:80:98:
+                    68:b2:1b:62:25:11:a7:de:03:74:27:6a:04:82:99:
+                    9a:7d:da:e7:a6:a6:a5:12:ad:c9:de:65:61:12:00:
+                    a6:6d:39:b6:46:d8:f5:b4:a8:77:69:da:1f:35:2b:
+                    28:70:33:1e:90
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Certificate Sign, CRL Sign
+            X509v3 Basic Constraints: critical
+                CA:TRUE, pathlen:1
+            X509v3 Subject Key Identifier:
+                38:E0:29:66:91:8C:E3:42:0F:85:A5:BA:78:B6:1F:49:E3:34:33:D5
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:45:02:20:37:78:01:d9:e7:4d:9c:2c:2f:3c:09:41:8a:2f:
+        3f:65:b5:6a:31:eb:10:a9:92:a0:74:98:d6:9c:50:45:1c:56:
+        02:21:00:bf:b5:53:37:97:f0:f5:14:df:22:00:22:47:4f:7d:
+        41:c5:5d:b6:24:58:e4:d2:09:b1:3d:9b:7b:0f:3f:cb:ba
+-----BEGIN CERTIFICATE-----
+MIIBajCCARCgAwIBAgIRAP6fYDWwE7rUvvuE7HDtPe0wCgYIKoZIzj0EAwIwEzER
+MA8GA1UEAxMIdGVzdHJvb3QwHhcNMjMwODE1MTc1MDAyWhcNMjMwODE2MTc1MDAy
+WjATMREwDwYDVQQDEwh0ZXN0cm9vdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA
+BL/42zx6wqSy9VHpQ4CYaLIbYiURp94DdCdqBIKZmn3a56ampRKtyd5lYRIApm05
+tkbY9bSod2naHzUrKHAzHpCjRTBDMA4GA1UdDwEB/wQEAwIBBjASBgNVHRMBAf8E
+CDAGAQH/AgEBMB0GA1UdDgQWBBQ44ClmkYzjQg+Fpbp4th9J4zQz1TAKBggqhkjO
+PQQDAgNIADBFAiA3eAHZ502cLC88CUGKLz9ltWox6xCpkqB0mNacUEUcVgIhAL+1
+UzeX8PUU3yIAIkdPfUHFXbYkWOTSCbE9m3sPP8u6
+-----END CERTIFICATE-----

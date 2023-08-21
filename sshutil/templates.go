@@ -32,7 +32,7 @@ func (e *TemplateError) Error() string {
 
 // ValidateTemplate validates a text template.
 func ValidateTemplate(text []byte) error {
-	return templates.ValidateTemplate(text)
+	return templates.ValidateTemplate(text, GetFuncMap())
 }
 
 // ValidateTemplateData validates that template data is

@@ -13,9 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
+	"time"
 
-	"go.step.sm/crypto/internal/step"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -48,11 +47,13 @@ const (
 
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
-	tpm                   *tpm.TPM
-	attestationCABaseURL  string
-	attestationCARootFile string
-	attestationCAInsecure bool
-	permanentIdentifier   string
+	tpm                             *tpm.TPM
+	attestationCABaseURL            string
+	attestationCARootFile           string
+	attestationCAInsecure           bool
+	permanentIdentifier             string
+	identityRenewalPeriodPercentage int64
+	identityEarlyRenewalEnabled     bool
 }
 
 type algorithmAttributes struct {
@@ -90,7 +91,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //	})
 //
 // The default storage location for serialized TPM objects when
-// an instance of TPMKMS is created, is $STEPPATH/tpm.
+// an instance of TPMKMS is created, is the relative path "tpm".
 //
 // The system default TPM device will be used when not configured. A
 // specific TPM device can be selected by setting the device:
@@ -118,6 +119,19 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //
 //	tpmkms:permanent-identifier=<some-unique-identifier>
 //
+// By default, an AK (identity) certificate will be renewed early
+// if it's expiring soon. The default certificate lifetime is 60%,
+// meaning that the renewal for the AK certificate will be kicked
+// off when it's past 60% of its lifetime. It's possible to disable
+// early renewal by setting disable-early-renewal to true:
+//
+//	tpmkms:disable-early-renewal=true
+//
+// The default lifetime percentage can be changed by setting
+// renewal-percentage:
+//
+//	tpmkms:renewal-percentage=70
+//
 // Attestation support in the TPMKMS is considered EXPERIMENTAL. It
 // is expected that there will be changes to the configuration that
 // be provided and the attestation flow.
@@ -125,9 +139,12 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // The TPMKMS implementation is backed by an instance of the TPM from
 // the `tpm` package. If the TPMKMS operations aren't sufficient for
 // your use case, use a tpm.TPM instance instead.
-func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
-	kms = &TPMKMS{}
-	storageDirectory := filepath.Join(step.Path(), "tpm") // store TPM objects in $STEPPATH/tpm by default
+func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
+	kms = &TPMKMS{
+		identityEarlyRenewalEnabled:     true,
+		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
+	}
+	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
 	if opts.StorageDirectory != "" {
 		storageDirectory = opts.StorageDirectory
 	}
@@ -147,6 +164,13 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		kms.attestationCARootFile = u.Get("attestation-ca-root")
 		kms.attestationCAInsecure = u.GetBool("attestation-ca-insecure")
 		kms.permanentIdentifier = u.Get("permanent-identifier") // TODO(hs): determine if this is needed
+		kms.identityEarlyRenewalEnabled = !u.GetBool("disable-early-renewal")
+		if percentage := u.GetInt("renewal-percentage"); percentage != nil {
+			if *percentage < 1 || *percentage > 100 {
+				return nil, fmt.Errorf("renewal percentage must be between 1 and 100; got %d", *percentage)
+			}
+			kms.identityRenewalPeriodPercentage = *percentage
+		}
 	}
 
 	kms.tpm, err = tpm.New(tpmOpts...)
@@ -565,8 +589,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// otherwise. If an AK certificate is available, but not considered valid, e.g. due
 	// to it not having the right identity, a new attestation flow will be performed and
 	// the old certificate (chain) will be overwritten with the result of that flow.
-	akChain := ak.CertificateChain()
-	if len(akChain) == 0 || !hasValidIdentity(ak, ekKeyURL) {
+	if err := k.hasValidIdentity(ak, ekKeyURL); err != nil {
 		var ac apiv1.AttestationClient
 		if req.AttestationClient != nil {
 			// TODO(hs): check if it makes sense to have this; it doesn't capture all
@@ -583,7 +606,8 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 			}
 		}
 		// perform the attestation flow with a (remote) attestation CA
-		if akChain, err = ac.Attest(ctx); err != nil {
+		akChain, err := ac.Attest(ctx)
+		if err != nil {
 			return nil, fmt.Errorf("failed performing AK attestation: %w", err)
 		}
 		// store the result with the AK, so that it can be reused for future
@@ -596,9 +620,11 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// when a new certificate was issued for the AK, it is possible the
 	// certificate that was issued doesn't include the expected and/or required
 	// identity, so this is checked before continuing.
-	if !hasValidIdentity(ak, ekKeyURL) {
-		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q", ekKeyURL)
+	if err := k.hasValidIdentity(ak, ekKeyURL); err != nil {
+		return nil, fmt.Errorf("AK certificate (chain) not valid for EK %q: %w", ekKeyURL, err)
 	}
+
+	akChain := ak.CertificateChain()
 
 	if properties.ak {
 		akPub := ak.Public()
@@ -669,27 +695,46 @@ func getPreferredEK(eks []*tpm.EK) (ek *tpm.EK) {
 // that includes a valid identity. Currently we only consider certificates
 // that encode the TPM EK public key ID as one of its URI SANs, which is
 // the default behavior of the Smallstep Attestation CA.
-func hasValidIdentity(ak *tpm.AK, ekURL *url.URL) bool {
+func (k *TPMKMS) hasValidIdentity(ak *tpm.AK, ekURL *url.URL) error {
 	chain := ak.CertificateChain()
 	if len(chain) == 0 {
-		return false
+		return ErrIdentityCertificateUnavailable
 	}
 	akCert := chain[0]
 
-	// TODO(hs): before continuing, add check if the cert is still valid?
+	now := time.Now()
+	if now.Before(akCert.NotBefore) {
+		return ErrIdentityCertificateNotYetValid
+	}
+
+	notAfter := akCert.NotAfter.Add(-1 * time.Minute).Truncate(time.Second)
+	if now.After(notAfter) {
+		return ErrIdentityCertificateExpired
+	}
+
+	// it's possible to disable early expiration errors for the AK identity
+	// certificate when instantiating the TPMKMS.
+	if k.identityEarlyRenewalEnabled {
+		period := akCert.NotAfter.Sub(akCert.NotBefore).Truncate(time.Second)
+		renewBefore := time.Duration(float64(period.Nanoseconds()) * (float64(k.identityRenewalPeriodPercentage) / 100))
+		earlyAfter := akCert.NotAfter.Add(-1 * renewBefore)
+		if now.After(earlyAfter) {
+			return ErrIdentityCertificateIsExpiring
+		}
+	}
 
 	// the Smallstep Attestation CA will issue AK certifiates that
 	// contain the EK public key ID encoded as an URN by default.
 	for _, u := range akCert.URIs {
 		if ekURL.String() == u.String() {
-			return true
+			return nil
 		}
 	}
 
 	// TODO(hs): we could consider checking other values to contain
 	// a usable identity too.
 
-	return false
+	return ErrIdentityCertificateInvalid
 }
 
 // generateKeyID generates a key identifier from the
