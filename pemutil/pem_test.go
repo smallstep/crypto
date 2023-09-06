@@ -1177,3 +1177,46 @@ func TestReadCertificateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestAppendToBundle(t *testing.T) {
+	tests := []struct {
+		name   string
+		bundle string
+		cert   string
+		added  bool
+		err    error
+	}{
+		{"append", "testdata/bundle.crt", "testdata/ca.crt", true, nil},
+		{"found", "testdata/ca.crt", "testdata/ca.crt", false, nil},
+		{"bad cert", "testdata/bundle.crt", "testdata/badca.crt", false, errors.New("invalid cert")},
+		{"bad bundle", "testdata/badca.crt", "testdata/ca.crt", false, errors.New("invalid bundle")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bundlePEM, err := os.ReadFile(tc.bundle)
+			if err != nil {
+				t.Fatal(err)
+			}
+			certPEM, err := os.ReadFile(tc.cert)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, added, err := AppendToBundle(bundlePEM, certPEM)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equals(t, tc.added, added)
+				if added {
+					assert.NotEquals(t, bundlePEM, got)
+				} else {
+					assert.Equals(t, bundlePEM, got)
+				}
+			}
+		})
+	}
+}

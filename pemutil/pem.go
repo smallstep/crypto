@@ -10,6 +10,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -706,4 +707,31 @@ func ParseSSH(b []byte) (interface{}, error) {
 	default:
 		return nil, errors.Errorf("unsupported key type %T", key)
 	}
+}
+
+// AppendToBundle adds a PEM-encoded certificate to a PEM-encoded certificate
+// bundle if not already in the bundle.
+func AppendToBundle(bundlePEM, certPEM []byte) ([]byte, bool, error) {
+	bundle, err := ParseCertificateBundle(bundlePEM)
+	if err != nil {
+		return nil, false, fmt.Errorf("invalid bundle: %w", err)
+	}
+	cert, err := ParseCertificate(certPEM)
+	if err != nil {
+		return nil, false, fmt.Errorf("invalid cert: %w", err)
+	}
+
+	sums := make(map[[28]byte]bool, len(bundle))
+	for i := range bundle {
+		sums[sha256.Sum224(bundle[i].Raw)] = true
+	}
+
+	certSum := sha256.Sum224(cert.Raw)
+	if sums[certSum] {
+		return bundlePEM, false, nil
+	}
+
+	bundlePEM = append(bundlePEM, certPEM...)
+
+	return bundlePEM, true, nil
 }
