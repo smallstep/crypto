@@ -709,29 +709,34 @@ func ParseSSH(b []byte) (interface{}, error) {
 	}
 }
 
-// AppendToBundle adds a PEM-encoded certificate to a PEM-encoded certificate
+// BundleCertificate adds a PEM-encoded certificate to a PEM-encoded certificate
 // bundle if not already in the bundle.
-func AppendToBundle(bundlePEM, certPEM []byte) ([]byte, bool, error) {
+func BundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, error) {
 	bundle, err := ParseCertificateBundle(bundlePEM)
 	if err != nil {
 		return nil, false, fmt.Errorf("invalid bundle: %w", err)
 	}
-	cert, err := ParseCertificate(certPEM)
-	if err != nil {
-		return nil, false, fmt.Errorf("invalid cert: %w", err)
-	}
 
-	sums := make(map[[28]byte]bool, len(bundle))
+	sums := make(map[[sha256.Size224]byte]bool, len(bundle)+len(certsPEM))
 	for i := range bundle {
 		sums[sha256.Sum224(bundle[i].Raw)] = true
 	}
 
-	certSum := sha256.Sum224(cert.Raw)
-	if sums[certSum] {
-		return bundlePEM, false, nil
+	modified := false
+
+	for i := range certsPEM {
+		cert, err := ParseCertificate(certsPEM[i])
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid cert %d: %w", i, err)
+		}
+		certSum := sha256.Sum224(cert.Raw)
+		if sums[certSum] {
+			continue
+		}
+		sums[certSum] = true
+		bundlePEM = append(bundlePEM, certsPEM[i]...)
+		modified = true
 	}
 
-	bundlePEM = append(bundlePEM, certPEM...)
-
-	return bundlePEM, true, nil
+	return bundlePEM, modified, nil
 }

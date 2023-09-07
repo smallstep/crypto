@@ -1178,18 +1178,20 @@ func TestReadCertificateRequest(t *testing.T) {
 	}
 }
 
-func TestAppendToBundle(t *testing.T) {
+func TestBundleCertificate(t *testing.T) {
 	tests := []struct {
 		name   string
 		bundle string
-		cert   string
+		certs  []string
 		added  bool
 		err    error
 	}{
-		{"append", "testdata/bundle.crt", "testdata/ca.crt", true, nil},
-		{"found", "testdata/ca.crt", "testdata/ca.crt", false, nil},
-		{"bad cert", "testdata/bundle.crt", "testdata/badca.crt", false, errors.New("invalid cert")},
-		{"bad bundle", "testdata/badca.crt", "testdata/ca.crt", false, errors.New("invalid bundle")},
+		{"append", "testdata/bundle.crt", []string{"testdata/ca.crt"}, true, nil},
+		{"two", "testdata/bundle.crt", []string{"testdata/ca.crt", "testdata/ca2.crt"}, true, nil},
+		{"none", "testdata/bundle.crt", nil, false, nil},
+		{"found", "testdata/ca.crt", []string{"testdata/ca.crt"}, false, nil},
+		{"bad cert", "testdata/bundle.crt", []string{"testdata/badca.crt"}, false, errors.New("invalid cert")},
+		{"bad bundle", "testdata/badca.crt", []string{"testdata/ca.crt"}, false, errors.New("invalid bundle")},
 	}
 
 	for _, tc := range tests {
@@ -1198,12 +1200,15 @@ func TestAppendToBundle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			certPEM, err := os.ReadFile(tc.cert)
-			if err != nil {
-				t.Fatal(err)
+			certsPEM := make([][]byte, len(tc.certs))
+			for i, fn := range tc.certs {
+				certsPEM[i], err = os.ReadFile(fn)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 
-			got, added, err := AppendToBundle(bundlePEM, certPEM)
+			got, added, err := BundleCertificate(bundlePEM, certsPEM...)
 			if tc.err != nil {
 				if assert.Error(t, err) {
 					assert.HasPrefix(t, err.Error(), tc.err.Error())
