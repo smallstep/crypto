@@ -709,7 +709,7 @@ func ParseSSH(b []byte) (interface{}, error) {
 	}
 }
 
-// BundleCertificate adds a PEM-encoded certificate to a PEM-encoded certificate
+// BundleCertificate adds PEM-encoded certificates to a PEM-encoded certificate
 // bundle if not already in the bundle.
 func BundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, error) {
 	bundle, err := ParseCertificateBundle(bundlePEM)

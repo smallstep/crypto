@@ -1190,7 +1190,7 @@ func TestBundleCertificate(t *testing.T) {
 		{"two", "testdata/bundle.crt", []string{"testdata/ca.crt", "testdata/ca2.crt"}, true, nil},
 		{"none", "testdata/bundle.crt", nil, false, nil},
 		{"found", "testdata/ca.crt", []string{"testdata/ca.crt"}, false, nil},
-		{"bad cert", "testdata/bundle.crt", []string{"testdata/badca.crt"}, false, errors.New("invalid cert")},
+		{"bad cert", "testdata/bundle.crt", []string{"testdata/badca.crt"}, false, errors.New("invalid cert 0")},
 		{"bad bundle", "testdata/badca.crt", []string{"testdata/ca.crt"}, false, errors.New("invalid bundle")},
 	}
 
