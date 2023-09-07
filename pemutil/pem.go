@@ -727,7 +727,7 @@ func BundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, erro
 	for i := range certsPEM {
 		cert, err := ParseCertificate(certsPEM[i])
 		if err != nil {
-			return nil, false, fmt.Errorf("invalid cert %d: %w", i, err)
+			return nil, false, fmt.Errorf("invalid certificate %d: %w", i, err)
 		}
 		certSum := sha256.Sum224(cert.Raw)
 		if sums[certSum] {
