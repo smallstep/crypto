@@ -26,7 +26,7 @@ require (
 	golang.org/x/net v0.15.0
 	golang.org/x/sys v0.12.0
 	google.golang.org/api v0.143.0
-	google.golang.org/grpc v1.58.1
+	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
