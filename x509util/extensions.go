@@ -66,7 +66,7 @@ const (
 	RegisteredIDType        = "registeredID"
 	PermanentIdentifierType = "permanentIdentifier"
 	HardwareModuleNameType  = "hardwareModuleName"
-	UPNType                 = "upn"
+	UserPrincipalNameType   = "userPrincipalName"
 )
 
 //nolint:deadcode // ignore
@@ -374,7 +374,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		case s.Value != "":
 			data = []byte(s.Value)
 		default:
-			return zero, errors.New("error parsing HardwareModuleName SAN: empty asn1Value is not allowed")
+			return zero, errors.New("error parsing HardwareModuleName SAN: empty value or asn1Value is not allowed")
 		}
 		var v HardwareModuleName
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -393,7 +393,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		case s.Value != "":
 			data = []byte(s.Value)
 		default:
-			return zero, errors.New("error parsing DirectoryName SAN: empty asn1Value is not allowed")
+			return zero, errors.New("error parsing DirectoryName SAN: empty value or asn1Value is not allowed")
 		}
 		var dn Name
 		if err := json.Unmarshal(data, &dn); err != nil {
@@ -412,9 +412,9 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			IsCompound: true,
 			Bytes:      rdn,
 		}, nil
-	case UPNType:
+	case UserPrincipalNameType:
 		if s.Value == "" {
-			return zero, errors.New("error parsing UserPrincipalName SAN: empty Value is not allowed")
+			return zero, errors.New("error parsing UserPrincipalName SAN: empty value is not allowed")
 		}
 		rawBytes, err := marshalExplicitValue(s.Value, "utf8")
 		if err != nil {
@@ -425,7 +425,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			Value:  asn1.RawValue{FullBytes: rawBytes},
 		}, "tag:0")
 		if err != nil {
-			return zero, errors.Wrap(err, "unable to Marshal UserPrincipalName SAN")
+			return zero, errors.Wrap(err, "error marshaling UserPrincipalName SAN")
 		}
 		return asn1.RawValue{FullBytes: upnBytes}, nil
 	case X400AddressType, EDIPartyNameType:
@@ -456,7 +456,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			Value:  asn1.RawValue{FullBytes: rawBytes},
 		}, "tag:0")
 		if err != nil {
-			return zero, errors.Wrap(err, "unable to Marshal otherName SAN")
+			return zero, errors.Wrap(err, "error marshaling otherName SAN")
 		}
 		return asn1.RawValue{FullBytes: otherNameBytes}, nil
 	}

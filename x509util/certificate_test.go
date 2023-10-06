@@ -306,7 +306,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 		(dict "type" "dn" "value" ` + "`" + `{"country":"US","organization":"ACME","commonName":"rocket"}` + "`" + `)
 		(dict "type" "permanentIdentifier" "value" .Token.pi)
 		(dict "type" "hardwareModuleName" "value" .Insecure.User.hmn)
-		(dict "type" "upn" "value" .Token.upn)
+		(dict "type" "userPrincipalName" "value" .Token.upn)
 		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
 	) | toJson }},
 	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
@@ -363,7 +363,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 		{Type: DirectoryNameType, ASN1Value: []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)},
 		{Type: PermanentIdentifierType, Value: "0123456789"},
 		{Type: HardwareModuleNameType, ASN1Value: []byte(`{"type":"1.2.3.1", "serialNumber": "MTIzNDU2"}`)},
-		{Type: UPNType, Value: "foo@upn.com"},
+		{Type: UserPrincipalNameType, Value: "foo@upn.com"},
 		{Type: "1.2.3.4", Value: "int:123456"},
 	} {
 		rawValue, err := san.RawValue()
