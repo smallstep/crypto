@@ -371,7 +371,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		switch {
 		case len(s.ASN1Value) != 0:
 			data = s.ASN1Value
-		case len(s.Value) != 0:
+		case s.Value != "":
 			data = []byte(s.Value)
 		default:
 			return zero, errors.New("error parsing HardwareModuleName SAN: empty asn1Value is not allowed")
@@ -390,7 +390,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		switch {
 		case len(s.ASN1Value) != 0:
 			data = s.ASN1Value
-		case len(s.Value) != 0:
+		case s.Value != "":
 			data = []byte(s.Value)
 		default:
 			return zero, errors.New("error parsing DirectoryName SAN: empty asn1Value is not allowed")
@@ -413,7 +413,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			Bytes:      rdn,
 		}, nil
 	case UPNType:
-		if len(s.Value) == 0 {
+		if s.Value == "" {
 			return zero, errors.New("error parsing UserPrincipalName SAN: empty Value is not allowed")
 		}
 		rawBytes, err := marshalExplicitValue(s.Value, "utf8")
