@@ -66,6 +66,7 @@ const (
 	RegisteredIDType        = "registeredID"
 	PermanentIdentifierType = "permanentIdentifier"
 	HardwareModuleNameType  = "hardwareModuleName"
+	UserPrincipalNameType   = "userPrincipalName"
 )
 
 //nolint:deadcode // ignore
@@ -86,6 +87,16 @@ const (
 // is "[type:]value", printable will be used as default type if none is
 // provided.
 const sanTypeSeparator = ":"
+
+// User Principal Name or UPN is a subject alternative name used for smart card
+// logon. This OID is associated with Microsoft cryptography and has the
+// internal name of szOID_NT_PRINCIPAL_NAME.
+//
+// The UPN is defined in Microsoft Open Specifications and Windows client
+// documentation for IT Pros:
+//   - https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-wcce/ea9ef420-4cbf-44bc-b093-c4175139f90f
+//   - https://learn.microsoft.com/en-us/windows/security/identity-protection/smart-cards/smart-card-certificate-requirements-and-enumeration
+var oidUserPrincipalName = []int{1, 3, 6, 1, 4, 1, 311, 20, 2, 3}
 
 // RFC 4043 - https://datatracker.ietf.org/doc/html/rfc4043
 var oidPermanentIdentifier = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
@@ -328,7 +339,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		return asn1.RawValue{Tag: nameTypeIP, Class: asn1.ClassContextSpecific, Bytes: ip}, nil
 	case RegisteredIDType:
 		if s.Value == "" {
-			return zero, errors.New("error parsing RegisteredID SAN: blank value is not allowed")
+			return zero, errors.New("error parsing RegisteredID SAN: empty value is not allowed")
 		}
 		oid, err := parseObjectIdentifier(s.Value)
 		if err != nil {
@@ -356,11 +367,17 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		}
 		return otherName, nil
 	case HardwareModuleNameType:
-		if len(s.ASN1Value) == 0 {
-			return zero, errors.New("error parsing HardwareModuleName SAN: empty asn1Value is not allowed")
+		var data []byte
+		switch {
+		case len(s.ASN1Value) != 0:
+			data = s.ASN1Value
+		case s.Value != "":
+			data = []byte(s.Value)
+		default:
+			return zero, errors.New("error parsing HardwareModuleName SAN: empty value or asn1Value is not allowed")
 		}
 		var v HardwareModuleName
-		if err := json.Unmarshal(s.ASN1Value, &v); err != nil {
+		if err := json.Unmarshal(data, &v); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling HardwareModuleName SAN")
 		}
 		otherName, err := marshalOtherName(oidHardwareModuleNameIdentifier, v.asn1Type())
@@ -369,11 +386,17 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 		}
 		return otherName, nil
 	case DirectoryNameType:
-		if len(s.ASN1Value) == 0 {
-			return zero, errors.New("error parsing DirectoryName SAN: empty asn1Value is not allowed")
+		var data []byte
+		switch {
+		case len(s.ASN1Value) != 0:
+			data = s.ASN1Value
+		case s.Value != "":
+			data = []byte(s.Value)
+		default:
+			return zero, errors.New("error parsing DirectoryName SAN: empty value or asn1Value is not allowed")
 		}
 		var dn Name
-		if err := json.Unmarshal(s.ASN1Value, &dn); err != nil {
+		if err := json.Unmarshal(data, &dn); err != nil {
 			return zero, errors.Wrap(err, "error unmarshaling DirectoryName SAN")
 		}
 		rdn, err := asn1.Marshal(dn.goValue().ToRDNSequence())
@@ -389,6 +412,22 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			IsCompound: true,
 			Bytes:      rdn,
 		}, nil
+	case UserPrincipalNameType:
+		if s.Value == "" {
+			return zero, errors.New("error parsing UserPrincipalName SAN: empty value is not allowed")
+		}
+		rawBytes, err := marshalExplicitValue(s.Value, "utf8")
+		if err != nil {
+			return zero, errors.Wrapf(err, "error marshaling ASN1 value %q", s.Value)
+		}
+		upnBytes, err := asn1.MarshalWithParams(otherName{
+			TypeID: oidUserPrincipalName,
+			Value:  asn1.RawValue{FullBytes: rawBytes},
+		}, "tag:0")
+		if err != nil {
+			return zero, errors.Wrap(err, "error marshaling UserPrincipalName SAN")
+		}
+		return asn1.RawValue{FullBytes: upnBytes}, nil
 	case X400AddressType, EDIPartyNameType:
 		return zero, fmt.Errorf("unimplemented SAN type %s", s.Type)
 	default:
@@ -417,7 +456,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 			Value:  asn1.RawValue{FullBytes: rawBytes},
 		}, "tag:0")
 		if err != nil {
-			return zero, errors.Wrap(err, "unable to Marshal otherName SAN")
+			return zero, errors.Wrap(err, "error marshaling otherName SAN")
 		}
 		return asn1.RawValue{FullBytes: otherNameBytes}, nil
 	}

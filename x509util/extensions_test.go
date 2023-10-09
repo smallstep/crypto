@@ -331,6 +331,9 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 				{49, 15, 48, 13, 6, 3, 85, 4, 3, asn1.TagPrintableString, 6}, []byte("rocket"),
 			}, nil),
 		}, false},
+		{"userPrincipalName", fields{"userPrincipalName", "foo@bar.com", nil}, asn1.RawValue{
+			FullBytes: []byte{160, 27, 6, 10, 43, 6, 1, 4, 1, 130, 55, 20, 2, 3, 160, 13, 12, 11, 102, 111, 111, 64, 98, 97, 114, 46, 99, 111, 109},
+		}, false},
 		{"otherName int", fields{"1.2.3.4", "int:1024", nil}, asn1.RawValue{
 			FullBytes: []byte{160, 11, 6, 3, 42, 3, 4, 160, 4, 2, 2, 4, 0},
 		}, false},
@@ -389,6 +392,8 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"fail registeredID", fields{"registeredID", "4.3.2.1", nil}, asn1.RawValue{}, true},
 		{"fail registeredID empty", fields{"registeredID", "", nil}, asn1.RawValue{}, true},
 		{"fail registeredID parse", fields{"registeredID", "a.b.c.d", nil}, asn1.RawValue{}, true},
+		{"fail userPrincipalName empty", fields{"userPrincipalName", "", nil}, asn1.RawValue{}, true},
+		{"fail userPrincipalName value", fields{"userPrincipalName", "foo\xff@mail.com", nil}, asn1.RawValue{}, true},
 		{"fail otherName parse", fields{"a.b.c.d", "foo", nil}, asn1.RawValue{}, true},
 		{"fail otherName marshal", fields{"1", "foo", nil}, asn1.RawValue{}, true},
 		{"fail otherName int", fields{"1.2.3.4", "int:abc", nil}, asn1.RawValue{}, true},

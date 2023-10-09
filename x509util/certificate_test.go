@@ -292,6 +292,128 @@ func TestNewCertificate(t *testing.T) {
 	}
 }
 
+func TestNewCertificateTemplate(t *testing.T) {
+	marshal := func(t *testing.T, value interface{}, params string) []byte {
+		t.Helper()
+		b, err := asn1.MarshalWithParams(value, params)
+		assert.NoError(t, err)
+		return b
+	}
+
+	tpl := `{
+	"subject": {{ set (toJson .Subject | fromJson) "extraNames" (list (dict "type" "1.2.840.113556.1.4.656" "value" .Token.upn )) | toJson }},
+	"sans": {{ concat .SANs (list
+		(dict "type" "dn" "value" ` + "`" + `{"country":"US","organization":"ACME","commonName":"rocket"}` + "`" + `)
+		(dict "type" "permanentIdentifier" "value" .Token.pi)
+		(dict "type" "hardwareModuleName" "value" .Insecure.User.hmn)
+		(dict "type" "userPrincipalName" "value" .Token.upn)
+		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
+	) | toJson }},
+	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+		"keyUsage": ["keyEncipherment", "digitalSignature"],
+	{{- else }}
+		"keyUsage": ["digitalSignature"],
+	{{- end }}
+		"extKeyUsage": ["serverAuth", "clientAuth"],
+	"extensions": [
+		{"id": "1.2.3.4", "value": {{ asn1Enc (first .Insecure.CR.DNSNames) | toJson }}},
+		{"id": "1.2.3.5", "value": {{ asn1Marshal (first .Insecure.CR.DNSNames) | toJson }}},
+		{"id": "1.2.3.6", "value": {{ asn1Seq (asn1Enc (first .Insecure.CR.DNSNames)) (asn1Enc "int:123456") | toJson }}},
+		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1Enc "int:123456") | toJson }}}
+	]
+}`
+
+	// Regular sans
+	sans := []string{"foo.com", "www.foo.com", "root@foo.com"}
+	// Template data
+	data := CreateTemplateData("commonName", sans)
+	data.SetUserData(map[string]any{
+		"id":  "123456",
+		"hmn": `{"type":"1.2.3.1", "serialNumber": "MTIzNDU2"}`,
+	})
+	data.SetToken(map[string]any{
+		"upn": "foo@upn.com",
+		"pi":  "0123456789",
+	})
+
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	cr, priv := createCertificateRequest(t, "commonName", sans)
+
+	cert, err := NewCertificate(cr, WithTemplate(tpl, data))
+	require.NoError(t, err)
+
+	crt, err := CreateCertificate(cert.GetCertificate(), iss, priv.Public(), issPriv)
+	require.NoError(t, err)
+
+	// Create expected subject
+	assert.Equal(t, pkix.Name{
+		CommonName: "commonName",
+		Names: []pkix.AttributeTypeAndValue{
+			{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "commonName"},
+			{Type: asn1.ObjectIdentifier{1, 2, 840, 113556, 1, 4, 656}, Value: "foo@upn.com"},
+		},
+	}, crt.Subject)
+
+	// Create expected SAN extension
+	var rawValues []asn1.RawValue
+	for _, san := range []SubjectAlternativeName{
+		{Type: DNSType, Value: "foo.com"},
+		{Type: DNSType, Value: "www.foo.com"},
+		{Type: EmailType, Value: "root@foo.com"},
+		{Type: DirectoryNameType, ASN1Value: []byte(`{"country":"US","organization":"ACME","commonName":"rocket"}`)},
+		{Type: PermanentIdentifierType, Value: "0123456789"},
+		{Type: HardwareModuleNameType, ASN1Value: []byte(`{"type":"1.2.3.1", "serialNumber": "MTIzNDU2"}`)},
+		{Type: UserPrincipalNameType, Value: "foo@upn.com"},
+		{Type: "1.2.3.4", Value: "int:123456"},
+	} {
+		rawValue, err := san.RawValue()
+		require.NoError(t, err)
+		rawValues = append(rawValues, rawValue)
+	}
+	rawBytes, err := asn1.Marshal(rawValues)
+	require.NoError(t, err)
+
+	var found int
+	for _, ext := range crt.Extensions {
+		switch {
+		case ext.Id.Equal(oidExtensionSubjectAltName):
+			assert.Equal(t, pkix.Extension{
+				Id:    oidExtensionSubjectAltName,
+				Value: rawBytes,
+			}, ext)
+		case ext.Id.Equal([]int{1, 2, 3, 4}):
+			assert.Equal(t, pkix.Extension{
+				Id:    ext.Id,
+				Value: marshal(t, "foo.com", "printable"),
+			}, ext)
+		case ext.Id.Equal([]int{1, 2, 3, 5}):
+			assert.Equal(t, pkix.Extension{
+				Id:    ext.Id,
+				Value: marshal(t, "foo.com", ""),
+			}, ext)
+		case ext.Id.Equal([]int{1, 2, 3, 6}):
+			assert.Equal(t, pkix.Extension{
+				Id:    ext.Id,
+				Value: marshal(t, []any{"foo.com", 123456}, ""),
+			}, ext)
+		case ext.Id.Equal([]int{1, 2, 3, 7}):
+			assert.Equal(t, pkix.Extension{
+				Id: ext.Id,
+				Value: marshal(t, struct {
+					String string `asn1:"utf8"`
+					Int    int
+				}{"foo.com", 123456}, "set"),
+			}, ext)
+		default:
+			continue
+		}
+		found++
+	}
+
+	assert.Equal(t, 5, found, "some of the expected extension where not found")
+
+}
+
 func TestNewCertificateFromX509(t *testing.T) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
