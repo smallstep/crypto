@@ -370,6 +370,12 @@ func TestSubjectAlternativeName_RawValue(t *testing.T) {
 		{"otherName whitespaces", fields{"1.2.3.4", ",,printable:abc1234", nil}, asn1.RawValue{
 			FullBytes: append([]byte{160, 16, 6, 3, 42, 3, 4, 160, 9, 19, 7}, []byte("abc1234")...),
 		}, false},
+		{"otherName bool:true", fields{"1.2.3.4", "bool:true", nil}, asn1.RawValue{
+			FullBytes: []byte{160, 10, 6, 3, 42, 3, 4, 160, 3, 1, 1, 255},
+		}, false},
+		{"otherName boolean:false", fields{"1.2.3.4", "boolean:false", nil}, asn1.RawValue{
+			FullBytes: []byte{160, 10, 6, 3, 42, 3, 4, 160, 3, 1, 1, 0},
+		}, false},
 		{"fail dn", fields{"dn", "1234", nil}, asn1.RawValue{}, true},
 		{"fail x400Address", fields{"x400Address", "1234", nil}, asn1.RawValue{}, true},
 		{"fail ediPartyName", fields{"ediPartyName", "1234", nil}, asn1.RawValue{}, true},
