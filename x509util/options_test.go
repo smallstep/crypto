@@ -79,7 +79,7 @@ func TestWithTemplate(t *testing.T) {
 		{"id": "1.2.3.4", "value": {{ asn1Enc (first .Insecure.CR.DNSNames) | toJson }}},
 		{"id": "1.2.3.5", "value": {{ asn1Marshal (first .Insecure.CR.DNSNames) | toJson }}},
 		{"id": "1.2.3.6", "value": {{ asn1Seq (asn1Enc (first .Insecure.CR.DNSNames)) (asn1Enc "int:123456") | toJson }}},
-		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1Enc "int:123456") | toJson }}}
+		{"id": "1.2.3.7", "value": {{ asn1Set (asn1Marshal (first .Insecure.CR.DNSNames) "utf8") (asn1Enc "bool:true") | toJson }}}
 	]
 }`
 
@@ -181,7 +181,7 @@ func TestWithTemplate(t *testing.T) {
 		{"id": "1.2.3.4", "value": "Ewdmb28uY29t"},
 		{"id": "1.2.3.5", "value": "Ewdmb28uY29t"},
 		{"id": "1.2.3.6", "value": "MA4TB2Zvby5jb20CAwHiQA=="},
-		{"id": "1.2.3.7", "value": "MQ4MB2Zvby5jb20CAwHiQA=="}
+		{"id": "1.2.3.7", "value": "MQwMB2Zvby5jb20BAf8="}
 	]
 }`),
 		}, false},
@@ -340,9 +340,11 @@ func Test_asn1Encode(t *testing.T) {
 		{"ok generalized", args{"generalized:" + now.Format(time.RFC3339)}, mustMarshal(t, now, "generalized"), false},
 		{"ok int", args{"int:1234"}, mustMarshal(t, 1234, ""), false},
 		{"ok numeric", args{"numeric:1234"}, mustMarshal(t, "1234", "numeric"), false},
+		{"ok bool", args{"bool:true"}, mustMarshal(t, true, ""), false},
 		{"ok raw", args{"raw:" + mustMarshal(t, 1234, "")}, mustMarshal(t, 1234, ""), false},
 		{"fail numeric", args{"numeric:not-a-number"}, "", true},
 		{"fail time", args{"utc:not-a-time"}, "", true},
+		{"fail bool", args{"bool:untrue"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -375,6 +377,7 @@ func Test_asn1Marshal(t *testing.T) {
 		{"ok time", args{now, nil}, mustMarshal(t, now, "utc"), false},
 		{"ok seq", args{[]any{"string", 1234}, nil}, mustMarshal(t, []any{"string", 1234}, ""), false},
 		{"ok set", args{[]any{"string", 1234}, []string{"set"}}, mustMarshal(t, []any{"string", 1234}, "set"), false},
+		{"ok bool", args{false, nil}, mustMarshal(t, false, ""), false},
 		{"fail numeric", args{"string", []string{"numeric"}}, "", true},
 	}
 	for _, tt := range tests {
