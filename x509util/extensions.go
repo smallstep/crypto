@@ -495,8 +495,8 @@ func parseFieldParameters(str string) (p asn1Params) {
 			p.Type = part
 			params = append(params, part)
 		// types that are parsed from the string.
-		// int and oid are not a type that can be set in a tag.
-		case "int", "oid":
+		// int, oid, and bool are not a type that can be set in a tag.
+		case "int", "oid", "bool", "boolean":
 			p.Type = part
 		// types parsed from the string as a time
 		case "utc", "generalized":
@@ -574,6 +574,12 @@ func marshalValue(value, params string) ([]byte, error) {
 			}
 		}
 		return asn1.MarshalWithParams(t, p.Params)
+	case "bool", "boolean":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid bool value")
+		}
+		return asn1.MarshalWithParams(b, p.Params)
 	default: // if it's an unknown type, default to printable
 		if !isPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
