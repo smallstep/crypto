@@ -26,7 +26,7 @@ require (
 	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.13.0
 	google.golang.org/api v0.147.0
-	google.golang.org/grpc v1.58.3
+	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
@@ -46,7 +46,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/certificate-transparency-go v1.1.2 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/uuid v1.3.1 // indirect
