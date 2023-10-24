@@ -13,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/smallstep/assert"
+	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -255,6 +256,65 @@ func TestValidateX5C(t *testing.T) {
 			} else {
 				assert.Nil(t, tc.err)
 				assert.Equals(t, []string{`MIIDCTCCAfGgAwIBAgIQIdY8a5pFZ/FGUowvuGdJvTANBgkqhkiG9w0BAQsFADAPMQ0wCwYDVQQDEwR0ZXN0MB4XDTIwMDQyMTA0MDg0MFoXDTIwMDQyMjA0MDg0MFowDzENMAsGA1UEAxMEdGVzdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL0zsTneONS0eNto7LMlD8GtcUYXqILSEWD07v0HgbIguBT+yC8BozpAT3lyB+oBBZkFLzfEHAteULngPwlq0R5hsEZJ6lcL1Z9WXwyLE4nkEndIPMA+zQmHnOzoqgKy7pIqUnFqSGXtGp384fFF3Y0/qjeFciLnmf+Wn0PneaToY1rDj2Eb9sFf5UDiVaSLT1NzpSyXOS5uGbGplPe+WE8uEb3u3Vg2VGbEPau2l5MPYroCwSyxqlpKsmzJ558uvjQ7KpRExSNdb6f0iRfdRMbw3LahrxhbKV1mmM6GD5onmbgBCZpw5htOJj1MzVFZOdnoTHmMl/Y/IUdMjv0jG/UCAwEAAaNhMF8wDgYDVR0PAQH/BAQDAgWgMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAdBgNVHQ4EFgQUXlQCQL6RymQZnvqY15F/GlE3H4UwDwYDVR0RBAgwBoIEdGVzdDANBgkqhkiG9w0BAQsFAAOCAQEArVmOL5L+NVsnCcUWfOVXQYg/6P8AGdPJBECk+BE5pbtMg0GuH5Ml/vCTBqD+diWC4O0TZDxPMhXH5Ehl+67hcqeu4riwB2WvvKOlAqHqIuqVDRHtxwknvS1efstBKVdDC6aAfIa5f2dmCSxvd8elpcnufEefLGALTSPxg4uMVvpfWUkkmpmvOUpI3gNrlvP2H4KZk7hKYz+J4x2jv2pdPWUAtt1U4M8oQ4BCPrrHSxznw2Q5mdCMIB64ZeYnZ+rAMQS6WnZy1fTC3d0pCs0UCXH5JefBpha1clqHDUkxHA6/1EYYsSlKGFaPEmfv2uw7MFz0o+yntG34KVdsC8HO3g==`}, certs)
+			}
+		})
+	}
+}
+
+func TestValidateJWK_sig(t *testing.T) {
+	mustSigner := func(kty, crv string, size int) crypto.Signer {
+		signer, err := keyutil.GenerateSigner(kty, crv, size)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signer
+	}
+
+	rsaKey := mustSigner("RSA", "", 2048)
+	p256Key := mustSigner("EC", "P-256", 0)
+	p384key := mustSigner("EC", "P-384", 0)
+	p521Key := mustSigner("EC", "P-521", 0)
+	edKey := mustSigner("OKP", "Ed25519", 0)
+
+	type args struct {
+		jwk *JSONWebKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{"ok ES256", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: p256Key}}, false},
+		{"ok ES384", args{&JSONWebKey{Use: "sig", Algorithm: ES384, Key: p384key}}, false},
+		{"ok ES512", args{&JSONWebKey{Use: "sig", Algorithm: ES512, Key: p521Key}}, false},
+		{"ok ES256 pub", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: p256Key.Public()}}, false},
+		{"ok ES384 pub", args{&JSONWebKey{Use: "sig", Algorithm: ES384, Key: p384key.Public()}}, false},
+		{"ok ES512 pub", args{&JSONWebKey{Use: "sig", Algorithm: ES512, Key: p521Key.Public()}}, false},
+		{"ok RS256", args{&JSONWebKey{Use: "sig", Algorithm: RS256, Key: rsaKey}}, false},
+		{"ok RS384", args{&JSONWebKey{Use: "sig", Algorithm: RS384, Key: rsaKey.Public()}}, false},
+		{"ok RS512", args{&JSONWebKey{Use: "sig", Algorithm: RS512, Key: rsaKey}}, false},
+		{"ok PS256", args{&JSONWebKey{Use: "sig", Algorithm: PS256, Key: rsaKey.Public()}}, false},
+		{"ok PS384", args{&JSONWebKey{Use: "sig", Algorithm: PS384, Key: rsaKey}}, false},
+		{"ok PS512", args{&JSONWebKey{Use: "sig", Algorithm: PS512, Key: rsaKey.Public()}}, false},
+		{"ok EdDSA", args{&JSONWebKey{Use: "sig", Algorithm: EdDSA, Key: edKey}}, false},
+		{"ok EdDSA pub", args{&JSONWebKey{Use: "sig", Algorithm: EdDSA, Key: edKey.Public()}}, false},
+		{"ok HS256", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: []byte("raw-key")}}, false},
+		{"ok HS384", args{&JSONWebKey{Use: "sig", Algorithm: HS384, Key: []byte("raw-key")}}, false},
+		{"ok HS512", args{&JSONWebKey{Use: "sig", Algorithm: HS512, Key: []byte("raw-key")}}, false},
+		{"ok OpaqueSigner", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: NewOpaqueSigner(p256Key)}}, false},
+		{"fail alg empty", args{&JSONWebKey{Use: "sig", Key: p256Key}}, true},
+		{"fail ECDSA", args{&JSONWebKey{Use: "sig", Algorithm: ES384, Key: p256Key}}, true},
+		{"fail ECDSA pub", args{&JSONWebKey{Use: "sig", Algorithm: ES384, Key: p256Key.Public()}}, true},
+		{"fail RSA", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: rsaKey}}, true},
+		{"fail Ed25519", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: edKey}}, true},
+		{"fail bytes", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: []byte("raw-key")}}, true},
+		{"fail OpaqueSigner", args{&JSONWebKey{Use: "sig", Algorithm: RS256, Key: p256Key}}, true},
+		{"fail unknown", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: "raw-key"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateJWK(tt.args.jwk); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateJWK() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
