@@ -1,8 +1,31 @@
 package apiv1
 
 import (
+	"context"
+	"crypto"
+	"os"
 	"testing"
 )
+
+type fakeKM struct{}
+
+func (f *fakeKM) GetPublicKey(req *GetPublicKeyRequest) (crypto.PublicKey, error) {
+	return nil, NotImplementedError{}
+}
+func (f *fakeKM) CreateKey(req *CreateKeyRequest) (*CreateKeyResponse, error) {
+	return nil, NotImplementedError{}
+}
+func (f *fakeKM) CreateSigner(req *CreateSignerRequest) (crypto.Signer, error) {
+	return nil, NotImplementedError{}
+}
+func (f *fakeKM) Close() error { return NotImplementedError{} }
+
+func TestMain(m *testing.M) {
+	Register(Type("fake"), func(ctx context.Context, opts Options) (KeyManager, error) {
+		return &fakeKM{}, nil
+	})
+	os.Exit(m.Run())
+}
 
 func TestOptions_Validate(t *testing.T) {
 	tests := []struct {
@@ -111,6 +134,44 @@ func TestErrAlreadyExists_Error(t *testing.T) {
 			}
 			if got := e.Error(); got != tt.want {
 				t.Errorf("ErrAlreadyExists.Error() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTypeOf(t *testing.T) {
+	type args struct {
+		rawuri string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    Type
+		wantErr bool
+	}{
+		{"ok softkms", args{"softkms:foo=bar"}, SoftKMS, false},
+		{"ok cloudkms", args{"CLOUDKMS:"}, CloudKMS, false},
+		{"ok amazonkms", args{"awskms:foo=bar"}, AmazonKMS, false},
+		{"ok pkcs11", args{"PKCS11:foo=bar"}, PKCS11, false},
+		{"ok yubikey", args{"yubikey:foo=bar"}, YubiKey, false},
+		{"ok sshagentkms", args{"sshagentkms:"}, SSHAgentKMS, false},
+		{"ok azurekms", args{"azurekms:foo=bar"}, AzureKMS, false},
+		{"ok capi", args{"CAPI:foo-bar"}, CAPIKMS, false},
+		{"ok tpmkms", args{"tpmkms:"}, TPMKMS, false},
+		{"ok registered", args{"FAKE:"}, Type("fake"), false},
+		{"fail empty", args{""}, DefaultKMS, true},
+		{"fail parse", args{"softkms"}, DefaultKMS, true},
+		{"fail kms", args{"foobar:foo=bar"}, DefaultKMS, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := TypeOf(tt.args.rawuri)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TypeOf() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("TypeOf() = %v, want %v", got, tt.want)
 			}
 		})
 	}
