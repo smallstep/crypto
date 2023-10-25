@@ -740,3 +740,38 @@ func BundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, erro
 
 	return bundlePEM, modified, nil
 }
+
+// UnbundleCertificate removes PEM-encoded certificates from a PEM-encoded
+// certificate bundle.
+func UnbundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, error) {
+	drop := make(map[[sha256.Size224]byte]bool, len(certsPEM))
+	for i := range certsPEM {
+		cert, err := ParseCertificate(certsPEM[i])
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid certificate %d: %w", i, err)
+		}
+		drop[sha256.Sum224(cert.Raw)] = true
+	}
+
+	var modified bool
+	var keep []byte
+
+	bundle, err := ParseCertificateBundle(bundlePEM)
+	if err != nil {
+		return nil, false, fmt.Errorf("invalid bundle: %w", err)
+	}
+	for _, cert := range bundle {
+		sum := sha256.Sum224(cert.Raw)
+		if drop[sum] {
+			modified = true
+			continue
+		}
+		block, err := Serialize(cert)
+		if err != nil {
+			return nil, false, err
+		}
+		keep = append(keep, pem.EncodeToMemory(block)...)
+	}
+
+	return keep, modified, nil
+}

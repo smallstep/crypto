@@ -1225,3 +1225,55 @@ func TestBundleCertificate(t *testing.T) {
 		})
 	}
 }
+
+func TestUnbundleCertificate(t *testing.T) {
+	tests := []struct {
+		name       string
+		bundle     string
+		certs      []string
+		wantBundle string
+		modified   bool
+		err        error
+	}{
+		{"remove one leave one", "testdata/bundle.crt", []string{"testdata/bundle-1st.crt"}, "testdata/bundle-2nd.crt", true, nil},
+		{"remove two leave none", "testdata/bundle.crt", []string{"testdata/bundle-1st.crt", "testdata/bundle-2nd.crt"}, "", true, nil},
+		{"remove none", "testdata/bundle.crt", []string{"testdata/ca.crt"}, "testdata/bundle.crt", false, nil},
+		{"bad cert", "testdata/bundle.crt", []string{"testdata/badca.crt"}, "", false, errors.New("invalid certificate 0")},
+		{"bad bundle", "testdata/badca.crt", []string{"testdata/ca.crt"}, "", false, errors.New("invalid bundle")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bundlePEM, err := os.ReadFile(tc.bundle)
+			if err != nil {
+				t.Fatal(err)
+			}
+			certsPEM := make([][]byte, len(tc.certs))
+			for i, fn := range tc.certs {
+				certsPEM[i], err = os.ReadFile(fn)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, modified, err := UnbundleCertificate(bundlePEM, certsPEM...)
+			if tc.err != nil {
+				if assert.Error(t, err) {
+					assert.HasPrefix(t, err.Error(), tc.err.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equals(t, tc.modified, modified)
+				if tc.wantBundle == "" {
+					assert.Nil(t, got)
+				} else {
+					want, err := os.ReadFile(tc.wantBundle)
+					if err != nil {
+						t.Fatal(err)
+					}
+					assert.Equals(t, strings.TrimSpace(string(want)), strings.TrimSpace(string(got)))
+				}
+			}
+		})
+	}
+}
