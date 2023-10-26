@@ -749,11 +749,13 @@ func UnbundleCertificate(bundlePEM []byte, certsPEM ...[]byte) ([]byte, bool, er
 	}
 	drop := make(map[[sha256.Size224]byte]bool, len(certsPEM))
 	for i := range certsPEM {
-		cert, err := ParseCertificate(certsPEM[i])
+		certs, err := ParseCertificateBundle(certsPEM[i])
 		if err != nil {
 			return nil, false, fmt.Errorf("invalid certificate %d: %w", i, err)
 		}
-		drop[sha256.Sum224(cert.Raw)] = true
+		for _, cert := range certs {
+			drop[sha256.Sum224(cert.Raw)] = true
+		}
 	}
 
 	var modified bool
