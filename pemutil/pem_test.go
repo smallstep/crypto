@@ -1238,6 +1238,7 @@ func TestUnbundleCertificate(t *testing.T) {
 		{"remove one leave one", "testdata/bundle.crt", []string{"testdata/bundle-1st.crt"}, "testdata/bundle-2nd.crt", true, nil},
 		{"remove two leave none", "testdata/bundle.crt", []string{"testdata/bundle-1st.crt", "testdata/bundle-2nd.crt"}, "", true, nil},
 		{"remove none", "testdata/bundle.crt", []string{"testdata/ca.crt"}, "testdata/bundle.crt", false, nil},
+		{"none to remove", "testdata/bundle.crt", []string{}, "testdata/bundle.crt", false, nil},
 		{"bad cert", "testdata/bundle.crt", []string{"testdata/badca.crt"}, "", false, errors.New("invalid certificate 0")},
 		{"bad bundle", "testdata/badca.crt", []string{"testdata/ca.crt"}, "", false, errors.New("invalid bundle")},
 	}
