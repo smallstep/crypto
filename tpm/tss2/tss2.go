@@ -8,6 +8,12 @@ import (
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
+var (
+	oidLoadableKey   = asn1.ObjectIdentifier{2, 23, 133, 10, 1, 3}
+	oidImportableKey = asn1.ObjectIdentifier{2, 23, 133, 10, 1, 4}
+	oidSealedKey     = asn1.ObjectIdentifier{2, 23, 133, 10, 1, 5}
+)
+
 // TPMKey is defined in https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html#section-3.1:
 //
 //	TPMKey ::= SEQUENCE {
@@ -23,9 +29,9 @@ import (
 type TPMKey struct {
 	Type       asn1.ObjectIdentifier
 	EmptyAuth  bool            `asn1:"optional,explicit,tag:0"`
-	Policy     []TPMPolicy     `asn1:"optional,explicit,tag:0"`
-	Secret     []byte          `asn1:"optional,explicit,tag:0"`
-	AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:0"`
+	Policy     []TPMPolicy     `asn1:"optional,explicit,tag:1"`
+	Secret     []byte          `asn1:"optional,explicit,tag:2"`
+	AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
 	Parent     int
 	Pubkey     []byte
 	Privkey    []byte
@@ -53,7 +59,10 @@ type TPMAuthPolicy struct {
 	Policy []TPMPolicy `asn1:"explicit,tag:1"`
 }
 
-func ParseTSS2PrivateKey(derBytes []byte) (*TPMKey, error) {
+// ParsePrivateKey parses a single TPM key from the given ASN.1 DER data.
+func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
+	var err error
+
 	input := cryptobyte.String(derBytes)
 	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("malformed TSS2 key")
@@ -70,57 +79,29 @@ func ParseTSS2PrivateKey(derBytes []byte) (*TPMKey, error) {
 		}
 	}
 
-	var err error
-	var isPresent bool
-
 	// TODO(mariano): generate key with policy
 	if tag, ok := readOptionalTag(&input, 1); ok {
 		var policy cryptobyte.String
-		if !tag.ReadOptionalASN1(&policy, &isPresent, cryptobyte_asn1.SEQUENCE) {
+		if !tag.ReadASN1(&policy, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("malformed TSS2 policy")
 		}
-		if isPresent {
-			key.Policy, err = readTPMPolicySequence(&policy)
-			if err != nil {
-				return nil, err
-			}
+		key.Policy, err = readTPMPolicySequence(&policy)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	// TODO(mariano): generate key with secret
 	if tag, ok := readOptionalTag(&input, 2); ok {
-		if !tag.ReadOptionalASN1OctetString(&key.Secret, &isPresent, cryptobyte_asn1.OCTET_STRING) {
+		if key.Secret, ok = readOctetString(&tag); !ok {
 			return nil, errors.New("malformed TSS2 secret")
 		}
 	}
 
 	// TODO(mariano): generate key with authPolicy
 	if tag, ok := readOptionalTag(&input, 3); ok {
-		var authPolicy cryptobyte.String
-		if !tag.ReadOptionalASN1(&authPolicy, &isPresent, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("malformed TSS2 authPolicy")
-		}
-		if isPresent {
-			var policy cryptobyte.String
-			for !authPolicy.Empty() {
-				var ap TPMAuthPolicy
-				var seq cryptobyte.String
-				if !policy.ReadASN1Element(&seq, cryptobyte_asn1.SEQUENCE) {
-					return nil, errors.New("malformed TSS2 authPolicy")
-				}
-				var name cryptobyte.String
-				if !seq.ReadOptionalASN1(&name, &isPresent, cryptobyte_asn1.UTF8String) {
-					return nil, errors.New("malformed TSS2 authPolicy name")
-				}
-				var policySeq cryptobyte.String
-				if !seq.ReadASN1Element(&policySeq, cryptobyte_asn1.SEQUENCE) {
-					return nil, errors.New("malformed TSS2 authPolicy policy")
-				}
-				if ap.Policy, err = readTPMPolicySequence(&policySeq); err != nil {
-					return nil, errors.New("malformed TSS2 authPolicy policy")
-				}
-				key.AuthPolicy = append(key.AuthPolicy, ap)
-			}
+		if key.AuthPolicy, err = readTPMAuthPolicy(&tag); err != nil {
+			return nil, err
 		}
 	}
 
@@ -140,7 +121,8 @@ func ParseTSS2PrivateKey(derBytes []byte) (*TPMKey, error) {
 	return key, nil
 }
 
-func MarshalTSS2PrivateKey(key TPMKey) ([]byte, error) {
+// MarshalPrivateKey converts the give key to a TSS2 ASN.1 DER form.
+func MarshalPrivateKey(key TPMKey) ([]byte, error) {
 	return asn1.Marshal(key)
 }
 
@@ -183,23 +165,65 @@ func readASN1Boolean(input *cryptobyte.String, out *bool) bool {
 }
 
 func readTPMPolicySequence(input *cryptobyte.String) ([]TPMPolicy, error) {
-	var (
-		ok       bool
-		policies []TPMPolicy
-	)
+	var policies []TPMPolicy
 	for !input.Empty() {
 		var p TPMPolicy
 		var seq cryptobyte.String
-		if !input.ReadASN1Element(&seq, cryptobyte_asn1.SEQUENCE) {
+		if !input.ReadASN1(&seq, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("malformed TSS2 policy")
 		}
-		if !seq.ReadASN1Integer(&p.CommandCode) {
+		tag, ok := readOptionalTag(&seq, 0)
+		if !ok || !tag.ReadASN1Integer(&p.CommandCode) {
 			return nil, errors.New("malformed TSS2 policy commandCode")
 		}
-		if p.CommandPolicy, ok = readOctetString(&seq); ok {
+		tag, ok = readOptionalTag(&seq, 1)
+		if !ok {
+			return nil, errors.New("malformed TSS2 policy commandPolicy")
+		}
+		if p.CommandPolicy, ok = readOctetString(&tag); !ok {
 			return nil, errors.New("malformed TSS2 policy commandPolicy")
 		}
 		policies = append(policies, p)
 	}
 	return policies, nil
+}
+
+func readTPMAuthPolicy(input *cryptobyte.String) ([]TPMAuthPolicy, error) {
+	var (
+		err          error
+		authPolicy   cryptobyte.String
+		authPolicies []TPMAuthPolicy
+	)
+	if !input.ReadASN1(&authPolicy, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("malformed TSS2 authPolicy")
+	}
+
+	for !authPolicy.Empty() {
+		var ap TPMAuthPolicy
+		var seq cryptobyte.String
+		if !authPolicy.ReadASN1(&seq, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("malformed TSS2 authPolicy")
+		}
+
+		var name cryptobyte.String
+		if tag, ok := readOptionalTag(&seq, 0); ok {
+			if !tag.ReadASN1(&name, cryptobyte_asn1.UTF8String) {
+				return nil, errors.New("malformed TSS2 authPolicy name")
+			}
+			ap.Name = string(name)
+		}
+
+		var policySeq cryptobyte.String
+		if tag, ok := readOptionalTag(&seq, 1); ok {
+			if !tag.ReadASN1(&policySeq, cryptobyte_asn1.SEQUENCE) {
+				return nil, errors.New("malformed TSS2 authPolicy policy")
+			}
+			if ap.Policy, err = readTPMPolicySequence(&policySeq); err != nil {
+				return nil, errors.New("malformed TSS2 authPolicy policy")
+			}
+		}
+		authPolicies = append(authPolicies, ap)
+	}
+
+	return authPolicies, nil
 }
