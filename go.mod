@@ -3,7 +3,7 @@ module go.step.sm/crypto
 go 1.20
 
 require (
-	cloud.google.com/go/kms v1.15.3
+	cloud.google.com/go/kms v1.15.4
 	filippo.io/edwards25519 v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.8.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0
