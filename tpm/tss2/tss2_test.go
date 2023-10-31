@@ -1,11 +1,13 @@
 package tss2
 
 import (
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // key generated using:
@@ -71,7 +73,7 @@ func TestParsePrivateKey(t *testing.T) {
 			Type:      oidLoadableKey,
 			EmptyAuth: true,
 			Parent:    1073741825,
-			Pubkey: []byte{
+			PublicKey: []byte{
 				0x01, 0x16, 0x00, 0x01, 0x00, 0x0b, 0x00, 0x06, 0x00, 0x72, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10,
 				0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xc5, 0xa2, 0xef, 0xa8, 0xdf, 0x87, 0x91, 0x4b,
 				0x23, 0xf3, 0x70, 0x90, 0xc7, 0x12, 0xb0, 0x8c, 0x1f, 0xce, 0x38, 0x39, 0xcc, 0xac, 0xbc, 0xc2,
@@ -91,7 +93,7 @@ func TestParsePrivateKey(t *testing.T) {
 				0x9a, 0xd6, 0x9f, 0x2a, 0x25, 0xc7, 0x97, 0x1b, 0xea, 0x68, 0x82, 0xc4, 0xb0, 0x16, 0xad, 0xc8,
 				0x54, 0xf3, 0x46, 0xc6, 0x8b, 0x48, 0x7e, 0x07,
 			},
-			Privkey: []byte{
+			PrivateKey: []byte{
 				0x00, 0xde, 0x00, 0x20, 0x8c, 0x6d, 0xe8, 0x76, 0xed, 0xbd, 0x35, 0x75, 0x29, 0x86, 0xae, 0xd7,
 				0xed, 0x26, 0x75, 0x3d, 0x64, 0x96, 0x97, 0xaf, 0xab, 0x6b, 0xba, 0xcf, 0xd7, 0x6e, 0x91, 0x21,
 				0xf9, 0x06, 0x3f, 0x35, 0x00, 0x10, 0x66, 0x54, 0x41, 0xbf, 0xca, 0xc0, 0xd8, 0x68, 0x9c, 0xc2,
@@ -112,7 +114,7 @@ func TestParsePrivateKey(t *testing.T) {
 			Type:      oidLoadableKey,
 			EmptyAuth: true,
 			Parent:    1073741825,
-			Pubkey: []byte{
+			PublicKey: []byte{
 				0x00, 0x56, 0x00, 0x23, 0x00, 0x0b, 0x00, 0x06, 0x00, 0x72, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10,
 				0x00, 0x03, 0x00, 0x10, 0x00, 0x20, 0xee, 0xcb, 0x6a, 0xea, 0xfb, 0x87, 0x65, 0xc0, 0xca, 0xb6,
 				0x53, 0x03, 0xc8, 0x3a, 0x40, 0xc9, 0x2c, 0x34, 0xda, 0x14, 0xbe, 0x43, 0x19, 0xe3, 0x19, 0xe3,
@@ -120,7 +122,7 @@ func TestParsePrivateKey(t *testing.T) {
 				0x93, 0x6d, 0xb3, 0xb5, 0x94, 0xa2, 0xcd, 0x24, 0x39, 0xed, 0x3f, 0xb4, 0x5f, 0xc7, 0x7e, 0x17,
 				0xd2, 0x41, 0x3a, 0xac, 0x1e, 0x8f, 0xeb, 0x2a,
 			},
-			Privkey: []byte{
+			PrivateKey: []byte{
 				0x00, 0x7e, 0x00, 0x20, 0x6b, 0xf7, 0x19, 0xfa, 0x47, 0x65, 0x75, 0xdc, 0x4a, 0xd2, 0x85, 0xbe,
 				0xf9, 0xa3, 0xe1, 0x32, 0x32, 0xab, 0x45, 0xb1, 0x3c, 0xac, 0xa7, 0x6e, 0x1f, 0x54, 0xd6, 0x7b,
 				0x21, 0x67, 0xc4, 0x04, 0x00, 0x10, 0x79, 0xb5, 0xb4, 0xb4, 0xaa, 0x2a, 0x06, 0x63, 0x6b, 0xfd,
@@ -135,7 +137,7 @@ func TestParsePrivateKey(t *testing.T) {
 			Type:      oidLoadableKey,
 			EmptyAuth: false,
 			Parent:    1073741825,
-			Pubkey: []byte{
+			PublicKey: []byte{
 				0x00, 0x56, 0x00, 0x23, 0x00, 0x0b, 0x00, 0x06, 0x00, 0x72, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10,
 				0x00, 0x03, 0x00, 0x10, 0x00, 0x20, 0x88, 0x2a, 0xd5, 0x59, 0x65, 0x41, 0x10, 0x93, 0xe3, 0x91,
 				0x9b, 0x2e, 0x5a, 0x75, 0x5a, 0xe7, 0x74, 0x8e, 0x24, 0x9f, 0xa2, 0x30, 0x70, 0xa7, 0x53, 0x18,
@@ -143,7 +145,7 @@ func TestParsePrivateKey(t *testing.T) {
 				0x7c, 0xe9, 0x02, 0xb0, 0x3c, 0x1a, 0x35, 0x4f, 0x50, 0xb1, 0xf2, 0xee, 0x92, 0x6e, 0x6e, 0xf4,
 				0xb6, 0x5b, 0xb4, 0xf1, 0x9b, 0x37, 0x25, 0x45,
 			},
-			Privkey: []byte{
+			PrivateKey: []byte{
 				0x00, 0x7e, 0x00, 0x20, 0xd5, 0x5e, 0x82, 0xbc, 0x46, 0x91, 0x39, 0x5f, 0x18, 0xc1, 0x71, 0xf7,
 				0x87, 0xa6, 0x2a, 0x7d, 0x0f, 0x3d, 0xa3, 0xec, 0x05, 0x23, 0xd2, 0x81, 0x35, 0x44, 0xa9, 0x43,
 				0x83, 0xff, 0x9d, 0x62, 0x00, 0x10, 0x77, 0xd7, 0x3d, 0x9a, 0x08, 0xa8, 0x25, 0xcf, 0x30, 0x14,
@@ -164,16 +166,16 @@ func TestParsePrivateKey(t *testing.T) {
 	}
 }
 
-func TestMarshalParse(t *testing.T) {
-	modKey := func(fn func(key *TPMKey)) TPMKey {
-		fakeKey := TPMKey{
-			Type:      oidLoadableKey,
-			EmptyAuth: true,
-			Parent:    1234,
-			Pubkey:    []byte("pubkey"),
-			Privkey:   []byte("privkey"),
+func TestParsePrivateKey_marshal(t *testing.T) {
+	modKey := func(fn func(key *TPMKey)) *TPMKey {
+		fakeKey := &TPMKey{
+			Type:       oidLoadableKey,
+			EmptyAuth:  true,
+			Parent:     1234,
+			PublicKey:  []byte("pubkey"),
+			PrivateKey: []byte("privkey"),
 		}
-		fn(&fakeKey)
+		fn(fakeKey)
 		return fakeKey
 	}
 
@@ -181,19 +183,19 @@ func TestMarshalParse(t *testing.T) {
 	fakePolicy2 := TPMPolicy{CommandCode: 2, CommandPolicy: []byte("fake-policy-2")}
 
 	type args struct {
-		key TPMKey
+		key *TPMKey
 	}
 	tests := []struct {
 		name      string
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok", args{TPMKey{
-			Type:      oidLoadableKey,
-			EmptyAuth: true,
-			Parent:    1234,
-			Pubkey:    []byte("pubkey"),
-			Privkey:   []byte("privkey"),
+		{"ok", args{&TPMKey{
+			Type:       oidLoadableKey,
+			EmptyAuth:  true,
+			Parent:     1234,
+			PublicKey:  []byte("pubkey"),
+			PrivateKey: []byte("privkey"),
 		}}, assert.NoError},
 		{"ok importable key", args{modKey(func(key *TPMKey) {
 			key.Type = oidImportableKey
@@ -224,7 +226,7 @@ func TestMarshalParse(t *testing.T) {
 				{Name: "auth-2", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 			}
 		})}, assert.NoError},
-		{"ok all", args{TPMKey{
+		{"ok all", args{&TPMKey{
 			Type:      oidLoadableKey,
 			EmptyAuth: true,
 			Policy:    []TPMPolicy{fakePolicy1, fakePolicy2},
@@ -233,9 +235,9 @@ func TestMarshalParse(t *testing.T) {
 				{Name: "auth-1", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 				{Name: "auth-2", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 			},
-			Parent:  1234,
-			Pubkey:  []byte("pubkey"),
-			Privkey: []byte("privkey"),
+			Parent:     1234,
+			PublicKey:  []byte("pubkey"),
+			PrivateKey: []byte("privkey"),
 		}}, assert.NoError},
 	}
 	for _, tt := range tests {
@@ -247,9 +249,112 @@ func TestMarshalParse(t *testing.T) {
 			}
 			fmt.Printf("%x\n", derBytes)
 			got, err := ParsePrivateKey(derBytes)
-			if tt.assertion(t, err) {
-				assert.Equal(t, tt.args.key, *got)
-			}
+			tt.assertion(t, err)
+			assert.Equal(t, tt.args.key, got)
+		})
+	}
+}
+
+func TestParsePrivateKey_noEmptyAuth(t *testing.T) {
+	type tpmKeyTest struct {
+		Type       asn1.ObjectIdentifier
+		EmptyAuth  *bool           `asn1:"optional,explicit,tag:0"`
+		Policy     []TPMPolicy     `asn1:"optional,explicit,tag:1"`
+		Secret     []byte          `asn1:"optional,explicit,tag:2"`
+		AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
+		Parent     int
+		PublicKey  []byte
+		PrivateKey []byte
+	}
+
+	type args struct {
+		key tpmKeyTest
+	}
+	tests := []struct {
+		name       string
+		args       args
+		wantPrefix []byte
+		assertion  assert.ErrorAssertionFunc
+	}{
+		{"ok", args{tpmKeyTest{
+			Type:       oidLoadableKey,
+			Parent:     123,
+			PublicKey:  []byte("public key"),
+			PrivateKey: []byte("private key"),
+		}}, []byte{0x30, 0x24, 0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x3, 0x2, 0x01, 0x7b}, assert.NoError},
+		{"ok full", args{tpmKeyTest{
+			Type: oidImportableKey,
+			Policy: []TPMPolicy{
+				{CommandCode: 1, CommandPolicy: []byte("fake-policy")},
+			},
+			Secret: []byte("secret"),
+			AuthPolicy: []TPMAuthPolicy{{
+				Name:   "auth",
+				Policy: []TPMPolicy{{CommandCode: 1, CommandPolicy: []byte("fake-policy")}},
+			}},
+			Parent:     123,
+			PublicKey:  []byte("public key"),
+			PrivateKey: []byte("private key"),
+		}}, []byte{0x30, 0x70, 0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x4, 0xa1, 0x18, 0x30}, assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := tt.args.key
+
+			derBytes, err := asn1.Marshal(key)
+			require.NoError(t, err)
+
+			prefix := derBytes[:len(tt.wantPrefix)]
+			assert.Equal(t, tt.wantPrefix, prefix)
+
+			got, err := ParsePrivateKey(derBytes)
+			require.NoError(t, err)
+
+			assert.Equal(t, &TPMKey{
+				Type:       key.Type,
+				EmptyAuth:  false,
+				Policy:     key.Policy,
+				Secret:     key.Secret,
+				AuthPolicy: key.AuthPolicy,
+				Parent:     key.Parent,
+				PublicKey:  key.PublicKey,
+				PrivateKey: key.PrivateKey,
+			}, got)
+		})
+	}
+}
+
+func TestMarshalPrivateKey(t *testing.T) {
+	type args struct {
+		key *TPMKey
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{&TPMKey{
+			Type:       oidLoadableKey,
+			EmptyAuth:  true,
+			Parent:     1234,
+			PublicKey:  []byte("pubkey"),
+			PrivateKey: []byte("privkey"),
+		}}, []byte{
+			0x30, 0x22,
+			0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x3,
+			0xa0, 0x3, 0x1, 0x1, 0xff,
+			0x2, 0x2, 0x4, 0xd2,
+			0x4, 0x6, 0x70, 0x75, 0x62, 0x6b, 0x65, 0x79,
+			0x4, 0x7, 0x70, 0x72, 0x69, 0x76, 0x6b, 0x65, 0x79,
+		}, assert.NoError},
+		{"fail nil", args{nil}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MarshalPrivateKey(tt.args.key)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

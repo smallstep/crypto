@@ -33,8 +33,8 @@ type TPMKey struct {
 	Secret     []byte          `asn1:"optional,explicit,tag:2"`
 	AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
 	Parent     int
-	Pubkey     []byte
-	Privkey    []byte
+	PublicKey  []byte
+	PrivateKey []byte
 }
 
 // TPMPolicy is defined in https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html#section-4.1:
@@ -110,11 +110,11 @@ func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 	}
 
 	var ok bool
-	if key.Pubkey, ok = readOctetString(&input); !ok {
+	if key.PublicKey, ok = readOctetString(&input); !ok {
 		return nil, errors.New("malformed TSS2 pubkey")
 	}
 
-	if key.Privkey, ok = readOctetString(&input); !ok {
+	if key.PrivateKey, ok = readOctetString(&input); !ok {
 		return nil, errors.New("malformed TSS2 privkey")
 	}
 
@@ -122,8 +122,11 @@ func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 }
 
 // MarshalPrivateKey converts the give key to a TSS2 ASN.1 DER form.
-func MarshalPrivateKey(key TPMKey) ([]byte, error) {
-	return asn1.Marshal(key)
+func MarshalPrivateKey(key *TPMKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("tpmKey cannot be nil")
+	}
+	return asn1.Marshal(*key)
 }
 
 func readOptionalTag(input *cryptobyte.String, tag int) (cryptobyte.String, bool) {
