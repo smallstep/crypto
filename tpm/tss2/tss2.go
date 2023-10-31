@@ -60,6 +60,11 @@ type TPMAuthPolicy struct {
 }
 
 // ParsePrivateKey parses a single TPM key from the given ASN.1 DER data.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 	var err error
 
@@ -122,6 +127,11 @@ func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 }
 
 // MarshalPrivateKey converts the give key to a TSS2 ASN.1 DER form.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func MarshalPrivateKey(key *TPMKey) ([]byte, error) {
 	if key == nil {
 		return nil, errors.New("tpmKey cannot be nil")
