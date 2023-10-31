@@ -3,7 +3,6 @@ package tss2
 import (
 	"encoding/asn1"
 	"encoding/pem"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -247,7 +246,7 @@ func TestParsePrivateKey_marshal(t *testing.T) {
 				t.Errorf("MarshalPrivateKey() error = %v", err)
 				return
 			}
-			fmt.Printf("%x\n", derBytes)
+
 			got, err := ParsePrivateKey(derBytes)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.args.key, got)
