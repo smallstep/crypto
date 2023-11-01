@@ -126,7 +126,7 @@ func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 	return key, nil
 }
 
-// MarshalPrivateKey converts the give key to a TSS2 ASN.1 DER form.
+// MarshalPrivateKey converts the given key to a TSS2 ASN.1 DER form.
 //
 // # Experimental
 //
