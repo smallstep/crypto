@@ -1,10 +1,9 @@
 package tss2
 
-import (
-	"encoding/pem"
+import "encoding/pem"
 
-	"github.com/google/go-tpm/legacy/tpm2"
-)
+// handle owner is the reserver handler TPM_RH_OWNER.
+const handleOwner = 0x40000001
 
 // TPMOption is the type used to modify a [TPMKey].
 type TPMOption func(*TPMKey)
@@ -14,9 +13,9 @@ func New(pub, priv []byte, opts ...TPMOption) *TPMKey {
 	key := &TPMKey{
 		Type:       oidLoadableKey,
 		EmptyAuth:  true,
-		Parent:     int(tpm2.HandleOwner),
-		PublicKey:  integrityPrefix(pub),
-		PrivateKey: integrityPrefix(priv),
+		Parent:     handleOwner,
+		PublicKey:  addPrefixLength(pub),
+		PrivateKey: addPrefixLength(priv),
 	}
 	for _, fn := range opts {
 		fn(key)
@@ -56,7 +55,7 @@ func EncodeToMemory(pub, priv []byte, opts ...TPMOption) ([]byte, error) {
 	return New(pub, priv, opts...).EncodeToMemory()
 }
 
-func integrityPrefix(b []byte) []byte {
+func addPrefixLength(b []byte) []byte {
 	s := len(b)
 	return append([]byte{byte(s >> 8 & 0xFF), byte(s & 0xFF)}, b...)
 }

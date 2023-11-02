@@ -95,7 +95,6 @@ MCgGBmeBBQoBA6ADAQH/AgRAAAABBAgABnB1YmxpYwQJAAdwcml2YXRl
 			got, err := tt.tpmKey.EncodeToMemory()
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
-			t.Log(string(got))
 		})
 	}
 }

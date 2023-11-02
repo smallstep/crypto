@@ -31,33 +31,55 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 )
 
-var primaryParams = tpm2.Public{
-	Type:       tpm2.AlgECC,
-	NameAlg:    tpm2.AlgSHA256,
-	Attributes: tpm2.FlagStorageDefault,
-	ECCParameters: &tpm2.ECCParams{
-		Symmetric: &tpm2.SymScheme{
-			Alg:     tpm2.AlgAES,
-			KeyBits: 128,
-			Mode:    tpm2.AlgCFB,
+var (
+	// ECCSRKTemplate contains the TCG reference ECC-P256 SRK template.
+	// https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-v2.0-Provisioning-Guidance-Published-v1r1.pdf
+	ECCSRKTemplate = tpm2.Public{
+		Type:       tpm2.AlgECC,
+		NameAlg:    tpm2.AlgSHA256,
+		Attributes: tpm2.FlagStorageDefault | tpm2.FlagNoDA,
+		ECCParameters: &tpm2.ECCParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			Sign: &tpm2.SigScheme{
+				Alg: tpm2.AlgNull,
+			},
+			CurveID: tpm2.CurveNISTP256,
 		},
-		Sign: &tpm2.SigScheme{
-			Alg: tpm2.AlgNull,
+	}
+
+	// RSASRKTemplate contains the TCG reference RSA-2048 SRK template.
+	// https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-v2.0-Provisioning-Guidance-Published-v1r1.pdf
+	RSASRKTemplate = tpm2.Public{
+		Type:       tpm2.AlgRSA,
+		NameAlg:    tpm2.AlgSHA256,
+		Attributes: tpm2.FlagStorageDefault | tpm2.FlagNoDA,
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			ModulusRaw: make([]byte, 256),
+			KeyBits:    2048,
 		},
-		CurveID: tpm2.CurveNISTP256,
-	},
-}
+	}
+)
 
 // Signer implements [crypto.Signer] using a [TPMKey].
 type Signer struct {
-	rw        io.ReadWriter
-	publicKey crypto.PublicKey
-	tpmKey    *TPMKey
+	rw          io.ReadWriter
+	publicKey   crypto.PublicKey
+	tpmKey      *TPMKey
+	srkTemplate tpm2.Public
 }
 
 // CreateSigner creates a new [crypto.Signer] with the given TPM (rw) and
 // [TPMKey]. The caller is responsible of opening and closing the TPM.
-func CreateSigner(rw io.ReadWriter, key *TPMKey) (crypto.Signer, error) {
+func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	switch {
 	case rw == nil:
 		return nil, fmt.Errorf("invalid TPM channel: rw cannot be nil")
@@ -90,10 +112,25 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (crypto.Signer, error) {
 	}
 
 	return &Signer{
-		rw:        rw,
-		publicKey: publicKey,
-		tpmKey:    key,
+		rw:          rw,
+		publicKey:   publicKey,
+		tpmKey:      key,
+		srkTemplate: RSASRKTemplate,
 	}, nil
+}
+
+// SetSRKTemplate allows to change the Storage Primary Key (SRK) template used
+// to load the the public/private blobs into an object in the TPM.
+//
+// It currently defaults to [RSASRKTemplate], the same used ad default in the
+// [go.step.sm/crypto/tpm] package.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (s *Signer) SetSRKTemplate(p tpm2.Public) {
+	s.srkTemplate = p
 }
 
 func (s *Signer) Public() crypto.PublicKey {
@@ -103,7 +140,7 @@ func (s *Signer) Public() crypto.PublicKey {
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	parentHandle := tpmutil.Handle(s.tpmKey.Parent)
 	if !handleIsPersistent(s.tpmKey.Parent) {
-		parentHandle, _, err = tpm2.CreatePrimary(s.rw, parentHandle, tpm2.PCRSelection{}, "", "", primaryParams)
+		parentHandle, _, err = tpm2.CreatePrimary(s.rw, parentHandle, tpm2.PCRSelection{}, "", "", s.srkTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("error creating primary: %w", err)
 		}

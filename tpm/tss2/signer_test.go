@@ -60,7 +60,7 @@ func TestSign(t *testing.T) {
 		assert.NoError(t, rw.Close())
 	})
 
-	keyHnd, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", primaryParams)
+	keyHnd, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", ECCSRKTemplate)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, tpm2.FlushContext(rw, keyHnd))
@@ -84,6 +84,9 @@ func TestSign(t *testing.T) {
 
 			signer, err := CreateSigner(rw, New(pub, priv))
 			require.NoError(t, err)
+
+			// Set the ECC SRK template used for testing.
+			signer.SetSRKTemplate(ECCSRKTemplate)
 
 			hash := crypto.SHA256.New()
 			hash.Write([]byte("rulingly-quailed-cloacal-indifferentist-roughhoused-self-mad"))
@@ -139,11 +142,11 @@ func TestCreateSigner(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      args
-		want      crypto.Signer
+		want      *Signer
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", args{&rw, key}, &Signer{
-			rw: &rw, publicKey: publicKey, tpmKey: key,
+			rw: &rw, publicKey: publicKey, tpmKey: key, srkTemplate: RSASRKTemplate,
 		}, assert.NoError},
 		{"fail rw", args{nil, key}, nil, assert.Error},
 		{"fail type", args{&rw, modKey(func(k *TPMKey) {
@@ -186,7 +189,7 @@ func TestCreateSigner(t *testing.T) {
 			}
 			b, err := p.Encode()
 			if assert.NoError(t, err) {
-				k.PublicKey = integrityPrefix(b)
+				k.PublicKey = addPrefixLength(b)
 			}
 		})}, nil, assert.Error},
 	}
