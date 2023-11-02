@@ -59,6 +59,8 @@ type Signer struct {
 // [TPMKey]. The caller is responsible of opening and closing the TPM.
 func CreateSigner(rw io.ReadWriter, key *TPMKey) (crypto.Signer, error) {
 	switch {
+	case rw == nil:
+		return nil, fmt.Errorf("invalid TPM channel: rw cannot be nil")
 	case !key.Type.Equal(oidLoadableKey):
 		return nil, fmt.Errorf("invalid TSS2 key: type %q is not valid", key.Type.String())
 	case len(key.Policy) != 0:

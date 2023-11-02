@@ -145,6 +145,7 @@ func TestCreateSigner(t *testing.T) {
 		{"ok", args{&rw, key}, &Signer{
 			rw: &rw, publicKey: publicKey, tpmKey: key,
 		}, assert.NoError},
+		{"fail rw", args{nil, key}, nil, assert.Error},
 		{"fail type", args{&rw, modKey(func(k *TPMKey) {
 			k.Type = oidSealedKey
 		})}, nil, assert.Error},
