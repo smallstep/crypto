@@ -89,20 +89,20 @@ func TestSign(t *testing.T) {
 			hash.Write([]byte("rulingly-quailed-cloacal-indifferentist-roughhoused-self-mad"))
 			sum := hash.Sum(nil)
 
-			sig, err := signer.Sign(rand.Reader, sum[:], tt.opts)
+			sig, err := signer.Sign(rand.Reader, sum, tt.opts)
 			require.NoError(t, err)
 
 			switch pub := signer.Public().(type) {
 			case *ecdsa.PublicKey:
 				assert.Equal(t, tpm2.AlgECC, tt.params.Type)
-				assert.True(t, ecdsa.VerifyASN1(pub, sum[:], sig))
+				assert.True(t, ecdsa.VerifyASN1(pub, sum, sig))
 			case *rsa.PublicKey:
 				assert.Equal(t, tpm2.AlgRSA, tt.params.Type)
 				switch tt.params.RSAParameters.Sign.Alg {
 				case tpm2.AlgRSASSA:
-					assert.NoError(t, rsa.VerifyPKCS1v15(pub, tt.opts.HashFunc(), sum[:], sig))
+					assert.NoError(t, rsa.VerifyPKCS1v15(pub, tt.opts.HashFunc(), sum, sig))
 				case tpm2.AlgRSAPSS:
-					assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, sum[:], sig, nil))
+					assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, sum, sig, nil))
 				default:
 					t.Errorf("unexpected RSAParameters.Sign.Alg %v", tt.params.RSAParameters.Sign.Alg)
 				}

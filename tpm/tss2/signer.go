@@ -98,7 +98,7 @@ func (s *Signer) Public() crypto.PublicKey {
 	return s.publicKey
 }
 
-func (s *Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	parentHandle := tpmutil.Handle(s.tpmKey.Parent)
 	if !handleIsPersistent(s.tpmKey.Parent) {
 		parentHandle, _, err = tpm2.CreatePrimary(s.rw, parentHandle, tpm2.PCRSelection{}, "", "", primaryParams)
@@ -147,7 +147,7 @@ func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve ellipt
 func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	h, err := tpm2.HashToAlgorithm(opts.HashFunc())
 	if err != nil {
-		return nil, fmt.Errorf("incorrect hash algorithm: %v", err)
+		return nil, fmt.Errorf("error getting algorithm: %w", err)
 	}
 
 	scheme := &tpm2.SigScheme{
@@ -164,10 +164,10 @@ func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.Si
 
 	sig, err := tpm2.Sign(rw, key, "", digest, nil, scheme)
 	if err != nil {
-		return nil, fmt.Errorf("error creating RSA signature: %v", err)
+		return nil, fmt.Errorf("error creating RSA signature: %w", err)
 	}
 	if sig.RSA == nil {
-		return nil, fmt.Errorf("expected RSA signature, got: %v", sig.Alg)
+		return nil, fmt.Errorf("unexpected signature scheme %v", sig.Alg)
 	}
 	return sig.RSA.Signature, nil
 }
