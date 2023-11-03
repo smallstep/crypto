@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -17,6 +18,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,6 +34,7 @@ import (
 	tpmp "go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/tpm/tss2"
 )
 
 type newSimulatedTPMOption func(t *testing.T, tpm *tpmp.TPM)
@@ -153,13 +157,13 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 			},
 		},
 		{
-			name: "ok/ak2",
+			name: "ok/ak-tss2",
 			fields: fields{
 				tpm: tpmWithAK,
 			},
 			args: args{
 				req: &apiv1.CreateKeyRequest{
-					Name:               "tpmkms:name=ak2;ak=true",
+					Name:               "tpmkms:name=ak2;ak=true;tss2=true",
 					SignatureAlgorithm: apiv1.SHA256WithRSA,
 					Bits:               2048,
 				},
@@ -170,6 +174,12 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					if assert.NotNil(t, r) {
 						assert.Equal(t, "tpmkms:name=ak2;ak=true", r.Name)
 						assert.Equal(t, apiv1.CreateSignerRequest{}, r.CreateSignerRequest)
+						if assert.NotNil(t, r.PublicKey) {
+							assert.IsType(t, &rsa.PublicKey{}, r.PublicKey)
+						}
+						if assert.NotNil(t, r.PrivateKey) {
+							assert.IsType(t, &tss2.TPMKey{}, r.PrivateKey)
+						}
 						return true
 					}
 				}
@@ -177,13 +187,13 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 			},
 		},
 		{
-			name: "ok/ecdsa-key",
+			name: "ok/ecdsa-key-tss2",
 			fields: fields{
 				tpm: tpmWithAK,
 			},
 			args: args{
 				req: &apiv1.CreateKeyRequest{
-					Name:               "tpmkms:name=ecdsa-key",
+					Name:               "tpmkms:name=ecdsa-key;tss2=true",
 					SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 				},
 			},
@@ -195,6 +205,12 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 						assert.Equal(t, "tpmkms:name=ecdsa-key", r.CreateSignerRequest.SigningKey)
 						if assert.NotNil(t, r.CreateSignerRequest.Signer) {
 							assert.Implements(t, (*crypto.Signer)(nil), r.CreateSignerRequest.Signer)
+						}
+						if assert.NotNil(t, r.PublicKey) {
+							assert.IsType(t, &ecdsa.PublicKey{}, r.PublicKey)
+						}
+						if assert.NotNil(t, r.PrivateKey) {
+							assert.IsType(t, &tss2.TPMKey{}, r.PrivateKey)
 						}
 						return true
 					}
@@ -220,6 +236,18 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 				return false
 			},
 			expErr: errors.New("createKeyRequest 'name' cannot be empty"),
+		},
+		{
+			name: "fail/uri",
+			fields: fields{
+				tpm: tpmWithAK,
+			},
+			args: args{
+				req: &apiv1.CreateKeyRequest{
+					Name: "baduri:",
+				},
+			},
+			expErr: errors.New("failed parsing \"baduri:\": URI scheme \"baduri\" is not supported"),
 		},
 		{
 			name: "fail/negative-bits",
@@ -407,8 +435,19 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 
 func TestTPMKMS_CreateSigner(t *testing.T) {
 	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	key, err := tpmWithKey.GetKey(context.Background(), "key1")
 	require.NoError(t, err)
+	tss2Key, err := key.ToTSS2(context.Background())
+	require.NoError(t, err)
+	pemBytes, err := tss2Key.EncodeToMemory()
+	require.NoError(t, err)
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "tss2.pem"), pemBytes, 0600))
+
+	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
 	type fields struct {
 		tpm *tpmp.TPM
 	}
@@ -428,7 +467,7 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 			},
 			args: args{
 				req: &apiv1.CreateSignerRequest{
-					Signer: key,
+					Signer: signer,
 				},
 			},
 		},
@@ -444,6 +483,40 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 			},
 		},
 		{
+			name: "ok/signer-path",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:path=" + filepath.Join(tmp, "tss2.pem"),
+				},
+			},
+		},
+		{
+			name: "ok/signer-pem",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.CreateSignerRequest{
+					SigningKeyPEM: pemBytes,
+				},
+			},
+		},
+		{
+			name: "fail/uri",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.CreateSignerRequest{
+					SigningKey: "baduri:",
+				},
+			},
+			expErr: errors.New("failed parsing \"baduri:\": URI scheme \"baduri\" is not supported"),
+		},
+		{
 			name: "fail/empty",
 			fields: fields{
 				tpm: tpmWithKey,
@@ -453,7 +526,31 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 					SigningKey: "",
 				},
 			},
-			expErr: errors.New("createSignerRequest 'signingKey' cannot be empty"),
+			expErr: errors.New("createSignerRequest 'signingKey' and 'signingKeyPEM' cannot be empty"),
+		},
+		{
+			name: "fail/empty-opaque",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:",
+				},
+			},
+			expErr: errors.New("failed parsing \"tpmkms:\": name and path cannot be empty"),
+		},
+		{
+			name: "fail/missing",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:path=testdata/missing.pem",
+				},
+			},
+			expErr: errors.New("failed reading key from \"testdata/missing.pem\": open testdata/missing.pem: no such file or directory"),
 		},
 		{
 			name: "fail/ak",
@@ -537,6 +634,17 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 			},
 		},
 		{
+			name: "ok/key-path",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:path=testdata/ec-tss2.pem",
+				},
+			},
+		},
+		{
 			name: "fail/empty",
 			fields: fields{
 				tpm: tpmWithKey,
@@ -547,6 +655,42 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 				},
 			},
 			expErr: errors.New("getPublicKeyRequest 'name' cannot be empty"),
+		},
+		{
+			name: "fail/empty-opaque",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:",
+				},
+			},
+			expErr: errors.New("failed parsing \"tpmkms:\": name and path cannot be empty"),
+		},
+		{
+			name: "fail/uri",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "baduri:",
+				},
+			},
+			expErr: errors.New("failed parsing \"baduri:\": URI scheme \"baduri\" is not supported"),
+		},
+		{
+			name: "fail/missing",
+			fields: fields{
+				tpm: tpmWithKey,
+			},
+			args: args{
+				req: &apiv1.GetPublicKeyRequest{
+					Name: "tpmkms:path=testdata/missing.pem",
+				},
+			},
+			expErr: errors.New("failed reading key from \"testdata/missing.pem\": open testdata/missing.pem: no such file or directory"),
 		},
 		{
 			name: "fail/unknown-key",
