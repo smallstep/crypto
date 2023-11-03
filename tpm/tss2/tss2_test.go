@@ -53,12 +53,12 @@ ePVypgEUeJGw68er7UZb4ZSVfoGId6KLX9JE7IwyBkRWLhBU3sLANdgjTqlXUhAD
 mnYo
 -----END TSS2 PRIVATE KEY-----`
 
-func TestParsePrivateKey(t *testing.T) {
-	parsePEM := func(s string) []byte {
-		block, _ := pem.Decode([]byte(s))
-		return block.Bytes
-	}
+func parsePEM(s string) []byte {
+	block, _ := pem.Decode([]byte(s))
+	return block.Bytes
+}
 
+func TestParsePrivateKey(t *testing.T) {
 	type args struct {
 		derBytes []byte
 	}

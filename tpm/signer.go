@@ -105,6 +105,7 @@ func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
+	s.SetTPM(s.tpm.rwc)
 	signature, err = s.Signer.Sign(rand, digest, opts)
 	return
 }

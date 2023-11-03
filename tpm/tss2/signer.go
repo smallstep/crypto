@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync"
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -80,6 +81,7 @@ func (k *TPMKey) Public() (crypto.PublicKey, error) {
 
 // Signer implements [crypto.Signer] using a [TPMKey].
 type Signer struct {
+	m           sync.Mutex
 	rw          io.ReadWriter
 	publicKey   crypto.PublicKey
 	tpmKey      *TPMKey
@@ -134,13 +136,30 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 func (s *Signer) SetSRKTemplate(p tpm2.Public) {
+	s.m.Lock()
 	s.srkTemplate = p
+	s.m.Unlock()
 }
 
+// SetTPM allows to change the TPM channel. This operation is useful if the
+// channel set in [CreateSigner] is closed and opened again before calling [Signer.Sign].
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (s *Signer) SetTPM(rw io.ReadWriter) {
+	s.m.Lock()
+	s.rw = rw
+	s.m.Unlock()
+}
+
+// Public implements the [crypto.Signer] interface.
 func (s *Signer) Public() crypto.PublicKey {
 	return s.publicKey
 }
 
+// Sign implements the [crypto.Signer] interface.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	parentHandle := tpmutil.Handle(s.tpmKey.Parent)
 	if !handleIsPersistent(s.tpmKey.Parent) {
