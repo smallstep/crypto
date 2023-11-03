@@ -6,6 +6,7 @@ package tpm
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -26,6 +27,7 @@ import (
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/tpm/tss2"
 	"go.step.sm/crypto/x509util"
 )
 
@@ -364,6 +366,28 @@ func TestAK_Blobs(t *testing.T) {
 	require.Len(t, public, int(size)+2)
 }
 
+func TestAK_ToTSS2(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+
+	ak, err := tpm.CreateAK(ctx, "first-ak")
+	require.NoError(t, err)
+
+	blobs, err := ak.Blobs(ctx)
+	require.NoError(t, err)
+
+	tss2Key, err := ak.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
+	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+
+	akPub := ak.Public()
+	tssPub, err := tss2Key.Public()
+	require.NoError(t, err)
+	assert.Equal(t, akPub, tssPub)
+}
+
 func TestAK_Public(t *testing.T) {
 	tpm := newSimulatedTPM(t)
 	ak, err := tpm.CreateAK(context.Background(), "first-ak")
@@ -656,6 +680,32 @@ func TestKey_Blobs(t *testing.T) {
 	require.Len(t, public, int(size)+2)
 }
 
+func TestKey_ToTSS2(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "ECDSA",
+		Size:      256,
+	}
+	key, err := tpm.CreateKey(ctx, "ecdsa-key", config)
+	require.NoError(t, err)
+
+	blobs, err := key.Blobs(ctx)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
+	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+
+	signer, err := key.Signer(ctx)
+	require.NoError(t, err)
+	tssPub, err := tss2Key.Public()
+	require.NoError(t, err)
+	assert.Equal(t, signer.Public(), tssPub)
+}
+
 func TestKey_SetCertificateChain(t *testing.T) {
 	tpm := newSimulatedTPM(t)
 	config := CreateKeyConfig{
@@ -755,4 +805,129 @@ func Test_signer_Sign(t *testing.T) {
 	signature, err := signer.Sign(rand.Reader, random, crypto.SHA256)
 	require.NoError(t, err)
 	require.NotNil(t, signature)
+}
+
+func TestTPM_GetTSS2Signer(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "ECDSA",
+		Size:      256,
+	}
+	key, err := tpm.CreateKey(ctx, "ecdsa-key", config)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	type args struct {
+		ctx context.Context
+		key *tss2.TPMKey
+	}
+	tests := []struct {
+		name      string
+		tpm       *TPM
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", tpm, args{ctx, tss2Key}, assert.NoError},
+		{"fail createSigner", tpm, args{ctx, nil}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.tpm.GetTSS2Signer(tt.args.ctx, tt.args.key)
+			tt.assertion(t, err)
+		})
+	}
+}
+
+func Test_tss2Signer_Sign_ECDSA(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "ECDSA",
+		Size:      256,
+	}
+	key, err := tpm.CreateKey(ctx, "ecdsa-key", config)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	require.NoError(t, err)
+
+	hash := crypto.SHA256.New()
+	hash.Write([]byte("emplaced-Coraciiformes-thick-rusting-synarchy-adenocarcinomata-radiographically"))
+	sum := hash.Sum(nil)
+
+	sig, err := signer.Sign(rand.Reader, sum, crypto.SHA256)
+	require.NoError(t, err)
+
+	pub, ok := signer.Public().(*ecdsa.PublicKey)
+	require.True(t, ok)
+
+	assert.True(t, ecdsa.VerifyASN1(pub, sum, sig))
+}
+
+func Test_tss2Signer_Sign_RSA(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.CreateKey(ctx, "rsa-key", config)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	require.NoError(t, err)
+
+	hash := crypto.SHA256.New()
+	hash.Write([]byte("emplaced-Coraciiformes-thick-rusting-synarchy-adenocarcinomata-radiographically"))
+	sum := hash.Sum(nil)
+
+	sig, err := signer.Sign(rand.Reader, sum, crypto.SHA256)
+	require.NoError(t, err)
+
+	pub, ok := signer.Public().(*rsa.PublicKey)
+	require.True(t, ok)
+
+	assert.NoError(t, rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum, sig))
+}
+
+func Test_tss2Signer_Sign_RSAPSS(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.CreateKey(ctx, "rsa-key", config)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	require.NoError(t, err)
+
+	hash := crypto.SHA256.New()
+	hash.Write([]byte("emplaced-Coraciiformes-thick-rusting-synarchy-adenocarcinomata-radiographically"))
+	sum := hash.Sum(nil)
+
+	sig, err := signer.Sign(rand.Reader, sum, &rsa.PSSOptions{
+		Hash: crypto.SHA256,
+	})
+	require.NoError(t, err)
+
+	pub, ok := signer.Public().(*rsa.PublicKey)
+	require.True(t, ok)
+
+	assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, sum, sig, &rsa.PSSOptions{
+		Hash: crypto.SHA256,
+	}))
 }

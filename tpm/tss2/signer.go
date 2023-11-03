@@ -69,6 +69,15 @@ var (
 	}
 )
 
+// Public returns the Go version of the public key.
+func (k *TPMKey) Public() (crypto.PublicKey, error) {
+	public, err := tpm2.DecodePublic(k.PublicKey[2:])
+	if err != nil {
+		return nil, err
+	}
+	return public.Key()
+}
+
 // Signer implements [crypto.Signer] using a [TPMKey].
 type Signer struct {
 	rw          io.ReadWriter
@@ -83,6 +92,8 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	switch {
 	case rw == nil:
 		return nil, fmt.Errorf("invalid TPM channel: rw cannot be nil")
+	case key == nil:
+		return nil, fmt.Errorf("invalid TPM key: key cannot be nil")
 	case !key.Type.Equal(oidLoadableKey):
 		return nil, fmt.Errorf("invalid TSS2 key: type %q is not valid", key.Type.String())
 	case len(key.Policy) != 0:
@@ -99,16 +110,9 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 		return nil, errors.New("invalid TSS2 key: private key key is invalid")
 	}
 
-	public, err := tpm2.DecodePublic(key.PublicKey[2:])
+	publicKey, err := key.Public()
 	if err != nil {
-		return nil, fmt.Errorf("error decoding public key: %w", err)
-	}
-	if public.Type != tpm2.AlgRSA && public.Type != tpm2.AlgECC {
-		return nil, fmt.Errorf("invalid TSS2 key: public key type %q is not valid", public.Type.String())
-	}
-	publicKey, err := public.Key()
-	if err != nil {
-		return nil, fmt.Errorf("error creating public key: %w", err)
+		return nil, fmt.Errorf("error decoding TSS2 public key: %w", err)
 	}
 
 	return &Signer{

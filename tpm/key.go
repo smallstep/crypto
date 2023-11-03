@@ -12,6 +12,7 @@ import (
 	"github.com/smallstep/go-attestation/attest"
 	internalkey "go.step.sm/crypto/tpm/internal/key"
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/tpm/tss2"
 )
 
 // Key models a TPM 2.0 Key. A Key can be used
@@ -102,6 +103,15 @@ func (k *Key) MarshalJSON() ([]byte, error) {
 		CreatedAt:  k.createdAt,
 	}
 	return json.Marshal(o)
+}
+
+// ToTSS2 gets the public and private blobs and returns a [*tss2.TPMKey].
+func (k *Key) ToTSS2(ctx context.Context) (*tss2.TPMKey, error) {
+	blobs, err := k.Blobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return tss2.New(blobs.public, blobs.private), nil
 }
 
 // comparablePublicKey is an interface that allows a crypto.PublicKey to be
