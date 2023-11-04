@@ -147,7 +147,7 @@ func TestSign(t *testing.T) {
 func TestSign_SetTPM(t *testing.T) {
 	var signer *Signer
 
-	t.Run("Setup", func(t *testing.T) {
+	if t.Run("Setup", func(t *testing.T) {
 		rw := openTPM(t)
 		t.Cleanup(func() {
 			assert.NoError(t, rw.Close())
@@ -163,31 +163,31 @@ func TestSign_SetTPM(t *testing.T) {
 
 		signer, err = CreateSigner(rw, New(pub, priv))
 		require.NoError(t, err)
-	})
+	}) {
+		require.NotNil(t, signer)
 
-	require.NotNil(t, signer)
+		rw := openTPM(t)
+		t.Cleanup(func() {
+			assert.NoError(t, rw.Close())
+		})
 
-	rw := openTPM(t)
-	t.Cleanup(func() {
-		assert.NoError(t, rw.Close())
-	})
+		// Set new tpm channel
+		signer.SetTPM(rw)
 
-	// Set new tpm channel
-	signer.SetTPM(rw)
+		// Set the ECC SRK template used for testing
+		signer.SetSRKTemplate(ECCSRKTemplate)
 
-	// Set the ECC SRK template used for testing
-	signer.SetSRKTemplate(ECCSRKTemplate)
+		hash := crypto.SHA256.New()
+		hash.Write([]byte("ungymnastic-theirn-cotwin-Summer-pemphigous-propagate"))
+		sum := hash.Sum(nil)
 
-	hash := crypto.SHA256.New()
-	hash.Write([]byte("ungymnastic-theirn-cotwin-Summer-pemphigous-propagate"))
-	sum := hash.Sum(nil)
+		sig, err := signer.Sign(rand.Reader, sum, crypto.SHA256)
+		require.NoError(t, err)
 
-	sig, err := signer.Sign(rand.Reader, sum, crypto.SHA256)
-	require.NoError(t, err)
-
-	publicKey, ok := signer.Public().(*ecdsa.PublicKey)
-	require.True(t, ok)
-	assert.True(t, ecdsa.VerifyASN1(publicKey, sum, sig))
+		publicKey, ok := signer.Public().(*ecdsa.PublicKey)
+		require.True(t, ok)
+		assert.True(t, ecdsa.VerifyASN1(publicKey, sum, sig))
+	}
 }
 
 func TestCreateSigner(t *testing.T) {
