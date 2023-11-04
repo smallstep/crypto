@@ -164,12 +164,11 @@ func TestSign_SetTPM(t *testing.T) {
 		signer, err = CreateSigner(rw, New(pub, priv))
 		require.NoError(t, err)
 	}) {
-		require.NotNil(t, signer)
-
 		rw := openTPM(t)
 		t.Cleanup(func() {
 			assert.NoError(t, rw.Close())
 		})
+		require.NotNil(t, signer)
 
 		// Set new tpm channel
 		signer.SetTPM(rw)
