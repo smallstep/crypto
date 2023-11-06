@@ -78,7 +78,7 @@ type Signer struct {
 }
 
 // CreateSigner creates a new [crypto.Signer] with the given TPM (rw) and
-// [TPMKey]. The caller is responsible of opening and closing the TPM.
+// [TPMKey]. The caller is responsible for opening and closing the TPM.
 func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	switch {
 	case rw == nil:
@@ -119,10 +119,10 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	}, nil
 }
 
-// SetSRKTemplate allows to change the Storage Primary Key (SRK) template used
+// SetSRKTemplate allows to change the Storage Root Key (SRK) template used
 // to load the the public/private blobs into an object in the TPM.
 //
-// It currently defaults to [RSASRKTemplate], the same used ad default in the
+// It currently defaults to [RSASRKTemplate], the same used as the default in the
 // [go.step.sm/crypto/tpm] package.
 //
 // # Experimental

@@ -2,7 +2,7 @@ package tss2
 
 import "encoding/pem"
 
-// handle owner is the reserver handler TPM_RH_OWNER.
+// handle owner is the reserved handle TPM_RH_OWNER.
 const handleOwner = 0x40000001
 
 // TPMOption is the type used to modify a [TPMKey].
