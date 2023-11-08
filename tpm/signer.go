@@ -105,13 +105,13 @@ func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
-	s.SetTPM(s.tpm.rwc)
+	s.SetCommandChannel(s.tpm.rwc)
 	signature, err = s.Signer.Sign(rand, digest, opts)
 	return
 }
 
-// GetTSS2Signer returns a crypto.Signer using the [tss2.TPMKey].
-func (t *TPM) GetTSS2Signer(ctx context.Context, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
+// CreateTSS2Signer returns a crypto.Signer using the given [TPM] and [tss2.TPMKey].
+func CreateTSS2Signer(ctx context.Context, t *TPM, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
 	if err := t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}

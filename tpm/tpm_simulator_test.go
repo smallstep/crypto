@@ -807,7 +807,7 @@ func Test_signer_Sign(t *testing.T) {
 	require.NotNil(t, signature)
 }
 
-func TestTPM_GetTSS2Signer(t *testing.T) {
+func TestCreateTSS2Signer(t *testing.T) {
 	ctx := context.Background()
 	tpm := newSimulatedTPM(t)
 	config := CreateKeyConfig{
@@ -835,7 +835,7 @@ func TestTPM_GetTSS2Signer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := tt.tpm.GetTSS2Signer(tt.args.ctx, tt.args.key)
+			_, err := CreateTSS2Signer(tt.args.ctx, tt.tpm, tt.args.key)
 			tt.assertion(t, err)
 		})
 	}
@@ -854,7 +854,7 @@ func Test_tss2Signer_Sign_ECDSA(t *testing.T) {
 	tss2Key, err := key.ToTSS2(ctx)
 	require.NoError(t, err)
 
-	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	signer, err := CreateTSS2Signer(ctx, tpm, tss2Key)
 	require.NoError(t, err)
 
 	hash := crypto.SHA256.New()
@@ -883,7 +883,7 @@ func Test_tss2Signer_Sign_RSA(t *testing.T) {
 	tss2Key, err := key.ToTSS2(ctx)
 	require.NoError(t, err)
 
-	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	signer, err := CreateTSS2Signer(ctx, tpm, tss2Key)
 	require.NoError(t, err)
 
 	hash := crypto.SHA256.New()
@@ -912,7 +912,7 @@ func Test_tss2Signer_Sign_RSAPSS(t *testing.T) {
 	tss2Key, err := key.ToTSS2(ctx)
 	require.NoError(t, err)
 
-	signer, err := tpm.GetTSS2Signer(ctx, tss2Key)
+	signer, err := CreateTSS2Signer(ctx, tpm, tss2Key)
 	require.NoError(t, err)
 
 	hash := crypto.SHA256.New()

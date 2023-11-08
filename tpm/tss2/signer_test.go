@@ -171,7 +171,7 @@ func TestSign_SetTPM(t *testing.T) {
 		require.NotNil(t, signer)
 
 		// Set new tpm channel
-		signer.SetTPM(rw)
+		signer.SetCommandChannel(rw)
 
 		// Set the ECC SRK template used for testing
 		signer.SetSRKTemplate(ECCSRKTemplate)

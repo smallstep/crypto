@@ -381,7 +381,7 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	}
 
 	ctx := context.Background()
-	signer, err := k.tpm.GetTSS2Signer(ctx, key)
+	signer, err := tpm.CreateTSS2Signer(ctx, k.tpm, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting signer for TSS2 PEM: %w", err)
 	}

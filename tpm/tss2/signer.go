@@ -141,14 +141,15 @@ func (s *Signer) SetSRKTemplate(p tpm2.Public) {
 	s.m.Unlock()
 }
 
-// SetTPM allows to change the TPM channel. This operation is useful if the
-// channel set in [CreateSigner] is closed and opened again before calling [Signer.Sign].
+// SetCommandChannel allows to change the TPM channel. This operation is useful
+// if the channel set in [CreateSigner] is closed and opened again before
+// calling [Signer.Sign].
 //
 // # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
-func (s *Signer) SetTPM(rw io.ReadWriter) {
+func (s *Signer) SetCommandChannel(rw io.ReadWriter) {
 	s.m.Lock()
 	s.rw = rw
 	s.m.Unlock()
