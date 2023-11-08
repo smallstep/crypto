@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	cloudkms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -213,6 +214,7 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 				ProtectionLevel: protectionLevel,
 				Algorithm:       signatureAlgorithm,
 			},
+			DestroyScheduledDuration: durationpb.New(24 * time.Hour),
 		},
 	})
 	if err != nil {
