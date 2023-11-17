@@ -245,6 +245,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 	ctx := context.Background()
 
+	var privateKey any
 	if properties.ak {
 		ak, err := k.tpm.CreateAK(ctx, properties.name) // NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower levels.
 		if err != nil {
@@ -254,18 +255,19 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			return nil, fmt.Errorf("failed creating AK: %w", err)
 		}
 
-		var tpmKey *tss2.TPMKey
 		if properties.tss2 {
-			if tpmKey, err = ak.ToTSS2(ctx); err != nil {
+			tpmKey, err := ak.ToTSS2(ctx)
+			if err != nil {
 				return nil, fmt.Errorf("failed exporting AK to TSS2: %w", err)
 			}
+			privateKey = tpmKey
 		}
 
 		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
 		return &apiv1.CreateKeyResponse{
 			Name:       createdAKURI,
 			PublicKey:  ak.Public(),
-			PrivateKey: tpmKey,
+			PrivateKey: privateKey,
 		}, nil
 	}
 
@@ -297,11 +299,12 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 	}
 
-	var tpmKey *tss2.TPMKey
 	if properties.tss2 {
-		if tpmKey, err = key.ToTSS2(ctx); err != nil {
+		tpmKey, err := key.ToTSS2(ctx)
+		if err != nil {
 			return nil, fmt.Errorf("failed exporting key to TSS2: %w", err)
 		}
+		privateKey = tpmKey
 	}
 
 	signer, err := key.Signer(ctx)
@@ -317,7 +320,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	return &apiv1.CreateKeyResponse{
 		Name:       createdKeyURI,
 		PublicKey:  signer.Public(),
-		PrivateKey: tpmKey,
+		PrivateKey: privateKey,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
 			SigningKey: createdKeyURI,
 			Signer:     signer,
