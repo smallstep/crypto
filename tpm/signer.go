@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/tpm/tss2"
 )
 
 // signer implements crypto.Signer backed by a TPM key.
@@ -86,6 +87,44 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 		tpm:    t,
 		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t},
 		public: loadedKey.Public(),
+	}
+
+	return
+}
+
+// tss2Signer is a wrapper on top of [*tss2.Signer] that opens and closes the
+// tpm on each sign call.
+type tss2Signer struct {
+	*tss2.Signer
+	tpm *TPM
+}
+
+func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	ctx := context.Background()
+	if err = s.tpm.open(goTPMCall(ctx)); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer closeTPM(ctx, s.tpm, &err)
+	s.SetCommandChannel(s.tpm.rwc)
+	signature, err = s.Signer.Sign(rand, digest, opts)
+	return
+}
+
+// CreateTSS2Signer returns a crypto.Signer using the given [TPM] and [tss2.TPMKey].
+func CreateTSS2Signer(ctx context.Context, t *TPM, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
+	if err := t.open(goTPMCall(ctx)); err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer closeTPM(ctx, t, &err)
+
+	s, err := tss2.CreateSigner(t.rwc, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating TSS2 signer: %w", err)
+	}
+
+	csigner = &tss2Signer{
+		Signer: s,
+		tpm:    t,
 	}
 
 	return

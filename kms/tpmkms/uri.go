@@ -13,8 +13,10 @@ import (
 type objectProperties struct {
 	name           string
 	ak             bool
+	tss2           bool
 	attestBy       string
 	qualifyingData []byte
+	path           string
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -24,7 +26,8 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 	var u *uri.URI
 	var parseErr error
 	if u, parseErr = uri.ParseWithScheme(Scheme, nameURI); parseErr == nil {
-		if name := u.Get("name"); name == "" {
+		o.path = u.Get("path")
+		if name := u.Get("name"); name == "" && o.path == "" {
 			if len(u.Values) == 1 {
 				o.name = u.Opaque
 			} else {
@@ -39,6 +42,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 			o.name = name
 		}
 		o.ak = u.GetBool("ak")
+		o.tss2 = u.GetBool("tss2")
 		o.attestBy = u.Get("attest-by")
 		if qualifyingData := u.GetEncoded("qualifying-data"); qualifyingData != nil {
 			o.qualifyingData = qualifyingData

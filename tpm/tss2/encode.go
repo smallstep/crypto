@@ -1,6 +1,8 @@
 package tss2
 
-import "encoding/pem"
+import (
+	"encoding/pem"
+)
 
 // handle owner is the reserved handle TPM_RH_OWNER.
 const handleOwner = 0x40000001

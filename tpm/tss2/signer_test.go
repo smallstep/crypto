@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/pem"
 	"io"
 	"testing"
 
 	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,6 +55,10 @@ var defaultKeyParamsRSAPSS = tpm2.Public{
 	},
 }
 
+func assertMaybeError(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
+	return true
+}
+
 func TestSign(t *testing.T) {
 	rw := openTPM(t)
 	t.Cleanup(func() {
@@ -67,15 +72,32 @@ func TestSign(t *testing.T) {
 	})
 
 	tests := []struct {
-		name   string
-		params tpm2.Public
-		opts   crypto.SignerOpts
+		name      string
+		params    tpm2.Public
+		opts      crypto.SignerOpts
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok ECDSA", defaultKeyParamsEC, crypto.SHA256},
-		{"ok RSA", defaultKeyParamsRSA, crypto.SHA256},
-		{"ok RSAPSS", defaultKeyParamsRSAPSS, &rsa.PSSOptions{
+		{"ok ECDSA", defaultKeyParamsEC, crypto.SHA256, assert.NoError},
+		{"ok RSA", defaultKeyParamsRSA, crypto.SHA256, assert.NoError},
+		{"ok RSAPSS PSSSaltLengthAuto", defaultKeyParamsRSAPSS, &rsa.PSSOptions{
 			SaltLength: rsa.PSSSaltLengthAuto, Hash: crypto.SHA256,
-		}},
+		}, assert.NoError},
+		{"ok RSAPSS PSSSaltLengthEqualsHash", defaultKeyParamsRSAPSS, &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: crypto.SHA256,
+		}, assert.NoError},
+		{"ok RSAPSS SaltLength=32", defaultKeyParamsRSAPSS, &rsa.PSSOptions{
+			SaltLength: 32, Hash: crypto.SHA256,
+		}, assert.NoError},
+		// 222 is the largest salt possible when signing with a 2048 bit key. Go
+		// crypto will use this value when rsa.PSSSaltLengthAuto is set.
+		//
+		// TPM 2.0's TPM_ALG_RSAPSS algorithm, uses the maximum possible salt
+		// length. However, as of TPM revision 1.16, TPMs which follow FIPS
+		// 186-4 will interpret TPM_ALG_RSAPSS using salt length equal to the
+		// digest length.
+		{"RSAPSS SaltLength=222", defaultKeyParamsRSAPSS, &rsa.PSSOptions{
+			SaltLength: 222, Hash: crypto.SHA256,
+		}, assertMaybeError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,7 +107,7 @@ func TestSign(t *testing.T) {
 			signer, err := CreateSigner(rw, New(pub, priv))
 			require.NoError(t, err)
 
-			// Set the ECC SRK template used for testing.
+			// Set the ECC SRK template used for testing
 			signer.SetSRKTemplate(ECCSRKTemplate)
 
 			hash := crypto.SHA256.New()
@@ -93,8 +115,12 @@ func TestSign(t *testing.T) {
 			sum := hash.Sum(nil)
 
 			sig, err := signer.Sign(rand.Reader, sum, tt.opts)
-			require.NoError(t, err)
+			tt.assertion(t, err)
+			if err != nil {
+				return
+			}
 
+			// Signature validation using Go crypto
 			switch pub := signer.Public().(type) {
 			case *ecdsa.PublicKey:
 				assert.Equal(t, tpm2.AlgECC, tt.params.Type)
@@ -105,7 +131,9 @@ func TestSign(t *testing.T) {
 				case tpm2.AlgRSASSA:
 					assert.NoError(t, rsa.VerifyPKCS1v15(pub, tt.opts.HashFunc(), sum, sig))
 				case tpm2.AlgRSAPSS:
-					assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, sum, sig, nil))
+					opts, ok := tt.opts.(*rsa.PSSOptions)
+					require.True(t, ok)
+					assert.NoError(t, rsa.VerifyPSS(pub, opts.Hash, sum, sig, opts))
 				default:
 					t.Errorf("unexpected RSAParameters.Sign.Alg %v", tt.params.RSAParameters.Sign.Alg)
 				}
@@ -116,12 +144,52 @@ func TestSign(t *testing.T) {
 	}
 }
 
-func TestCreateSigner(t *testing.T) {
-	parsePEM := func(s string) []byte {
-		block, _ := pem.Decode([]byte(s))
-		return block.Bytes
-	}
+func TestSign_SetTPM(t *testing.T) {
+	var signer *Signer
 
+	if t.Run("Setup", func(t *testing.T) {
+		rw := openTPM(t)
+		t.Cleanup(func() {
+			assert.NoError(t, rw.Close())
+		})
+		keyHnd, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", ECCSRKTemplate)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			assert.NoError(t, tpm2.FlushContext(rw, keyHnd))
+		})
+
+		priv, pub, _, _, _, err := tpm2.CreateKey(rw, keyHnd, tpm2.PCRSelection{}, "", "", defaultKeyParamsEC)
+		require.NoError(t, err)
+
+		signer, err = CreateSigner(rw, New(pub, priv))
+		require.NoError(t, err)
+	}) {
+		rw := openTPM(t)
+		t.Cleanup(func() {
+			assert.NoError(t, rw.Close())
+		})
+		require.NotNil(t, signer)
+
+		// Set new tpm channel
+		signer.SetCommandChannel(rw)
+
+		// Set the ECC SRK template used for testing
+		signer.SetSRKTemplate(ECCSRKTemplate)
+
+		hash := crypto.SHA256.New()
+		hash.Write([]byte("ungymnastic-theirn-cotwin-Summer-pemphigous-propagate"))
+		sum := hash.Sum(nil)
+
+		sig, err := signer.Sign(rand.Reader, sum, crypto.SHA256)
+		require.NoError(t, err)
+
+		publicKey, ok := signer.Public().(*ecdsa.PublicKey)
+		require.True(t, ok)
+		assert.True(t, ecdsa.VerifyASN1(publicKey, sum, sig))
+	}
+}
+
+func TestCreateSigner(t *testing.T) {
 	var rw bytes.Buffer
 	key, err := ParsePrivateKey(parsePEM(p256TSS2PEM))
 	require.NoError(t, err)
@@ -149,6 +217,7 @@ func TestCreateSigner(t *testing.T) {
 			rw: &rw, publicKey: publicKey, tpmKey: key, srkTemplate: RSASRKTemplate,
 		}, assert.NoError},
 		{"fail rw", args{nil, key}, nil, assert.Error},
+		{"fail key", args{&rw, nil}, nil, assert.Error},
 		{"fail type", args{&rw, modKey(func(k *TPMKey) {
 			k.Type = oidSealedKey
 		})}, nil, assert.Error},
@@ -196,6 +265,109 @@ func TestCreateSigner(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := CreateSigner(tt.args.rw, tt.args.key)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_curveSigScheme(t *testing.T) {
+	type args struct {
+		curve elliptic.Curve
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *tpm2.SigScheme
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok P-256", args{elliptic.P256()}, &tpm2.SigScheme{
+			Alg: tpm2.AlgECDSA, Hash: tpm2.AlgSHA256,
+		}, assert.NoError},
+		{"ok P-2384", args{elliptic.P384()}, &tpm2.SigScheme{
+			Alg: tpm2.AlgECDSA, Hash: tpm2.AlgSHA384,
+		}, assert.NoError},
+		{"ok P-521", args{elliptic.P521()}, &tpm2.SigScheme{
+			Alg: tpm2.AlgECDSA, Hash: tpm2.AlgSHA512,
+		}, assert.NoError},
+		{"fail P-224", args{elliptic.P224()}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := curveSigScheme(tt.args.curve)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_signECDSA_fail(t *testing.T) {
+	rw := openTPM(t)
+	t.Cleanup(func() {
+		assert.NoError(t, rw.Close())
+	})
+
+	digest := func(h crypto.Hash) []byte {
+		hh := h.New()
+		hh.Write([]byte("Subotica-chronique-radiancy-inspirationally-transuming-Melbeta"))
+		return hh.Sum(nil)
+	}
+
+	type args struct {
+		rw     io.ReadWriter
+		key    tpmutil.Handle
+		digest []byte
+		curve  elliptic.Curve
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"fail curve", args{rw, handleOwner, digest(crypto.SHA224), elliptic.P224()}, nil, assert.Error},
+		{"fail sign", args{nil, handleOwner, digest(crypto.SHA256), elliptic.P256()}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := signECDSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.curve)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_signRSA_fail(t *testing.T) {
+	rw := openTPM(t)
+	t.Cleanup(func() {
+		assert.NoError(t, rw.Close())
+	})
+
+	h := crypto.SHA256.New()
+	h.Write([]byte("murmur-squinance-hoghide-jubilation-enteraden-samadh"))
+	digest := h.Sum(nil)
+
+	type args struct {
+		rw     io.ReadWriter
+		key    tpmutil.Handle
+		digest []byte
+		opts   crypto.SignerOpts
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"fail HashToAlgorithm", args{rw, handleOwner, digest, crypto.SHA224}, nil, assert.Error},
+		{"fail PSSOptions", args{rw, handleOwner, digest, &rsa.PSSOptions{
+			Hash: crypto.SHA256, SaltLength: 222,
+		}}, nil, assert.Error},
+		{"fail sign", args{nil, handleOwner, digest, crypto.SHA256}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := signRSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.opts)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

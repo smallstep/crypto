@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync"
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -69,8 +70,18 @@ var (
 	}
 )
 
+// Public returns the Go version of the public key.
+func (k *TPMKey) Public() (crypto.PublicKey, error) {
+	public, err := tpm2.DecodePublic(k.PublicKey[2:])
+	if err != nil {
+		return nil, err
+	}
+	return public.Key()
+}
+
 // Signer implements [crypto.Signer] using a [TPMKey].
 type Signer struct {
+	m           sync.Mutex
 	rw          io.ReadWriter
 	publicKey   crypto.PublicKey
 	tpmKey      *TPMKey
@@ -83,6 +94,8 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	switch {
 	case rw == nil:
 		return nil, fmt.Errorf("invalid TPM channel: rw cannot be nil")
+	case key == nil:
+		return nil, fmt.Errorf("invalid TPM key: key cannot be nil")
 	case !key.Type.Equal(oidLoadableKey):
 		return nil, fmt.Errorf("invalid TSS2 key: type %q is not valid", key.Type.String())
 	case len(key.Policy) != 0:
@@ -99,16 +112,9 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 		return nil, errors.New("invalid TSS2 key: private key key is invalid")
 	}
 
-	public, err := tpm2.DecodePublic(key.PublicKey[2:])
+	publicKey, err := key.Public()
 	if err != nil {
-		return nil, fmt.Errorf("error decoding public key: %w", err)
-	}
-	if public.Type != tpm2.AlgRSA && public.Type != tpm2.AlgECC {
-		return nil, fmt.Errorf("invalid TSS2 key: public key type %q is not valid", public.Type.String())
-	}
-	publicKey, err := public.Key()
-	if err != nil {
-		return nil, fmt.Errorf("error creating public key: %w", err)
+		return nil, fmt.Errorf("error decoding TSS2 public key: %w", err)
 	}
 
 	return &Signer{
@@ -130,13 +136,31 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 func (s *Signer) SetSRKTemplate(p tpm2.Public) {
+	s.m.Lock()
 	s.srkTemplate = p
+	s.m.Unlock()
 }
 
+// SetCommandChannel allows to change the TPM channel. This operation is useful
+// if the channel set in [CreateSigner] is closed and opened again before
+// calling [Signer.Sign].
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (s *Signer) SetCommandChannel(rw io.ReadWriter) {
+	s.m.Lock()
+	s.rw = rw
+	s.m.Unlock()
+}
+
+// Public implements the [crypto.Signer] interface.
 func (s *Signer) Public() crypto.PublicKey {
 	return s.publicKey
 }
 
+// Sign implements the [crypto.Signer] interface.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	parentHandle := tpmutil.Handle(s.tpmKey.Parent)
 	if !handleIsPersistent(s.tpmKey.Parent) {

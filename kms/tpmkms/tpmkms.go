@@ -10,9 +10,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -20,6 +22,7 @@ import (
 	"go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/attestation"
 	"go.step.sm/crypto/tpm/storage"
+	"go.step.sm/crypto/tpm/tss2"
 )
 
 func init() {
@@ -188,6 +191,7 @@ func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 //
 //   - name=<name>: specify the name to identify the key with
 //   - ak=true: if set to true, an Attestation Key (AK) will be created instead of an application key
+//   - tss2=true: is set to true, the PrivateKey response will contain a [tss2.TPMKey].
 //   - attest-by=<akName>: attest an application key at creation time with the AK identified by `akName`
 //   - qualifying-data=<random>: hexadecimal coded binary data that can be used to guarantee freshness when attesting creation of a key
 //
@@ -240,6 +244,8 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 
 	ctx := context.Background()
+
+	var privateKey any
 	if properties.ak {
 		ak, err := k.tpm.CreateAK(ctx, properties.name) // NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower levels.
 		if err != nil {
@@ -248,10 +254,20 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			}
 			return nil, fmt.Errorf("failed creating AK: %w", err)
 		}
+
+		if properties.tss2 {
+			tpmKey, err := ak.ToTSS2(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed exporting AK to TSS2: %w", err)
+			}
+			privateKey = tpmKey
+		}
+
 		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
 		return &apiv1.CreateKeyResponse{
-			Name:      createdAKURI,
-			PublicKey: ak.Public(),
+			Name:       createdAKURI,
+			PublicKey:  ak.Public(),
+			PrivateKey: privateKey,
 		}, nil
 	}
 
@@ -283,6 +299,14 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 	}
 
+	if properties.tss2 {
+		tpmKey, err := key.ToTSS2(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed exporting key to TSS2: %w", err)
+		}
+		privateKey = tpmKey
+	}
+
 	signer, err := key.Signer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting signer for key: %w", err)
@@ -294,8 +318,9 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 
 	return &apiv1.CreateKeyResponse{
-		Name:      createdKeyURI,
-		PublicKey: signer.Public(),
+		Name:       createdKeyURI,
+		PublicKey:  signer.Public(),
+		PrivateKey: privateKey,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
 			SigningKey: createdKeyURI,
 			Signer:     signer,
@@ -304,39 +329,76 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 }
 
 // CreateSigner creates a signer using a key present in the TPM KMS.
+//
+// The `signingKey` in the [apiv1.CreateSignerRequest] can be used to specify
+// some key properties. These are as follows:
+//
+//   - name=<name>: specify the name to identify the key with
+//   - path=<file>: specify the TSS2 PEM file to use
 func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
 	if req.Signer != nil {
 		return req.Signer, nil
 	}
 
-	if req.SigningKey == "" {
-		return nil, errors.New("createSignerRequest 'signingKey' cannot be empty")
+	var pemBytes []byte
+
+	switch {
+	case req.SigningKey != "":
+		properties, err := parseNameURI(req.SigningKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing %q: %w", req.SigningKey, err)
+		}
+		if properties.ak {
+			return nil, fmt.Errorf("signing with an AK currently not supported")
+		}
+
+		switch {
+		case properties.name != "":
+			ctx := context.Background()
+			key, err := k.tpm.GetKey(ctx, properties.name)
+			if err != nil {
+				return nil, err
+			}
+			signer, err := key.Signer(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
+			}
+			return signer, nil
+		case properties.path != "":
+			if pemBytes, err = os.ReadFile(properties.path); err != nil {
+				return nil, fmt.Errorf("failed reading key from %q: %w", properties.path, err)
+			}
+		default:
+			return nil, fmt.Errorf("failed parsing %q: name and path cannot be empty", req.SigningKey)
+		}
+	case len(req.SigningKeyPEM) > 0:
+		pemBytes = req.SigningKeyPEM
+	default:
+		return nil, errors.New("createSignerRequest 'signingKey' and 'signingKeyPEM' cannot be empty")
 	}
 
-	properties, err := parseNameURI(req.SigningKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed parsing %q: %w", req.SigningKey, err)
-	}
-
-	if properties.ak {
-		return nil, fmt.Errorf("signing with an AK currently not supported")
-	}
-
-	ctx := context.Background()
-	key, err := k.tpm.GetKey(ctx, properties.name)
+	// Create a signer from a TSS2 PEM block
+	key, err := parseTSS2(pemBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	signer, err := key.Signer(ctx)
+	ctx := context.Background()
+	signer, err := tpm.CreateTSS2Signer(ctx, k.tpm, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
+		return nil, fmt.Errorf("failed getting signer for TSS2 PEM: %w", err)
 	}
-
 	return signer, nil
 }
 
-// GetPublicKey returns the public key ....
+// GetPublicKey returns the public key present in the TPM KMS.
+//
+// The `name` in the [apiv1.GetPublicKeyRequest] can be used to specify some key
+// properties. These are as follows:
+//
+//   - name=<name>: specify the name to identify the key with
+//   - ak=true: if set to true, an Attestation Key (AK) will be read instead of an application key
+//   - path=<file>: specify the TSS2 PEM file to read from
 func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
 	if req.Name == "" {
 		return nil, errors.New("getPublicKeyRequest 'name' cannot be empty")
@@ -348,29 +410,48 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 	}
 
 	ctx := context.Background()
-	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
+	switch {
+	case properties.name != "":
+		if properties.ak {
+			ak, err := k.tpm.GetAK(ctx, properties.name)
+			if err != nil {
+				return nil, err
+			}
+			akPub := ak.Public()
+			if akPub == nil {
+				return nil, errors.New("failed getting AK public key")
+			}
+			return akPub, nil
+		}
+
+		key, err := k.tpm.GetKey(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
-		akPub := ak.Public()
-		if akPub == nil {
-			return nil, errors.New("failed getting AK public key")
+
+		signer, err := key.Signer(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
 		}
-		return akPub, nil
-	}
 
-	key, err := k.tpm.GetKey(ctx, properties.name)
-	if err != nil {
-		return nil, err
+		return signer.Public(), nil
+	case properties.path != "":
+		pemBytes, err := os.ReadFile(properties.path)
+		if err != nil {
+			return nil, fmt.Errorf("failed reading key from %q: %w", properties.path, err)
+		}
+		key, err := parseTSS2(pemBytes)
+		if err != nil {
+			return nil, err
+		}
+		pub, err := key.Public()
+		if err != nil {
+			return nil, fmt.Errorf("error decoding public key from %q: %w", properties.path, err)
+		}
+		return pub, nil
+	default:
+		return nil, fmt.Errorf("failed parsing %q: name and path cannot be empty", req.Name)
 	}
-
-	signer, err := key.Signer(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
-	}
-
-	return signer.Public(), nil
 }
 
 // LoadCertificate loads the certificate for the key identified by name from the TPMKMS.
@@ -755,6 +836,26 @@ func ekURL(keyID []byte) *url.URL {
 		Scheme: "urn",
 		Opaque: "ek:sha256:" + base64.StdEncoding.EncodeToString(keyID),
 	}
+}
+
+func parseTSS2(pemBytes []byte) (*tss2.TPMKey, error) {
+	var block *pem.Block
+	for len(pemBytes) > 0 {
+		block, pemBytes = pem.Decode(pemBytes)
+		if block == nil {
+			break
+		}
+		if block.Type != "TSS2 PRIVATE KEY" {
+			continue
+		}
+
+		key, err := tss2.ParsePrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing TSS2 PEM: %w", err)
+		}
+		return key, nil
+	}
+	return nil, fmt.Errorf("failed parsing TSS2 PEM: block not found")
 }
 
 var _ apiv1.KeyManager = (*TPMKMS)(nil)
