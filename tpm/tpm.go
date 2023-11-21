@@ -205,7 +205,15 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	return nil
 }
 
+// initializeCommandChannel initializes the TPM's command channel based on
+// configuration provided when creating the TPM instance. The method is
+// primarily used to be able to use a TPM simulator in lieu of a real TPM
+// being available or when the real TPM should not be used. There's a special
+// case for a TPM exposed using a UNIX socket, which also is used primarily
+// for interacting with a TPM simulator.
 func (t *TPM) initializeCommandChannel() error {
+	// return early with the complete `attestConfig` set if
+	// command channel was provided before.
 	if t.commandChannel != nil {
 		t.attestConfig = &attest.OpenConfig{
 			TPMVersion:     t.options.attestConfig.TPMVersion,
@@ -222,9 +230,15 @@ func (t *TPM) initializeCommandChannel() error {
 		t.commandChannel = t.options.commandChannel
 	}
 
+	// finally, check if the device name points to a UNIX socket, and use that
+	// as the command channel, if available.
 	if t.commandChannel == nil {
 		if socketCommandChannel, err := trySocketCommandChannel(t.deviceName); err != nil {
-			if !errors.Is(err, socket.ErrNotAvailable) {
+			switch {
+			case errors.Is(err, socket.ErrNotSupported):
+				// don't try to use socket command channel if not supported. No need to return
+				// an error, because the code should still rely on the default TPM command channel.
+			case !errors.Is(err, socket.ErrNotAvailable):
 				return err
 			}
 		} else {
@@ -232,6 +246,9 @@ func (t *TPM) initializeCommandChannel() error {
 		}
 	}
 
+	// update `attestConfig` with the command channel, so that it is used whenever
+	// attestation operations are being performed. Note that the command channel can
+	// still be nil. It simply won't be used (wrapped) by `go-attestation` in that case.
 	t.attestConfig = &attest.OpenConfig{
 		TPMVersion:     t.options.attestConfig.TPMVersion,
 		CommandChannel: t.commandChannel,
