@@ -8,15 +8,18 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
+	"github.com/stretchr/testify/assert"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestParent(t *testing.T) {
@@ -262,7 +265,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
 					return &kmspb.KeyRing{}, nil
 				},
-				createCryptoKey: func(_ context.Context, _ *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
+				createCryptoKey: func(_ context.Context, req *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
+					assert.Nil(t, req.CryptoKey.DestroyScheduledDuration)
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
 				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
@@ -271,19 +275,20 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 			}},
 			args{&apiv1.CreateKeyRequest{Name: keyName, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
 			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
-		{"ok with uri", fields{
+		{"ok with uri and retention", fields{
 			&MockClient{
 				getKeyRing: func(_ context.Context, _ *kmspb.GetKeyRingRequest, _ ...gax.CallOption) (*kmspb.KeyRing, error) {
 					return &kmspb.KeyRing{}, nil
 				},
-				createCryptoKey: func(_ context.Context, _ *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
+				createCryptoKey: func(_ context.Context, req *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
+					assert.Equal(t, req.CryptoKey.DestroyScheduledDuration, durationpb.New(24*time.Hour))
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
 				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
-			args{&apiv1.CreateKeyRequest{Name: keyURI, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256}},
+			args{&apiv1.CreateKeyRequest{Name: keyURI, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256, RetentionPeriod: 24 * time.Hour}},
 			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"ok new key ring", fields{
 			&MockClient{

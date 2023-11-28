@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"fmt"
+	"time"
 )
 
 // ProtectionLevel specifies on some KMS how cryptographic operations are
@@ -160,6 +161,12 @@ type CreateKeyRequest struct {
 	//
 	// Used by: yubikey
 	TouchPolicy TouchPolicy
+
+	// RetentionPeriod is the period of time that a key spends in a destroy
+	// scheduled state before transitioning to destroyed.
+	//
+	// Used by: cloudkms
+	RetentionPeriod time.Duration
 }
 
 // CreateKeyResponse is the response value of the kms.CreateKey method.

@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	cloudkms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -188,7 +189,10 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		return nil, errors.Errorf("unexpected error: this should not happen")
 	}
 
-	var crytoKeyName string
+	var destroyScheduledDuration *durationpb.Duration
+	if req.RetentionPeriod > 0 {
+		destroyScheduledDuration = durationpb.New(req.RetentionPeriod)
+	}
 
 	// resource is the plain Google Cloud KMS resource name
 	resource := resourceName(req.Name)
@@ -199,6 +203,8 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 	if err := k.createKeyRingIfNeeded(keyRing); err != nil {
 		return nil, err
 	}
+
+	var crytoKeyName string
 
 	ctx, cancel := defaultContext()
 	defer cancel()
@@ -213,6 +219,7 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 				ProtectionLevel: protectionLevel,
 				Algorithm:       signatureAlgorithm,
 			},
+			DestroyScheduledDuration: destroyScheduledDuration,
 		},
 	})
 	if err != nil {
