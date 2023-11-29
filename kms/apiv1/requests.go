@@ -162,11 +162,11 @@ type CreateKeyRequest struct {
 	// Used by: yubikey
 	TouchPolicy TouchPolicy
 
-	// RetentionPeriod is the period of time that a key spends in a destroy
-	// scheduled state before transitioning to destroyed.
+	// DestroyRetentionPeriod is the period of time that a key spends in a
+	// destroy scheduled state before transitioning to destroyed.
 	//
 	// Used by: cloudkms
-	RetentionPeriod time.Duration
+	DestroyRetentionPeriod time.Duration
 }
 
 // CreateKeyResponse is the response value of the kms.CreateKey method.

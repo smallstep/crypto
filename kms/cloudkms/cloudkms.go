@@ -190,8 +190,8 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 	}
 
 	var destroyScheduledDuration *durationpb.Duration
-	if req.RetentionPeriod > 0 {
-		destroyScheduledDuration = durationpb.New(req.RetentionPeriod)
+	if req.DestroyRetentionPeriod > 0 {
+		destroyScheduledDuration = durationpb.New(req.DestroyRetentionPeriod)
 	}
 
 	// resource is the plain Google Cloud KMS resource name

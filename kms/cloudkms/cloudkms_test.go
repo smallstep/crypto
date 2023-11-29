@@ -288,7 +288,7 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
-			args{&apiv1.CreateKeyRequest{Name: keyURI, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256, RetentionPeriod: 24 * time.Hour}},
+			args{&apiv1.CreateKeyRequest{Name: keyURI, ProtectionLevel: apiv1.HSM, SignatureAlgorithm: apiv1.ECDSAWithSHA256, DestroyRetentionPeriod: 24 * time.Hour}},
 			&apiv1.CreateKeyResponse{Name: "cloudkms:" + keyName + "/cryptoKeyVersions/1", PublicKey: pk, CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "cloudkms:" + keyName + "/cryptoKeyVersions/1"}}, false},
 		{"ok new key ring", fields{
 			&MockClient{
