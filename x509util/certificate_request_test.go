@@ -346,7 +346,7 @@ func TestCertificateRequest_GetCertificateRequest_challengePassword(t *testing.T
 			SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
 			Signer:             rsaKey,
 		}, expectedUTF8String, assert.NoError},
-		{"fail challengePAssword", &CertificateRequest{
+		{"fail challengePassword", &CertificateRequest{
 			Subject:            Subject{CommonName: "commonName"},
 			DNSNames:           []string{"foo.com"},
 			EmailAddresses:     []string{"root@foo.com"},

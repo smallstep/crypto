@@ -145,7 +145,13 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 		return nil, errors.Wrap(err, "error creating certificate request")
 	}
 
-	// Prepend challenge password and sign again
+	// If a challenge password is provided, encode and prepend it as a challenge
+	// password attribute.
+	//
+	// The challengePassword attribute doesn't follow the ASN.1 encoding of
+	// [pkix.AttributeTypeAndValueSET] used in the deprecated
+	// [x509.CertificateRequest.Attributes], so this requires some low-level
+	// ASN.1 operations.
 	if c.ChallengePassword != "" {
 		asn1Data, err = c.addChallengePassword(asn1Data)
 		if err != nil {
@@ -160,8 +166,8 @@ func (c *CertificateRequest) GetCertificateRequest() (*x509.CertificateRequest, 
 // addChallengePassword unmarshals the asn1Data into a certificateRequest and
 // creates a new one with the challengePassword.
 func (c *CertificateRequest) addChallengePassword(asn1Data []byte) ([]byte, error) {
-	// Marshal challengePassword to ans1.RawValue
-	// Build challengePassword attribute (RFC 2985 section-5.4)
+	// Build challengePassword attribute (RFC 2985 section-5.4). The resulting
+	// bytes will be added as an asn1.RawValue in the RawAttributes.
 	var builder cryptobyte.Builder
 	builder.AddASN1(cryptobyte_asn1.SEQUENCE, func(child *cryptobyte.Builder) {
 		child.AddASN1ObjectIdentifier(oidChallengePassword)
