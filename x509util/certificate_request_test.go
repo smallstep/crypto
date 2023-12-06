@@ -9,11 +9,16 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCertificateRequest(t *testing.T) {
@@ -294,6 +299,225 @@ func TestCertificateRequest_GetCertificateRequest(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CertificateRequest.GetCertificateRequest() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestCertificateRequest_GetCertificateRequest_challengePassword(t *testing.T) {
+	rsaPEM, err := os.ReadFile("testdata/rsa.key")
+	require.NoError(t, err)
+
+	block, _ := pem.Decode(rsaPEM)
+	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	expectedPrintableString, err := os.ReadFile("testdata/challengePassword.csr")
+	require.NoError(t, err)
+	expectedUTF8String, err := os.ReadFile("testdata/challengePasswordUTF8.csr")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		cr        *CertificateRequest
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &CertificateRequest{
+			Subject:            Subject{CommonName: "commonName"},
+			DNSNames:           []string{"foo.com"},
+			EmailAddresses:     []string{"root@foo.com"},
+			IPAddresses:        []net.IP{net.ParseIP("::1")},
+			URIs:               []*url.URL{{Scheme: "mailto", Opaque: "root@foo.com"}},
+			SANs:               []SubjectAlternativeName{{Type: "dns", Value: "bar.com"}},
+			ChallengePassword:  "challengePassword",
+			Extensions:         []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("foobar")}},
+			SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+			Signer:             rsaKey,
+		}, expectedPrintableString, assert.NoError},
+		{"ok UTF8String", &CertificateRequest{
+			Subject:            Subject{CommonName: "commonName"},
+			DNSNames:           []string{"foo.com"},
+			EmailAddresses:     []string{"root@foo.com"},
+			IPAddresses:        []net.IP{net.ParseIP("::1")},
+			URIs:               []*url.URL{{Scheme: "mailto", Opaque: "root@foo.com"}},
+			SANs:               []SubjectAlternativeName{{Type: "dns", Value: "bar.com"}},
+			ChallengePassword:  "🔐",
+			Extensions:         []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("foobar")}},
+			SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+			Signer:             rsaKey,
+		}, expectedUTF8String, assert.NoError},
+		{"fail challengePAssword", &CertificateRequest{
+			Subject:            Subject{CommonName: "commonName"},
+			DNSNames:           []string{"foo.com"},
+			EmailAddresses:     []string{"root@foo.com"},
+			IPAddresses:        []net.IP{net.ParseIP("::1")},
+			URIs:               []*url.URL{{Scheme: "mailto", Opaque: "root@foo.com"}},
+			SANs:               []SubjectAlternativeName{{Type: "dns", Value: "bar.com"}},
+			ChallengePassword:  "\x91\x80\x80\x80",
+			Extensions:         []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("foobar")}},
+			SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+			Signer:             rsaKey,
+		}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csr, err := tt.cr.GetCertificateRequest()
+			tt.assertion(t, err)
+			if tt.want == nil {
+				assert.Nil(t, csr)
+			} else {
+				assert.Equal(t, tt.want, pem.EncodeToMemory(&pem.Block{
+					Type:  "CERTIFICATE REQUEST",
+					Bytes: csr.Raw,
+				}))
+			}
+		})
+	}
+}
+
+func TestCertificateRequest_addChallengePassword(t *testing.T) {
+	rsaPEM, err := os.ReadFile("testdata/rsa.key")
+	require.NoError(t, err)
+
+	block, _ := pem.Decode(rsaPEM)
+	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	base := &CertificateRequest{
+		Subject:            Subject{CommonName: "commonName"},
+		DNSNames:           []string{"foo.com"},
+		EmailAddresses:     []string{"root@foo.com"},
+		IPAddresses:        []net.IP{net.ParseIP("::1")},
+		URIs:               []*url.URL{{Scheme: "mailto", Opaque: "root@foo.com"}},
+		SANs:               []SubjectAlternativeName{{Type: "dns", Value: "bar.com"}},
+		Extensions:         []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("foobar")}},
+		SignatureAlgorithm: SignatureAlgorithm(x509.SHA256WithRSA),
+		Signer:             rsaKey,
+	}
+	csr, err := base.GetCertificateRequest()
+	require.NoError(t, err)
+
+	var cr certificateRequest
+	_, err = asn1.Unmarshal(csr.Raw, &cr)
+	require.NoError(t, err)
+	cr.Raw = nil
+	cr.TBSCSR.Raw = nil
+	cr.SignatureAlgorithm = pkix.AlgorithmIdentifier{
+		Algorithm: []int{1, 2, 3, 4},
+	}
+	failSignatureAlgorithm, err := asn1.Marshal(cr)
+	require.NoError(t, err)
+
+	b, err := os.ReadFile("testdata/challengePassword.csr")
+	require.NoError(t, err)
+	block, _ = pem.Decode(b)
+	expectedPrintableString := block.Bytes
+
+	b, err = os.ReadFile("testdata/challengePasswordUTF8.csr")
+	require.NoError(t, err)
+	block, _ = pem.Decode(b)
+	expectedUTF8String := block.Bytes
+
+	type args struct {
+		asn1Data []byte
+	}
+	tests := []struct {
+		name      string
+		cr        *CertificateRequest
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "challengePassword",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{csr.Raw}, expectedPrintableString, assert.NoError},
+		{"ok UTF8String", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "🔐",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{csr.Raw}, expectedUTF8String, assert.NoError},
+		{"fail challengePassword", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "\x91\x80\x80\x80",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{csr.Raw}, nil, assert.Error},
+		{"fail unmarshal", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "challengePassword",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{[]byte("not ans1")}, nil, assert.Error},
+		{"fail unmarshal rest", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "challengePassword",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{append(csr.Raw, []byte("some extra data")...)}, nil, assert.Error},
+		{"fail signatureAlgorithm", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "challengePassword",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             base.Signer,
+		}, args{failSignatureAlgorithm}, nil, assert.Error},
+		{"fail sign", &CertificateRequest{
+			Subject:            base.Subject,
+			DNSNames:           base.DNSNames,
+			EmailAddresses:     base.EmailAddresses,
+			IPAddresses:        base.IPAddresses,
+			URIs:               base.URIs,
+			SANs:               base.SANs,
+			ChallengePassword:  "challengePassword",
+			Extensions:         base.Extensions,
+			SignatureAlgorithm: base.SignatureAlgorithm,
+			Signer:             &badSigner{},
+		}, args{csr.Raw}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.cr.addChallengePassword(tt.args.asn1Data)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
