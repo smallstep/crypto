@@ -11,6 +11,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/aws/aws-sdk-go v1.48.12
+	github.com/go-jose/go-jose/v3 v3.0.1
 	github.com/go-piv/piv-go v1.11.0
 	github.com/golang/mock v1.6.0
 	github.com/google/go-tpm v0.9.0
@@ -28,7 +29,6 @@ require (
 	google.golang.org/api v0.152.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
-	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
 require (

@@ -94,7 +94,7 @@ func TestTrimPrefix(t *testing.T) {
 		wantErr error
 	}{
 		{"nil", args{nil}, nil},
-		{"trim", args{errors.New("square/go-jose: an error")}, errors.New("an error")},
+		{"trim", args{errors.New("go-jose/go-jose: an error")}, errors.New("an error")},
 		{"no trim", args{errors.New("json: an error")}, errors.New("json: an error")},
 	}
 	for _, tt := range tests {

@@ -10,11 +10,12 @@ import (
 	"io"
 	"reflect"
 	"testing"
+	"time"
 
+	jose "github.com/go-jose/go-jose/v3"
 	"github.com/pkg/errors"
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/randutil"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 var testPassword = []byte("Supercalifragilisticexpialidocious")
@@ -422,5 +423,25 @@ func TestDecrypt(t *testing.T) {
 				t.Errorf("Decrypt() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDecrypt_highP2C(t *testing.T) {
+	data := []byte(`{
+	"protected":"eyJhbGciOiJQQkVTMi1IUzI1NitBMTI4S1ciLCJlbmMiOiJBMjU2R0NNIiwicDJjIjoyMDAwMDAwMDAwMCwicDJzIjoiM3V0aFJZdHBTY09UMjR4Q3cwbTlfQSJ9",
+	"encrypted_key":"Lqn-BuAIole2T5ubPIPXl1QYj_48JqyeEfbOLq0EkyAX96irRPHA4g",
+	"iv":"eGaXW9_umwZvLCSP",
+	"ciphertext":"enFrF3NyvTN_a6Y4",
+	"tag":"VQFg97XqcRo61punp7Z3ow"
+}`)
+
+	timer := time.AfterFunc(time.Second, func() {
+		t.Fatal("Decrypt() took to much time")
+	})
+
+	_, err := Decrypt(data, WithPassword([]byte("password")))
+	assert.Error(t, err)
+	if !timer.Stop() {
+		<-timer.C
 	}
 }

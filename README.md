@@ -54,7 +54,7 @@ Package `tlsutil` provides utilities to configure tls client and servers.
 
 ### jose
 
-Package `jose` is a wrapper for `gopkg.in/square/go-jose.v2` and implements
+Package `jose` is a wrapper for `github.com/go-jose/go-jose/v3` and implements
 utilities to parse and generate JWT, JWK and JWKSets.
 
 ### x25519
