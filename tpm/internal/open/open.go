@@ -10,18 +10,16 @@ import (
 )
 
 func TPM(deviceName string) (io.ReadWriteCloser, error) {
-	if deviceName != "" {
-		if strings.HasPrefix(deviceName, "mssim:") {
-			u, err := uri.ParseWithScheme("mssim", deviceName)
-			if err != nil {
-				return nil, fmt.Errorf("failed parsing %q: %w", deviceName, err)
-			}
-			rwc, err := mssim.New(u)
-			if err != nil {
-				return nil, err
-			}
-			return rwc, nil
+	if strings.HasPrefix(deviceName, "mssim:") {
+		u, err := uri.ParseWithScheme("mssim", deviceName)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing %q: %w", deviceName, err)
 		}
+		rwc, err := mssim.New(u)
+		if err != nil {
+			return nil, err
+		}
+		return rwc, nil
 	}
 
 	return open(deviceName)

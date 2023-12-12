@@ -33,6 +33,11 @@ func New(u *uri.URI) (rwc io.ReadWriteCloser, err error) {
 		return nil, fmt.Errorf("failed opening connection to TPM: %w", err)
 	}
 
+	// TODO(hs): make connection open lazily? And/or support connection management internally?
+	// Sometimes it happens that the connection is very slow, or there seems to be no connection
+	// at all. This is likely due to how we've implemented opening the TPM (once, generally), and
+	// then reusing that instance.
+
 	return
 }
 
