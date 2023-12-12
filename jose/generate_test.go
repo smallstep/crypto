@@ -16,10 +16,10 @@ import (
 	"reflect"
 	"testing"
 
+	jose "github.com/go-jose/go-jose/v3"
 	"github.com/smallstep/assert"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 func TestThumbprint(t *testing.T) {

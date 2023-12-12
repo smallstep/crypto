@@ -14,11 +14,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/go-jose/go-jose/v3"
 	"github.com/golang/mock/gomock"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/azurekms/internal/mock"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var errTest = fmt.Errorf("test error")
