@@ -32,6 +32,7 @@ var oidYubicoSerialNumber = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 41482, 3, 7}
 type YubiKey struct {
 	yk            pivKey
 	pin           string
+	card          string
 	managementKey [24]byte
 }
 
@@ -45,9 +46,26 @@ type pivKey interface {
 }
 
 var pivCards = piv.Cards
+var pivMap sync.Map
 
+// pivOpen calls piv.Open. It can be replaced by a custom functions for testing
+// purposes.
 var pivOpen = func(card string) (pivKey, error) {
 	return piv.Open(card)
+}
+
+// openCard wraps pivOpen with a cache. It loads a card connection from the
+// cache if present.
+func openCard(card string) (pivKey, error) {
+	if v, ok := pivMap.Load(card); ok {
+		return v.(pivKey), nil
+	}
+	yk, err := pivOpen(card)
+	if err != nil {
+		return nil, err
+	}
+	pivMap.Store(card, yk)
+	return yk, nil
 }
 
 // New initializes a new YubiKey KMS.
@@ -116,30 +134,33 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	if len(cards) == 0 {
 		return nil, errors.New("error detecting yubikey: try removing and reconnecting the device")
 	}
+	card := cards[0]
 
 	var yk pivKey
 	if serial != "" {
 		// Attempt to locate the yubikey with the given serial.
 		for _, name := range cards {
-			if k, err := pivOpen(name); err == nil {
+			if k, err := openCard(name); err == nil {
 				if cert, err := k.Attest(piv.SlotAuthentication); err == nil {
 					if serial == getSerialNumber(cert) {
 						yk = k
+						card = name
 						break
 					}
 				}
 			}
 		}
 		if yk == nil {
-			return nil, errors.Errorf("failed to find key with serial number %s", serial)
+			return nil, errors.Errorf("failed to find key with serial number %s, slot 0x9a might be empty", serial)
 		}
-	} else if yk, err = pivOpen(cards[0]); err != nil {
+	} else if yk, err = openCard(cards[0]); err != nil {
 		return nil, errors.Wrap(err, "error opening yubikey")
 	}
 
 	return &YubiKey{
 		yk:            yk,
 		pin:           pin,
+		card:          card,
 		managementKey: managementKey,
 	}, nil
 }
@@ -338,7 +359,11 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 
 // Close releases the connection to the YubiKey.
 func (k *YubiKey) Close() error {
-	return errors.Wrap(k.yk.Close(), "error closing yubikey")
+	err := k.yk.Close()
+	if err == nil {
+		pivMap.Delete(k.card)
+	}
+	return errors.Wrap(err, "error closing yubikey")
 }
 
 // getPublicKey returns the public key on a slot. First it attempts to do

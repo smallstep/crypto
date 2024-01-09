@@ -18,6 +18,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/go-piv/piv-go/piv"
@@ -242,6 +243,7 @@ func TestNew(t *testing.T) {
 	pOpen := pivOpen
 	pCards := pivCards
 	t.Cleanup(func() {
+		pivMap = sync.Map{}
 		pivOpen = pOpen
 		pivCards = pCards
 	})
@@ -285,57 +287,71 @@ func TestNew(t *testing.T) {
 		{"ok", args{ctx, apiv1.Options{}}, func() {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", managementKey: piv.DefaultManagementKey}, false},
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with uri", args{ctx, apiv1.Options{
 			URI: "yubikey:pin-value=111111;management-key=001122334455667788990011223344556677889900112233",
 		}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okMultiplePivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "111111", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		}, &YubiKey{yk: yk, pin: "111111", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
 		{"ok with uri and serial", args{ctx, apiv1.Options{
+			URI: "yubikey:serial=112233?pin-value=123456",
+		}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with uri and serial from cache", args{ctx, apiv1.Options{
 			URI: "yubikey:serial=112233?pin-value=123456",
 		}}, func() {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", managementKey: piv.DefaultManagementKey}, false},
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with Pin", args{ctx, apiv1.Options{Pin: "222222"}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "222222", managementKey: piv.DefaultManagementKey}, false},
+		}, &YubiKey{yk: yk, pin: "222222", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with ManagementKey", args{ctx, apiv1.Options{ManagementKey: "001122334455667788990011223344556677889900112233"}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
 		{"fail uri", args{ctx, apiv1.Options{URI: "badschema:"}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, nil, true},
 		{"fail management key", args{ctx, apiv1.Options{URI: "yubikey:management-key=xxyyzz"}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, nil, true},
 		{"fail management key size", args{ctx, apiv1.Options{URI: "yubikey:management-key=00112233"}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, nil, true},
 		{"fail pivCards", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
 			pivCards = failPivCards
 			pivOpen = okPivOpen
-
 		}, nil, true},
 		{"fail no pivCards", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
 			pivCards = failNoPivCards
 			pivOpen = okPivOpen
-
 		}, nil, true},
 		{"fail no pivCards with serial", args{ctx, apiv1.Options{
 			URI: "yubikey:pin-value=111111;serial=332211?pin-value=123456",
 		}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-
 		}, nil, true},
 		{"fail pivOpen", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = failPivOpen
 		}, nil, true},
