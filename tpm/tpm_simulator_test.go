@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"strings"
@@ -797,14 +798,35 @@ func Test_signer_Sign(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, signer)
 
+	pub, ok := signer.Public().(*rsa.PublicKey)
+	require.True(t, ok)
+
 	random := make([]byte, 32)
 	n, err := rand.Read(random)
 	require.NoError(t, err)
 	require.Equal(t, 32, n)
 
+	// PKCS #1 v1.5 signing
 	signature, err := signer.Sign(rand.Reader, random, crypto.SHA256)
 	require.NoError(t, err)
 	require.NotNil(t, signature)
+
+	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, random, signature)
+	assert.NoError(t, err)
+
+	// PSS signing
+	for _, saltLength := range []int{rsa.PSSSaltLengthAuto, rsa.PSSSaltLengthEqualsHash, 32} {
+		t.Run(fmt.Sprintf("saltLength: %d", saltLength), func(t *testing.T) {
+			opts := &rsa.PSSOptions{
+				SaltLength: saltLength,
+				Hash:       crypto.SHA256,
+			}
+			signature, err := signer.Sign(rand.Reader, random, opts)
+			require.NoError(t, err)
+			assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, random, signature, opts))
+			assert.NoError(t, rsa.VerifyPSS(pub, crypto.SHA256, random, signature, nil))
+		})
+	}
 }
 
 func TestCreateTSS2Signer(t *testing.T) {
