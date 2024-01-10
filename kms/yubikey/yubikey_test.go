@@ -36,6 +36,7 @@ type stubPivKey struct {
 	certMap       map[piv.Slot]*x509.Certificate
 	signerMap     map[piv.Slot]interface{}
 	keyOptionsMap map[piv.Slot]piv.Key
+	closeErr      error
 }
 
 type symmetricAlgorithm int
@@ -216,7 +217,7 @@ func (s *stubPivKey) Attest(slot piv.Slot) (*x509.Certificate, error) {
 }
 
 func (s *stubPivKey) Close() error {
-	return nil
+	return s.closeErr
 }
 
 func TestRegister(t *testing.T) {
@@ -1029,7 +1030,9 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 }
 
 func TestYubiKey_Close(t *testing.T) {
-	yk := newStubPivKey(t, ECDSA)
+	yk1 := newStubPivKey(t, ECDSA)
+	yk2 := newStubPivKey(t, RSA)
+	yk2.closeErr = errors.New("some error")
 
 	type fields struct {
 		yk            pivKey
@@ -1041,7 +1044,8 @@ func TestYubiKey_Close(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, false},
+		{"ok", fields{yk1, "123456", piv.DefaultManagementKey}, false},
+		{"fail", fields{yk2, "123456", piv.DefaultManagementKey}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

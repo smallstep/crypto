@@ -359,11 +359,11 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 
 // Close releases the connection to the YubiKey.
 func (k *YubiKey) Close() error {
-	err := k.yk.Close()
-	if err == nil {
-		pivMap.Delete(k.card)
+	if err := k.yk.Close(); err != nil {
+		return errors.Wrap(err, "error closing yubikey")
 	}
-	return errors.Wrap(err, "error closing yubikey")
+	pivMap.Delete(k.card)
+	return nil
 }
 
 // getPublicKey returns the public key on a slot. First it attempts to do
