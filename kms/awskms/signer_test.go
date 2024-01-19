@@ -1,6 +1,7 @@
 package awskms
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -10,9 +11,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -34,18 +34,18 @@ func TestNewSigner(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{okClient, "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936"}, &Signer{
-			service:   okClient,
+			client:    okClient,
 			keyID:     "be468355-ca7a-40d9-a28b-8ae1c4c7f936",
 			publicKey: key,
 		}, false},
 		{"fail parse", args{okClient, "awskms:key-id="}, nil, true},
 		{"fail preload", args{&MockClient{
-			getPublicKeyWithContext: func(ctx aws.Context, input *kms.GetPublicKeyInput, opts ...request.Option) (*kms.GetPublicKeyOutput, error) {
+			getPublicKey: func(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
 				return nil, fmt.Errorf("an error")
 			},
 		}, "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936"}, nil, true},
 		{"fail preload not der", args{&MockClient{
-			getPublicKeyWithContext: func(ctx aws.Context, input *kms.GetPublicKeyInput, opts ...request.Option) (*kms.GetPublicKeyOutput, error) {
+			getPublicKey: func(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
 				return &kms.GetPublicKeyOutput{
 					KeyId:     input.KeyId,
 					PublicKey: []byte(publicKey),
@@ -75,7 +75,7 @@ func TestSigner_Public(t *testing.T) {
 	}
 
 	type fields struct {
-		service   KeyManagementClient
+		client    KeyManagementClient
 		keyID     string
 		publicKey crypto.PublicKey
 	}
@@ -89,7 +89,7 @@ func TestSigner_Public(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Signer{
-				service:   tt.fields.service,
+				client:    tt.fields.client,
 				keyID:     tt.fields.keyID,
 				publicKey: tt.fields.publicKey,
 			}
@@ -108,7 +108,7 @@ func TestSigner_Sign(t *testing.T) {
 	}
 
 	type fields struct {
-		service   KeyManagementClient
+		client    KeyManagementClient
 		keyID     string
 		publicKey crypto.PublicKey
 	}
@@ -128,7 +128,7 @@ func TestSigner_Sign(t *testing.T) {
 		{"fail alg", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, []byte("digest"), crypto.MD5}, nil, true},
 		{"fail key", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", []byte("key")}, args{rand.Reader, []byte("digest"), crypto.SHA256}, nil, true},
 		{"fail sign", fields{&MockClient{
-			signWithContext: func(ctx aws.Context, input *kms.SignInput, opts ...request.Option) (*kms.SignOutput, error) {
+			sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
 				return nil, fmt.Errorf("an error")
 			},
 		}, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, []byte("digest"), crypto.SHA256}, nil, true},
@@ -136,7 +136,7 @@ func TestSigner_Sign(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Signer{
-				service:   tt.fields.service,
+				client:    tt.fields.client,
 				keyID:     tt.fields.keyID,
 				publicKey: tt.fields.publicKey,
 			}
@@ -160,7 +160,7 @@ func Test_getSigningAlgorithm(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    string
+		want    types.SigningAlgorithmSpec
 		wantErr bool
 	}{
 		{"rsa+sha256", args{&rsa.PublicKey{}, crypto.SHA256}, "RSASSA_PKCS1_V1_5_SHA_256", false},

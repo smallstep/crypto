@@ -9,20 +9,21 @@ import (
 	"crypto/rsa"
 	"io"
 
-	"github.com/aws/aws-sdk-go/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/pemutil"
 )
 
 // Signer implements a crypto.Signer using the AWS KMS.
 type Signer struct {
-	service   KeyManagementClient
+	client    KeyManagementClient
 	keyID     string
 	publicKey crypto.PublicKey
 }
 
 // NewSigner creates a new signer using a key in the AWS KMS.
-func NewSigner(svc KeyManagementClient, signingKey string) (*Signer, error) {
+func NewSigner(client KeyManagementClient, signingKey string) (*Signer, error) {
 	keyID, err := parseKeyID(signingKey)
 	if err != nil {
 		return nil, err
@@ -30,8 +31,8 @@ func NewSigner(svc KeyManagementClient, signingKey string) (*Signer, error) {
 
 	// Make sure that the key exists.
 	signer := &Signer{
-		service: svc,
-		keyID:   keyID,
+		client: client,
+		keyID:  keyID,
 	}
 	if err := signer.preloadKey(keyID); err != nil {
 		return nil, err
@@ -44,11 +45,11 @@ func (s *Signer) preloadKey(keyID string) error {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	resp, err := s.service.GetPublicKeyWithContext(ctx, &kms.GetPublicKeyInput{
-		KeyId: &keyID,
+	resp, err := s.client.GetPublicKey(ctx, &kms.GetPublicKeyInput{
+		KeyId: pointer(keyID),
 	})
 	if err != nil {
-		return errors.Wrap(err, "awskms GetPublicKeyWithContext failed")
+		return errors.Wrap(err, "awskms GetPublicKey failed")
 	}
 
 	s.publicKey, err = pemutil.ParseDER(resp.PublicKey)
@@ -68,54 +69,54 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 	}
 
 	req := &kms.SignInput{
-		KeyId:            &s.keyID,
-		SigningAlgorithm: &alg,
+		KeyId:            pointer(s.keyID),
+		SigningAlgorithm: alg,
 		Message:          digest,
+		MessageType:      types.MessageTypeDigest,
 	}
-	req.SetMessageType("DIGEST")
 
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	resp, err := s.service.SignWithContext(ctx, req)
+	resp, err := s.client.Sign(ctx, req)
 	if err != nil {
-		return nil, errors.Wrap(err, "awsKMS SignWithContext failed")
+		return nil, errors.Wrap(err, "awskms Sign failed")
 	}
 
 	return resp.Signature, nil
 }
 
-func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (string, error) {
+func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (types.SigningAlgorithmSpec, error) {
 	switch key.(type) {
 	case *rsa.PublicKey:
 		_, isPSS := opts.(*rsa.PSSOptions)
 		switch h := opts.HashFunc(); h {
 		case crypto.SHA256:
 			if isPSS {
-				return kms.SigningAlgorithmSpecRsassaPssSha256, nil
+				return types.SigningAlgorithmSpecRsassaPssSha256, nil
 			}
-			return kms.SigningAlgorithmSpecRsassaPkcs1V15Sha256, nil
+			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha256, nil
 		case crypto.SHA384:
 			if isPSS {
-				return kms.SigningAlgorithmSpecRsassaPssSha384, nil
+				return types.SigningAlgorithmSpecRsassaPssSha384, nil
 			}
-			return kms.SigningAlgorithmSpecRsassaPkcs1V15Sha384, nil
+			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha384, nil
 		case crypto.SHA512:
 			if isPSS {
-				return kms.SigningAlgorithmSpecRsassaPssSha512, nil
+				return types.SigningAlgorithmSpecRsassaPssSha512, nil
 			}
-			return kms.SigningAlgorithmSpecRsassaPkcs1V15Sha512, nil
+			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha512, nil
 		default:
 			return "", errors.Errorf("unsupported hash function %v", h)
 		}
 	case *ecdsa.PublicKey:
 		switch h := opts.HashFunc(); h {
 		case crypto.SHA256:
-			return kms.SigningAlgorithmSpecEcdsaSha256, nil
+			return types.SigningAlgorithmSpecEcdsaSha256, nil
 		case crypto.SHA384:
-			return kms.SigningAlgorithmSpecEcdsaSha384, nil
+			return types.SigningAlgorithmSpecEcdsaSha384, nil
 		case crypto.SHA512:
-			return kms.SigningAlgorithmSpecEcdsaSha512, nil
+			return types.SigningAlgorithmSpecEcdsaSha512, nil
 		default:
 			return "", errors.Errorf("unsupported hash function %v", h)
 		}
