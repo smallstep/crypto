@@ -1,34 +1,34 @@
 package awskms
 
 import (
+	"context"
 	"encoding/pem"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 )
 
 type MockClient struct {
-	getPublicKeyWithContext func(ctx aws.Context, input *kms.GetPublicKeyInput, opts ...request.Option) (*kms.GetPublicKeyOutput, error)
-	createKeyWithContext    func(ctx aws.Context, input *kms.CreateKeyInput, opts ...request.Option) (*kms.CreateKeyOutput, error)
-	createAliasWithContext  func(ctx aws.Context, input *kms.CreateAliasInput, opts ...request.Option) (*kms.CreateAliasOutput, error)
-	signWithContext         func(ctx aws.Context, input *kms.SignInput, opts ...request.Option) (*kms.SignOutput, error)
+	getPublicKey func(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error)
+	createKey    func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error)
+	createAlias  func(ctx context.Context, input *kms.CreateAliasInput, opts ...func(*kms.Options)) (*kms.CreateAliasOutput, error)
+	sign         func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error)
 }
 
-func (m *MockClient) GetPublicKeyWithContext(ctx aws.Context, input *kms.GetPublicKeyInput, opts ...request.Option) (*kms.GetPublicKeyOutput, error) {
-	return m.getPublicKeyWithContext(ctx, input, opts...)
+func (m *MockClient) GetPublicKey(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
+	return m.getPublicKey(ctx, input, opts...)
 }
 
-func (m *MockClient) CreateKeyWithContext(ctx aws.Context, input *kms.CreateKeyInput, opts ...request.Option) (*kms.CreateKeyOutput, error) {
-	return m.createKeyWithContext(ctx, input, opts...)
+func (m *MockClient) CreateKey(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error) {
+	return m.createKey(ctx, input, opts...)
 }
 
-func (m *MockClient) CreateAliasWithContext(ctx aws.Context, input *kms.CreateAliasInput, opts ...request.Option) (*kms.CreateAliasOutput, error) {
-	return m.createAliasWithContext(ctx, input, opts...)
+func (m *MockClient) CreateAlias(ctx context.Context, input *kms.CreateAliasInput, opts ...func(*kms.Options)) (*kms.CreateAliasOutput, error) {
+	return m.createAlias(ctx, input, opts...)
 }
 
-func (m *MockClient) SignWithContext(ctx aws.Context, input *kms.SignInput, opts ...request.Option) (*kms.SignOutput, error) {
-	return m.signWithContext(ctx, input, opts...)
+func (m *MockClient) Sign(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
+	return m.sign(ctx, input, opts...)
 }
 
 const (
@@ -46,24 +46,24 @@ var signature = []byte{
 
 func getOKClient() *MockClient {
 	return &MockClient{
-		getPublicKeyWithContext: func(ctx aws.Context, input *kms.GetPublicKeyInput, opts ...request.Option) (*kms.GetPublicKeyOutput, error) {
+		getPublicKey: func(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
 			block, _ := pem.Decode([]byte(publicKey))
 			return &kms.GetPublicKeyOutput{
 				KeyId:     input.KeyId,
 				PublicKey: block.Bytes,
 			}, nil
 		},
-		createKeyWithContext: func(ctx aws.Context, input *kms.CreateKeyInput, opts ...request.Option) (*kms.CreateKeyOutput, error) {
-			md := new(kms.KeyMetadata)
-			md.SetKeyId(keyID)
+		createKey: func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error) {
 			return &kms.CreateKeyOutput{
-				KeyMetadata: md,
+				KeyMetadata: &types.KeyMetadata{
+					KeyId: pointer(keyID),
+				},
 			}, nil
 		},
-		createAliasWithContext: func(ctx aws.Context, input *kms.CreateAliasInput, opts ...request.Option) (*kms.CreateAliasOutput, error) {
+		createAlias: func(ctx context.Context, input *kms.CreateAliasInput, opts ...func(*kms.Options)) (*kms.CreateAliasOutput, error) {
 			return &kms.CreateAliasOutput{}, nil
 		},
-		signWithContext: func(ctx aws.Context, input *kms.SignInput, opts ...request.Option) (*kms.SignOutput, error) {
+		sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
 			return &kms.SignOutput{
 				Signature: signature,
 			}, nil
