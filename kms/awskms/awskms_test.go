@@ -169,8 +169,8 @@ func TestKMS_CreateKey(t *testing.T) {
 				SigningKey: "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936",
 			},
 		}, false},
-		{"ok rsa", fields{okClient}, args{&apiv1.CreateKeyRequest{
-			Name:               "root",
+		{"ok rsa with uri", fields{okClient}, args{&apiv1.CreateKeyRequest{
+			Name:               "awskms:name=root",
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
 			Bits:               2048,
 		}}, &apiv1.CreateKeyResponse{
@@ -189,6 +189,14 @@ func TestKMS_CreateKey(t *testing.T) {
 			Name:               "root",
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
 			Bits:               1234,
+		}}, nil, true},
+		{"fail uri parse", fields{okClient}, args{&apiv1.CreateKeyRequest{
+			Name:               "awskms:%name=root",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+		}}, nil, true},
+		{"fail uri no name", fields{okClient}, args{&apiv1.CreateKeyRequest{
+			Name:               "awskms:name",
+			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, nil, true},
 		{"fail createKey", fields{&MockClient{
 			createKey: func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error) {
@@ -364,17 +372,17 @@ func Test_getCustomerMasterKeySpecMapping(t *testing.T) {
 		{"SHA256WithRSA+3072", args{apiv1.SHA256WithRSA, 3072}, types.KeySpecRsa3072, assert.NoError},
 		{"SHA256WithRSA+4096", args{apiv1.SHA256WithRSA, 4096}, types.KeySpecRsa4096, assert.NoError},
 		{"SHA512WithRSA", args{apiv1.SHA512WithRSA, 0}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA512WithRSA+2048", args{apiv1.SHA256WithRSA, 2048}, types.KeySpecRsa2048, assert.NoError},
-		{"SHA512WithRSA+3072", args{apiv1.SHA256WithRSA, 3072}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA512WithRSA+4096", args{apiv1.SHA256WithRSA, 4096}, types.KeySpecRsa4096, assert.NoError},
+		{"SHA512WithRSA+2048", args{apiv1.SHA512WithRSA, 2048}, types.KeySpecRsa2048, assert.NoError},
+		{"SHA512WithRSA+3072", args{apiv1.SHA512WithRSA, 3072}, types.KeySpecRsa3072, assert.NoError},
+		{"SHA512WithRSA+4096", args{apiv1.SHA512WithRSA, 4096}, types.KeySpecRsa4096, assert.NoError},
 		{"SHA256WithRSAPSS", args{apiv1.SHA256WithRSAPSS, 0}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA256WithRSAPSS+2048", args{apiv1.SHA256WithRSA, 2048}, types.KeySpecRsa2048, assert.NoError},
-		{"SHA256WithRSAPSS+3072", args{apiv1.SHA256WithRSA, 3072}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA256WithRSAPSS+4096", args{apiv1.SHA256WithRSA, 4096}, types.KeySpecRsa4096, assert.NoError},
+		{"SHA256WithRSAPSS+2048", args{apiv1.SHA256WithRSAPSS, 2048}, types.KeySpecRsa2048, assert.NoError},
+		{"SHA256WithRSAPSS+3072", args{apiv1.SHA256WithRSAPSS, 3072}, types.KeySpecRsa3072, assert.NoError},
+		{"SHA256WithRSAPSS+4096", args{apiv1.SHA256WithRSAPSS, 4096}, types.KeySpecRsa4096, assert.NoError},
 		{"SHA512WithRSAPSS", args{apiv1.SHA512WithRSAPSS, 0}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA512WithRSAPSS+2048", args{apiv1.SHA256WithRSA, 2048}, types.KeySpecRsa2048, assert.NoError},
-		{"SHA512WithRSAPSS+3072", args{apiv1.SHA256WithRSA, 3072}, types.KeySpecRsa3072, assert.NoError},
-		{"SHA512WithRSAPSS+4096", args{apiv1.SHA256WithRSA, 4096}, types.KeySpecRsa4096, assert.NoError},
+		{"SHA512WithRSAPSS+2048", args{apiv1.SHA512WithRSAPSS, 2048}, types.KeySpecRsa2048, assert.NoError},
+		{"SHA512WithRSAPSS+3072", args{apiv1.SHA512WithRSAPSS, 3072}, types.KeySpecRsa3072, assert.NoError},
+		{"SHA512WithRSAPSS+4096", args{apiv1.SHA512WithRSAPSS, 4096}, types.KeySpecRsa4096, assert.NoError},
 		{"ECDSAWithSHA256", args{apiv1.ECDSAWithSHA256, 0}, types.KeySpecEccNistP256, assert.NoError},
 		{"ECDSAWithSHA384", args{apiv1.ECDSAWithSHA384, 0}, types.KeySpecEccNistP384, assert.NoError},
 		{"ECDSAWithSHA512", args{apiv1.ECDSAWithSHA512, 0}, types.KeySpecEccNistP521, assert.NoError},
