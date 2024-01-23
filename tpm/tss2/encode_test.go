@@ -22,8 +22,8 @@ func TestNew(t *testing.T) {
 			Type:       oidLoadableKey,
 			EmptyAuth:  true,
 			Parent:     0x40000001,
-			PublicKey:  append([]byte{0, 6}, []byte("public")...),
-			PrivateKey: append([]byte{0, 7}, []byte("private")...),
+			PublicKey:  []byte("public"),
+			PrivateKey: []byte("private"),
 		}},
 		{"ok with options", args{[]byte("public"), []byte("private"), []TPMOption{
 			func(k *TPMKey) {
@@ -37,8 +37,8 @@ func TestNew(t *testing.T) {
 			EmptyAuth:  false,
 			Policy:     []TPMPolicy{{CommandCode: 1, CommandPolicy: []byte("command-policy")}},
 			Parent:     0x40000001,
-			PublicKey:  append([]byte{0, 6}, []byte("public")...),
-			PrivateKey: append([]byte{0, 7}, []byte("private")...),
+			PublicKey:  []byte("public"),
+			PrivateKey: []byte("private"),
 		}},
 	}
 	for _, tt := range tests {
@@ -58,12 +58,12 @@ func TestTPMKey_Encode(t *testing.T) {
 		{"ok", New([]byte("public"), []byte("private")), &pem.Block{
 			Type: "TSS2 PRIVATE KEY",
 			Bytes: []byte{
-				0x30, 0x28,
+				0x30, 0x24,
 				0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x3,
 				0xa0, 0x3, 0x1, 0x1, 0xff,
 				0x2, 0x4, 0x40, 0x0, 0x0, 0x1,
-				0x4, 0x8, 0x0, 0x6, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
-				0x4, 0x9, 0x0, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
+				0x4, 0x6, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
+				0x4, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
 			},
 		}, assert.NoError},
 		{"fail", nil, nil, assert.Error},

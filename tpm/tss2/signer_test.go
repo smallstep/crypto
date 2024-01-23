@@ -258,7 +258,7 @@ func TestCreateSigner(t *testing.T) {
 			}
 			b, err := p.Encode()
 			if assert.NoError(t, err) {
-				k.PublicKey = addPrefixLength(b)
+				k.PublicKey = b
 			}
 		})}, nil, assert.Error},
 	}

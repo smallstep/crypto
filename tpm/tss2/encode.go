@@ -16,8 +16,8 @@ func New(pub, priv []byte, opts ...TPMOption) *TPMKey {
 		Type:       oidLoadableKey,
 		EmptyAuth:  true,
 		Parent:     handleOwner,
-		PublicKey:  addPrefixLength(pub),
-		PrivateKey: addPrefixLength(priv),
+		PublicKey:  pub,
+		PrivateKey: priv,
 	}
 	for _, fn := range opts {
 		fn(key)
@@ -55,9 +55,4 @@ func Encode(pub, priv []byte, opts ...TPMOption) (*pem.Block, error) {
 // encoded PEM block.
 func EncodeToMemory(pub, priv []byte, opts ...TPMOption) ([]byte, error) {
 	return New(pub, priv, opts...).EncodeToMemory()
-}
-
-func addPrefixLength(b []byte) []byte {
-	s := len(b)
-	return append([]byte{byte(s >> 8 & 0xFF), byte(s & 0xFF)}, b...)
 }
