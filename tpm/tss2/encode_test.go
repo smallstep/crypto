@@ -85,7 +85,7 @@ func TestTPMKey_EncodeToMemory(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", New([]byte("public"), []byte("private")), []byte(`-----BEGIN TSS2 PRIVATE KEY-----
-MCgGBmeBBQoBA6ADAQH/AgRAAAABBAgABnB1YmxpYwQJAAdwcml2YXRl
+MCQGBmeBBQoBA6ADAQH/AgRAAAABBAZwdWJsaWMEB3ByaXZhdGU=
 -----END TSS2 PRIVATE KEY-----
 `), assert.NoError},
 		{"fail", nil, nil, assert.Error},
@@ -114,12 +114,12 @@ func TestEncode(t *testing.T) {
 		{"ok", args{[]byte("public"), []byte("private"), nil}, &pem.Block{
 			Type: "TSS2 PRIVATE KEY",
 			Bytes: []byte{
-				0x30, 0x28,
+				0x30, 0x24,
 				0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x3,
 				0xa0, 0x3, 0x1, 0x1, 0xff,
 				0x2, 0x4, 0x40, 0x0, 0x0, 0x1,
-				0x4, 0x8, 0x0, 0x6, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
-				0x4, 0x9, 0x0, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
+				0x4, 0x6, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
+				0x4, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
 			},
 		}, assert.NoError},
 	}
@@ -145,7 +145,7 @@ func TestEncodeToMemory(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", args{[]byte("public"), []byte("private"), nil}, []byte(`-----BEGIN TSS2 PRIVATE KEY-----
-MCgGBmeBBQoBA6ADAQH/AgRAAAABBAgABnB1YmxpYwQJAAdwcml2YXRl
+MCQGBmeBBQoBA6ADAQH/AgRAAAABBAZwdWJsaWMEB3ByaXZhdGU=
 -----END TSS2 PRIVATE KEY-----
 `), assert.NoError},
 	}
