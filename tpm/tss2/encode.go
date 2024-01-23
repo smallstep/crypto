@@ -10,6 +10,13 @@ const handleOwner = 0x40000001
 // TPMOption is the type used to modify a [TPMKey].
 type TPMOption func(*TPMKey)
 
+// WithParent sets the [TPMKey] parent's handle
+func WithParent(parent int) TPMOption {
+	return func(t *TPMKey) {
+		t.Parent = parent
+	}
+}
+
 // New creates a new [TPMKey] with the given public and private keys.
 func New(pub, priv []byte, opts ...TPMOption) *TPMKey {
 	key := &TPMKey{

@@ -15,7 +15,6 @@ import (
 	x509ext "github.com/smallstep/go-attestation/x509"
 
 	"go.step.sm/crypto/tpm/storage"
-	"go.step.sm/crypto/tpm/tss2"
 )
 
 // AK models a TPM 2.0 Attestation Key. An AK can be used
@@ -456,15 +455,6 @@ func (ak *AK) HasValidPermanentIdentifier(permanentIdentifier string) bool {
 	}
 
 	return false
-}
-
-// ToTSS2 gets the public and private blobs and returns a [*tss2.TPMKey].
-func (ak *AK) ToTSS2(ctx context.Context) (*tss2.TPMKey, error) {
-	blobs, err := ak.Blobs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return tss2.New(blobs.public, blobs.private), nil
 }
 
 // toStorage transforms the AK to the struct used for
