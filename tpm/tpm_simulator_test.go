@@ -382,6 +382,9 @@ func TestAK_ToTSS2(t *testing.T) {
 
 	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
 	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+	assert.Equal(t, len(blobs.public), int(binary.BigEndian.Uint16(tss2Key.PublicKey[:2])))
+	assert.Equal(t, len(blobs.private), int(binary.BigEndian.Uint16(tss2Key.PrivateKey[:2])))
+	assert.Equal(t, 0x81000001, tss2Key.Parent)
 
 	akPub := ak.Public()
 	tssPub, err := tss2Key.Public()
@@ -699,12 +702,79 @@ func TestKey_ToTSS2(t *testing.T) {
 
 	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
 	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+	assert.Equal(t, len(blobs.public), int(binary.BigEndian.Uint16(tss2Key.PublicKey[:2])))
+	assert.Equal(t, len(blobs.private), int(binary.BigEndian.Uint16(tss2Key.PrivateKey[:2])))
+	assert.Equal(t, 0x81000001, tss2Key.Parent)
 
 	signer, err := key.Signer(ctx)
 	require.NoError(t, err)
 	tssPub, err := tss2Key.Public()
 	require.NoError(t, err)
 	assert.Equal(t, signer.Public(), tssPub)
+}
+
+func TestKey_ToTSS2_RSA(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+	config := CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.CreateKey(ctx, "rsa-key", config)
+	require.NoError(t, err)
+
+	blobs, err := key.Blobs(ctx)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
+	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+	assert.Equal(t, len(blobs.public), int(binary.BigEndian.Uint16(tss2Key.PublicKey[:2])))
+	assert.Equal(t, len(blobs.private), int(binary.BigEndian.Uint16(tss2Key.PrivateKey[:2])))
+	assert.Equal(t, 0x81000001, tss2Key.Parent)
+
+	signer, err := key.Signer(ctx)
+	require.NoError(t, err)
+	tssPub, err := tss2Key.Public()
+	require.NoError(t, err)
+	assert.Equal(t, signer.Public(), tssPub)
+}
+
+func TestTPM_AttestKey_ToTSS2(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	ak, err := tpm.CreateAK(context.Background(), "first-ak")
+	require.NoError(t, err)
+	require.NotNil(t, ak)
+	require.Same(t, tpm, ak.tpm)
+
+	config := AttestKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	}
+	key, err := tpm.AttestKey(context.Background(), "first-ak", "first-key", config)
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	require.Equal(t, "first-key", key.Name())
+	require.NotEqual(t, 0, len(key.Data()))
+	require.Equal(t, "first-ak", key.AttestedBy())
+	require.Same(t, tpm, key.tpm)
+	require.True(t, key.WasAttested())
+	require.True(t, key.WasAttestedBy(ak))
+
+	ctx := context.Background()
+	blobs, err := key.Blobs(ctx)
+	require.NoError(t, err)
+
+	tss2Key, err := key.ToTSS2(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, blobs.public, tss2Key.PublicKey[2:])
+	assert.Equal(t, blobs.private, tss2Key.PrivateKey[2:])
+	assert.Equal(t, len(blobs.public), int(binary.BigEndian.Uint16(tss2Key.PublicKey[:2])))
+	assert.Equal(t, len(blobs.private), int(binary.BigEndian.Uint16(tss2Key.PrivateKey[:2])))
+	assert.Equal(t, 0x81000001, tss2Key.Parent)
 }
 
 func TestKey_SetCertificateChain(t *testing.T) {
