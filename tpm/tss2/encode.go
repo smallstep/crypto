@@ -4,13 +4,13 @@ import (
 	"encoding/pem"
 )
 
-// handle owner is the reserved handle TPM_RH_OWNER.
+// handleOwner is the reserved handle TPM_RH_OWNER.
 const handleOwner = 0x40000001
 
 // TPMOption is the type used to modify a [TPMKey].
 type TPMOption func(*TPMKey)
 
-// WithParent sets the [TPMKey] parent's handle
+// WithParent sets the [TPMKey] parent handle.
 func WithParent(parent int) TPMOption {
 	return func(t *TPMKey) {
 		t.Parent = parent
