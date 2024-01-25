@@ -10,7 +10,7 @@ const (
 	// Defined in "Registry of reserved TPM 2.0 handles and localities",
 	// and checked on a glinux machine. This is the default parent handle
 	// used by go-tpm and go-attestation, and thus also the default handle
-	// set when marshalling to the TSS2 format.
+	// set when marshaling to the TSS2 format.
 	commonSrkEquivalentHandle = 0x81000001
 )
 
