@@ -439,7 +439,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 
 		// The default type is printable, but if the value is prefixed with a
 		// type, use that.
-		var value, params = s.Value, "printable"
+		value, params := s.Value, "printable"
 		if strings.Contains(value, sanTypeSeparator) {
 			params = strings.Split(value, sanTypeSeparator)[0]
 			value = value[len(params)+1:]
@@ -649,31 +649,31 @@ func (k KeyUsage) MarshalJSON() ([]byte, error) {
 	var usages []string
 
 	if x509.KeyUsage(k)&x509.KeyUsageDigitalSignature != 0 {
-		usages = append(usages, KeyUsageDigitalSignature)
+		usages = append(usages, "digitalSignature")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageContentCommitment != 0 {
-		usages = append(usages, KeyUsageContentCommitment)
+		usages = append(usages, "contentCommitment")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageKeyEncipherment != 0 {
-		usages = append(usages, KeyUsageKeyEncipherment)
+		usages = append(usages, "keyEncipherment")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageDataEncipherment != 0 {
-		usages = append(usages, KeyUsageDataEncipherment)
+		usages = append(usages, "dataEncipherment")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageKeyAgreement != 0 {
-		usages = append(usages, KeyUsageKeyAgreement)
+		usages = append(usages, "keyAgreement")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageCertSign != 0 {
-		usages = append(usages, KeyUsageCertSign)
+		usages = append(usages, "certSign")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageCRLSign != 0 {
-		usages = append(usages, KeyUsageCRLSign)
+		usages = append(usages, "crlSign")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageEncipherOnly != 0 {
-		usages = append(usages, KeyUsageEncipherOnly)
+		usages = append(usages, "encipherOnly")
 	}
 	if x509.KeyUsage(k)&x509.KeyUsageDecipherOnly != 0 {
-		usages = append(usages, KeyUsageDecipherOnly)
+		usages = append(usages, "decipherOnly")
 	}
 
 	if len(usages) == 0 && k != 0 {
@@ -749,33 +749,33 @@ func (k ExtKeyUsage) MarshalJSON() ([]byte, error) {
 	for i, eku := range k {
 		switch eku {
 		case x509.ExtKeyUsageAny:
-			usages[i] = ExtKeyUsageAny
+			usages[i] = "any"
 		case x509.ExtKeyUsageServerAuth:
-			usages[i] = ExtKeyUsageServerAuth
+			usages[i] = "serverAuth"
 		case x509.ExtKeyUsageClientAuth:
-			usages[i] = ExtKeyUsageClientAuth
+			usages[i] = "clientAuth"
 		case x509.ExtKeyUsageCodeSigning:
-			usages[i] = ExtKeyUsageCodeSigning
+			usages[i] = "codeSigning"
 		case x509.ExtKeyUsageEmailProtection:
-			usages[i] = ExtKeyUsageEmailProtection
+			usages[i] = "emailProtection"
 		case x509.ExtKeyUsageIPSECEndSystem:
-			usages[i] = ExtKeyUsageIPSECEndSystem
+			usages[i] = "ipsecEndSystem"
 		case x509.ExtKeyUsageIPSECTunnel:
-			usages[i] = ExtKeyUsageIPSECTunnel
+			usages[i] = "ipsecTunnel"
 		case x509.ExtKeyUsageIPSECUser:
-			usages[i] = ExtKeyUsageIPSECUser
+			usages[i] = "ipsecUser"
 		case x509.ExtKeyUsageTimeStamping:
-			usages[i] = ExtKeyUsageTimeStamping
+			usages[i] = "timeStamping"
 		case x509.ExtKeyUsageOCSPSigning:
-			usages[i] = ExtKeyUsageOCSPSigning
+			usages[i] = "ocspSigning"
 		case x509.ExtKeyUsageMicrosoftServerGatedCrypto:
-			usages[i] = ExtKeyUsageMicrosoftServerGatedCrypto
+			usages[i] = "microsoftServerGatedCrypto"
 		case x509.ExtKeyUsageNetscapeServerGatedCrypto:
-			usages[i] = ExtKeyUsageNetscapeServerGatedCrypto
+			usages[i] = "netscapeServerGatedCrypto"
 		case x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
-			usages[i] = ExtKeyUsageMicrosoftCommercialCodeSigning
+			usages[i] = "microsoftCommercialCodeSigning"
 		case x509.ExtKeyUsageMicrosoftKernelCodeSigning:
-			usages[i] = ExtKeyUsageMicrosoftKernelCodeSigning
+			usages[i] = "microsoftKernelCodeSigning"
 		default:
 			return nil, fmt.Errorf("unsupported extKeyUsage %v", eku)
 		}
@@ -1117,7 +1117,7 @@ type SubjectAlternativeNames struct {
 	PermanentIdentifiers []PermanentIdentifier
 	HardwareModuleNames  []HardwareModuleName
 	TPMHardwareDetails   TPMHardwareDetails
-	//OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
+	// OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
 }
 
 // TPMHardwareDetails is a container for some details
