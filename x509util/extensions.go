@@ -23,34 +23,34 @@ func convertName(s string) string {
 }
 
 // Names used for key usages.
-var (
-	KeyUsageDigitalSignature  = convertName("DigitalSignature")
-	KeyUsageContentCommitment = convertName("ContentCommitment")
-	KeyUsageKeyEncipherment   = convertName("KeyEncipherment")
-	KeyUsageDataEncipherment  = convertName("DataEncipherment")
-	KeyUsageKeyAgreement      = convertName("KeyAgreement")
-	KeyUsageCertSign          = convertName("CertSign")
-	KeyUsageCRLSign           = convertName("CRLSign")
-	KeyUsageEncipherOnly      = convertName("EncipherOnly")
-	KeyUsageDecipherOnly      = convertName("DecipherOnly")
+const (
+	KeyUsageDigitalSignature  = "digitalSignature"
+	KeyUsageContentCommitment = "contentCommitment"
+	KeyUsageKeyEncipherment   = "keyEncipherment"
+	KeyUsageDataEncipherment  = "dataEncipherment"
+	KeyUsageKeyAgreement      = "keyAgreement"
+	KeyUsageCertSign          = "certSign"
+	KeyUsageCRLSign           = "crlSign"
+	KeyUsageEncipherOnly      = "encipherOnly"
+	KeyUsageDecipherOnly      = "decipherOnly"
 )
 
 // Names used for extended key usages.
-var (
-	ExtKeyUsageAny                            = convertName("Any")
-	ExtKeyUsageServerAuth                     = convertName("ServerAuth")
-	ExtKeyUsageClientAuth                     = convertName("ClientAuth")
-	ExtKeyUsageCodeSigning                    = convertName("CodeSigning")
-	ExtKeyUsageEmailProtection                = convertName("EmailProtection")
-	ExtKeyUsageIPSECEndSystem                 = convertName("IPSECEndSystem")
-	ExtKeyUsageIPSECTunnel                    = convertName("IPSECTunnel")
-	ExtKeyUsageIPSECUser                      = convertName("IPSECUser")
-	ExtKeyUsageTimeStamping                   = convertName("TimeStamping")
-	ExtKeyUsageOCSPSigning                    = convertName("OCSPSigning")
-	ExtKeyUsageMicrosoftServerGatedCrypto     = convertName("MicrosoftServerGatedCrypto")
-	ExtKeyUsageNetscapeServerGatedCrypto      = convertName("NetscapeServerGatedCrypto")
-	ExtKeyUsageMicrosoftCommercialCodeSigning = convertName("MicrosoftCommercialCodeSigning")
-	ExtKeyUsageMicrosoftKernelCodeSigning     = convertName("MicrosoftKernelCodeSigning")
+const (
+	ExtKeyUsageAny                            = "any"
+	ExtKeyUsageServerAuth                     = "serverAuth"
+	ExtKeyUsageClientAuth                     = "clientAuth"
+	ExtKeyUsageCodeSigning                    = "codeSigning"
+	ExtKeyUsageEmailProtection                = "emailProtection"
+	ExtKeyUsageIPSECEndSystem                 = "ipsecEndSystem"
+	ExtKeyUsageIPSECTunnel                    = "ipsecTunnel"
+	ExtKeyUsageIPSECUser                      = "ipsecUser"
+	ExtKeyUsageTimeStamping                   = "timeStamping"
+	ExtKeyUsageOCSPSigning                    = "ocspSigning"
+	ExtKeyUsageMicrosoftServerGatedCrypto     = "microsoftServerGatedCrypto"
+	ExtKeyUsageNetscapeServerGatedCrypto      = "netscapeServerGatedCrypto"
+	ExtKeyUsageMicrosoftCommercialCodeSigning = "microsoftCommercialCodeSigning"
+	ExtKeyUsageMicrosoftKernelCodeSigning     = "microsoftKernelCodeSigning"
 )
 
 // Names used and SubjectAlternativeNames types.
@@ -439,7 +439,7 @@ func (s SubjectAlternativeName) RawValue() (asn1.RawValue, error) {
 
 		// The default type is printable, but if the value is prefixed with a
 		// type, use that.
-		var value, params = s.Value, "printable"
+		value, params := s.Value, "printable"
 		if strings.Contains(value, sanTypeSeparator) {
 			params = strings.Split(value, sanTypeSeparator)[0]
 			value = value[len(params)+1:]
@@ -616,23 +616,23 @@ func (k *KeyUsage) UnmarshalJSON(data []byte) error {
 	for _, s := range ms {
 		var ku x509.KeyUsage
 		switch convertName(s) {
-		case KeyUsageDigitalSignature:
+		case convertName(KeyUsageDigitalSignature):
 			ku = x509.KeyUsageDigitalSignature
-		case KeyUsageContentCommitment:
+		case convertName(KeyUsageContentCommitment):
 			ku = x509.KeyUsageContentCommitment
-		case KeyUsageKeyEncipherment:
+		case convertName(KeyUsageKeyEncipherment):
 			ku = x509.KeyUsageKeyEncipherment
-		case KeyUsageDataEncipherment:
+		case convertName(KeyUsageDataEncipherment):
 			ku = x509.KeyUsageDataEncipherment
-		case KeyUsageKeyAgreement:
+		case convertName(KeyUsageKeyAgreement):
 			ku = x509.KeyUsageKeyAgreement
-		case KeyUsageCertSign:
+		case convertName(KeyUsageCertSign):
 			ku = x509.KeyUsageCertSign
-		case KeyUsageCRLSign:
+		case convertName(KeyUsageCRLSign):
 			ku = x509.KeyUsageCRLSign
-		case KeyUsageEncipherOnly:
+		case convertName(KeyUsageEncipherOnly):
 			ku = x509.KeyUsageEncipherOnly
-		case KeyUsageDecipherOnly:
+		case convertName(KeyUsageDecipherOnly):
 			ku = x509.KeyUsageDecipherOnly
 		default:
 			return errors.Errorf("unsupported keyUsage %s", s)
@@ -703,33 +703,33 @@ func (k *ExtKeyUsage) UnmarshalJSON(data []byte) error {
 	for i, s := range ms {
 		var ku x509.ExtKeyUsage
 		switch convertName(s) {
-		case ExtKeyUsageAny:
+		case convertName(ExtKeyUsageAny):
 			ku = x509.ExtKeyUsageAny
-		case ExtKeyUsageServerAuth:
+		case convertName(ExtKeyUsageServerAuth):
 			ku = x509.ExtKeyUsageServerAuth
-		case ExtKeyUsageClientAuth:
+		case convertName(ExtKeyUsageClientAuth):
 			ku = x509.ExtKeyUsageClientAuth
-		case ExtKeyUsageCodeSigning:
+		case convertName(ExtKeyUsageCodeSigning):
 			ku = x509.ExtKeyUsageCodeSigning
-		case ExtKeyUsageEmailProtection:
+		case convertName(ExtKeyUsageEmailProtection):
 			ku = x509.ExtKeyUsageEmailProtection
-		case ExtKeyUsageIPSECEndSystem:
+		case convertName(ExtKeyUsageIPSECEndSystem):
 			ku = x509.ExtKeyUsageIPSECEndSystem
-		case ExtKeyUsageIPSECTunnel:
+		case convertName(ExtKeyUsageIPSECTunnel):
 			ku = x509.ExtKeyUsageIPSECTunnel
-		case ExtKeyUsageIPSECUser:
+		case convertName(ExtKeyUsageIPSECUser):
 			ku = x509.ExtKeyUsageIPSECUser
-		case ExtKeyUsageTimeStamping:
+		case convertName(ExtKeyUsageTimeStamping):
 			ku = x509.ExtKeyUsageTimeStamping
-		case ExtKeyUsageOCSPSigning:
+		case convertName(ExtKeyUsageOCSPSigning):
 			ku = x509.ExtKeyUsageOCSPSigning
-		case ExtKeyUsageMicrosoftServerGatedCrypto:
+		case convertName(ExtKeyUsageMicrosoftServerGatedCrypto):
 			ku = x509.ExtKeyUsageMicrosoftServerGatedCrypto
-		case ExtKeyUsageNetscapeServerGatedCrypto:
+		case convertName(ExtKeyUsageNetscapeServerGatedCrypto):
 			ku = x509.ExtKeyUsageNetscapeServerGatedCrypto
-		case ExtKeyUsageMicrosoftCommercialCodeSigning:
+		case convertName(ExtKeyUsageMicrosoftCommercialCodeSigning):
 			ku = x509.ExtKeyUsageMicrosoftCommercialCodeSigning
-		case ExtKeyUsageMicrosoftKernelCodeSigning:
+		case convertName(ExtKeyUsageMicrosoftKernelCodeSigning):
 			ku = x509.ExtKeyUsageMicrosoftKernelCodeSigning
 		default:
 			return errors.Errorf("unsupported extKeyUsage %s", s)
@@ -1117,7 +1117,7 @@ type SubjectAlternativeNames struct {
 	PermanentIdentifiers []PermanentIdentifier
 	HardwareModuleNames  []HardwareModuleName
 	TPMHardwareDetails   TPMHardwareDetails
-	//OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
+	// OtherNames          []OtherName // TODO(hs): unused at the moment; do we need it? what type definition to use?
 }
 
 // TPMHardwareDetails is a container for some details

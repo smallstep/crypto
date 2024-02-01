@@ -519,7 +519,7 @@ func TestIssuer_Set(t *testing.T) {
 	}
 }
 
-func Test_newExtraNames(t *testing.T) {
+func Test_NewExtraNames(t *testing.T) {
 	type args struct {
 		atvs []pkix.AttributeTypeAndValue
 	}
@@ -540,7 +540,7 @@ func Test_newExtraNames(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := newExtraNames(tt.args.atvs); !reflect.DeepEqual(got, tt.want) {
+			if got := NewExtraNames(tt.args.atvs); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("newDistinguisedNames() = %v, want %v", got, tt.want)
 			}
 		})
