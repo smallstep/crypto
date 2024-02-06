@@ -68,11 +68,13 @@ func (ak *AK) UnmarshalJSON(data []byte) error {
 
 // Key is the type used to store Keys.
 type Key struct {
-	Name       string
-	Data       []byte
-	AttestedBy string
-	Chain      []*x509.Certificate
-	CreatedAt  time.Time
+	Name                 string
+	Data                 []byte
+	AttestedBy           string
+	Chain                []*x509.Certificate
+	CreatedAt            time.Time
+	LatestAttestation    []byte
+	LatestAttestationSig []byte
 }
 
 // MarshalJSON marshals the Key into JSON.
@@ -83,11 +85,13 @@ func (key *Key) MarshalJSON() ([]byte, error) {
 	}
 
 	sk := serializedKey{
-		Name:       key.Name,
-		Type:       typeKey,
-		Data:       key.Data,
-		AttestedBy: key.AttestedBy,
-		CreatedAt:  key.CreatedAt,
+		Name:                 key.Name,
+		Type:                 typeKey,
+		Data:                 key.Data,
+		AttestedBy:           key.AttestedBy,
+		CreatedAt:            key.CreatedAt,
+		LatestAttestation:    key.LatestAttestation,
+		LatestAttestationSig: key.LatestAttestationSig,
 	}
 
 	if len(chain) > 0 {
@@ -112,6 +116,8 @@ func (key *Key) UnmarshalJSON(data []byte) error {
 	key.Data = sk.Data
 	key.AttestedBy = sk.AttestedBy
 	key.CreatedAt = sk.CreatedAt
+	key.LatestAttestation = sk.LatestAttestation
+	key.LatestAttestationSig = sk.LatestAttestationSig
 
 	if len(sk.Chain) > 0 {
 		chain := make([]*x509.Certificate, len(sk.Chain))
@@ -153,12 +159,14 @@ type serializedAK struct {
 // serializedKey is the struct used when marshaling
 // a storage Key to JSON.
 type serializedKey struct {
-	Name       string        `json:"name"`
-	Type       tpmObjectType `json:"type"`
-	Data       []byte        `json:"data"`
-	AttestedBy string        `json:"attestedBy"`
-	Chain      [][]byte      `json:"chain"`
-	CreatedAt  time.Time     `json:"createdAt"`
+	Name                 string        `json:"name"`
+	Type                 tpmObjectType `json:"type"`
+	Data                 []byte        `json:"data"`
+	AttestedBy           string        `json:"attestedBy"`
+	Chain                [][]byte      `json:"chain"`
+	CreatedAt            time.Time     `json:"createdAt"`
+	LatestAttestation    []byte        `json:"latestAttestation"`
+	LatestAttestationSig []byte        `json:"latestAttestationSig"`
 }
 
 // keyForAK returns the key to use when storing an AK.

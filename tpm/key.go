@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/smallstep/go-attestation/attest"
 	internalkey "go.step.sm/crypto/tpm/internal/key"
 	"go.step.sm/crypto/tpm/storage"
@@ -19,13 +21,15 @@ import (
 // attested by an AK, to be able to prove that it
 // was created by a specific TPM.
 type Key struct {
-	name       string
-	data       []byte
-	attestedBy string
-	chain      []*x509.Certificate
-	createdAt  time.Time
-	blobs      *Blobs
-	tpm        *TPM
+	name                 string
+	data                 []byte
+	attestedBy           string
+	chain                []*x509.Certificate
+	createdAt            time.Time
+	blobs                *Blobs
+	tpm                  *TPM
+	latestAttestation    []byte
+	latestAttestationSig []byte
 }
 
 // Name returns the Key name. The name uniquely
@@ -202,6 +206,97 @@ func (w attestValidationWrapper) Validate() error {
 		return fmt.Errorf("unsupported algorithm %q", w.Algorithm)
 	}
 	return nil
+}
+
+// CertifyKey certifies a pre-existing key. It refreshes the CreateAttestation and CreateSignature
+// CertificationParameters of the stored key.
+func (t *TPM) CertifyKey(ctx context.Context, akName, name string, config AttestKeyConfig) (*Key, error) {
+	var paths []string
+	if t.deviceName != "" {
+		paths = append(paths, t.deviceName)
+	}
+	thetpm, err := transport.OpenTPM(paths...)
+	if err != nil {
+		return nil, fmt.Errorf("failed opening TPM: %w", err)
+	}
+
+	k, err := t.store.GetKey(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
+	}
+
+	ak, err := t.store.GetAK(akName)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
+	}
+
+	// serializedKey represents a loadable, TPM-backed key.
+	type serializedKey struct {
+		// Public represents the public key, in a TPM-specific format. This
+		// field is populated on all platforms and TPM versions.
+		Public []byte
+		// Blob represents the key material for KeyEncodingEncrypted keys. This
+		// is only used on Linux.
+		Blob []byte `json:"KeyBlob"`
+	}
+
+	var sKey serializedKey
+	if err := json.Unmarshal(k.Data, &sKey); err != nil {
+		return nil, fmt.Errorf("failed deserializing key %q: %w", name, err)
+	}
+	parent := tpm2.NamedHandle{
+		Handle: tpm2.TPMHandle(commonSrkEquivalentHandle),
+	}
+	keyLoad := tpm2.Load{
+		ParentHandle: parent,
+		InPrivate:    tpm2.TPM2BPrivate{Buffer: sKey.Blob},
+		InPublic:     tpm2.BytesAs2B[tpm2.TPMTPublic, *tpm2.TPMTPublic](sKey.Public),
+	}
+	loadedKey, err := keyLoad.Execute(thetpm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load key %q: %w", name, err)
+	}
+
+	var attSKey serializedKey
+	if err := json.Unmarshal(ak.Data, &attSKey); err != nil {
+		return nil, fmt.Errorf("failed deserializing AK %q: %w", akName, err)
+	}
+	akLoad := tpm2.Load{
+		ParentHandle: parent,
+		InPrivate:    tpm2.TPM2BPrivate{Buffer: attSKey.Blob},
+		InPublic:     tpm2.BytesAs2B[tpm2.TPMTPublic, *tpm2.TPMTPublic](attSKey.Public),
+	}
+	loadedAK, err := akLoad.Execute(thetpm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AK %q: %w", akName, err)
+	}
+
+	keyHandle := tpm2.NamedHandle{
+		Handle: loadedKey.ObjectHandle,
+	}
+	akHandle := tpm2.NamedHandle{
+		Handle: loadedAK.ObjectHandle,
+	}
+	certify := tpm2.Certify{
+		ObjectHandle: keyHandle,
+		SignHandle:   akHandle,
+		QualifyingData: tpm2.TPM2BData{
+			Buffer: config.QualifyingData,
+		},
+	}
+	certified, err := certify.Execute(thetpm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to certify key %q: %w", name, err)
+	}
+
+	k.LatestAttestation = certified.CertifyInfo.Bytes()
+	k.LatestAttestationSig = tpm2.Marshal(certified.Signature)
+
+	if err := t.store.UpdateKey(k); err != nil {
+		return nil, fmt.Errorf("failed to update stored key %q with new attestation: %w", name, err)
+	}
+
+	return keyFromStorage(k, t), nil
 }
 
 // AttestKey creates a new Key identified by `name` and attested by the AK
@@ -387,6 +482,10 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	defer loadedKey.Close()
 
 	params = loadedKey.CertificationParameters()
+	if len(k.latestAttestation) > 0 {
+		params.CreateAttestation = k.latestAttestation
+		params.CreateSignature = k.latestAttestationSig
+	}
 
 	return
 }
@@ -463,11 +562,13 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 // persisting Keys.
 func (k *Key) toStorage() *storage.Key {
 	return &storage.Key{
-		Name:       k.name,
-		Data:       k.data,
-		AttestedBy: k.attestedBy,
-		Chain:      k.chain,
-		CreatedAt:  k.createdAt.UTC(),
+		Name:                 k.name,
+		Data:                 k.data,
+		AttestedBy:           k.attestedBy,
+		Chain:                k.chain,
+		CreatedAt:            k.createdAt.UTC(),
+		LatestAttestation:    k.latestAttestation,
+		LatestAttestationSig: k.latestAttestationSig,
 	}
 }
 
@@ -475,11 +576,13 @@ func (k *Key) toStorage() *storage.Key {
 // persisting Keys.
 func keyFromStorage(sk *storage.Key, t *TPM) *Key {
 	return &Key{
-		name:       sk.Name,
-		data:       sk.Data,
-		attestedBy: sk.AttestedBy,
-		chain:      sk.Chain,
-		createdAt:  sk.CreatedAt.Local(),
-		tpm:        t,
+		name:                 sk.Name,
+		data:                 sk.Data,
+		attestedBy:           sk.AttestedBy,
+		chain:                sk.Chain,
+		createdAt:            sk.CreatedAt.Local(),
+		tpm:                  t,
+		latestAttestation:    sk.LatestAttestation,
+		latestAttestationSig: sk.LatestAttestationSig,
 	}
 }

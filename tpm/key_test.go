@@ -15,7 +15,6 @@ import (
 )
 
 func TestKey_MarshalJSON(t *testing.T) {
-
 	ca, err := minica.New(
 		minica.WithGetSignerFunc(
 			func() (crypto.Signer, error) {

@@ -281,9 +281,14 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		key, err = k.tpm.AttestKey(ctx, properties.attestBy, properties.name, config)
 		if err != nil {
 			if errors.Is(err, tpm.ErrExists) {
-				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
+				key, err = k.tpm.CertifyKey(ctx, properties.attestBy, properties.name, config)
+				// return nil, apiv1.AlreadyExistsError{Message: err.Error()}
+				if err != nil {
+					return nil, fmt.Errorf("failed certifying existing attested key: %w", err)
+				}
+			} else {
+				return nil, fmt.Errorf("failed creating attested key: %w", err)
 			}
-			return nil, fmt.Errorf("failed creating attested key: %w", err)
 		}
 	} else {
 		config := tpm.CreateKeyConfig{
@@ -858,8 +863,10 @@ func parseTSS2(pemBytes []byte) (*tss2.TPMKey, error) {
 	return nil, fmt.Errorf("failed parsing TSS2 PEM: block not found")
 }
 
-var _ apiv1.KeyManager = (*TPMKMS)(nil)
-var _ apiv1.Attester = (*TPMKMS)(nil)
-var _ apiv1.CertificateManager = (*TPMKMS)(nil)
-var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
-var _ apiv1.AttestationClient = (*attestationClient)(nil)
+var (
+	_ apiv1.KeyManager              = (*TPMKMS)(nil)
+	_ apiv1.Attester                = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager      = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient       = (*attestationClient)(nil)
+)
