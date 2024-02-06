@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/go-tpm/tpm2"
@@ -210,7 +211,7 @@ func (w attestValidationWrapper) Validate() error {
 
 // CertifyKey certifies a pre-existing key. It refreshes the CreateAttestation and CreateSignature
 // CertificationParameters of the stored key.
-func (t *TPM) CertifyKey(ctx context.Context, akName, name string, config AttestKeyConfig) (*Key, error) {
+func (t *TPM) CertifyKey(_ context.Context, akName, name string, config AttestKeyConfig) (*Key, error) {
 	var paths []string
 	if t.deviceName != "" {
 		paths = append(paths, t.deviceName)
@@ -219,6 +220,11 @@ func (t *TPM) CertifyKey(ctx context.Context, akName, name string, config Attest
 	if err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
+	defer func() {
+		if err := thetpm.Close(); err != nil {
+			log.Printf("Failed to close tpm: %v", err)
+		}
+	}()
 
 	k, err := t.store.GetKey(name)
 	if err != nil {
