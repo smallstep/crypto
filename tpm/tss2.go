@@ -3,6 +3,8 @@ package tpm
 import (
 	"context"
 
+	"github.com/google/go-tpm/tpmutil"
+
 	"go.step.sm/crypto/tpm/tss2"
 )
 
@@ -11,7 +13,7 @@ const (
 	// and checked on a glinux machine. This is the default parent handle
 	// used by go-tpm and go-attestation, and thus also the default handle
 	// set when marshaling to the TSS2 format.
-	commonSrkEquivalentHandle = 0x81000001
+	commonSrkEquivalentHandle = tpmutil.Handle(0x81000001)
 )
 
 // ToTSS2 gets the public and private blobs and returns a [*tss2.TPMKey].

@@ -32,8 +32,8 @@ const (
 	nvramEkNonceIndex = 0x1c00003
 
 	// Defined in "Registry of reserved TPM 2.0 handles and localities", and checked on a glinux machine.
-	commonSrkEquivalentHandle = 0x81000001
-	commonEkEquivalentHandle  = 0x81010001
+	commonSrkEquivalentHandle = tpmutil.Handle(0x81000001)
+	commonEkEquivalentHandle  = tpmutil.Handle(0x81010001)
 )
 
 // Key encodings
