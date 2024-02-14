@@ -143,6 +143,20 @@ func TestNew(t *testing.T) {
 				ProtectionLevel: apiv1.HSM,
 			},
 		}, false},
+		{"ok with vault + managedhsm", func() {
+			createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
+				return fakeTokenCredential{}, nil
+			}
+		}, args{context.Background(), apiv1.Options{
+			URI: "azurekms:vault=my-vault;hsm=true;managedhsm=true",
+		}}, &KeyVault{
+			client: newLazyClient("managedhsm.azure.net", lazyClientCreator(fakeTokenCredential{})),
+			defaults: defaultOptions{
+				Vault:           "my-vault",
+				DNSSuffix:       "managedhsm.azure.net",
+				ProtectionLevel: apiv1.HSM,
+			},
+		}, false},
 		{"ok with vault + environment", func() {
 			createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
 				return fakeTokenCredential{}, nil
@@ -753,7 +767,8 @@ func Test_getCloudConfiguration(t *testing.T) {
 	}
 
 	type args struct {
-		name string
+		name    string
+		managed bool
 	}
 	tests := []struct {
 		name    string
@@ -761,20 +776,22 @@ func Test_getCloudConfiguration(t *testing.T) {
 		want    cloudConfiguration
 		wantErr bool
 	}{
-		{"empty", args{""}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"public", args{"public"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"USGov", args{"USGov"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
-		{"China", args{"China"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
-		{"GERMAN", args{"GERMAN"}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
-		{"AzurePublicCloud", args{"AzurePublicCloud"}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
-		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud"}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
-		{"AzureChinaCloud", args{"AzureChinaCloud"}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
-		{"AzureGermanCloud", args{"AzureGermanCloud"}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
-		{"fake", args{"fake"}, cloudConfiguration{}, true},
+		{"empty", args{"", false}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
+		{"public", args{"public", false}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
+		{"empty managed", args{"", true}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "managedhsm.azure.net"}, false},
+		{"managed", args{"public", true}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "managedhsm.azure.net"}, false},
+		{"USGov", args{"USGov", false}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
+		{"China", args{"China", false}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
+		{"GERMAN", args{"GERMAN", false}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
+		{"AzurePublicCloud", args{"AzurePublicCloud", false}, cloudConfiguration{Configuration: cloud.AzurePublic, DNSSuffix: "vault.azure.net"}, false},
+		{"AzureUSGovernmentCloud", args{"AzureUSGovernmentCloud", false}, cloudConfiguration{Configuration: cloud.AzureGovernment, DNSSuffix: "vault.usgovcloudapi.net"}, false},
+		{"AzureChinaCloud", args{"AzureChinaCloud", false}, cloudConfiguration{Configuration: cloud.AzureChina, DNSSuffix: "vault.azure.cn"}, false},
+		{"AzureGermanCloud", args{"AzureGermanCloud", false}, cloudConfiguration{Configuration: germanCloud, DNSSuffix: "vault.microsoftazure.de"}, false},
+		{"fake", args{"fake", false}, cloudConfiguration{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getCloudConfiguration(tt.args.name)
+			got, err := getCloudConfiguration(tt.args.name, tt.args.managed)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getCloudConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 				return
