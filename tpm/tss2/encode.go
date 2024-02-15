@@ -2,18 +2,20 @@ package tss2
 
 import (
 	"encoding/pem"
+
+	"github.com/google/go-tpm/tpmutil"
 )
 
 // handleOwner is the reserved handle TPM_RH_OWNER.
-const handleOwner = 0x40000001
+const handleOwner = tpmutil.Handle(0x40000001)
 
 // TPMOption is the type used to modify a [TPMKey].
 type TPMOption func(*TPMKey)
 
 // WithParent sets the [TPMKey] parent handle.
-func WithParent(parent int) TPMOption {
+func WithParent(parent tpmutil.Handle) TPMOption {
 	return func(t *TPMKey) {
-		t.Parent = parent
+		t.Parent = int(parent)
 	}
 }
 
@@ -22,7 +24,7 @@ func New(pub, priv []byte, opts ...TPMOption) *TPMKey {
 	key := &TPMKey{
 		Type:       oidLoadableKey,
 		EmptyAuth:  true,
-		Parent:     handleOwner,
+		Parent:     int(handleOwner),
 		PublicKey:  addPrefixLength(pub),
 		PrivateKey: addPrefixLength(priv),
 	}
