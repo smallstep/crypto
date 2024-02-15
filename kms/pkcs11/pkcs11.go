@@ -106,6 +106,8 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 		config.Path = defaultModule
 	}
 
+	// We will allow empty pins as some modules might not have a pin by default.
+	// This is the case for softtoken, which is used to read NSS databases.
 	config.Pin = u.Pin()
 	if config.Pin == "" && opts.Pin != "" {
 		config.Pin = opts.Pin
@@ -114,8 +116,6 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 	switch {
 	case config.TokenLabel == "" && config.TokenSerial == "" && config.SlotNumber == nil:
 		return nil, errors.New("kms uri 'token', 'serial' or 'slot-id' are required")
-	case config.Pin == "":
-		return nil, errors.New("kms 'pin' cannot be empty")
 	case config.TokenLabel != "" && config.TokenSerial != "":
 		return nil, errors.New("kms uri 'token' and 'serial' are mutually exclusive")
 	case config.TokenLabel != "" && config.SlotNumber != nil:

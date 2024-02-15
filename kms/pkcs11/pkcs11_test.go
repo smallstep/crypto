@@ -69,6 +69,10 @@ func TestNew(t *testing.T) {
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
 			Pin:  "passowrd",
 		}}, k, false},
+		{"ok no pin", args{context.Background(), apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
+		}}, k, false},
 		{"ok with missing module", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:token=pkcs11-test",
@@ -76,10 +80,6 @@ func TestNew(t *testing.T) {
 		}}, k, false},
 		{"fail missing uri", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
-		}}, nil, true},
-		{"fail missing pin", args{context.Background(), apiv1.Options{
-			Type: "pkcs11",
-			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
 		}}, nil, true},
 		{"fail missing token/serial/slot-id", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
