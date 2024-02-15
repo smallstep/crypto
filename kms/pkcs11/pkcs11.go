@@ -107,7 +107,7 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 	}
 
 	// We will allow empty pins as some modules might not have a pin by default.
-	// This is the case of softokn used to read NSS databases.
+	// This is the case for softtoken, which is used to read NSS databases.
 	config.Pin = u.Pin()
 	if config.Pin == "" && opts.Pin != "" {
 		config.Pin = opts.Pin
