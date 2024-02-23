@@ -16,7 +16,7 @@ Crypto is a collection of packages used in [smallstep](https://smallstep.com) pr
 
 ## Usage
 
-To add this to a project just run:
+To add this to a project, just run:
 
 ```sh
 go get go.step.sm/crypto
@@ -85,7 +85,7 @@ certificate, SSH certificate and SSH key fingerprints.
 
 Package `tpm` provides an abstraction over and utilities for interacting
 with TPMs. It can be used to retrieve TPM information, retrieve its Endorsement
-Keys (EK) and associated certifiates, create and operate on Attestation Keys (AK), 
+Keys (EK) and associated certificates, create and operate on Attestation Keys (AK), 
 and create and operate on (attested) application keys. The `storage` subpackage 
 provides an interface and concrete implementations offering a transparent 
 persistence mechanism for Attestation and application keys.
