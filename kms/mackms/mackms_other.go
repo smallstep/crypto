@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	apiv1.Register(apiv1.MacKMS, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
+	apiv1.Register(apiv1.MacKMS, func(context.Context, apiv1.Options) (apiv1.KeyManager, error) {
 		name := filepath.Base(os.Args[0])
 		switch runtime.GOOS {
 		case "darwin":

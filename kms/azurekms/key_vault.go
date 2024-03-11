@@ -149,7 +149,7 @@ type defaultOptions struct {
 	ProtectionLevel apiv1.ProtectionLevel
 }
 
-var createCredentials = func(ctx context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
+var createCredentials = func(_ context.Context, opts apiv1.Options) (azcore.TokenCredential, error) {
 	var tenantID string
 	var clientOptions policy.ClientOptions
 	if opts.URI != "" {

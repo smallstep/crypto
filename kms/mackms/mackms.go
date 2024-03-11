@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && cgo && !nomackms
 
 // Copyright (c) Smallstep Labs, Inc.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -56,13 +56,6 @@ type keyAttributes struct {
 	sigAlgorithm     apiv1.SignatureAlgorithm
 	keySize          int
 }
-
-type keyType int8
-
-const (
-	ecdsaKeyType keyType = iota
-	rsaKeyType
-)
 
 type algorithmAttributes struct {
 	Type string
@@ -326,34 +319,42 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 	defer cfLabel.Release()
 
 	for _, keyClass := range []cf.TypeRef{security.KSecAttrKeyClassPublic, security.KSecAttrKeyClassPrivate} {
-		queryDict := cf.Dictionary{
+		dict := cf.Dictionary{
 			security.KSecClass:              security.KSecClassKey,
 			security.KSecAttrApplicationTag: cfTag,
 			security.KSecAttrLabel:          cfLabel,
 			security.KSecAttrKeyClass:       keyClass,
 		}
-
-		if len(u.hash) > 0 {
-			d, err := cf.NewData(u.hash)
-			if err != nil {
-				return err
-			}
-			defer d.Release()
-			queryDict[security.KSecAttrApplicationLabel] = d
+		// Extract logic to deleteItem to avoid defer on loops
+		if err := deleteItem(dict, u.hash); err != nil {
+			return err
 		}
+	}
 
-		query, err := cf.NewDictionary(queryDict)
+	return nil
+}
+
+func deleteItem(dict cf.Dictionary, hash []byte) error {
+	if len(hash) > 0 {
+		d, err := cf.NewData(hash)
 		if err != nil {
-			return fmt.Errorf("mackms DeleteKey failed: %w", err)
+			return err
 		}
-		defer query.Release()
+		defer d.Release()
+		dict[security.KSecAttrApplicationLabel] = d
+	}
 
-		if err := security.SecItemDelete(query); err != nil {
-			if keyClass == security.KSecAttrKeyClassPublic && errors.Is(err, security.ErrNotFound) {
-				continue
-			}
-			return fmt.Errorf("mackms DeleteKey failed: %w", err)
+	query, err := cf.NewDictionary(dict)
+	if err != nil {
+		return fmt.Errorf("mackms DeleteKey failed: %w", err)
+	}
+	defer query.Release()
+
+	if err := security.SecItemDelete(query); err != nil {
+		if dict[security.KSecAttrKeyClass] == security.KSecAttrKeyClassPublic && errors.Is(err, security.ErrNotFound) {
+			return nil
 		}
+		return fmt.Errorf("mackms DeleteKey failed: %w", err)
 	}
 
 	return nil
@@ -372,7 +373,7 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 	}
 	defer cfLabel.Release()
 
-	queryDict := cf.Dictionary{
+	dict := cf.Dictionary{
 		security.KSecClass:              security.KSecClassKey,
 		security.KSecAttrApplicationTag: cfTag,
 		security.KSecAttrLabel:          cfLabel,
@@ -386,11 +387,11 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 			return nil, err
 		}
 		defer d.Release()
-		queryDict[cf.TypeRef(security.KSecAttrApplicationLabel)] = d
+		dict[security.KSecAttrApplicationLabel] = d
 	}
 
 	// Get the query from the keychain
-	query, err := cf.NewDictionary(queryDict)
+	query, err := cf.NewDictionary(dict)
 	if err != nil {
 		return nil, err
 	}

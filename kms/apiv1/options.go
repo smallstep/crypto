@@ -213,7 +213,7 @@ func (o *Options) GetType() (Type, error) {
 
 var ErrNonInteractivePasswordPrompt = errors.New("password required in non-interactive context")
 
-var NonInteractivePasswordPrompter = func(s string) ([]byte, error) {
+var NonInteractivePasswordPrompter = func(string) ([]byte, error) {
 	return nil, ErrNonInteractivePasswordPrompt
 }
 

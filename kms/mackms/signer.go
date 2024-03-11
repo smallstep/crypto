@@ -1,3 +1,5 @@
+//go:build darwin && cgo && !nomackms
+
 package mackms
 
 import (

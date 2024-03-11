@@ -16,6 +16,7 @@
 // Part of this code is based on
 // https://github.com/facebookincubator/sks/blob/183e7561ecedc71992f23b2d37983d2948391f4c/macos/macos.go
 
+//nolint:gocritic // open issue https://github.com/go-critic/go-critic/issues/845
 package corefoundation
 
 /*
@@ -143,7 +144,7 @@ func NewDictionary(m Dictionary) (*DictionaryRef, error) {
 
 	for k, v := range m {
 		keys = append(keys, unsafe.Pointer(C.CFTypeRef(k)))
-		values = append(values, unsafe.Pointer(C.CFTypeRef(v.TypeRef())))
+		values = append(values, unsafe.Pointer(v.TypeRef()))
 	}
 
 	// If the map will contain only CFType objects, we must pass a pointer to
@@ -161,6 +162,7 @@ func NewDictionary(m Dictionary) (*DictionaryRef, error) {
 func (v *DictionaryRef) Release()           { Release(v) }
 func (v *DictionaryRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
 
+//nolint:errname // type name matches original name
 type ErrorRef C.CFErrorRef
 
 func (e ErrorRef) Error() string {

@@ -16,6 +16,7 @@
 // Part of this code is based on
 // https://github.com/facebookincubator/sks/blob/183e7561ecedc71992f23b2d37983d2948391f4c/macos/macos.go
 
+//nolint:gocritic // open issue https://github.com/go-critic/go-critic/issues/845
 package security
 
 /*
@@ -74,16 +75,16 @@ var (
 type SecKeyAlgorithm = C.SecKeyAlgorithm
 
 var (
-	KSecKeyAlgorithmECDSASignatureDigestX962         = SecKeyAlgorithm(C.kSecKeyAlgorithmECDSASignatureDigestX962)
-	KSecKeyAlgorithmECDSASignatureDigestX962SHA256   = SecKeyAlgorithm(C.kSecKeyAlgorithmECDSASignatureDigestX962SHA256)
-	KSecKeyAlgorithmECDSASignatureDigestX962SHA384   = SecKeyAlgorithm(C.kSecKeyAlgorithmECDSASignatureDigestX962SHA384)
-	KSecKeyAlgorithmECDSASignatureDigestX962SHA512   = SecKeyAlgorithm(C.kSecKeyAlgorithmECDSASignatureDigestX962SHA512)
-	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256 = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256)
-	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA384 = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA384)
-	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA512 = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA512)
-	KSecKeyAlgorithmRSASignatureDigestPSSSHA256      = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPSSSHA256)
-	KSecKeyAlgorithmRSASignatureDigestPSSSHA384      = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPSSSHA384)
-	KSecKeyAlgorithmRSASignatureDigestPSSSHA512      = SecKeyAlgorithm(C.kSecKeyAlgorithmRSASignatureDigestPSSSHA512)
+	KSecKeyAlgorithmECDSASignatureDigestX962         = C.kSecKeyAlgorithmECDSASignatureDigestX962
+	KSecKeyAlgorithmECDSASignatureDigestX962SHA256   = C.kSecKeyAlgorithmECDSASignatureDigestX962SHA256
+	KSecKeyAlgorithmECDSASignatureDigestX962SHA384   = C.kSecKeyAlgorithmECDSASignatureDigestX962SHA384
+	KSecKeyAlgorithmECDSASignatureDigestX962SHA512   = C.kSecKeyAlgorithmECDSASignatureDigestX962SHA512
+	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256 = C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256
+	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA384 = C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA384
+	KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA512 = C.kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA512
+	KSecKeyAlgorithmRSASignatureDigestPSSSHA256      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA256
+	KSecKeyAlgorithmRSASignatureDigestPSSSHA384      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA384
+	KSecKeyAlgorithmRSASignatureDigestPSSSHA512      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA512
 )
 
 type SecAccessControlCreateFlags = C.SecAccessControlCreateFlags
@@ -185,17 +186,20 @@ func SecKeyCopyAttributes(key *SecKeyRef) *cf.DictionaryRef {
 }
 
 func SecKeyCopyExternalRepresentation(key *SecKeyRef) (*cf.DataRef, error) {
-	var err C.CFErrorRef
-	data := C.SecKeyCopyExternalRepresentation(key.Value, &err)
+	var cerr C.CFErrorRef
+	data := C.SecKeyCopyExternalRepresentation(key.Value, &cerr)
+	if err := goCFErrorRef(cerr); err != nil {
+		return nil, err
+	}
 	return &cf.DataRef{
 		Value: cf.CFDataRef(data),
-	}, goCFErrorRef(err)
+	}, nil
 }
 
 func SecAccessControlCreateWithFlags(protection cf.TypeRef, flags SecAccessControlCreateFlags) (*SecAccessControlRef, error) {
-	var err C.CFErrorRef
-	access := C.SecAccessControlCreateWithFlags(C.kCFAllocatorDefault, C.CFTypeRef(protection), flags, &err)
-	if err := goCFErrorRef(err); err != nil {
+	var cerr C.CFErrorRef
+	access := C.SecAccessControlCreateWithFlags(C.kCFAllocatorDefault, C.CFTypeRef(protection), flags, &cerr)
+	if err := goCFErrorRef(cerr); err != nil {
 		return nil, err
 	}
 	return &SecAccessControlRef{
@@ -204,9 +208,9 @@ func SecAccessControlCreateWithFlags(protection cf.TypeRef, flags SecAccessContr
 }
 
 func SecKeyCreateSignature(key *SecKeyRef, algorithm SecKeyAlgorithm, dataToSign *cf.DataRef) (*cf.DataRef, error) {
-	var err C.CFErrorRef
-	signature := C.SecKeyCreateSignature(key.Value, algorithm, C.CFDataRef(dataToSign.Value), &err)
-	if err := goCFErrorRef(err); err != nil {
+	var cerr C.CFErrorRef
+	signature := C.SecKeyCreateSignature(key.Value, algorithm, C.CFDataRef(dataToSign.Value), &cerr)
+	if err := goCFErrorRef(cerr); err != nil {
 		return nil, err
 	}
 	return &cf.DataRef{
@@ -244,9 +248,6 @@ type osStatusError struct {
 
 func (e osStatusError) Error() string {
 	if e.message == "" {
-		if e.code == -25300 {
-			return fmt.Sprintf("OSStatus %d: %w", ErrNotFound)
-		}
 		return fmt.Sprintf("OSStatus %d: unknown error", e.code)
 	}
 	return fmt.Sprintf("OSStatus %d: %s", e.code, e.message)

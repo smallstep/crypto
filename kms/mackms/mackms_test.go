@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && cgo && !nomackms
 
 // Copyright (c) Smallstep Labs, Inc.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
