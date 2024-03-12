@@ -96,8 +96,11 @@ func ParseWithScheme(scheme, rawuri string) (*URI, error) {
 	return u, nil
 }
 
+// String returns the string representation of the URI.
 func (u *URI) String() string {
-	u.URL.Opaque = strings.ReplaceAll(u.Values.Encode(), "&", ";")
+	if len(u.Values) > 0 {
+		u.URL.Opaque = strings.ReplaceAll(u.Values.Encode(), "&", ";")
+	}
 	return u.URL.String()
 }
 

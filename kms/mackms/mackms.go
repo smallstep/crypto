@@ -75,7 +75,29 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 	apiv1.ECDSAWithSHA512:          {"EC", 521},
 }
 
-// MacKMS is a key manager that uses keys stored in the secure enclave.
+// MacKMS is a key manager that uses keys stored in macOS Keychain or in the
+// Secure Enclave.
+//
+// CreateKey methods can create keys with the following URIs:
+//   - mackms:label=my-name
+//   - mackms:label=my-name;tag=com.smallstep.crypto
+//   - mackms;label=my-name;se=true;bio=true
+//
+// GetPublicKey and CreateSigner accepts the above URIs as well as the following
+// ones:
+//   - my-name
+//   - mackms:label=my-name;tag=com.smallstep.crypto;hash=ccb792f9d9a1262bfb814a339876f825bdba1261
+//
+// In above URIs "label" corresponds with Apple's kSecAttrLabel and it
+// represents the key name, you will be able to see the keys in the keychain
+// looking for that name; "tag" corresponds with kSecAttrApplicationTag, it
+// defaults to com.smallstep.crypto; "se" is a boolean value and if set to true
+// it will store the key in the Secure Enclave, this option requires the
+// application to be code-signed with the appropriated entitlements; "bio" is a
+// boolean value that if set to true it will require Touch ID or Face ID; "hash"
+// corresponds with kSecAttrApplicationLabel and it is the SHA-1 of the DER
+// representation of an RSA public key using the PKCS #1 format or the SHA-1 of
+// the uncompressed ECDSA point according to SEC 1, Version 2.0, Section 2.3.4.
 type MacKMS struct{}
 
 // New returns a new SoftKMS.
@@ -223,7 +245,7 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 	attrs, err := cf.NewDictionary(attrsDict)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
 	}
 	defer attrs.Release()
 
@@ -238,13 +260,11 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
 	}
 
-	// TODO(mariano) calculate hash
 	name := uri.New(Scheme, url.Values{
 		"label": []string{u.label},
 		"tag":   []string{u.tag},
 		"hash":  []string{hex.EncodeToString(hash)},
 	})
-	fmt.Printf("%#v\n", u)
 	if u.useSecureEnclave {
 		name.Values.Set("se", "true")
 	}
@@ -270,18 +290,18 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 
 	u, err := parseURI(req.SigningKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
 	}
 
 	key, err := getPrivateKey(u)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
 	}
 	defer key.Release()
 
 	pub, _, err := extractPublicKey(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
 	}
 
 	return &Signer{
@@ -415,8 +435,7 @@ func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, 
 	// Attempt to extract the public key, it will fail if the app that created
 	// the private key didn’t also store the corresponding public key in the
 	// keychain, or if the system can’t reconstruct the corresponding public
-	// key. If the public kay is not present it fails for ECDSA keys but not
-	// for RSA keys 🤷‍♂️.
+	// key.
 	if publicKey, err := security.SecKeyCopyPublicKey(secKeyRef); err == nil {
 		defer publicKey.Release()
 
