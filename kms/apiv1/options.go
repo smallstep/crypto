@@ -109,7 +109,7 @@ const (
 	CAPIKMS Type = "capi"
 	// TPMKMS
 	TPMKMS Type = "tpmkms"
-	// MacKMS is the KMS implementation using macOS Secure Enclave.
+	// MacKMS is the KMS implementation using macOS Keychain and Secure Enclave.
 	MacKMS Type = "mackms"
 )
 

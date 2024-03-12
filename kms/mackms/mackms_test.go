@@ -27,7 +27,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/url"
 	"testing"
 
@@ -40,27 +39,21 @@ import (
 	"go.step.sm/crypto/randutil"
 )
 
-func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.SignatureAlgorithm) (*apiv1.CreateKeyResponse, error) {
+func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.SignatureAlgorithm) *apiv1.CreateKeyResponse {
 	t.Helper()
 
 	u, err := parseURI(name)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	u.sigAlgorithm = signatureAlgorithm
 	u.keySize = signatureAlgorithmMapping[signatureAlgorithm].Size
 
 	// Define key attributes
 	cfTag, err := cf.NewData([]byte(u.tag))
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer cfTag.Release()
 
 	cfLabel, err := cf.NewString(u.label)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer cfLabel.Release()
 
 	keyAttributesDict := cf.Dictionary{
@@ -69,9 +62,7 @@ func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.Si
 	}
 
 	keyAttributes, err := cf.NewDictionary(keyAttributesDict)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer keyAttributes.Release()
 
 	bits := cf.NewNumber(u.keySize)
@@ -94,25 +85,20 @@ func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.Si
 	case apiv1.SHA256WithRSAPSS, apiv1.SHA384WithRSAPSS, apiv1.SHA512WithRSAPSS:
 		attrsDict[security.KSecAttrKeyType] = security.KSecAttrKeyTypeRSA
 	default:
-		return nil, fmt.Errorf("unsupported signature algorithm %s", u.sigAlgorithm)
+		t.Fatalf("unsupported signature algorithm %s", u.sigAlgorithm)
 	}
 
 	attrs, err := cf.NewDictionary(attrsDict)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer attrs.Release()
 
 	secKeyRef, err := security.SecKeyCreateRandomKey(attrs)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer secKeyRef.Release()
 
 	pub, hash, err := extractPublicKey(secKeyRef)
-	if err != nil {
-		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
-	}
+	require.NoError(t, err)
+
 	return &apiv1.CreateKeyResponse{
 		Name: uri.New(Scheme, url.Values{
 			"label": []string{u.label},
@@ -120,7 +106,7 @@ func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.Si
 			"hash":  []string{hex.EncodeToString(hash)},
 		}).String(),
 		PublicKey: pub,
-	}, nil
+	}
 }
 
 func TestNew(t *testing.T) {
@@ -314,10 +300,8 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create private keys only
-	r2, err := createPrivateKeyOnly(t, "mackms:label=test-ecdsa", apiv1.ECDSAWithSHA256)
-	require.NoError(t, err)
-	r3, err := createPrivateKeyOnly(t, "mackms:label=test-rsa", apiv1.SHA256WithRSA)
-	require.NoError(t, err)
+	r2 := createPrivateKeyOnly(t, "mackms:label=test-ecdsa", apiv1.ECDSAWithSHA256)
+	r3 := createPrivateKeyOnly(t, "mackms:label=test-rsa", apiv1.SHA256WithRSA)
 
 	t.Cleanup(func() {
 		assert.NoError(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{

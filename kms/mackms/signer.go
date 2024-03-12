@@ -1,5 +1,23 @@
 //go:build darwin && cgo && !nomackms
 
+// Copyright (c) Smallstep Labs, Inc.
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+//
+// Part of this code is based on
+// https://github.com/facebookincubator/sks/blob/183e7561ecedc71992f23b2d37983d2948391f4c/macos/macos.go
+
 package mackms
 
 import (
@@ -20,14 +38,14 @@ type Signer struct {
 	pub crypto.PublicKey
 }
 
-// Public returns the public key corresponding to the opaque, private key.
+// Public returns the public key corresponding to the private key.
 func (s *Signer) Public() crypto.PublicKey {
 	return s.pub
 }
 
-// Sign signs digest with the private key, For an RSA key, the resulting
-// signature should be either a PKCS #1 v1.5 or PSS signature (as indicated by
-// opts). For an ECDSA key, it should be a DER-serialized, ASN.1 signature
+// Sign signs digest with the private key. For an RSA key, the resulting
+// signature will be either a PKCS #1 v1.5 or PSS signature (as indicated by
+// opts). For an ECDSA key, it will be a DER-serialized, ASN.1 signature
 // structure.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	algo, err := getSecKeyAlgorithm(s.pub, opts)

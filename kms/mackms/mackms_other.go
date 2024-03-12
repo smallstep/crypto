@@ -17,9 +17,9 @@ func init() {
 		name := filepath.Base(os.Args[0])
 		switch runtime.GOOS {
 		case "darwin":
-			return nil, fmt.Errorf("unsupported kms type 'mackms': %s is compiled without cgo or mackms support", name)
+			return nil, fmt.Errorf("unsupported kms type 'mackms': %q is compiled without cgo or mackms support", name)
 		default:
-			return nil, fmt.Errorf("unsupported kms type 'mackms': %s is not running on a macOS", name)
+			return nil, fmt.Errorf("unsupported kms type 'mackms': %q is not running on a macOS", name)
 		}
 	})
 }

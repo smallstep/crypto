@@ -141,8 +141,8 @@ func (k *MacKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 	return pub, nil
 }
 
-// CreateKey generates a new key on the Keychain or Secure Enclave using Apple
-// Security framework.
+// CreateKey generates a new key on the Keychain or Secure Enclave using the
+// Apple Security framework.
 func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("createKeyRequest 'name' cannot be empty")
@@ -426,7 +426,7 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 
 func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, error) {
 	// Get the hash of the public key. We can also calculate this from the
-	// external representation bellow, but in case Apple decides to switch from
+	// external representation below, but in case Apple decides to switch from
 	// SHA-1, let's just use what macOS sets by default.
 	attrs := security.SecKeyCopyAttributes(secKeyRef)
 	defer attrs.Release()
@@ -464,7 +464,7 @@ func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, 
 		return pub, hash, nil
 	}
 
-	// At this point we only have the privatekey.
+	// At this point we only have the private key.
 	data, err := security.SecKeyCopyExternalRepresentation(secKeyRef)
 	if err != nil {
 		return nil, nil, fmt.Errorf("macOS SecKeyCopyExternalRepresentation failed: %w", err)
@@ -523,7 +523,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	// mackms:label=my-key;tag=my-tag;hash=010a...;se=true;bio=true
 	label := u.Get("label")
 	if label == "" {
-		return nil, fmt.Errorf("error parsing %s: label is required", rawuri)
+		return nil, fmt.Errorf("error parsing %q: label is required", rawuri)
 	}
 	tag := u.Get("tag")
 	if tag == "" {
