@@ -88,16 +88,22 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //   - my-name
 //   - mackms:label=my-name;tag=com.smallstep.crypto;hash=ccb792f9d9a1262bfb814a339876f825bdba1261
 //
-// In above URIs "label" corresponds with Apple's kSecAttrLabel and it
-// represents the key name, you will be able to see the keys in the keychain
-// looking for that name; "tag" corresponds with kSecAttrApplicationTag, it
-// defaults to com.smallstep.crypto; "se" is a boolean value and if set to true
-// it will store the key in the Secure Enclave, this option requires the
-// application to be code-signed with the appropriated entitlements; "bio" is a
-// boolean value that if set to true it will require Touch ID or Face ID; "hash"
-// corresponds with kSecAttrApplicationLabel and it is the SHA-1 of the DER
-// representation of an RSA public key using the PKCS #1 format or the SHA-1 of
-// the uncompressed ECDSA point according to SEC 1, Version 2.0, Section 2.3.4.
+// The above URIs support the following attributes:
+//   - "label" corresponds with Apple's kSecAttrLabel. It is always required and
+//     represents the key name. You will be able to see the keys in the Keychain,
+//     looking for the value.
+//   - "tag" corresponds with kSecAttrApplicationTag. It defaults to
+//     com.smallstep.crypto.
+//   - "se" is a boolean. If set to true, it will store the key in the
+//     Secure Enclave. This option requires the application to be code-signed
+//     with the appropriate entitlements.
+//   - "bio" is a boolean value. If set to true, sign and verify operations
+//     require Touch ID or Face ID. This options requires the key to be in the
+//     Secure Enclave.
+//   - "hash" corresponds with kSecAttrApplicationLabel. It is the SHA-1 of the
+//     DER representation of an RSA public key using the PKCS #1 format or the
+//     SHA-1 of the uncompressed ECDSA point according to SEC 1, Version 2.0,
+//     Section 2.3.4.
 type MacKMS struct{}
 
 // New returns a new SoftKMS.
