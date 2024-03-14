@@ -96,6 +96,14 @@ func ParseWithScheme(scheme, rawuri string) (*URI, error) {
 	return u, nil
 }
 
+// String returns the string representation of the URI.
+func (u *URI) String() string {
+	if len(u.Values) > 0 {
+		u.URL.Opaque = strings.ReplaceAll(u.Values.Encode(), "&", ";")
+	}
+	return u.URL.String()
+}
+
 // Get returns the first value in the uri with the given key, it will return
 // empty string if that field is not present.
 func (u *URI) Get(key string) string {

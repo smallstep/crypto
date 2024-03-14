@@ -109,6 +109,8 @@ const (
 	CAPIKMS Type = "capi"
 	// TPMKMS
 	TPMKMS Type = "tpmkms"
+	// MacKMS is the KMS implementation using macOS Keychain and Secure Enclave.
+	MacKMS Type = "mackms"
 )
 
 // TypeOf returns the type of of the given uri.
@@ -139,7 +141,7 @@ func (t Type) Validate() error {
 		return nil
 	case YubiKey, PKCS11, TPMKMS: // Hardware based kms.
 		return nil
-	case SSHAgentKMS, CAPIKMS: // Others
+	case SSHAgentKMS, CAPIKMS, MacKMS: // Others
 		return nil
 	}
 
@@ -211,7 +213,7 @@ func (o *Options) GetType() (Type, error) {
 
 var ErrNonInteractivePasswordPrompt = errors.New("password required in non-interactive context")
 
-var NonInteractivePasswordPrompter = func(_ string) ([]byte, error) {
+var NonInteractivePasswordPrompter = func(string) ([]byte, error) {
 	return nil, ErrNonInteractivePasswordPrompt
 }
 

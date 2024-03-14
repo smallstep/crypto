@@ -296,7 +296,9 @@ func TestURI_String(t *testing.T) {
 		want string
 	}{
 		{"ok new", New("yubikey", url.Values{"slot-id": []string{"9a"}, "foo": []string{"bar"}}), "yubikey:foo=bar;slot-id=9a"},
-		{"ok parse", mustParse("yubikey:slot-id=9a;foo=bar?bar=zar"), "yubikey:slot-id=9a;foo=bar?bar=zar"},
+		{"ok newOpaque", NewOpaque("cloudkms", "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"), "cloudkms:projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"},
+		{"ok newFile", NewFile("/path/to/file.key"), "file:///path/to/file.key"},
+		{"ok parse", mustParse("yubikey:slot-id=9a;foo=bar?bar=zar"), "yubikey:foo=bar;slot-id=9a?bar=zar"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

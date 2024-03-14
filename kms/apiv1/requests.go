@@ -288,3 +288,13 @@ type CreateAttestationResponse struct {
 	CertificationParameters *CertificationParameters
 	PermanentIdentifier     string
 }
+
+// DeleteKeyRequest is the parameter used in the kms.DeleteKey method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type DeleteKeyRequest struct {
+	Name string
+}
