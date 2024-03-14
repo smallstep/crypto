@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	apiv1.Register(apiv1.CAPIKMS, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
+	apiv1.Register(apiv1.CAPIKMS, func(_ context.Context, _ apiv1.Options) (apiv1.KeyManager, error) {
 		name := filepath.Base(os.Args[0])
 		return nil, errors.Errorf("unsupported kms type 'capi': %s is compiled without Microsoft CryptoAPI support", name)
 	})
