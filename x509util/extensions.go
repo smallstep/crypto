@@ -487,7 +487,7 @@ type asn1Params struct {
 func parseFieldParameters(str string) (p asn1Params) {
 	var part string
 	var params []string
-	for len(str) > 0 {
+	for str != "" {
 		part, str, _ = strings.Cut(str, ",")
 		switch part {
 		// string types
