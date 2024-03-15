@@ -49,6 +49,7 @@ var (
 
 var (
 	KSecAttrAccessControl                            = cf.TypeRef(C.kSecAttrAccessControl)
+	KSecAttrAccessGroup                              = cf.TypeRef(C.kSecAttrAccessGroup)
 	KSecAttrAccessibleWhenUnlocked                   = cf.TypeRef(C.kSecAttrAccessibleWhenUnlocked)
 	KSecAttrAccessibleWhenPasscodeSetThisDeviceOnly  = cf.TypeRef(C.kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly)
 	KSecAttrAccessibleWhenUnlockedThisDeviceOnly     = cf.TypeRef(C.kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
@@ -68,7 +69,11 @@ var (
 	KSecAttrTokenID                                  = cf.TypeRef(C.kSecAttrTokenID)
 	KSecAttrTokenIDSecureEnclave                     = cf.TypeRef(C.kSecAttrTokenIDSecureEnclave)
 	KSecAttrSerialNumber                             = cf.TypeRef(C.kSecAttrSerialNumber)
+	KSecAttrSubjectKeyID                             = cf.TypeRef(C.kSecAttrSubjectKeyID)
+	KSecAttrSubject                                  = cf.TypeRef(C.kSecAttrSubject)
 	KSecAttrIssuer                                   = cf.TypeRef(C.kSecAttrIssuer)
+	kSecAttrSynchronizable                           = cf.TypeRef(C.kSecAttrSynchronizable)
+	kSecUseDataProtectionKeychain                    = cf.TypeRef(C.kSecUseDataProtectionKeychain)
 	KSecClass                                        = cf.TypeRef(C.kSecClass)
 	KSecClassKey                                     = cf.TypeRef(C.kSecClassKey)
 	KSecClassCertificate                             = cf.TypeRef(C.kSecClassCertificate)

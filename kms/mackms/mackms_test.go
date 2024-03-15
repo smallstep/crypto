@@ -692,28 +692,46 @@ func Test_ecdhToECDSAPublicKey(t *testing.T) {
 	}
 }
 
+func Test_encodeSerialNumber(t *testing.T) {
+	getBigInt := func(s string) *big.Int {
+		b, err := hex.DecodeString(s)
+		require.NoError(t, err)
+		return new(big.Int).SetBytes(b)
+	}
+	getBytes := func(s string) []byte {
+		b, err := hex.DecodeString(s)
+		require.NoError(t, err)
+		return b
+	}
+
+	type args struct {
+		s *big.Int
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{"ok zero", args{big.NewInt(0)}, []byte{0}},
+		{"ok no pad", args{getBigInt("7df0e2ea242fd1a0650cf652aa31bfa0")}, getBytes("7df0e2ea242fd1a0650cf652aa31bfa0")},
+		{"ok with pad", args{getBigInt("c4b3e6e28985f1a012aa38e7493b6f35")}, getBytes("00c4b3e6e28985f1a012aa38e7493b6f35")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, encodeSerialNumber(tt.args.s))
+		})
+	}
+}
+
 func deleteCertificate(t *testing.T, label string, cert *x509.Certificate) {
 	if label == "" {
 		label = cert.Subject.CommonName
 	}
 
-	cfLabel, err := cf.NewString(label)
-	require.NoError(t, err)
-	defer cfLabel.Release()
-
-	serialNumber, err := cf.NewData(encodeSerialNumber(cert.SerialNumber))
-	require.NoError(t, err)
-	defer serialNumber.Release()
-
-	query, err := cf.NewDictionary(cf.Dictionary{
-		security.KSecClass:            security.KSecClassCertificate,
-		security.KSecAttrLabel:        cfLabel,
-		security.KSecAttrSerialNumber: serialNumber,
-	})
-	require.NoError(t, err)
-	defer query.Release()
-
-	require.NoError(t, security.SecItemDelete(query), "SecItemDelete failed: label=%s, serial=0x%X", label, encodeSerialNumber(cert.SerialNumber))
+	kms := &MacKMS{}
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: "mackms:label=" + label + ";serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
+	}))
 }
 
 func TestMacKMS_LoadCertificate(t *testing.T) {
@@ -932,38 +950,249 @@ func TestMacKMS_StoreCertificate_duplicated(t *testing.T) {
 	}
 }
 
-func TestMariano(t *testing.T) {
-	_, err := parseCertURI("mackm", false)
-	assert.NoError(t, err)
-}
+func TestMacKMS_LoadCertificateChain(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
 
-func Test_encodeSerialNumber(t *testing.T) {
-	getBigInt := func(s string) *big.Int {
-		b, err := hex.DecodeString(s)
-		require.NoError(t, err)
-		return new(big.Int).SetBytes(b)
-	}
-	getBytes := func(s string) []byte {
-		b, err := hex.DecodeString(s)
-		require.NoError(t, err)
-		return b
-	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "@example.com"},
+		EmailAddresses: []string{testName + "@example.com"},
+		PublicKey:      key.Public(),
+	})
+	require.NoError(t, err)
+
+	kms := &MacKMS{}
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: ca.Root,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, "", ca.Root) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: ca.Intermediate,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, "", ca.Intermediate) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: cert,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, "", cert) })
 
 	type args struct {
-		s *big.Int
+		req *apiv1.LoadCertificateChainRequest
 	}
 	tests := []struct {
-		name string
-		args args
-		want []byte
+		name      string
+		k         *MacKMS
+		args      args
+		want      []*x509.Certificate
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok zero", args{big.NewInt(0)}, []byte{0}},
-		{"ok no pad", args{getBigInt("7df0e2ea242fd1a0650cf652aa31bfa0")}, getBytes("7df0e2ea242fd1a0650cf652aa31bfa0")},
-		{"ok with pad", args{getBigInt("c4b3e6e28985f1a012aa38e7493b6f35")}, getBytes("00c4b3e6e28985f1a012aa38e7493b6f35")},
+		{"ok label", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:label=" + cert.Subject.CommonName,
+		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
+		{"ok serial", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
+		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
+		{"ok label and serial", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:labeld=" + cert.Subject.CommonName + ";serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
+		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
+		{"ok self-signed", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:label=" + ca.Root.Subject.CommonName,
+		}}, []*x509.Certificate{ca.Root}, assert.NoError},
+		{"fail name", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{}}, nil, assert.Error},
+		{"fail uri", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "mackms:"}}, nil, assert.Error},
+		{"fail missing", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "mackms:label=missing-" + testName}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, encodeSerialNumber(tt.args.s))
+			k := &MacKMS{}
+			got, err := k.LoadCertificateChain(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMacKMS_StoreCertificateChain(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "@example.com"},
+		EmailAddresses: []string{testName + "@example.com"},
+		PublicKey:      key.Public(),
+	})
+	require.NoError(t, err)
+
+	verifyCertificates := func(name, label string, chain []*x509.Certificate) func(t *testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+
+			kms := &MacKMS{}
+			got, err := kms.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{
+				Name: name,
+			})
+			if assert.NoError(t, err) && assert.Equal(t, chain, got) {
+				deleteCertificate(t, label, chain[0])
+				for _, crt := range chain[1:] {
+					deleteCertificate(t, "", crt)
+				}
+			}
+		}
+	}
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-" + suffix
+
+	type args struct {
+		req *apiv1.StoreCertificateChainRequest
+	}
+	tests := []struct {
+		name      string
+		k         *MacKMS
+		args      args
+		verify    func(*testing.T)
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:",
+			CertificateChain: []*x509.Certificate{cert, ca.Intermediate, ca.Root},
+		}}, func(t *testing.T) {
+			t.Cleanup(func() {
+				deleteCertificate(t, "", ca.Root)
+			})
+			fn := verifyCertificates("mackms:label="+cert.Subject.CommonName, "", []*x509.Certificate{cert, ca.Intermediate})
+			fn(t)
+		}, assert.NoError},
+		{"ok leaf", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "",
+			CertificateChain: []*x509.Certificate{cert},
+		}}, verifyCertificates("mackms:label="+cert.Subject.CommonName, "", []*x509.Certificate{cert}), assert.NoError},
+		{"ok with label", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:label=" + label,
+			CertificateChain: []*x509.Certificate{cert, ca.Intermediate},
+		}}, verifyCertificates("mackms:label="+label, label, []*x509.Certificate{cert, ca.Intermediate}), assert.NoError},
+		{"ok already exists", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:",
+			CertificateChain: []*x509.Certificate{cert, ca.Intermediate, ca.Intermediate},
+		}}, verifyCertificates("mackms:label="+cert.Subject.CommonName, "", []*x509.Certificate{cert, ca.Intermediate}), assert.NoError},
+		{"fail certificates", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name: "mackms:",
+		}}, func(t *testing.T) {}, assert.Error},
+		{"fail uri", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms",
+			CertificateChain: []*x509.Certificate{cert, ca.Intermediate},
+		}}, func(t *testing.T) {}, assert.Error},
+		{"fail store certificate", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:",
+			CertificateChain: []*x509.Certificate{{}, ca.Intermediate},
+		}}, func(t *testing.T) {}, assert.Error},
+		{"fail store certificate chain", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:",
+			CertificateChain: []*x509.Certificate{cert, {}},
+		}}, verifyCertificates("mackms:label="+cert.Subject.CommonName, "", []*x509.Certificate{cert}), assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "fail duplicated" {
+				t.Log("foo")
+			}
+			k := &MacKMS{}
+			tt.assertion(t, k.StoreCertificateChain(tt.args.req))
+			tt.verify(t)
+		})
+	}
+}
+
+func TestMacKMS_DeleteCertificate(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	cert1, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "1@example.com"},
+		EmailAddresses: []string{testName + "1@example.com"},
+		PublicKey:      key.Public(),
+	})
+	require.NoError(t, err)
+
+	cert2, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
+		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+	})
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+
+	notExistsCheck := func(cert *x509.Certificate) {
+		kms := &MacKMS{}
+		_, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: "mackms:serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
+		})
+		assert.ErrorIs(t, err, security.ErrNotFound)
+	}
+
+	kms := &MacKMS{}
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: ca.Root,
+	}))
+	t.Cleanup(func() { notExistsCheck(ca.Root) })
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:label=test-intermediate-" + suffix, Certificate: ca.Intermediate,
+	}))
+	t.Cleanup(func() { notExistsCheck(ca.Intermediate) })
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: cert1,
+	}))
+	t.Cleanup(func() { notExistsCheck(cert1) })
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:label=test-leaf-" + suffix, Certificate: cert2,
+	}))
+	t.Cleanup(func() { notExistsCheck(cert2) })
+
+	type args struct {
+		req *apiv1.DeleteCertificateRequest
+	}
+	tests := []struct {
+		name      string
+		m         *MacKMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{
+			Name: "mackms:" + ca.Root.Subject.CommonName,
+		}}, assert.NoError},
+		{"ok label", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{
+			Name: "mackms:label=test-intermediate-" + suffix,
+		}}, assert.NoError},
+		{"ok serial", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{
+			Name: "mackms:serial=" + hex.EncodeToString(cert1.SerialNumber.Bytes()),
+		}}, assert.NoError},
+		{"ok label and serial", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{
+			Name: "mackms:label=test-leaf-" + suffix + ";serial=" + hex.EncodeToString(cert2.SerialNumber.Bytes()),
+		}}, assert.NoError},
+		{"fail name", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{}}, assert.Error},
+		{"fail uri", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{Name: "mackms"}}, assert.Error},
+		{"fail missing", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{Name: "mackms:label=" + testName}}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &MacKMS{}
+			tt.assertion(t, m.DeleteCertificate(tt.args.req))
 		})
 	}
 }
