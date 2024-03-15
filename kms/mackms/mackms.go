@@ -57,6 +57,11 @@ type keyAttributes struct {
 	keySize          int
 }
 
+type certAttributes struct {
+	label        string
+	serialNumber *big.Int
+}
+
 type algorithmAttributes struct {
 	Type string
 	Size int
@@ -316,6 +321,162 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	}, nil
 }
 
+// LoadCertificate returns an x509.Certificate by its label and/or its serial
+// number. By default Apple Keychain will use the certificate common name as the
+// label.
+//
+// Valid names (URIs) are:
+//   - mackms:label=test@example.com
+//   - mackms:serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
+	if req.Name == "" {
+		return nil, fmt.Errorf("loadCertificateRequest 'name' cannot be empty")
+	}
+
+	// Require label or serial
+	u, err := parseCertURI(req.Name, true)
+	if err != nil {
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+	}
+
+	query := cf.Dictionary{
+		security.KSecClass: security.KSecClassCertificate,
+	}
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
+		if err != nil {
+			return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+		}
+		defer cfLabel.Release()
+		query[security.KSecAttrLabel] = cfLabel
+	}
+	if u.serialNumber != nil {
+		cfSerial, err := cf.NewData(encodeSerialNumber(u.serialNumber))
+		if err != nil {
+			return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+		}
+		defer cfSerial.Release()
+		query[security.KSecAttrSerialNumber] = cfSerial
+	}
+
+	cfQuery, err := cf.NewDictionary(query)
+	if err != nil {
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+	}
+	defer cfQuery.Release()
+
+	var ref cf.TypeRef
+	if err := security.SecItemCopyMatching(cfQuery, &ref); err != nil {
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+	}
+	defer ref.Release()
+
+	data, err := security.SecCertificateCopyData(security.NewSecCertificateRef(ref))
+	if err != nil {
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+	}
+	defer data.Release()
+
+	cert, err := x509.ParseCertificate(data.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+	}
+	return cert, nil
+}
+
+func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
+	return nil, apiv1.NotImplementedError{}
+}
+
+// StoreCertificate stores a certificate in the Apple Keychain. There is no need
+// to provide a label in the URI as Apple will use the CommonName as the default
+// label, but if one is provided, the certificate in the Keychain will be
+// updated with the given label:
+//
+// Valid names (URIs) are:
+//   - "" will use the common name as the label
+//   - "mackms:" will use the common
+//   - "mackms:label=my-label" will use "my-label"
+//   - "mackms:my-label" will use the "my-label"
+func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
+	// There's not really need to require the name as macOS will use the common
+	// name as default.
+	if req.Certificate == nil {
+		return fmt.Errorf("storeCertificateRequest 'certificate' cannot be empty")
+	}
+
+	// Do not require any parameter. Using mackms: is allowed as macOS will set
+	// the commonName as label.
+	u, err := parseCertURI(req.Name, false)
+	if err != nil {
+		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+	}
+
+	cfData, err := cf.NewData(req.Certificate.Raw)
+	if err != nil {
+		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+	}
+	defer cfData.Release()
+
+	certRef, err := security.SecCertificateCreateWithData(cfData)
+	if err != nil {
+		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+	}
+	defer certRef.Release()
+
+	// Adding the label here doesn't have any effect. Apple Keychain always uses
+	// the commonName.
+	attributes, err := cf.NewDictionary(cf.Dictionary{
+		security.KSecClass:    security.KSecClassCertificate,
+		security.KSecValueRef: certRef,
+	})
+	if err != nil {
+		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+	}
+	defer attributes.Release()
+
+	// Store the certificate
+	if err := security.SecItemAdd(attributes, nil); err != nil {
+		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+	}
+
+	// Update the label if necessary
+	if u.label != "" && u.label != req.Certificate.Subject.CommonName {
+		cfLabel, err := cf.NewString(u.label)
+		if err != nil {
+			return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+		}
+		defer cfLabel.Release()
+
+		query, err := cf.NewDictionary(cf.Dictionary{
+			security.KSecValueRef: certRef,
+		})
+		if err != nil {
+			return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+		}
+		defer query.Release()
+
+		update, err := cf.NewDictionary(cf.Dictionary{
+			security.KSecAttrLabel: cfLabel,
+		})
+		if err != nil {
+			return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+		}
+		defer update.Release()
+
+		if err := security.SecItemUpdate(query, update); err != nil {
+			return fmt.Errorf("mackms StoreCertificate failed2: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
+	return apiv1.NotImplementedError{}
+}
+
 // DeleteKey deletes the key referenced by the URI in the request name.
 //
 // # Experimental
@@ -497,10 +658,8 @@ func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, 
 }
 
 func parseURI(rawuri string) (*keyAttributes, error) {
-	s := strings.ToLower(rawuri)
-
 	// When rawuri is just the key name
-	if !strings.HasPrefix(s, Scheme) {
+	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
 		return &keyAttributes{
 			label: rawuri,
 			tag:   DefaultTag,
@@ -508,7 +667,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	}
 
 	// When rawuri is a mackms uri.
-	u, err := uri.ParseWithScheme(Scheme, s)
+	u, err := uri.ParseWithScheme(Scheme, rawuri)
 	if err != nil {
 		return nil, err
 	}
@@ -542,6 +701,64 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 		useSecureEnclave: u.GetBool("se"),
 		useBiometrics:    u.GetBool("bio"),
 	}, nil
+}
+
+func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
+	// When rawuri is just the label
+	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
+		return &certAttributes{
+			label: rawuri,
+		}, nil
+	}
+
+	// When rawuri is a mackms uri.
+	u, err := uri.ParseWithScheme(Scheme, rawuri)
+	if err != nil {
+		return nil, err
+	}
+
+	// Special case for mackms:label
+	if len(u.Values) == 1 {
+		for k, v := range u.Values {
+			if (len(v) == 1 && v[0] == "") || len(v) == 0 {
+				return &certAttributes{
+					label: k,
+				}, nil
+			}
+		}
+	}
+
+	// With regular values, uris look like this:
+	// mackms:label=my-cert;serial=01020A0B...
+	label := u.Get("label")
+	serial := u.GetEncoded("serial")
+	if requireValue && label == "" && len(serial) == 0 {
+		return nil, fmt.Errorf("error parsing %q: label or serial are required", rawuri)
+	}
+
+	var serialNumber *big.Int
+	if len(serial) > 0 {
+		serialNumber = new(big.Int).SetBytes(serial)
+	}
+
+	return &certAttributes{
+		label:        label,
+		serialNumber: serialNumber,
+	}, nil
+}
+
+// encodeSerialNumber encodes the serial number of a certificate in ASN.1.
+// Negative serial numbers are now allowed.
+func encodeSerialNumber(s *big.Int) []byte {
+	if s.Sign() == 0 {
+		return []byte{0x00}
+	}
+	b := s.Bytes()
+	if b[0]&0x80 != 0 {
+		// Pad this with 0x00 in order to stop it looking like a negative number.
+		return append([]byte{0x00}, b...)
+	}
+	return b
 }
 
 func parseECDSAPublicKey(raw []byte) (crypto.PublicKey, error) {

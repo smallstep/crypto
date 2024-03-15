@@ -20,9 +20,15 @@
 package corefoundation
 
 /*
-#cgo LDFLAGS: -framework CoreFoundation
+#cgo CFLAGS: -x objective-c
+#cgo LDFLAGS: -framework CoreFoundation -framework Foundation
 
+#include <Foundation/Foundation.h>
 #include <CoreFoundation/CoreFoundation.h>
+
+void nslog(CFTypeRef ref) {
+	NSLog(@"%@", ref);
+}
 */
 import "C"
 import (
@@ -159,6 +165,12 @@ func NewDictionary(m Dictionary) (*DictionaryRef, error) {
 	}, nil
 }
 
+func NewDictionaryRef(ref TypeRef) *DictionaryRef {
+	return &DictionaryRef{
+		Value: C.CFDictionaryRef(ref),
+	}
+}
+
 func (v *DictionaryRef) Release()           { Release(v) }
 func (v *DictionaryRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
 
@@ -181,3 +193,7 @@ func (e ErrorRef) Error() string {
 
 func (e ErrorRef) Release()           { Release(e) }
 func (e ErrorRef) TypeRef() CFTypeRef { return C.CFTypeRef(C.CFErrorRef(e)) }
+
+func Log(v TypeReferer) {
+	C.nslog(v.TypeRef())
+}
