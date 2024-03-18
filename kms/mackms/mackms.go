@@ -413,9 +413,9 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	// Look for the rest of intermediates skipping the root.
 	for {
 		// The Keychain stores the subject as an attribute, but it saves some of
-		// the values to uppercase. We cannot use the cert.RawIssuer to restrict
-		// more the search with KSecAttrSubjectKeyID and kSecAttrSubject. We
-		// would need to "normalize" it in the same way.
+		// the values in uppercase. We cannot use the cert.RawIssuer to restrict
+		// more the search with KSecAttrSubjectKeyID and kSecAttrSubject. To do
+		// it we will need to "normalize" the subject it in the same way.
 		parent, err := loadCertificate("", nil, cert.AuthorityKeyId)
 		if err != nil || isSelfSigned(parent) || cert.CheckSignatureFrom(parent) != nil {
 			break
