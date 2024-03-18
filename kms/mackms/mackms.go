@@ -916,7 +916,7 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 }
 
 // encodeSerialNumber encodes the serial number of a certificate in ASN.1.
-// Negative serial numbers are now allowed.
+// Negative serial numbers are not allowed.
 func encodeSerialNumber(s *big.Int) []byte {
 	if s.Sign() == 0 {
 		return []byte{0x00}
