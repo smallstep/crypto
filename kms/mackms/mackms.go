@@ -412,7 +412,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 
 	// Look for the rest of intermediates skipping the root.
 	for {
-		// The Keychain stores the subject as an attribute, but it safes some of
+		// The Keychain stores the subject as an attribute, but it saves some of
 		// the values to uppercase. We cannot use the cert.RawIssuer to restrict
 		// more the search with KSecAttrSubjectKeyID and kSecAttrSubject. We
 		// would need to "normalize" it in the same way.
@@ -434,7 +434,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 //
 // Valid names (URIs) are:
 //   - "" will use the common name as the label
-//   - "mackms:" will use the common
+//   - "mackms:" will use the common name
 //   - "mackms:label=my-label" will use "my-label"
 //   - "mackms:my-label" will use the "my-label"
 func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
@@ -510,7 +510,7 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 	return nil
 }
 
-// DeleteCertificateRequest deletes the certificate referenced by the URI in the
+// DeleteCertificate deletes the certificate referenced by the URI in the
 // request name.
 //
 // # Experimental
@@ -690,17 +690,13 @@ func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, 
 	return priv.Public(), hash, nil
 }
 
-// isSelfSinged checks if a certificate is self signed. The algorithm looks like this:
+// isSelfSigned checks if a certificate is self signed. The algorithm looks like this:
 //
 //	If subject != issuer: false
 //	ElseIf subjectKeyID != authorityKey: false
 //	ElseIf checkSignature: true
 //	Otherwise: false
 func isSelfSigned(cert *x509.Certificate) bool {
-	// If subject != issuer: false
-	// ElseIf subjectKeyID != authorityKey: false
-	// ElseIf checkSignature: true
-	// Otherwise: false
 	if bytes.Equal(cert.RawSubject, cert.RawIssuer) {
 		if cert.SubjectKeyId != nil && cert.AuthorityKeyId != nil && !bytes.Equal(cert.SubjectKeyId, cert.AuthorityKeyId) {
 			return false
