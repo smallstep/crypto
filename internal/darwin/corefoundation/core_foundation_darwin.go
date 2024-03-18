@@ -20,15 +20,8 @@
 package corefoundation
 
 /*
-#cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework CoreFoundation -framework Foundation
-
-#include <Foundation/Foundation.h>
+#cgo LDFLAGS: -framework CoreFoundation
 #include <CoreFoundation/CoreFoundation.h>
-
-void nslog(CFTypeRef ref) {
-	NSLog(@"%@", ref);
-}
 */
 import "C"
 import (
@@ -193,7 +186,3 @@ func (e ErrorRef) Error() string {
 
 func (e ErrorRef) Release()           { Release(e) }
 func (e ErrorRef) TypeRef() CFTypeRef { return C.CFTypeRef(C.CFErrorRef(e)) }
-
-func Log(v TypeReferer) {
-	C.nslog(v.TypeRef())
-}
