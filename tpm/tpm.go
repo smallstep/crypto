@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/smallstep/go-attestation/attest"
 
+	"go.step.sm/crypto/kms/uri"
 	closer "go.step.sm/crypto/tpm/internal/close"
+	"go.step.sm/crypto/tpm/internal/mssim"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
@@ -230,19 +233,30 @@ func (t *TPM) initializeCommandChannel() error {
 		t.commandChannel = t.options.commandChannel
 	}
 
-	// finally, check if the device name points to a UNIX socket, and use that
-	// as the command channel, if available.
 	if t.commandChannel == nil {
-		if socketCommandChannel, err := trySocketCommandChannel(t.deviceName); err != nil {
-			switch {
-			case errors.Is(err, socket.ErrNotSupported):
-				// don't try to use socket command channel if not supported. No need to return
-				// an error, because the code should still rely on the default TPM command channel.
-			case !errors.Is(err, socket.ErrNotAvailable):
-				return err
+		switch {
+		case strings.HasPrefix(t.deviceName, "mssim:"):
+			// if the TPM device name looks like a URI that starts with "mssim:", try
+			// using a TCP connection to the TPM using the Microsoft PTM simulator TCTI.
+			msSimCommandChannel, err := tryMsSimCommandChannel(t.deviceName)
+			if err != nil {
+				return fmt.Errorf("invalid Microsoft TPM Simulator device name %q: %w", t.deviceName, err)
 			}
-		} else {
-			t.commandChannel = socketCommandChannel
+			t.commandChannel = msSimCommandChannel
+		default:
+			// finally, check if the device name points to a UNIX socket, and use that
+			// as the command channel, if available.
+			if socketCommandChannel, err := trySocketCommandChannel(t.deviceName); err != nil {
+				switch {
+				case errors.Is(err, socket.ErrNotSupported):
+					// don't try to use socket command channel if not supported. No need to return
+					// an error, because the code should still rely on the default TPM command channel.
+				case !errors.Is(err, socket.ErrNotAvailable):
+					return err
+				}
+			} else {
+				t.commandChannel = socketCommandChannel
+			}
 		}
 	}
 
@@ -257,13 +271,28 @@ func (t *TPM) initializeCommandChannel() error {
 	return nil
 }
 
-// trySocketCommandChannel tries
+// trySocketCommandChannel tries to establish connections to a TPM using
+// a UNIX socket.
 func trySocketCommandChannel(path string) (*socket.CommandChannelWithoutMeasurementLog, error) {
 	rwc, err := socket.New(path)
 	if err != nil {
 		return nil, err
 	}
 	return &socket.CommandChannelWithoutMeasurementLog{ReadWriteCloser: rwc}, nil
+}
+
+// tryMsSimCommandChannel tries to establish connections to a TPM using the
+// Microsoft TPM Simulator TCTI.
+func tryMsSimCommandChannel(rawuri string) (*mssim.CommandChannelWithoutMeasurementLog, error) {
+	u, err := uri.ParseWithScheme("mssim", rawuri)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing %q: %w", rawuri, err)
+	}
+	rwc, err := mssim.New(u)
+	if err != nil {
+		return nil, err
+	}
+	return &mssim.CommandChannelWithoutMeasurementLog{ReadWriteCloser: rwc}, nil
 }
 
 // Close closes the TPM instance, cleaning up resources and
