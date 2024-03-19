@@ -21,7 +21,6 @@ package corefoundation
 
 /*
 #cgo LDFLAGS: -framework CoreFoundation
-
 #include <CoreFoundation/CoreFoundation.h>
 */
 import "C"
@@ -157,6 +156,12 @@ func NewDictionary(m Dictionary) (*DictionaryRef, error) {
 	return &DictionaryRef{
 		Value: ref,
 	}, nil
+}
+
+func NewDictionaryRef(ref TypeRef) *DictionaryRef {
+	return &DictionaryRef{
+		Value: C.CFDictionaryRef(ref),
+	}
 }
 
 func (v *DictionaryRef) Release()           { Release(v) }

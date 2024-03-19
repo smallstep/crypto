@@ -38,12 +38,18 @@ const (
 	nilSecKey           C.SecKeyRef           = 0
 	nilSecAccessControl C.SecAccessControlRef = 0
 	nilCFString         C.CFStringRef         = 0
+	nilCFData           C.CFDataRef           = 0
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrAlreadyExists = errors.New("already exists")
+	ErrInvalidData   = errors.New("invalid data")
+)
 
 var (
 	KSecAttrAccessControl                            = cf.TypeRef(C.kSecAttrAccessControl)
+	KSecAttrAccessGroup                              = cf.TypeRef(C.kSecAttrAccessGroup)
 	KSecAttrAccessibleWhenUnlocked                   = cf.TypeRef(C.kSecAttrAccessibleWhenUnlocked)
 	KSecAttrAccessibleWhenPasscodeSetThisDeviceOnly  = cf.TypeRef(C.kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly)
 	KSecAttrAccessibleWhenUnlockedThisDeviceOnly     = cf.TypeRef(C.kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
@@ -62,14 +68,23 @@ var (
 	KSecAttrLabel                                    = cf.TypeRef(C.kSecAttrLabel)
 	KSecAttrTokenID                                  = cf.TypeRef(C.kSecAttrTokenID)
 	KSecAttrTokenIDSecureEnclave                     = cf.TypeRef(C.kSecAttrTokenIDSecureEnclave)
+	KSecAttrSerialNumber                             = cf.TypeRef(C.kSecAttrSerialNumber)
+	KSecAttrSubjectKeyID                             = cf.TypeRef(C.kSecAttrSubjectKeyID)
+	KSecAttrSubject                                  = cf.TypeRef(C.kSecAttrSubject)
+	KSecAttrIssuer                                   = cf.TypeRef(C.kSecAttrIssuer)
+	KSecAttrSynchronizable                           = cf.TypeRef(C.kSecAttrSynchronizable)
+	KSecUseDataProtectionKeychain                    = cf.TypeRef(C.kSecUseDataProtectionKeychain)
 	KSecClass                                        = cf.TypeRef(C.kSecClass)
 	KSecClassKey                                     = cf.TypeRef(C.kSecClassKey)
+	KSecClassCertificate                             = cf.TypeRef(C.kSecClassCertificate)
+	KSecClassIdentity                                = cf.TypeRef(C.kSecClassIdentity)
 	KSecMatchLimit                                   = cf.TypeRef(C.kSecMatchLimit)
 	KSecMatchLimitOne                                = cf.TypeRef(C.kSecMatchLimitOne)
 	KSecPublicKeyAttrs                               = cf.TypeRef(C.kSecPublicKeyAttrs)
 	KSecPrivateKeyAttrs                              = cf.TypeRef(C.kSecPrivateKeyAttrs)
 	KSecReturnRef                                    = cf.TypeRef(C.kSecReturnRef)
 	KSecValueRef                                     = cf.TypeRef(C.kSecValueRef)
+	KSecValueData                                    = cf.TypeRef(C.kSecValueData)
 )
 
 type SecKeyAlgorithm = C.SecKeyAlgorithm
@@ -135,6 +150,19 @@ func NewSecKeyRef(ref cf.TypeRef) *SecKeyRef {
 func (v *SecKeyRef) Release()              { cf.Release(v) }
 func (v *SecKeyRef) TypeRef() cf.CFTypeRef { return cf.CFTypeRef(v.Value) }
 
+type SecCertificateRef struct {
+	Value C.SecCertificateRef
+}
+
+func NewSecCertificateRef(ref cf.TypeRef) *SecCertificateRef {
+	return &SecCertificateRef{
+		Value: C.SecCertificateRef(ref),
+	}
+}
+
+func (v *SecCertificateRef) Release()              { cf.Release(v) }
+func (v *SecCertificateRef) TypeRef() cf.CFTypeRef { return cf.CFTypeRef(v.Value) }
+
 type SecAccessControlRef struct {
 	ref C.SecAccessControlRef
 }
@@ -144,6 +172,11 @@ func (v *SecAccessControlRef) TypeRef() cf.CFTypeRef { return cf.CFTypeRef(v.ref
 
 func SecItemAdd(attributes *cf.DictionaryRef, result *cf.TypeRef) error {
 	status := C.SecItemAdd(C.CFDictionaryRef(attributes.Value), (*C.CFTypeRef)(result))
+	return goOSStatus(status)
+}
+
+func SecItemUpdate(query *cf.DictionaryRef, attributesToUpdate *cf.DictionaryRef) error {
+	status := C.SecItemUpdate(C.CFDictionaryRef(query.Value), C.CFDictionaryRef(attributesToUpdate.Value))
 	return goOSStatus(status)
 }
 
@@ -218,6 +251,26 @@ func SecKeyCreateSignature(key *SecKeyRef, algorithm SecKeyAlgorithm, dataToSign
 	}, nil
 }
 
+func SecCertificateCopyData(cert *SecCertificateRef) (*cf.DataRef, error) {
+	data := C.SecCertificateCopyData(cert.Value)
+	if data == nilCFData {
+		return nil, ErrInvalidData
+	}
+	return &cf.DataRef{
+		Value: cf.CFDataRef(data),
+	}, nil
+}
+
+func SecCertificateCreateWithData(certData *cf.DataRef) (*SecCertificateRef, error) {
+	certRef := C.SecCertificateCreateWithData(C.kCFAllocatorDefault, C.CFDataRef(certData.Value))
+	if certRef == 0 {
+		return nil, ErrInvalidData
+	}
+	return &SecCertificateRef{
+		Value: certRef,
+	}, nil
+}
+
 func SecCopyErrorMessageString(status C.OSStatus) *cf.StringRef {
 	s := C.SecCopyErrorMessageString(status, nil)
 	return &cf.StringRef{
@@ -254,11 +307,13 @@ func (e osStatusError) Error() string {
 }
 
 func goOSStatus(status C.OSStatus) error {
-	if status == 0 {
+	switch status {
+	case 0:
 		return nil
-	}
-	if status == C.errSecItemNotFound {
+	case C.errSecItemNotFound: // -25300
 		return ErrNotFound
+	case C.errSecDuplicateItem: // -25299
+		return ErrAlreadyExists
 	}
 
 	var message string

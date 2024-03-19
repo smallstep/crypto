@@ -131,7 +131,7 @@ type GetPublicKeyRequest struct {
 type CreateKeyRequest struct {
 	// Name represents the key name or label used to identify a key.
 	//
-	// Used by: awskms, cloudkms, azurekms, pkcs11, yubikey, tpmkms.
+	// Used by: awskms, cloudkms, azurekms, pkcs11, yubikey, tpmkms, mackms.
 	Name string
 
 	// SignatureAlgorithm represents the type of key to create.
@@ -296,5 +296,16 @@ type CreateAttestationResponse struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type DeleteKeyRequest struct {
+	Name string
+}
+
+// DeleteCertificateRequest is the parameter used in the kms.DeleteCertificate
+// method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type DeleteCertificateRequest struct {
 	Name string
 }
