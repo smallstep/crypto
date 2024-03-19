@@ -356,7 +356,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 //
 // Valid names (URIs) are:
 //   - "" will use the common name as the label
-//   - "mackms:" will use the common
+//   - "mackms:" will use the common name
 //   - "mackms:label=my-label" will use "my-label"
 //   - "mackms:my-label" will use the "my-label"
 func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
@@ -706,7 +706,6 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	}
 
 	return false
-
 }
 
 func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (*x509.Certificate, error) {
