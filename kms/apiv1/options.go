@@ -72,8 +72,13 @@ func (e NotImplementedError) Error() string {
 	return "not implemented"
 }
 
+func (e NotImplementedError) Is(target error) bool {
+	_, ok := target.(NotImplementedError)
+	return ok
+}
+
 // AlreadyExistsError is the type of error returned if a key already exists. This
-// is currently only implmented for pkcs11 and tpmkms.
+// is currently only implemented for pkcs11, tpmkms, and mackms.
 type AlreadyExistsError struct {
 	Message string
 }
@@ -82,7 +87,30 @@ func (e AlreadyExistsError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
-	return "key already exists"
+	return "already exists"
+}
+
+func (e AlreadyExistsError) Is(target error) bool {
+	_, ok := target.(AlreadyExistsError)
+	return ok
+}
+
+// NotFoundError is the type of error returned if a key or certificate does not
+// exist. This is currently only implemented for mackms.
+type NotFoundError struct {
+	Message string
+}
+
+func (e NotFoundError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return "not found"
+}
+
+func (e NotFoundError) Is(target error) bool {
+	_, ok := target.(NotFoundError)
+	return ok
 }
 
 // Type represents the KMS type used.

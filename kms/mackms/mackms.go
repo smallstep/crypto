@@ -141,7 +141,7 @@ func (k *MacKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 
 	key, err := getPrivateKey(u)
 	if err != nil {
-		return nil, fmt.Errorf("mackms GetPublicKey failed: %w", err)
+		return nil, fmt.Errorf("mackms GetPublicKey failed: %w", apiv1Error(err))
 	}
 	defer key.Release()
 
@@ -263,7 +263,7 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 	secKeyRef, err := security.SecKeyCreateRandomKey(attrs)
 	if err != nil {
-		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
+		return nil, fmt.Errorf("mackms CreateKey failed: %w", apiv1Error(err))
 	}
 	defer secKeyRef.Release()
 
@@ -307,7 +307,7 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 
 	key, err := getPrivateKey(u)
 	if err != nil {
-		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
+		return nil, fmt.Errorf("mackms CreateSigner failed: %w", apiv1Error(err))
 	}
 	defer key.Release()
 
@@ -343,7 +343,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 
 	cert, err := loadCertificate(u.label, u.serialNumber, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
+		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", apiv1Error(err))
 	}
 
 	return cert, nil
@@ -375,7 +375,7 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	// Store the certificate and update the label if required
 	if err := storeCertificate(u.label, req.Certificate); err != nil {
-		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
+		return fmt.Errorf("mackms StoreCertificate failed: %w", apiv1Error(err))
 	}
 
 	return nil
@@ -402,7 +402,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 
 	cert, err := loadCertificate(u.label, u.serialNumber, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mackms LoadCertificateChain failed1: %w", err)
+		return nil, fmt.Errorf("mackms LoadCertificateChain failed1: %w", apiv1Error(err))
 	}
 
 	chain := []*x509.Certificate{cert}
@@ -453,7 +453,7 @@ func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 
 	// Store the certificate and update the label if required
 	if err := storeCertificate(u.label, req.CertificateChain[0]); err != nil {
-		return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
+		return fmt.Errorf("mackms StoreCertificateChain failed: %w", apiv1Error(err))
 	}
 
 	// Store the rest of the chain but do not fail if already exists
@@ -503,7 +503,7 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		}
 		// Extract logic to deleteItem to avoid defer on loops
 		if err := deleteItem(dict, u.hash); err != nil {
-			return fmt.Errorf("mackms DeleteKey failed: %w", err)
+			return fmt.Errorf("mackms DeleteKey failed: %w", apiv1Error(err))
 		}
 	}
 
@@ -548,7 +548,7 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	}
 
 	if err := deleteItem(query, nil); err != nil {
-		return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
+		return fmt.Errorf("mackms DeleteCertificate failed: %w", apiv1Error(err))
 	}
 
 	return nil
@@ -1001,5 +1001,20 @@ func ecdhToECDSAPublicKey(key *ecdh.PublicKey) (*ecdsa.PublicKey, error) {
 		}, nil
 	default:
 		return nil, errors.New("failed to convert *ecdh.PublicKey to *ecdsa.PublicKey")
+	}
+}
+
+func apiv1Error(err error) error {
+	switch {
+	case errors.Is(err, security.ErrNotFound):
+		return apiv1.NotFoundError{
+			Message: err.Error(),
+		}
+	case errors.Is(err, security.ErrAlreadyExists):
+		return apiv1.AlreadyExistsError{
+			Message: err.Error(),
+		}
+	default:
+		return err
 	}
 }
