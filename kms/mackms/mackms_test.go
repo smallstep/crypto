@@ -29,6 +29,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"math/big"
 	"net/url"
 	"testing"
@@ -1143,7 +1145,7 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 		_, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{
 			Name: "mackms:serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
 		})
-		assert.ErrorIs(t, err, security.ErrNotFound)
+		assert.ErrorIs(t, err, apiv1.NotFoundError{})
 	}
 
 	kms := &MacKMS{}
@@ -1193,6 +1195,41 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &MacKMS{}
 			tt.assertion(t, m.DeleteCertificate(tt.args.req))
+		})
+	}
+}
+
+func Test_apiv1Error(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name      string
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok not found", args{security.ErrNotFound}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msg...)
+		}},
+		{"ok not found wrapped", args{fmt.Errorf("something happened: %w", security.ErrNotFound)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msg...)
+		}},
+		{"ok already exists", args{security.ErrAlreadyExists}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.AlreadyExistsError{}, msg...)
+		}},
+		{"ok already exists wrapped", args{fmt.Errorf("something happened: %w", security.ErrAlreadyExists)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.AlreadyExistsError{}, msg...)
+		}},
+		{"ok other", args{io.ErrUnexpectedEOF}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, io.ErrUnexpectedEOF, msg...)
+		}},
+		{"ok other wrapped", args{fmt.Errorf("something happened: %w", io.ErrUnexpectedEOF)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+			return assert.ErrorIs(t, err, io.ErrUnexpectedEOF, msg...)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, apiv1Error(tt.args.err))
 		})
 	}
 }

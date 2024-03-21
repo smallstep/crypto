@@ -3,8 +3,12 @@ package apiv1
 import (
 	"context"
 	"crypto"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type fakeKM struct{}
@@ -124,12 +128,36 @@ func TestErrAlreadyExists_Error(t *testing.T) {
 		fields fields
 		want   string
 	}{
-		{"default", fields{}, "key already exists"},
+		{"default", fields{}, "already exists"},
 		{"custom", fields{"custom message: key already exists"}, "custom message: key already exists"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := AlreadyExistsError{
+				Message: tt.fields.msg,
+			}
+			if got := e.Error(); got != tt.want {
+				t.Errorf("ErrAlreadyExists.Error() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNotFoundError_Error(t *testing.T) {
+	type fields struct {
+		msg string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{"default", fields{}, "not found"},
+		{"custom", fields{"custom message: not found"}, "custom message: not found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := NotFoundError{
 				Message: tt.fields.msg,
 			}
 			if got := e.Error(); got != tt.want {
@@ -173,6 +201,32 @@ func TestTypeOf(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("TypeOf() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestError_Is(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		target error
+		want   bool
+	}{
+		{"ok not implemented", NotImplementedError{}, NotImplementedError{}, true},
+		{"ok not implemented with message", NotImplementedError{Message: "something"}, NotImplementedError{}, true},
+		{"ok already exists", AlreadyExistsError{}, AlreadyExistsError{}, true},
+		{"ok already exists with message", AlreadyExistsError{Message: "something"}, AlreadyExistsError{}, true},
+		{"ok not found", NotFoundError{}, NotFoundError{}, true},
+		{"ok not found with message", NotFoundError{Message: "something"}, NotFoundError{}, true},
+		{"fail not implemented", errors.New("not implemented"), NotImplementedError{}, false},
+		{"fail already exists", errors.New("already exists"), AlreadyExistsError{}, false},
+		{"fail not found", errors.New("not found"), NotFoundError{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, errors.Is(tt.err, tt.target))
+			assert.Equal(t, tt.want, errors.Is(fmt.Errorf("wrap 1: %w", tt.err), tt.target))
+			assert.Equal(t, tt.want, errors.Is(fmt.Errorf("wrap 1: %w", fmt.Errorf("wrap 2: %w", tt.err)), tt.target))
 		})
 	}
 }
