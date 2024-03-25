@@ -1046,19 +1046,24 @@ func TestYubiKey_Serial(t *testing.T) {
 	yk2.serialErr = errors.New("some error")
 
 	tests := []struct {
-		name string
-		yk   pivKey
-		want string
+		name    string
+		yk      pivKey
+		want    string
+		wantErr bool
 	}{
-		{"ok", yk1, "112233"},
-		{"fail", yk2, ""},
+		{"ok", yk1, "112233", false},
+		{"fail", yk2, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &YubiKey{
 				yk: tt.yk,
 			}
-			got := k.Serial()
+			got, err := k.Serial()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.Serial() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("YubiKey.Serial() = %v, want %v", got, tt.want)
 			}

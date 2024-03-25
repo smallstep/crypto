@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -360,12 +361,14 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 
 // Serial returns the serial number of the PIV card or and empty
 // string if retrieval fails
-func (k *YubiKey) Serial() string {
-	if serial, err := k.yk.Serial(); err == nil {
-		return strconv.FormatUint(uint64(serial), 10)
+func (k *YubiKey) Serial() (string, error) {
+	serial, err := k.yk.Serial()
+
+	if err != nil {
+		return "", fmt.Errorf("error getting Yubikey's serial number: %w", err)
 	}
 
-	return ""
+	return strconv.FormatUint(uint64(serial), 10), nil
 }
 
 // Close releases the connection to the YubiKey.
