@@ -42,6 +42,7 @@ type pivKey interface {
 	GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
 	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
 	Attest(slot piv.Slot) (*x509.Certificate, error)
+	Serial() (uint32, error)
 	Close() error
 }
 
@@ -141,8 +142,8 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		// Attempt to locate the yubikey with the given serial.
 		for _, name := range cards {
 			if k, err := openCard(name); err == nil {
-				if cert, err := k.Attest(piv.SlotAuthentication); err == nil {
-					if serial == getSerialNumber(cert) {
+				if s, err := k.Serial(); err == nil {
+					if serial == strconv.FormatUint(uint64(s), 10) {
 						yk = k
 						card = name
 						break
@@ -353,8 +354,18 @@ func (k *YubiKey) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1
 		Certificate:         cert,
 		CertificateChain:    []*x509.Certificate{cert, intermediate},
 		PublicKey:           cert.PublicKey,
-		PermanentIdentifier: getSerialNumber(cert),
+		PermanentIdentifier: getAttestedSerial(cert),
 	}, nil
+}
+
+// Serial returns the serial number of the PIV card or and empty
+// string if retrieval fails
+func (k *YubiKey) Serial() string {
+	if serial, err := k.yk.Serial(); err == nil {
+		return strconv.FormatUint(uint64(serial), 10)
+	}
+
+	return ""
 }
 
 // Close releases the connection to the YubiKey.
@@ -505,10 +516,10 @@ func getPolicies(req *apiv1.CreateKeyRequest) (piv.PINPolicy, piv.TouchPolicy) {
 	return pin, touch
 }
 
-// getSerialNumber returns the serial number from an attestation certificate. It
+// getAttestedSerial returns the serial number from an attestation certificate. It
 // will return an empty string if the serial number extension does not exist
 // or if it is malformed.
-func getSerialNumber(cert *x509.Certificate) string {
+func getAttestedSerial(cert *x509.Certificate) string {
 	for _, ext := range cert.Extensions {
 		if ext.Id.Equal(oidYubicoSerialNumber) {
 			var serialNumber int
@@ -519,6 +530,7 @@ func getSerialNumber(cert *x509.Certificate) string {
 			return strconv.Itoa(serialNumber)
 		}
 	}
+
 	return ""
 }
 
