@@ -10,7 +10,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.10.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/ThalesIgnite/crypto11 v1.2.5
-	github.com/aws/aws-sdk-go-v2/config v1.27.8
+	github.com/aws/aws-sdk-go-v2/config v1.27.9
 	github.com/aws/aws-sdk-go-v2/service/kms v1.30.0
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/go-piv/piv-go v1.11.0
@@ -42,8 +42,8 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.26.0 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.8 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.15.4 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.9 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.0 // indirect
