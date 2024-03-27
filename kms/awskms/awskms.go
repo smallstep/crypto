@@ -46,6 +46,12 @@ var customerMasterKeySpecMapping = map[apiv1.SignatureAlgorithm]interface{}{
 		3072: types.KeySpecRsa3072,
 		4096: types.KeySpecRsa4096,
 	},
+	apiv1.SHA384WithRSA: map[int]types.KeySpec{
+		0:    types.KeySpecRsa3072,
+		2048: types.KeySpecRsa2048,
+		3072: types.KeySpecRsa3072,
+		4096: types.KeySpecRsa4096,
+	},
 	apiv1.SHA512WithRSA: map[int]types.KeySpec{
 		0:    types.KeySpecRsa3072,
 		2048: types.KeySpecRsa2048,
@@ -53,6 +59,12 @@ var customerMasterKeySpecMapping = map[apiv1.SignatureAlgorithm]interface{}{
 		4096: types.KeySpecRsa4096,
 	},
 	apiv1.SHA256WithRSAPSS: map[int]types.KeySpec{
+		0:    types.KeySpecRsa3072,
+		2048: types.KeySpecRsa2048,
+		3072: types.KeySpecRsa3072,
+		4096: types.KeySpecRsa4096,
+	},
+	apiv1.SHA384WithRSAPSS: map[int]types.KeySpec{
 		0:    types.KeySpecRsa3072,
 		2048: types.KeySpecRsa2048,
 		3072: types.KeySpecRsa3072,

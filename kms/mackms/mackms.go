@@ -402,7 +402,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 
 	cert, err := loadCertificate(u.label, u.serialNumber, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mackms LoadCertificateChain failed1: %w", apiv1Error(err))
+		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", apiv1Error(err))
 	}
 
 	chain := []*x509.Certificate{cert}
@@ -424,6 +424,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 		chain = append(chain, cert)
 	}
 
+	//nolint:nilerr // return only the intermediates present in keychain
 	return chain, nil
 }
 
