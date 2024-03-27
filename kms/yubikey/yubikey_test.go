@@ -36,6 +36,8 @@ type stubPivKey struct {
 	certMap       map[piv.Slot]*x509.Certificate
 	signerMap     map[piv.Slot]interface{}
 	keyOptionsMap map[piv.Slot]piv.Key
+	serial        uint32
+	serialErr     error
 	closeErr      error
 }
 
@@ -93,7 +95,8 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 		t.Fatal(errors.New("unknown alg"))
 	}
 
-	serialNumber, err := asn1.Marshal(112233)
+	sn := 112233
+	snAsn1, err := asn1.Marshal(sn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +104,7 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 		Subject:   pkix.Name{CommonName: "attested certificate"},
 		PublicKey: attSigner.Public(),
 		ExtraExtensions: []pkix.Extension{
-			{Id: oidYubicoSerialNumber, Value: serialNumber},
+			{Id: oidYubicoSerialNumber, Value: snAsn1},
 		},
 	})
 	if err != nil {
@@ -132,6 +135,7 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 			piv.SlotSignature:      userSigner, // 9c
 		},
 		keyOptionsMap: map[piv.Slot]piv.Key{},
+		serial:        uint32(sn),
 	}
 }
 
@@ -218,6 +222,13 @@ func (s *stubPivKey) Attest(slot piv.Slot) (*x509.Certificate, error) {
 
 func (s *stubPivKey) Close() error {
 	return s.closeErr
+}
+
+func (s *stubPivKey) Serial() (uint32, error) {
+	if s.serialErr != nil {
+		return 0, s.serialErr
+	}
+	return s.serial, nil
 }
 
 func TestRegister(t *testing.T) {
@@ -1029,6 +1040,37 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 	}
 }
 
+func TestYubiKey_Serial(t *testing.T) {
+	yk1 := newStubPivKey(t, RSA)
+	yk2 := newStubPivKey(t, RSA)
+	yk2.serialErr = errors.New("some error")
+
+	tests := []struct {
+		name    string
+		yk      pivKey
+		want    string
+		wantErr bool
+	}{
+		{"ok", yk1, "112233", false},
+		{"fail", yk2, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{
+				yk: tt.yk,
+			}
+			got, err := k.Serial()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("YubiKey.Serial() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("YubiKey.Serial() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestYubiKey_Close(t *testing.T) {
 	yk1 := newStubPivKey(t, ECDSA)
 	yk2 := newStubPivKey(t, RSA)
@@ -1061,7 +1103,7 @@ func TestYubiKey_Close(t *testing.T) {
 	}
 }
 
-func Test_getSerialNumber(t *testing.T) {
+func Test_getAttestedSerial(t *testing.T) {
 	serialNumber, err := asn1.Marshal(112233)
 	if err != nil {
 		t.Fatal(err)
@@ -1107,8 +1149,8 @@ func Test_getSerialNumber(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := getSerialNumber(tt.args.cert); got != tt.want {
-				t.Errorf("getSerialNumber() = %v, want %v", got, tt.want)
+			if got := getAttestedSerial(tt.args.cert); got != tt.want {
+				t.Errorf("getAttestedSerial() = %v, want %v", got, tt.want)
 			}
 		})
 	}
