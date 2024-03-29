@@ -7,14 +7,19 @@ import (
 	"context"
 	"crypto"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"runtime"
 	"time"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -51,6 +56,7 @@ const (
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
 	tpm                             *tpm.TPM
+	capi                            apiv1.CertificateManager
 	attestationCABaseURL            string
 	attestationCARootFile           string
 	attestationCAInsecure           bool
@@ -142,7 +148,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // The TPMKMS implementation is backed by an instance of the TPM from
 // the `tpm` package. If the TPMKMS operations aren't sufficient for
 // your use case, use a tpm.TPM instance instead.
-func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
+func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{
 		identityEarlyRenewalEnabled:     true,
 		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
@@ -174,6 +180,34 @@ func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 			}
 			kms.identityRenewalPeriodPercentage = *percentage
 		}
+
+		// opt-in for enabling CAPI integration on Windows for certificate
+		// management. This will result in certificates being stored to or
+		// retrieved from the Windows certificate stores.
+		if runtime.GOOS == "windows" {
+			if withCAPI := u.GetBool("with-capi"); withCAPI {
+				fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.CAPIKMS)
+				if !ok {
+					return nil, fmt.Errorf("CAPIKMS not compiled") // TODO(hs): better error message; see capi package
+				}
+				km, err := fn(ctx, apiv1.Options{
+					Type: apiv1.CAPIKMS,
+					URI:  "capi:provider=Microsoft Platform Crypto Provider", // TODO(hs): more (default) CAPI properties?
+				})
+				if err != nil {
+					return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
+				}
+				kms.capi, ok = km.(apiv1.CertificateManager)
+				if !ok {
+					return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
+				}
+			}
+		}
+
+		// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
+		// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
+		// as the ones that create AKs and keys. Is all of the data available in the keys stored
+		// with Windows, incl. the attestation certification?
 	}
 
 	kms.tpm, err = tpm.New(tpmOpts...)
@@ -460,6 +494,33 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
 	}
 
+	if k.capi != nil {
+		pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: req.Name,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed retrieving public key: %w", err)
+		}
+
+		// TODO(hs): make configurable
+		location := "user"
+		store := "My"
+
+		subjectKeyID, err := generateSubjectKeyID(pub)
+		if err != nil {
+			return nil, fmt.Errorf("failed generatig subject key id: %w", err)
+		}
+
+		cert, err := k.capi.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s;", subjectKeyID, location, store),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed retrieving certificate using CNG: %w", err) // TODO(hs): decide on what to call this
+		}
+
+		return cert, nil
+	}
+
 	chain, err := k.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{Name: req.Name})
 	if err != nil {
 		return nil, err
@@ -468,11 +529,42 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	return chain[0], nil
 }
 
+type subjectPublicKeyInfo struct {
+	Algorithm        pkix.AlgorithmIdentifier
+	SubjectPublicKey asn1.BitString
+}
+
+func generateSubjectKeyID(pub crypto.PublicKey) (string, error) {
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	var info subjectPublicKeyInfo
+	if _, err = asn1.Unmarshal(b, &info); err != nil {
+		return "", err
+	}
+	hash := sha1.Sum(info.SubjectPublicKey.Bytes)
+
+	return hex.EncodeToString(hash[:]), nil
+}
+
 // LoadCertificateCertificate loads the certificate chain for the key identified by
 // name from the TPMKMS.
 func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
 	if req.Name == "" {
 		return nil, errors.New("loadCertificateChainRequest 'name' cannot be empty")
+	}
+
+	// TODO(hs): properly support (full) chains to be loaded using CAPI. Probably needs
+	// to retrieve the chain from other local stores on Windows.
+	if k.capi != nil {
+		cert, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: req.Name,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed loading certificate chain using CNG: %w", err)
+		}
+		return []*x509.Certificate{cert}, nil
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -512,6 +604,21 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
+	if k.capi != nil {
+		// TODO(hs): make configurable
+		location := "user"
+		store := "My"
+
+		if err := k.capi.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name:        fmt.Sprintf("capi:store-location=%s;store=%s;", location, store),
+			Certificate: req.Certificate,
+		}); err != nil {
+			return fmt.Errorf("failed storing certificate using CNG: %w", err) // TODO(hs): decide on what to call this
+		}
+
+		return nil
+	}
+
 	return k.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{Name: req.Name, CertificateChain: []*x509.Certificate{req.Certificate}})
 }
 
@@ -522,6 +629,18 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 		return errors.New("storeCertificateChainRequest 'name' cannot be empty")
 	case len(req.CertificateChain) == 0:
 		return errors.New("storeCertificateChainRequest 'certificateChain' cannot be empty")
+	}
+
+	// TODO(hs): properly support (full) chains to be stored using CAPI. Probably needs
+	// to store the chain to other local stores on Windows.
+	if k.capi != nil {
+		if err := k.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name:        req.Name,
+			Certificate: req.CertificateChain[0],
+		}); err != nil {
+			return fmt.Errorf("failed storing certificate chain using CNG: %w", err)
+		}
+		return nil
 	}
 
 	properties, err := parseNameURI(req.Name)
