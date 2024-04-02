@@ -58,16 +58,18 @@ const (
 
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
-	tpm                             *tpm.TPM
-	windowsCertificateManager       apiv1.CertificateManager
-	windowsCertificateStoreLocation string
-	windowsCertificateStore         string
-	attestationCABaseURL            string
-	attestationCARootFile           string
-	attestationCAInsecure           bool
-	permanentIdentifier             string
-	identityRenewalPeriodPercentage int64
-	identityEarlyRenewalEnabled     bool
+	tpm                              *tpm.TPM
+	windowsCertificateManager        apiv1.CertificateManager
+	windowsCertificateStoreLocation  string
+	windowsCertificateStore          string
+	windowsIntermediateStoreLocation string
+	windowsIntermediateStore         string
+	attestationCABaseURL             string
+	attestationCARootFile            string
+	attestationCAInsecure            bool
+	permanentIdentifier              string
+	identityRenewalPeriodPercentage  int64
+	identityEarlyRenewalEnabled      bool
 }
 
 type algorithmAttributes struct {
@@ -89,9 +91,11 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 }
 
 const (
-	microsoftPCP         = "Microsoft Platform Crypto Provider"
-	defaultStoreLocation = "user"
-	defaultStore         = "My"
+	microsoftPCP                     = "Microsoft Platform Crypto Provider"
+	defaultStoreLocation             = "user"
+	defaultStore                     = "My"
+	defaultIntermediateStoreLocation = "user"
+	defaultIntermediateStore         = "CA" // TODO(hs): verify "CA" works for "machine" certs too
 )
 
 // New initializes a new KMS backed by a TPM.
@@ -145,6 +149,13 @@ const (
 // The location and store to use can be overridden for a specific operation
 // against a TPMKMS instance, if required. It's not possible to change the crypto
 // provider to user; that will always be the "Microsoft Platform Crypto Provider"
+//
+// For operations that involve certificate chains, it's possible to set the
+// intermediate CA store location and store name at initialization time. The
+// same options can be used for a specific operation, if needed. By default the
+// "CA" user certificate store is used.
+//
+// tpmkms:intermediate-store-location=machine;intermediate-store=CustomCAStore
 //
 // For attestation use cases that involve the Smallstep Attestation CA
 // or a compatible one, several properties can be set. The following
@@ -246,6 +257,14 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 			kms.windowsCertificateStore = defaultStore
 			if store := u.Get("store"); store != "" {
 				kms.windowsCertificateStore = store
+			}
+			kms.windowsIntermediateStoreLocation = defaultIntermediateStoreLocation
+			if intermediateStoreLocation := u.Get("intermediate-store-location"); intermediateStoreLocation != "" {
+				kms.windowsIntermediateStoreLocation = intermediateStoreLocation
+			}
+			kms.windowsIntermediateStore = defaultIntermediateStore
+			if intermediateStore := u.Get("intermediate-store"); intermediateStore != "" {
+				kms.windowsIntermediateStore = intermediateStore
 			}
 		}
 
@@ -639,10 +658,17 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
 	}
 
-	intermediateCAStoreLocation := location // TODO(hs): support independent intermediate CA location?
-	intermediateCAStore := "CA"             // TODO(hs): verify "CA" works for "machine" certs too
-	chain := []*x509.Certificate{cert}
+	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	if o.intermediateStoreLocation != "" {
+		intermediateCAStoreLocation = o.intermediateStoreLocation
+	}
 
+	intermediateCAStore := k.windowsIntermediateStore
+	if o.intermediateStore != "" {
+		intermediateCAStore = o.intermediateStore
+	}
+
+	chain := []*x509.Certificate{cert}
 	child := cert
 	for i := 0; i < maximumIterations; i++ { // loop a maximum of times
 		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
@@ -765,13 +791,20 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		return nil
 	}
 
+	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	if o.intermediateStoreLocation != "" {
+		intermediateCAStoreLocation = o.intermediateStoreLocation
+	}
+
+	intermediateCAStore := k.windowsIntermediateStore
+	if o.intermediateStore != "" {
+		intermediateCAStore = o.intermediateStore
+	}
+
 	for _, c := range req.CertificateChain[1:] {
 		if err := validateIntermediateCertificate(c); err != nil {
 			return fmt.Errorf("invalid intermediate certificate provided in chain: %w", err)
 		}
-
-		intermediateCAStoreLocation := location // TODO(hs): support independent intermediate CA location?
-		intermediateCAStore := "CA"             // TODO(hs): verify "CA" works for "machine" certs too
 		if err := k.storeIntermediateToWindowsCertificateStore(c, intermediateCAStoreLocation, intermediateCAStore); err != nil {
 			return fmt.Errorf("failed storing intermediate certificate using Windows platform cryptography provider: %w", err)
 		}

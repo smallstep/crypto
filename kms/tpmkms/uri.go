@@ -11,14 +11,16 @@ import (
 )
 
 type objectProperties struct {
-	name           string
-	ak             bool
-	tss2           bool
-	attestBy       string
-	qualifyingData []byte
-	path           string
-	storeLocation  string
-	store          string
+	name                      string
+	ak                        bool
+	tss2                      bool
+	attestBy                  string
+	qualifyingData            []byte
+	path                      string
+	storeLocation             string
+	store                     string
+	intermediateStoreLocation string
+	intermediateStore         string
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -51,9 +53,12 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 			o.qualifyingData = qualifyingData
 		}
 
-		// store location and store are only used on Windows
+		// store location and store options are used on Windows to override
+		// which store(s) are used for storing and loading (intermediate) certificates
 		o.storeLocation = u.Get("store-location")
 		o.store = u.Get("store")
+		o.intermediateStoreLocation = u.Get("intermediate-store-location")
+		o.intermediateStore = u.Get("intermediate-store")
 
 		// validation
 		if o.ak && o.attestBy != "" {
