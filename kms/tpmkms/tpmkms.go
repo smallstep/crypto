@@ -599,6 +599,12 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	return chain, nil
 }
 
+const (
+	// maximumIterations is the maximum number of times for the recursive
+	// intermediate CA lookup loop.
+	maximumIterations = 10
+)
+
 func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
 	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 		Name: req.Name,
@@ -633,17 +639,27 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
 	}
 
-	// TODO(hs): loop through them by recursively searching for intermediates?
-
-	caKeyID := hex.EncodeToString(cert.AuthorityKeyId)
 	intermediateCAStoreLocation := location // TODO(hs): support independent intermediate CA location?
 	intermediateCAStore := "CA"             // TODO(hs): verify "CA" works for "machine" certs too
-	intermediate, err := k.loadIntermediateFromWindowsCertificateStore(caKeyID, intermediateCAStoreLocation, intermediateCAStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed loading intermediate CA using Windows platform cryptography provider: %w", err)
+	chain := []*x509.Certificate{cert}
+
+	child := cert
+	for i := 0; i < maximumIterations; i++ { // loop a maximum of times
+		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
+		parent, err := k.loadIntermediateFromWindowsCertificateStore(authorityKeyID, intermediateCAStoreLocation, intermediateCAStore)
+		if err != nil {
+			if errors.Is(err, apiv1.NotFoundError{}) {
+				// if error indicates the parent wasn't found, assume end of chain for a specific
+				// combination of store location and store is reached, and break from the loop
+				break
+			}
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+		chain = append(chain, parent)
+		child = parent
 	}
 
-	return []*x509.Certificate{cert, intermediate}, nil
+	return chain, nil
 }
 
 func (k *TPMKMS) loadIntermediateFromWindowsCertificateStore(keyID, storeLocation, store string) (*x509.Certificate, error) {

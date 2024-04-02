@@ -567,7 +567,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, fmt.Errorf("certificate with %v=%s not found", HashArg, keyID)
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", HashArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -594,7 +594,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", KeyIDArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -631,7 +631,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			}
 
 			if certHandle == nil {
-				return nil, fmt.Errorf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)
+				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)}
 			}
 
 			x509Cert, err := certContextToX509(certHandle)
