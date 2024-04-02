@@ -654,17 +654,22 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return errors.New("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
+	storeRequest := &apiv1.StoreCertificateChainRequest{
+		Name:             req.Name,
+		CertificateChain: []*x509.Certificate{req.Certificate},
+	}
+
 	if k.usesWindowsCertificateStore() {
-		if err := k.storeCertificateToWindowsCertificateStore(req); err != nil {
+		if err := k.storeCertificateChainToWindowsCertificateStore(storeRequest); err != nil {
 			return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
 		}
 		return nil
 	}
 
-	return k.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{Name: req.Name, CertificateChain: []*x509.Certificate{req.Certificate}})
+	return k.StoreCertificateChain(storeRequest)
 }
 
-func (k *TPMKMS) storeCertificateToWindowsCertificateStore(req *apiv1.StoreCertificateRequest) error {
+func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.StoreCertificateChainRequest) error {
 	o, err := parseNameURI(req.Name)
 	if err != nil {
 		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
@@ -679,16 +684,46 @@ func (k *TPMKMS) storeCertificateToWindowsCertificateStore(req *apiv1.StoreCerti
 		store = o.store
 	}
 
-	fp, err := fingerprint.New(req.Certificate.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	leaf := req.CertificateChain[0]
+	fp, err := fingerprint.New(leaf.Raw, crypto.SHA1, fingerprint.HexFingerprint)
 	if err != nil {
 		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
 	}
 
 	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
 		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;", fp, location, store),
-		Certificate: req.Certificate,
+		Certificate: leaf,
 	}); err != nil {
 		return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
+	}
+
+	if len(req.CertificateChain) == 1 {
+		// no certificate chain; return early
+		return nil
+	}
+
+	for _, c := range req.CertificateChain[1:] {
+		intermediateCAStoreLocation := location // TODO(hs): support independent intermediate CA location?
+		intermediateCAStore := "CA"             // TODO(hs): verify "CA" works for "machine" certs too
+		if err := k.storeIntermediateToWindowsCertificateStore(c, intermediateCAStoreLocation, intermediateCAStore); err != nil {
+			return fmt.Errorf("failed storing intermediate certificate using Windows platform cryptography provider: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate, storeLocation, store string) error {
+	fp, err := fingerprint.New(c.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
+	}
+
+	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;skip-find-certificate-key=true", fp, storeLocation, store),
+		Certificate: c,
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -706,12 +741,13 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 	// TODO(hs): properly support (full) chains to be stored using CAPI. Probably needs
 	// to store the chain to other local stores on Windows.
 	if k.usesWindowsCertificateStore() {
-		if err := k.storeCertificateToWindowsCertificateStore(&apiv1.StoreCertificateRequest{
-			Name:        req.Name,
-			Certificate: req.CertificateChain[0],
+		if err := k.storeCertificateChainToWindowsCertificateStore(&apiv1.StoreCertificateChainRequest{
+			Name:             req.Name,
+			CertificateChain: req.CertificateChain,
 		}); err != nil {
 			return fmt.Errorf("failed storing certificate chain using Windows platform cryptography provider: %w", err)
 		}
+
 		return nil
 	}
 
