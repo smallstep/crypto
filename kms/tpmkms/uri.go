@@ -17,6 +17,8 @@ type objectProperties struct {
 	attestBy       string
 	qualifyingData []byte
 	path           string
+	storeLocation  string
+	store          string
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -41,12 +43,17 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		} else {
 			o.name = name
 		}
+
 		o.ak = u.GetBool("ak")
 		o.tss2 = u.GetBool("tss2")
 		o.attestBy = u.Get("attest-by")
 		if qualifyingData := u.GetEncoded("qualifying-data"); qualifyingData != nil {
 			o.qualifyingData = qualifyingData
 		}
+
+		// store location and store are only used on Windows
+		o.storeLocation = u.Get("store-location")
+		o.store = u.Get("store")
 
 		// validation
 		if o.ak && o.attestBy != "" {
