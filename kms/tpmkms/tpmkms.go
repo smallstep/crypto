@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"time"
 
+	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -142,7 +143,7 @@ const (
 //
 // The location and store to use can be overridden for a specific operation
 // against a TPMKMS instance, if required. It's not possible to change the crypto
-// provide to user; that will always be the "Microsoft Platform Crypto Provider"
+// provider to user; that will always be the "Microsoft Platform Crypto Provider"
 //
 // For attestation use cases that involve the Smallstep Attestation CA
 // or a compatible one, several properties can be set. The following
@@ -547,7 +548,7 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (cert *x509.
 	switch {
 	case k.usesWindowsCertificateStore():
 		if cert, err = k.loadCertificateFromWindowsCertificateStore(req); err != nil {
-			return nil, fmt.Errorf("failed loading certificate using Windows platform provider: %w", err)
+			return nil, fmt.Errorf("failed loading certificate using Windows platform cryptography provider: %w", err)
 		}
 	default:
 		chain, err := k.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{Name: req.Name})
@@ -591,7 +592,7 @@ func (k *TPMKMS) loadCertificateFromWindowsCertificateStore(req *apiv1.LoadCerti
 		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s;", subjectKeyID, location, store),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed retrieving certificate using Windows platform provider: %w", err) // TODO(hs): decide on what to call this
+		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
 	}
 
 	return cert, nil
@@ -611,7 +612,7 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 			Name: req.Name,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed loading certificate chain using Windows platform provider: %w", err)
+			return nil, fmt.Errorf("failed loading certificate chain using Windows platform cryptography provider: %w", err)
 		}
 		return []*x509.Certificate{cert}, nil
 	}
@@ -655,7 +656,7 @@ func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	if k.usesWindowsCertificateStore() {
 		if err := k.storeCertificateToWindowsCertificateStore(req); err != nil {
-			return fmt.Errorf("failed storing certificate using Windows platform provider: %w", err)
+			return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
 		}
 		return nil
 	}
@@ -678,11 +679,16 @@ func (k *TPMKMS) storeCertificateToWindowsCertificateStore(req *apiv1.StoreCerti
 		store = o.store
 	}
 
+	fp, err := fingerprint.New(req.Certificate.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
+	}
+
 	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
-		Name:        fmt.Sprintf("capi:store-location=%s;store=%s;", location, store),
+		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;", fp, location, store),
 		Certificate: req.Certificate,
 	}); err != nil {
-		return fmt.Errorf("failed storing certificate using Windows platform provider: %w", err) // TODO(hs): decide on what to call this
+		return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
 	}
 
 	return nil
@@ -704,7 +710,7 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 			Name:        req.Name,
 			Certificate: req.CertificateChain[0],
 		}); err != nil {
-			return fmt.Errorf("failed storing certificate chain using Windows platform provider: %w", err)
+			return fmt.Errorf("failed storing certificate chain using Windows platform cryptography provider: %w", err)
 		}
 		return nil
 	}
