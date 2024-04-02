@@ -546,23 +546,60 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (cert *x509.
 		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
 	}
 
-	switch {
-	case k.usesWindowsCertificateStore():
-		if cert, err = k.loadCertificateFromWindowsCertificateStore(req); err != nil {
-			return nil, fmt.Errorf("failed loading certificate using Windows platform cryptography provider: %w", err)
+	chain, err := k.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{Name: req.Name})
+	if err != nil {
+		return nil, err
+	}
+
+	return chain[0], nil
+}
+
+// LoadCertificateChain loads the certificate chain for the key identified by
+// name from the TPMKMS.
+func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
+	if req.Name == "" {
+		return nil, errors.New("loadCertificateChainRequest 'name' cannot be empty")
+	}
+
+	if k.usesWindowsCertificateStore() {
+		chain, err := k.loadCertificateChainFromWindowsCertificateStore(&apiv1.LoadCertificateRequest{
+			Name: req.Name,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed loading certificate chain using Windows platform cryptography provider: %w", err)
 		}
-	default:
-		chain, err := k.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{Name: req.Name})
+		return chain, nil
+	}
+
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	var chain []*x509.Certificate
+	if properties.ak {
+		ak, err := k.tpm.GetAK(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
-		cert = chain[0]
+		chain = ak.CertificateChain()
+	} else {
+		key, err := k.tpm.GetKey(ctx, properties.name)
+		if err != nil {
+			return nil, err
+		}
+		chain = key.CertificateChain()
 	}
 
-	return
+	if len(chain) == 0 {
+		return nil, fmt.Errorf("failed getting certificate chain for %q: no certificate chain stored", properties.name)
+	}
+
+	return chain, nil
 }
 
-func (k *TPMKMS) loadCertificateFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
+func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
 	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 		Name: req.Name,
 	})
@@ -596,54 +633,25 @@ func (k *TPMKMS) loadCertificateFromWindowsCertificateStore(req *apiv1.LoadCerti
 		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
 	}
 
-	return cert, nil
+	// TODO(hs): loop through them by recursively searching for intermediates?
+
+	caKeyID := hex.EncodeToString(cert.AuthorityKeyId)
+	intermediateCAStoreLocation := location // TODO(hs): support independent intermediate CA location?
+	intermediateCAStore := "CA"             // TODO(hs): verify "CA" works for "machine" certs too
+	intermediate, err := k.loadIntermediateFromWindowsCertificateStore(caKeyID, intermediateCAStoreLocation, intermediateCAStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed loading intermediate CA using Windows platform cryptography provider: %w", err)
+	}
+
+	return []*x509.Certificate{cert, intermediate}, nil
 }
 
-// LoadCertificateCertificate loads the certificate chain for the key identified by
-// name from the TPMKMS.
-func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
-	if req.Name == "" {
-		return nil, errors.New("loadCertificateChainRequest 'name' cannot be empty")
-	}
+func (k *TPMKMS) loadIntermediateFromWindowsCertificateStore(keyID, storeLocation, store string) (*x509.Certificate, error) {
+	intermediate, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", keyID, storeLocation, store),
+	})
 
-	// TODO(hs): properly support (full) chains to be loaded using CAPI. Probably needs
-	// to retrieve the chain from other local stores on Windows.
-	if k.usesWindowsCertificateStore() {
-		cert, err := k.loadCertificateFromWindowsCertificateStore(&apiv1.LoadCertificateRequest{
-			Name: req.Name,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed loading certificate chain using Windows platform cryptography provider: %w", err)
-		}
-		return []*x509.Certificate{cert}, nil
-	}
-
-	properties, err := parseNameURI(req.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
-	}
-
-	ctx := context.Background()
-	var chain []*x509.Certificate
-	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
-		if err != nil {
-			return nil, err
-		}
-		chain = ak.CertificateChain()
-	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
-		if err != nil {
-			return nil, err
-		}
-		chain = key.CertificateChain()
-	}
-
-	if len(chain) == 0 {
-		return nil, fmt.Errorf("failed getting certificate chain for %q: no certificate chain stored", properties.name)
-	}
-
-	return chain, nil
+	return intermediate, err
 }
 
 // StoreCertificate stores the certificate for the key identified by name to the TPMKMS.
