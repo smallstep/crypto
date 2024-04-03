@@ -683,6 +683,18 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 			}
 			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
 		}
+
+		// if the discovered parent has a signature from itself, assume it's a root CA,
+		// and break from the loop
+		if parent.CheckSignatureFrom(parent) == nil {
+			break
+		}
+
+		// ensure child has a valid signature from the parent
+		if err := child.CheckSignatureFrom(parent); err != nil {
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+
 		chain = append(chain, parent)
 		child = parent
 	}
