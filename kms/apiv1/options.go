@@ -27,7 +27,6 @@ type Decrypter interface {
 // CertificateManager is the interface implemented by the KMS that can load and
 // store x509.Certificates.
 type CertificateManager interface {
-	KeyManager
 	LoadCertificate(req *LoadCertificateRequest) (*x509.Certificate, error)
 	StoreCertificate(req *StoreCertificateRequest) error
 }

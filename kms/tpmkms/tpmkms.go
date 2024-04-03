@@ -241,7 +241,7 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 			}
 			km, err := fn(ctx, apiv1.Options{
 				Type: apiv1.CAPIKMS,
-				URI:  fmt.Sprintf("capi:provider=%s", microsoftPCP),
+				URI:  uri.New("capi", url.Values{"provider": []string{microsoftPCP}}).String(),
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
@@ -670,9 +670,11 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 
 	chain := []*x509.Certificate{cert}
 	child := cert
-	for i := 0; i < maximumIterations; i++ { // loop a maximum of times
+	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
 		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
-		parent, err := k.loadIntermediateFromWindowsCertificateStore(authorityKeyID, intermediateCAStoreLocation, intermediateCAStore)
+		parent, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", authorityKeyID, intermediateCAStoreLocation, intermediateCAStore),
+		})
 		if err != nil {
 			if errors.Is(err, apiv1.NotFoundError{}) {
 				// if error indicates the parent wasn't found, assume end of chain for a specific
@@ -686,14 +688,6 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 	}
 
 	return chain, nil
-}
-
-func (k *TPMKMS) loadIntermediateFromWindowsCertificateStore(keyID, storeLocation, store string) (*x509.Certificate, error) {
-	intermediate, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
-		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", keyID, storeLocation, store),
-	})
-
-	return intermediate, err
 }
 
 // StoreCertificate stores the certificate for the key identified by name to the TPMKMS.
