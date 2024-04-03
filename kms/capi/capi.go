@@ -33,15 +33,16 @@ import (
 const Scheme = string(apiv1.CAPIKMS)
 
 const (
-	ProviderNameArg  = "provider"
-	ContainerNameArg = "key"
-	HashArg          = "sha1"
-	StoreLocationArg = "store-location" // 'machine', 'user', etc
-	StoreNameArg     = "store"          // 'MY', 'CA', 'ROOT', etc
-	KeyIDArg         = "key-id"
-	SerialNumberArg  = "serial"
-	IssuerNameArg    = "issuer"
-	KeySpec          = "key-spec" // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
+	ProviderNameArg        = "provider"
+	ContainerNameArg       = "key"
+	HashArg                = "sha1"
+	StoreLocationArg       = "store-location" // 'machine', 'user', etc
+	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
+	KeyIDArg               = "key-id"
+	SerialNumberArg        = "serial"
+	IssuerNameArg          = "issuer"
+	KeySpec                = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
+	SkipFindCertificateKey = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
 )
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
@@ -566,7 +567,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, fmt.Errorf("certificate with %v=%s not found", HashArg, keyID)
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", HashArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -593,7 +594,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, fmt.Errorf("certificate with %v=%s not found", KeyIDArg, keyID)
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", KeyIDArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -630,7 +631,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			}
 
 			if certHandle == nil {
-				return nil, fmt.Errorf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)
+				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)}
 			}
 
 			x509Cert, err := certContextToX509(certHandle)
@@ -686,7 +687,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	}
 	defer windows.CertFreeCertificateContext(certContext)
 
-	cryptFindCertificateKeyProvInfo(certContext) // TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
+	// looking up the certificate private key is performed by default, but is made optional,
+	// so that looking up the private key for e.g. intermediate certificates can be skipped.
+	// If not skipped, looking up a private key can prompt the user to insert/select a smart
+	// card, which is usually not what we want to happen.
+	if !u.GetBool(SkipFindCertificateKey) {
+		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
+		cryptFindCertificateKeyProvInfo(certContext)
+	}
 
 	st, err := windows.CertOpenStore(
 		certStoreProvSystem,

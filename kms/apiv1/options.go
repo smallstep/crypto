@@ -96,7 +96,7 @@ func (e AlreadyExistsError) Is(target error) bool {
 }
 
 // NotFoundError is the type of error returned if a key or certificate does not
-// exist. This is currently only implemented for mackms.
+// exist. This is currently only implemented for capi and mackms.
 type NotFoundError struct {
 	Message string
 }

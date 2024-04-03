@@ -4,19 +4,27 @@
 package tpmkms
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // required for Windows key ID calculation
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
+	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -50,13 +58,18 @@ const (
 
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
-	tpm                             *tpm.TPM
-	attestationCABaseURL            string
-	attestationCARootFile           string
-	attestationCAInsecure           bool
-	permanentIdentifier             string
-	identityRenewalPeriodPercentage int64
-	identityEarlyRenewalEnabled     bool
+	tpm                              *tpm.TPM
+	windowsCertificateManager        apiv1.CertificateManager
+	windowsCertificateStoreLocation  string
+	windowsCertificateStore          string
+	windowsIntermediateStoreLocation string
+	windowsIntermediateStore         string
+	attestationCABaseURL             string
+	attestationCARootFile            string
+	attestationCAInsecure            bool
+	permanentIdentifier              string
+	identityRenewalPeriodPercentage  int64
+	identityEarlyRenewalEnabled      bool
 }
 
 type algorithmAttributes struct {
@@ -76,6 +89,14 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 	apiv1.ECDSAWithSHA384:          {"ECDSA", 384},
 	apiv1.ECDSAWithSHA512:          {"ECDSA", 521},
 }
+
+const (
+	microsoftPCP                     = "Microsoft Platform Crypto Provider"
+	defaultStoreLocation             = "user"
+	defaultStore                     = "My"
+	defaultIntermediateStoreLocation = "user"
+	defaultIntermediateStore         = "CA" // TODO(hs): verify "CA" works for "machine" certs too
+)
 
 // New initializes a new KMS backed by a TPM.
 //
@@ -106,6 +127,35 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // storage-directory:
 //
 //	tpmkms:storage-directory=/path/to/tpmstorage/directory
+//
+// On Windows the TPMKMS implementation has an option to use the native
+// certificate stores for certificate storage and retrieval instead of
+// using the storage directory for those. TPM keys will still be persisted
+// to the storage directory, because that's how the KMS keeps track of which
+// keys it manages, but it'll use the Windows certificate stores for
+// operations that involve certificates for TPM keys. Use the "enable-cng"
+// option to enable this optional integration:
+//
+//	tpmkms:enable-cng=true
+//
+// If the CryptoAPI Next Generation (CNG) integration is enabled, the TPMKMS
+// will use an instance of the CAPIKMS to manage certificates. It'll use the
+// the "Personal" ("My") user certificate store by default. A different location
+// and store to be used for all operations against the TPMKMS can be defined as
+// follows:
+//
+//	tpmkms:store-location=machine;store=CA
+//
+// The location and store to use can be overridden for a specific operation
+// against a TPMKMS instance, if required. It's not possible to change the crypto
+// provider to user; that will always be the "Microsoft Platform Crypto Provider"
+//
+// For operations that involve certificate chains, it's possible to set the
+// intermediate CA store location and store name at initialization time. The
+// same options can be used for a specific operation, if needed. By default the
+// "CA" user certificate store is used.
+//
+// tpmkms:intermediate-store-location=machine;intermediate-store=CustomCAStore
 //
 // For attestation use cases that involve the Smallstep Attestation CA
 // or a compatible one, several properties can be set. The following
@@ -142,7 +192,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // The TPMKMS implementation is backed by an instance of the TPM from
 // the `tpm` package. If the TPMKMS operations aren't sufficient for
 // your use case, use a tpm.TPM instance instead.
-func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
+func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	kms = &TPMKMS{
 		identityEarlyRenewalEnabled:     true,
 		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
@@ -174,6 +224,54 @@ func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 			}
 			kms.identityRenewalPeriodPercentage = *percentage
 		}
+
+		// opt-in for enabling CAPI integration on Windows for certificate
+		// management. This will result in certificates being stored to or
+		// retrieved from the Windows certificate stores.
+		enableCNG := u.GetBool("enable-cng") // TODO(hs): maybe change the option flag or make this the default on Windows
+		if enableCNG && runtime.GOOS != "windows" {
+			return nil, fmt.Errorf(`"enable-cng" is not supported on %s`, runtime.GOOS)
+		}
+
+		if enableCNG {
+			fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.CAPIKMS)
+			if !ok {
+				name := filepath.Base(os.Args[0])
+				return nil, fmt.Errorf(`unsupported KMS type "capi": %s is compiled without Microsoft CryptoAPI Next Generation (CNG) support`, name)
+			}
+			km, err := fn(ctx, apiv1.Options{
+				Type: apiv1.CAPIKMS,
+				URI:  uri.New("capi", url.Values{"provider": []string{microsoftPCP}}).String(),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
+			}
+			kms.windowsCertificateManager, ok = km.(apiv1.CertificateManager)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
+			}
+			kms.windowsCertificateStoreLocation = defaultStoreLocation
+			if storeLocation := u.Get("store-location"); storeLocation != "" {
+				kms.windowsCertificateStoreLocation = storeLocation
+			}
+			kms.windowsCertificateStore = defaultStore
+			if store := u.Get("store"); store != "" {
+				kms.windowsCertificateStore = store
+			}
+			kms.windowsIntermediateStoreLocation = defaultIntermediateStoreLocation
+			if intermediateStoreLocation := u.Get("intermediate-store-location"); intermediateStoreLocation != "" {
+				kms.windowsIntermediateStoreLocation = intermediateStoreLocation
+			}
+			kms.windowsIntermediateStore = defaultIntermediateStore
+			if intermediateStore := u.Get("intermediate-store"); intermediateStore != "" {
+				kms.windowsIntermediateStore = intermediateStore
+			}
+		}
+
+		// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
+		// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
+		// as the ones that create AKs and keys. Is all of the data available in the keys stored
+		// with Windows, incl. the attestation certification?
 	}
 
 	kms.tpm, err = tpm.New(tpmOpts...)
@@ -182,6 +280,13 @@ func New(_ context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	}
 
 	return
+}
+
+// usesWindowsCertificateStore is a helper method that indicates whether
+// the TPMKMS should use the Windows certificate stores for certificate
+// operations.
+func (k *TPMKMS) usesWindowsCertificateStore() bool {
+	return k.windowsCertificateManager != nil
 }
 
 // CreateKey generates a new key in the TPM KMS and returns the public key.
@@ -455,7 +560,7 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 }
 
 // LoadCertificate loads the certificate for the key identified by name from the TPMKMS.
-func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
+func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (cert *x509.Certificate, err error) {
 	if req.Name == "" {
 		return nil, errors.New("loadCertificateRequest 'name' cannot be empty")
 	}
@@ -468,11 +573,21 @@ func (k *TPMKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	return chain[0], nil
 }
 
-// LoadCertificateCertificate loads the certificate chain for the key identified by
+// LoadCertificateChain loads the certificate chain for the key identified by
 // name from the TPMKMS.
 func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
 	if req.Name == "" {
 		return nil, errors.New("loadCertificateChainRequest 'name' cannot be empty")
+	}
+
+	if k.usesWindowsCertificateStore() {
+		chain, err := k.loadCertificateChainFromWindowsCertificateStore(&apiv1.LoadCertificateRequest{
+			Name: req.Name,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed loading certificate chain using Windows platform cryptography provider: %w", err)
+		}
+		return chain, nil
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -503,6 +618,90 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	return chain, nil
 }
 
+const (
+	// maximumIterations is the maximum number of times for the recursive
+	// intermediate CA lookup loop.
+	maximumIterations = 10
+)
+
+func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
+	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		Name: req.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving public key: %w", err)
+	}
+
+	o, err := parseNameURI(req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	location := k.windowsCertificateStoreLocation
+	if o.storeLocation != "" {
+		location = o.storeLocation
+	}
+	store := k.windowsCertificateStore
+	if o.store != "" {
+		store = o.store
+	}
+
+	subjectKeyID, err := generateWindowsSubjectKeyID(pub)
+	if err != nil {
+		return nil, fmt.Errorf("failed generating subject key id: %w", err)
+	}
+
+	cert, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s;", subjectKeyID, location, store),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
+	}
+
+	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	if o.intermediateStoreLocation != "" {
+		intermediateCAStoreLocation = o.intermediateStoreLocation
+	}
+
+	intermediateCAStore := k.windowsIntermediateStore
+	if o.intermediateStore != "" {
+		intermediateCAStore = o.intermediateStore
+	}
+
+	chain := []*x509.Certificate{cert}
+	child := cert
+	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
+		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
+		parent, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", authorityKeyID, intermediateCAStoreLocation, intermediateCAStore),
+		})
+		if err != nil {
+			if errors.Is(err, apiv1.NotFoundError{}) {
+				// if error indicates the parent wasn't found, assume end of chain for a specific
+				// combination of store location and store is reached, and break from the loop
+				break
+			}
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+
+		// if the discovered parent has a signature from itself, assume it's a root CA,
+		// and break from the loop
+		if parent.CheckSignatureFrom(parent) == nil {
+			break
+		}
+
+		// ensure child has a valid signature from the parent
+		if err := child.CheckSignatureFrom(parent); err != nil {
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+
+		chain = append(chain, parent)
+		child = parent
+	}
+
+	return chain, nil
+}
+
 // StoreCertificate stores the certificate for the key identified by name to the TPMKMS.
 func (k *TPMKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	switch {
@@ -522,6 +721,17 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 		return errors.New("storeCertificateChainRequest 'name' cannot be empty")
 	case len(req.CertificateChain) == 0:
 		return errors.New("storeCertificateChainRequest 'certificateChain' cannot be empty")
+	}
+
+	if k.usesWindowsCertificateStore() {
+		if err := k.storeCertificateChainToWindowsCertificateStore(&apiv1.StoreCertificateChainRequest{
+			Name:             req.Name,
+			CertificateChain: req.CertificateChain,
+		}); err != nil {
+			return fmt.Errorf("failed storing certificate chain using Windows platform cryptography provider: %w", err)
+		}
+
+		return nil
 	}
 
 	properties, err := parseNameURI(req.Name)
@@ -549,6 +759,92 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 		if err != nil {
 			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
 		}
+	}
+
+	return nil
+}
+
+func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.StoreCertificateChainRequest) error {
+	o, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	location := k.windowsCertificateStoreLocation
+	if o.storeLocation != "" {
+		location = o.storeLocation
+	}
+	store := k.windowsCertificateStore
+	if o.store != "" {
+		store = o.store
+	}
+
+	leaf := req.CertificateChain[0]
+	fp, err := fingerprint.New(leaf.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
+	}
+
+	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;", fp, location, store),
+		Certificate: leaf,
+	}); err != nil {
+		return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
+	}
+
+	if len(req.CertificateChain) == 1 {
+		// no certificate chain; return early
+		return nil
+	}
+
+	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	if o.intermediateStoreLocation != "" {
+		intermediateCAStoreLocation = o.intermediateStoreLocation
+	}
+
+	intermediateCAStore := k.windowsIntermediateStore
+	if o.intermediateStore != "" {
+		intermediateCAStore = o.intermediateStore
+	}
+
+	for _, c := range req.CertificateChain[1:] {
+		if err := validateIntermediateCertificate(c); err != nil {
+			return fmt.Errorf("invalid intermediate certificate provided in chain: %w", err)
+		}
+		if err := k.storeIntermediateToWindowsCertificateStore(c, intermediateCAStoreLocation, intermediateCAStore); err != nil {
+			return fmt.Errorf("failed storing intermediate certificate using Windows platform cryptography provider: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func validateIntermediateCertificate(c *x509.Certificate) error {
+	switch {
+	case !c.IsCA:
+		return fmt.Errorf("certificate with serial %q is not a CA certificate", c.SerialNumber.String())
+	case !c.BasicConstraintsValid:
+		return fmt.Errorf("certificate with serial %q has invalid basic constraints", c.SerialNumber.String())
+	case bytes.Equal(c.AuthorityKeyId, c.SubjectKeyId):
+		return fmt.Errorf("certificate with serial %q has equal subject and authority key IDs", c.SerialNumber.String())
+	case c.CheckSignatureFrom(c) == nil:
+		return fmt.Errorf("certificate with serial %q is self-signed root CA", c.SerialNumber.String())
+	}
+
+	return nil
+}
+
+func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate, storeLocation, store string) error {
+	fp, err := fingerprint.New(c.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
+	}
+
+	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;skip-find-certificate-key=true", fp, storeLocation, store),
+		Certificate: c,
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -856,6 +1152,25 @@ func parseTSS2(pemBytes []byte) (*tss2.TPMKey, error) {
 		return key, nil
 	}
 	return nil, fmt.Errorf("failed parsing TSS2 PEM: block not found")
+}
+
+type subjectPublicKeyInfo struct {
+	Algorithm        pkix.AlgorithmIdentifier
+	SubjectPublicKey asn1.BitString
+}
+
+func generateWindowsSubjectKeyID(pub crypto.PublicKey) (string, error) {
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	var info subjectPublicKeyInfo
+	if _, err = asn1.Unmarshal(b, &info); err != nil {
+		return "", err
+	}
+	hash := sha1.Sum(info.SubjectPublicKey.Bytes) //nolint:gosec // required for Windows key ID calculation
+
+	return hex.EncodeToString(hash[:]), nil
 }
 
 var _ apiv1.KeyManager = (*TPMKMS)(nil)
