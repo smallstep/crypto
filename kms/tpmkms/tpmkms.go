@@ -778,6 +778,10 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.store != "" {
 		store = o.store
 	}
+	skipFindCertificatKey := "false"
+	if o.skipFindCertificateKey {
+		skipFindCertificatKey = "true"
+	}
 
 	leaf := req.CertificateChain[0]
 	fp, err := fingerprint.New(leaf.Raw, crypto.SHA1, fingerprint.HexFingerprint)
@@ -786,7 +790,7 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	}
 
 	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
-		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;", fp, location, store),
+		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;skip-find-certificate-key=%s", fp, location, store, skipFindCertificatKey),
 		Certificate: leaf,
 	}); err != nil {
 		return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
