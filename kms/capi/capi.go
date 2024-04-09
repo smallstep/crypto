@@ -781,7 +781,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			return fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", HashArg, keyID)}
+			return nil
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 
@@ -812,7 +812,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			return fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", KeyIDArg, keyID)}
+			return nil
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 
@@ -853,9 +853,8 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			}
 
 			if certHandle == nil {
-				return apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)}
+				return nil
 			}
-			defer windows.CertFreeCertificateContext(certHandle)
 
 			x509Cert, err := certContextToX509(certHandle)
 			if err != nil {
@@ -866,6 +865,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 				if err := removeCertificateUsingWindowsContext(certHandle); err != nil {
 					return fmt.Errorf("failed removing certificate: %w", err)
 				}
+				defer windows.CertFreeCertificateContext(certHandle)
 				return nil
 			}
 

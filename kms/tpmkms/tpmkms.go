@@ -861,8 +861,7 @@ func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate,
 }
 
 func (k *TPMKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
-	switch {
-	case req.Name == "":
+	if req.Name == "" {
 		return errors.New("deleteCertificateRequest 'name' cannot be empty")
 	}
 
