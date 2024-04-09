@@ -435,19 +435,21 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 		return fmt.Errorf("failed getting signer for key: %w", err)
 	}
 
-	leaf := chain[0]
-	leafPK, ok := leaf.PublicKey.(crypto.PublicKey)
-	if !ok {
-		return fmt.Errorf("unexpected type for certificate public key: %T", leaf.PublicKey)
-	}
+	if len(chain) > 0 {
+		leaf := chain[0]
+		leafPK, ok := leaf.PublicKey.(crypto.PublicKey)
+		if !ok {
+			return fmt.Errorf("unexpected type for certificate public key: %T", leaf.PublicKey)
+		}
 
-	publicKey, ok := leafPK.(comparablePublicKey)
-	if !ok {
-		return errors.New("certificate public key can't be compared to a crypto.PublicKey")
-	}
+		publicKey, ok := leafPK.(comparablePublicKey)
+		if !ok {
+			return errors.New("certificate public key can't be compared to a crypto.PublicKey")
+		}
 
-	if !publicKey.Equal(signer.Public()) {
-		return errors.New("public key does not match the leaf certificate public key")
+		if !publicKey.Equal(signer.Public()) {
+			return errors.New("public key does not match the leaf certificate public key")
+		}
 	}
 
 	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
