@@ -716,7 +716,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 // DeleteCertificate deletes a certificate from the Windows certificate store. It uses
 // largely the same logic for searching for the certificate as [LoadCertificate], but
-// deletes it as soon as it it's found.
+// deletes it as soon as it's found.
 //
 // # Experimental
 //

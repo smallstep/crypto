@@ -954,7 +954,7 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 		return fmt.Errorf("expected Windows certificate manager to implement DeleteCertificate")
 	}
 
-	if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{ // TODO(hs): handle specific error cases?
+	if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 		Name: uri.New("capi", uv).String(),
 	}); err != nil {
 		return fmt.Errorf("failed deleting certificate using Windows platform cryptography provider: %w", err)
