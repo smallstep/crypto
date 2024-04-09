@@ -43,6 +43,16 @@ func TestCloudKMS_CreateDecrypter(t *testing.T) {
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
+		{"ok with uri", fields{&MockClient{
+			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
+			},
+		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: "cloudkms:resource=" + keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
+		{"ok with opaque uri", fields{&MockClient{
+			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
+			},
+		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: "cloudkms:" + keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
 		{"fail", fields{&MockClient{
 			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
 				return nil, fmt.Errorf("test error")

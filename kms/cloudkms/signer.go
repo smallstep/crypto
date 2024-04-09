@@ -26,7 +26,7 @@ func NewSigner(c KeyManagementClient, signingKey string) (*Signer, error) {
 	// Make sure that the key exists.
 	signer := &Signer{
 		client:     c,
-		signingKey: signingKey,
+		signingKey: resourceName(signingKey),
 	}
 	if err := signer.preloadKey(signingKey); err != nil {
 		return nil, err
