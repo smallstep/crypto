@@ -714,6 +714,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
+// DeleteCertificate deletes a certificate from the Windows certificate store. It uses
+// largely the same logic for searching for the certificate as [LoadCertificate], but
+// deletes it as soon as it it's found.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
 	if err != nil {
@@ -785,7 +793,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 
-		if err := removeCertificateUsingWindowsContext(certHandle); err != nil {
+		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)
 		}
 		return nil
@@ -816,7 +824,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 
-		if err := removeCertificateUsingWindowsContext(certHandle); err != nil {
+		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)
 		}
 		return nil
@@ -862,26 +870,17 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			}
 
 			if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
-				if err := removeCertificateUsingWindowsContext(certHandle); err != nil {
+				if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 					return fmt.Errorf("failed removing certificate: %w", err)
 				}
 				defer windows.CertFreeCertificateContext(certHandle)
 				return nil
 			}
-
 			prevCert = certHandle
 		}
 	default:
-		return fmt.Errorf("%s, %s, or %s and %s is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
+		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
-}
-
-func removeCertificateUsingWindowsContext(certContext *windows.CertContext) error {
-	r, _, err := procCertDeleteCertificateFromStore.Call(uintptr(unsafe.Pointer(certContext)))
-	if r != 1 {
-		return fmt.Errorf("procCertDeleteCertificateFromStore failed with %X: %v", r, err)
-	}
-	return nil
 }
 
 type CAPISigner struct {

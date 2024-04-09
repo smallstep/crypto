@@ -860,6 +860,18 @@ func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate,
 	return nil
 }
 
+// DeleteCertificate deletes a certificate for the key identified by name from the
+// TPMKMS. If the instance is configured to use the Windows certificate store, it'll
+// delete the certificate from the certificate store, backed by a CAPIKMS instance.
+//
+// It's possible to delete a specific certificate for a key by specifying it's SHA1
+// or serial. This is only supported if the instance is configured to use the Windows
+// certificate store.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func (k *TPMKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	if req.Name == "" {
 		return errors.New("deleteCertificateRequest 'name' cannot be empty")
