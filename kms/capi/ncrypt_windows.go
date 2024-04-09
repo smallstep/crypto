@@ -145,6 +145,7 @@ var (
 
 	crypt32                             = windows.MustLoadDLL("crypt32.dll")
 	procCertFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
+	procCertDeleteCertificateFromStore  = crypt32.MustFindProc("CertDeleteCertificateFromStore")
 	procCryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
 	procCertStrToName                   = crypt32.MustFindProc("CertStrToNameW")
 )
