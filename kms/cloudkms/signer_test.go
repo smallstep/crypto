@@ -41,6 +41,16 @@ func Test_newSigner(t *testing.T) {
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}, "signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
+		{"ok with uri", args{&MockClient{
+			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
+			},
+		}, "cloudkms:resource=signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
+		{"ok with opaque uri", args{&MockClient{
+			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
+			},
+		}, "cloudkms:signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
 		{"fail get public key", args{&MockClient{
 			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
 				return nil, fmt.Errorf("an error")

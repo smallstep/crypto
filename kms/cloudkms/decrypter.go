@@ -37,7 +37,7 @@ func NewDecrypter(client KeyManagementClient, decryptionKey string) (*Decrypter,
 	// Make sure that the key exists.
 	decrypter := &Decrypter{
 		client:        client,
-		decryptionKey: decryptionKey,
+		decryptionKey: resourceName(decryptionKey),
 	}
 	if err := decrypter.preloadKey(decryptionKey); err != nil { // TODO(hs): (option for) lazy load instead?
 		return nil, err
