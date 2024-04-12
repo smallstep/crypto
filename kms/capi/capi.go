@@ -873,7 +873,8 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 				if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 					return fmt.Errorf("failed removing certificate: %w", err)
 				}
-				defer windows.CertFreeCertificateContext(certHandle)
+
+				windows.CertFreeCertificateContext(certHandle)
 				return nil
 			}
 			prevCert = certHandle
