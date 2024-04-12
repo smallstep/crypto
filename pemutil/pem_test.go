@@ -339,14 +339,15 @@ func TestReadCertificate(t *testing.T) {
 	}{
 		{"testdata/ca.crt", nil, nil},
 		{"testdata/nonPEMHeaderCa.crt", nil, nil},
+		{"testdata/extrajunkbundle.crt", []Options{WithFirstBlock()}, nil},
 		{"testdata/ca.der", nil, nil},
 		{"testdata/bundle.crt", []Options{WithFirstBlock()}, nil},
 		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM encoded block")},
 		{"testdata/notexists.crt", nil, errors.New("error reading testdata/notexists.crt: no such file or directory")},
 		{"testdata/badca.crt", nil, errors.New("error parsing testdata/badca.crt")},
-		{"testdata/badpem.crt", nil, errors.New("error decoding testdata/badpem.crt: not a valid PEM encoded block")},
+		{"testdata/badpem.crt", nil, errors.New("file testdata/badpem.crt does not contain a valid PEM formatted certificate")},
 		{"testdata/badder.crt", nil, errors.New("error parsing testdata/badder.crt")},
-		{"testdata/openssl.p256.pem", nil, errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' does not contain a certificate")},
+		{"testdata/openssl.p256.pem", nil, errors.New("file testdata/openssl.p256.pem does not contain a valid PEM formatted certificate")},
 	}
 
 	for _, tc := range tests {
@@ -374,17 +375,18 @@ func TestReadCertificateBundle(t *testing.T) {
 		{"testdata/nonPEMHeaderCa.crt", 1, nil},
 		{"testdata/ca.der", 1, nil},
 		{"testdata/bundle.crt", 2, nil},
+		{"testdata/extrajunkbundle.crt", 2, nil},
 		{"testdata/notexists.crt", 0, errors.New("error reading testdata/notexists.crt: no such file or directory")},
 		{"testdata/badca.crt", 0, errors.New("error parsing testdata/badca.crt")},
-		{"testdata/badpem.crt", 0, errors.New("error decoding PEM: file 'testdata/badpem.crt' contains unexpected data")},
+		{"testdata/badpem.crt", 0, errors.New("file testdata/badpem.crt does not contain a valid PEM formatted certificate")},
 		{"testdata/badder.crt", 0, errors.New("error parsing testdata/badder.crt")},
-		{"testdata/openssl.p256.pem", 0, errors.New("error decoding PEM: file 'testdata/openssl.p256.pem' is not a certificate bundle")},
+		{"testdata/openssl.p256.pem", 0, errors.New("file testdata/openssl.p256.pem does not contain a valid PEM formatted certificate")},
 	}
 
 	for _, tc := range tests {
 		certs, err := ReadCertificateBundle(tc.fn)
 		if tc.err != nil {
-			if assert.Error(t, err, tc.fn) {
+			if assert.Error(t, err, tc.fn, "- expected error but got nil") {
 				assert.HasPrefix(t, err.Error(), tc.err.Error())
 			}
 		} else {
