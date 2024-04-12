@@ -714,6 +714,176 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
+// DeleteCertificate deletes a certificate from the Windows certificate store. It uses
+// largely the same logic for searching for the certificate as [LoadCertificate], but
+// deletes it as soon as it's found.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
+	u, err := uri.ParseWithScheme(Scheme, req.Name)
+	if err != nil {
+		return fmt.Errorf("failed to parse URI: %w", err)
+	}
+
+	sha1Hash := u.Get(HashArg)
+	keyID := u.Get(KeyIDArg)
+	issuerName := u.Get(IssuerNameArg)
+	serialNumber := u.Get(SerialNumberArg)
+
+	var storeLocation string
+	if storeLocation = u.Get(StoreLocationArg); storeLocation == "" {
+		storeLocation = "user"
+	}
+
+	var certStoreLocation uint32
+	switch storeLocation {
+	case "user":
+		certStoreLocation = certStoreCurrentUser
+	case "machine":
+		certStoreLocation = certStoreLocalMachine
+	default:
+		return fmt.Errorf("invalid cert store location %v", storeLocation)
+	}
+
+	var storeName string
+	if storeName = u.Get(StoreNameArg); storeName == "" {
+		storeName = "My"
+	}
+
+	st, err := windows.CertOpenStore(
+		certStoreProvSystem,
+		0,
+		0,
+		certStoreLocation,
+		uintptr(unsafe.Pointer(wide(storeName))))
+	if err != nil {
+		return fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
+	}
+
+	var certHandle *windows.CertContext
+
+	switch {
+	case sha1Hash != "":
+		sha1Hash = strings.TrimPrefix(sha1Hash, "0x") // Support specifying the hash as 0x like with serial
+
+		sha1Bytes, err := hex.DecodeString(sha1Hash)
+		if err != nil {
+			return fmt.Errorf("%s must be in hex format: %w", HashArg, err)
+		}
+		searchData := CERT_ID_KEYIDORHASH{
+			idChoice: CERT_ID_SHA1_HASH,
+			KeyIDOrHash: CRYPTOAPI_BLOB{
+				len:  uint32(len(sha1Bytes)),
+				data: uintptr(unsafe.Pointer(&sha1Bytes[0])),
+			},
+		}
+		certHandle, err = findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findCertID,
+			uintptr(unsafe.Pointer(&searchData)), nil)
+		if err != nil {
+			return fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+		if certHandle == nil {
+			return nil
+		}
+		defer windows.CertFreeCertificateContext(certHandle)
+
+		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
+			return fmt.Errorf("failed removing certificate: %w", err)
+		}
+		return nil
+	case keyID != "":
+		keyID = strings.TrimPrefix(keyID, "0x") // Support specifying the hash as 0x like with serial
+
+		keyIDBytes, err := hex.DecodeString(keyID)
+		if err != nil {
+			return fmt.Errorf("%v must be in hex format: %w", KeyIDArg, err)
+		}
+		searchData := CERT_ID_KEYIDORHASH{
+			idChoice: CERT_ID_KEY_IDENTIFIER,
+			KeyIDOrHash: CRYPTOAPI_BLOB{
+				len:  uint32(len(keyIDBytes)),
+				data: uintptr(unsafe.Pointer(&keyIDBytes[0])),
+			},
+		}
+		certHandle, err = findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findCertID,
+			uintptr(unsafe.Pointer(&searchData)), nil)
+		if err != nil {
+			return fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+		if certHandle == nil {
+			return nil
+		}
+		defer windows.CertFreeCertificateContext(certHandle)
+
+		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
+			return fmt.Errorf("failed removing certificate: %w", err)
+		}
+		return nil
+	case issuerName != "" && serialNumber != "":
+		//TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
+		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
+		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
+		var serialBytes []byte
+		if strings.HasPrefix(serialNumber, "0x") {
+			serialNumber = strings.TrimPrefix(serialNumber, "0x")
+			serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
+			serialBytes, err = hex.DecodeString(serialNumber)
+			if err != nil {
+				return fmt.Errorf("invalid hex format for %v: %w", SerialNumberArg, err)
+			}
+		} else {
+			bi := new(big.Int)
+			bi, ok := bi.SetString(serialNumber, 10)
+			if !ok {
+				return fmt.Errorf("invalid %v - must be in hex or integer format", SerialNumberArg)
+			}
+			serialBytes = bi.Bytes()
+		}
+		var prevCert *windows.CertContext
+		for {
+			certHandle, err = findCertificateInStore(st,
+				encodingX509ASN|encodingPKCS7,
+				0,
+				findIssuerStr,
+				uintptr(unsafe.Pointer(wide(issuerName))), prevCert)
+
+			if err != nil {
+				return fmt.Errorf("findCertificateInStore failed: %w", err)
+			}
+
+			if certHandle == nil {
+				return nil
+			}
+
+			x509Cert, err := certContextToX509(certHandle)
+			if err != nil {
+				return fmt.Errorf("could not unmarshal certificate to DER: %w", err)
+			}
+
+			if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
+				if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
+					return fmt.Errorf("failed removing certificate: %w", err)
+				}
+
+				windows.CertFreeCertificateContext(certHandle)
+				return nil
+			}
+			prevCert = certHandle
+		}
+	default:
+		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
+	}
+}
+
 type CAPISigner struct {
 	algorithmGroup string
 	keyHandle      uintptr

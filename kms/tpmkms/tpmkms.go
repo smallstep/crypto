@@ -860,6 +860,109 @@ func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate,
 	return nil
 }
 
+// DeleteCertificate deletes a certificate for the key identified by name from the
+// TPMKMS. If the instance is configured to use the Windows certificate store, it'll
+// delete the certificate from the certificate store, backed by a CAPIKMS instance.
+//
+// It's possible to delete a specific certificate for a key by specifying it's SHA1
+// or serial. This is only supported if the instance is configured to use the Windows
+// certificate store.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *TPMKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
+	if req.Name == "" {
+		return errors.New("deleteCertificateRequest 'name' cannot be empty")
+	}
+
+	if k.usesWindowsCertificateStore() {
+		if err := k.deleteCertificateFromWindowsCertificateStore(&apiv1.DeleteCertificateRequest{
+			Name: req.Name,
+		}); err != nil {
+			return fmt.Errorf("failed deleting certificate from Windows platform cryptography provider: %w", err)
+		}
+
+		return nil
+	}
+
+	// TODO(hs): support delete by serial? If not, the behavior for TPM storage and Windows
+	// certificate store storage will be different, and may need different behavior when
+	// implementing certificate management.
+
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	if properties.ak {
+		ak, err := k.tpm.GetAK(ctx, properties.name)
+		if err != nil {
+			return err
+		}
+		if err := ak.SetCertificateChain(ctx, nil); err != nil {
+			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
+		}
+	} else {
+		key, err := k.tpm.GetKey(ctx, properties.name)
+		if err != nil {
+			return err
+		}
+		if err := key.SetCertificateChain(ctx, nil); err != nil {
+			return fmt.Errorf("failed storing certificate for key %q: %w", properties.name, err)
+		}
+	}
+
+	return nil
+}
+
+func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteCertificateRequest) error {
+	o, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	location := k.windowsCertificateStoreLocation
+	if o.storeLocation != "" {
+		location = o.storeLocation
+	}
+	store := k.windowsCertificateStore
+	if o.store != "" {
+		store = o.store
+	}
+
+	uv := url.Values{}
+	uv.Set("store-location", location)
+	uv.Set("store", store)
+
+	switch {
+	case o.serial != "":
+		uv.Set("serial", o.serial)
+		uv.Set("issuer", o.issuer)
+	case o.keyID != "":
+		uv.Set("key-id", o.keyID)
+	case o.sha1 != "":
+		uv.Set("sha1", o.sha1)
+	default:
+		return errors.New(`at least one of "serial", "key-id" or "sha1" is expected to be set`)
+	}
+
+	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
+	if !ok {
+		return fmt.Errorf("expected Windows certificate manager to implement DeleteCertificate")
+	}
+
+	if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: uri.New("capi", uv).String(),
+	}); err != nil {
+		return fmt.Errorf("failed deleting certificate using Windows platform cryptography provider: %w", err)
+	}
+
+	return nil
+}
+
 // attestationClient is a wrapper for [attestation.Client], containing
 // all of the required references to perform attestation against the
 // Smallstep Attestation CA.
@@ -1183,8 +1286,19 @@ func generateWindowsSubjectKeyID(pub crypto.PublicKey) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
+type deletingCertificateManager interface {
+	apiv1.CertificateManager
+	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
+}
+
+type deletingCertificateChainManager interface {
+	apiv1.CertificateChainManager
+	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
+}
+
 var _ apiv1.KeyManager = (*TPMKMS)(nil)
 var _ apiv1.Attester = (*TPMKMS)(nil)
 var _ apiv1.CertificateManager = (*TPMKMS)(nil)
 var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
+var _ deletingCertificateChainManager = (*TPMKMS)(nil)
 var _ apiv1.AttestationClient = (*attestationClient)(nil)
