@@ -859,10 +859,10 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			if err != nil {
 				return fmt.Errorf("findCertificateInStore failed: %w", err)
 			}
-
 			if certHandle == nil {
 				return nil
 			}
+			defer windows.CertFreeCertificateContext(certHandle)
 
 			x509Cert, err := certContextToX509(certHandle)
 			if err != nil {
@@ -874,7 +874,6 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 					return fmt.Errorf("failed removing certificate: %w", err)
 				}
 
-				windows.CertFreeCertificateContext(certHandle)
 				return nil
 			}
 			prevCert = certHandle
