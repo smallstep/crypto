@@ -204,7 +204,7 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		return nil, err
 	}
 
-	var crytoKeyName string
+	var cryptoKeyName string
 
 	ctx, cancel := defaultContext()
 	defer cancel()
@@ -240,13 +240,13 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		if err != nil {
 			return nil, errors.Wrap(err, "cloudKMS CreateCryptoKeyVersion failed")
 		}
-		crytoKeyName = response.Name
+		cryptoKeyName = response.Name
 	} else {
-		crytoKeyName = response.Name + "/cryptoKeyVersions/1"
+		cryptoKeyName = response.Name + "/cryptoKeyVersions/1"
 	}
 
 	// Use uri format for the keys
-	crytoKeyName = uri.NewOpaque(Scheme, crytoKeyName).String()
+	cryptoKeyName = uri.NewOpaque(Scheme, cryptoKeyName).String()
 
 	// Sleep deterministically to avoid retries because of PENDING_GENERATING.
 	// One second is often enough.
@@ -256,17 +256,17 @@ func (k *CloudKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 
 	// Retrieve public key to add it to the response.
 	pk, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-		Name: crytoKeyName,
+		Name: cryptoKeyName,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "cloudKMS GetPublicKey failed")
 	}
 
 	return &apiv1.CreateKeyResponse{
-		Name:      crytoKeyName,
+		Name:      cryptoKeyName,
 		PublicKey: pk,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
-			SigningKey: crytoKeyName,
+			SigningKey: cryptoKeyName,
 		},
 	}, nil
 }
