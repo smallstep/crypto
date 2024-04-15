@@ -281,7 +281,7 @@ func ParseCertificateRequest(pemData []byte) (*x509.CertificateRequest, error) {
 // supports certificates formats PEM and DER.
 func ReadCertificate(filename string, opts ...Options) (*x509.Certificate, error) {
 	// Populate options
-	ctx := newContext("PEM")
+	ctx := newContext(filename)
 	if err := ctx.apply(opts); err != nil {
 		return nil, err
 	}
@@ -302,8 +302,6 @@ func ReadCertificate(filename string, opts ...Options) (*x509.Certificate, error
 // ReadCertificateBundle returns a list of *x509.Certificate from the given
 // filename. It supports certificates formats PEM and DER. If a DER-formatted
 // file is given only one certificate will be returned.
-// This function will return an error if it encounters any non CERTIFICATE PEM
-// blocks in the file.
 func ReadCertificateBundle(filename string) ([]*x509.Certificate, error) {
 	b, err := utils.ReadFile(filename)
 	if err != nil {
