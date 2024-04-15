@@ -503,7 +503,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	sha1Hash := u.Get(HashArg)
+	sha1Hash := u.GetHexEncoded(HashArg)
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
 	serialNumber := u.Get(SerialNumberArg)
@@ -544,18 +544,15 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 	var certHandle *windows.CertContext
 
 	switch {
-	case sha1Hash != "":
-		sha1Hash = strings.TrimPrefix(sha1Hash, "0x") // Support specifying the hash as 0x like with serial
-
-		sha1Bytes, err := hex.DecodeString(sha1Hash)
-		if err != nil {
-			return nil, fmt.Errorf("%s must be in hex format: %w", HashArg, err)
+	case len(sha1Hash) > 0:
+		if len(sha1Hash) != 20 {
+			return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
 		}
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_SHA1_HASH,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(sha1Bytes)),
-				data: uintptr(unsafe.Pointer(&sha1Bytes[0])),
+				len:  uint32(len(sha1Hash)),
+				data: uintptr(unsafe.Pointer(&sha1Hash[0])),
 			},
 		}
 		certHandle, err = findCertificateInStore(st,
@@ -728,7 +725,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		return fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	sha1Hash := u.Get(HashArg)
+	sha1Hash := u.GetHexEncoded(HashArg)
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
 	serialNumber := u.Get(SerialNumberArg)
@@ -766,18 +763,15 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	var certHandle *windows.CertContext
 
 	switch {
-	case sha1Hash != "":
-		sha1Hash = strings.TrimPrefix(sha1Hash, "0x") // Support specifying the hash as 0x like with serial
-
-		sha1Bytes, err := hex.DecodeString(sha1Hash)
-		if err != nil {
-			return fmt.Errorf("%s must be in hex format: %w", HashArg, err)
+	case len(sha1Hash) > 0:
+		if len(sha1Hash) != 20 {
+			return fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
 		}
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_SHA1_HASH,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(sha1Bytes)),
-				data: uintptr(unsafe.Pointer(&sha1Bytes[0])),
+				len:  uint32(len(sha1Hash)),
+				data: uintptr(unsafe.Pointer(&sha1Hash[0])),
 			},
 		}
 		certHandle, err = findCertificateInStore(st,

@@ -150,11 +150,26 @@ func (u *URI) GetEncoded(key string) []byte {
 		return nil
 	}
 	if len(v)%2 == 0 {
-		if b, err := hex.DecodeString(v); err == nil {
+		if b, err := hex.DecodeString(strings.TrimPrefix(v, "0x")); err == nil {
 			return b
 		}
 	}
 	return []byte(v)
+}
+
+// GetHexEncoded returns the first value in the uri with the given key, it will
+// return nil if the field is not present, is empty, or is not hex encoded.
+func (u *URI) GetHexEncoded(key string) []byte {
+	v := u.Get(key)
+	if v == "" {
+		return nil
+	}
+	if len(v)%2 == 0 {
+		if b, err := hex.DecodeString(strings.TrimPrefix(v, "0x")); err == nil {
+			return b
+		}
+	}
+	return nil
 }
 
 // Pin returns the pin encoded in the url. It will read the pin from the

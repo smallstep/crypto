@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
@@ -237,6 +238,7 @@ func TestURI_GetEncoded(t *testing.T) {
 		want []byte
 	}{
 		{"ok", mustParse("yubikey:slot-id=9a"), args{"slot-id"}, []byte{0x9a}},
+		{"ok prefix", mustParse("yubikey:slot-id=0x9a"), args{"slot-id"}, []byte{0x9a}},
 		{"ok first", mustParse("yubikey:slot-id=9a9b;slot-id=9b"), args{"slot-id"}, []byte{0x9a, 0x9b}},
 		{"ok percent", mustParse("yubikey:slot-id=9a;foo=%9a%9b%9c"), args{"foo"}, []byte{0x9a, 0x9b, 0x9c}},
 		{"ok in query", mustParse("yubikey:slot-id=9a?foo=9a"), args{"foo"}, []byte{0x9a}},
@@ -339,6 +341,36 @@ func TestURI_GetInt(t *testing.T) {
 			} else {
 				assert.Nil(t, got)
 			}
+		})
+	}
+}
+
+func TestURI_GetHexEncoded(t *testing.T) {
+	mustParse := func(t *testing.T, s string) *URI {
+		t.Helper()
+		u, err := Parse(s)
+		require.NoError(t, err)
+		return u
+	}
+	type args struct {
+		key string
+	}
+	tests := []struct {
+		name string
+		uri  *URI
+		args args
+		want []byte
+	}{
+		{"ok", mustParse(t, "capi:sha1=9a"), args{"sha1"}, []byte{0x9a}},
+		{"ok first", mustParse(t, "capi:sha1=9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}},
+		{"ok prefix", mustParse(t, "capi:sha1=0x9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}},
+		{"ok missing", mustParse(t, "capi:foo=9a"), args{"sha1"}, nil},
+		{"ok odd hex", mustParse(t, "capi:sha1=09a?bar=zar"), args{"sha1"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.uri.GetHexEncoded(tt.args.key)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
