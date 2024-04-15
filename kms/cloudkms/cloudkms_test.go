@@ -13,6 +13,7 @@ import (
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
@@ -174,13 +175,9 @@ func TestCloudKMS_CreateSigner(t *testing.T) {
 	keyURI := uri.NewOpaque(Scheme, keyName).String()
 
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pk, err := pemutil.ParseKey(pemBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type fields struct {
 		client KeyManagementClient
@@ -196,17 +193,20 @@ func TestCloudKMS_CreateSigner(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateSignerRequest{SigningKey: keyName}}, &Signer{client: &MockClient{}, signingKey: keyName, publicKey: pk}, false},
 		{"ok with uri", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateSignerRequest{SigningKey: keyURI}}, &Signer{client: &MockClient{}, signingKey: keyName, publicKey: pk}, false},
 		{"fail", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return nil, fmt.Errorf("test error")
 			},
 		}}, args{&apiv1.CreateSignerRequest{SigningKey: ""}}, nil, true},
@@ -238,13 +238,9 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 	alreadyExists := status.Error(codes.AlreadyExists, "already exists")
 
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pk, err := pemutil.ParseKey(pemBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var retries int
 	type fields struct {
@@ -269,7 +265,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 					assert.Nil(t, req.CryptoKey.DestroyScheduledDuration)
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
@@ -284,7 +281,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 					assert.Equal(t, req.CryptoKey.DestroyScheduledDuration, durationpb.New(24*time.Hour))
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
@@ -301,7 +299,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				createCryptoKey: func(_ context.Context, _ *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
@@ -318,7 +317,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				createCryptoKeyVersion: func(_ context.Context, _ *kmspb.CreateCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 					return &kmspb.CryptoKeyVersion{Name: keyName + "/cryptoKeyVersions/2"}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
@@ -332,7 +332,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				createCryptoKey: func(_ context.Context, _ *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					if retries != 2 {
 						retries++
 						return nil, status.Error(codes.FailedPrecondition, "key is not enabled, current state is: PENDING_GENERATION")
@@ -391,7 +392,8 @@ func TestCloudKMS_CreateKey(t *testing.T) {
 				createCryptoKey: func(_ context.Context, _ *kmspb.CreateCryptoKeyRequest, _ ...gax.CallOption) (*kmspb.CryptoKey, error) {
 					return &kmspb.CryptoKey{Name: keyName}, nil
 				},
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return nil, testError
 				},
 			}},
@@ -424,13 +426,9 @@ func TestCloudKMS_GetPublicKey(t *testing.T) {
 	testError := fmt.Errorf("an error")
 
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pk, err := pemutil.ParseKey(pemBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var retries int
 	type fields struct {
@@ -448,28 +446,32 @@ func TestCloudKMS_GetPublicKey(t *testing.T) {
 	}{
 		{"ok", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
 			args{&apiv1.GetPublicKeyRequest{Name: keyName}}, pk, false},
 		{"ok with uri", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
 			args{&apiv1.GetPublicKeyRequest{Name: keyURI}}, pk, false},
 		{"ok with resource uri", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 				},
 			}},
 			args{&apiv1.GetPublicKeyRequest{Name: keyResource}}, pk, false},
 		{"ok with retries", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					if retries != 2 {
 						retries++
 						return nil, status.Error(codes.FailedPrecondition, "key is not enabled, current state is: PENDING_GENERATION")
@@ -481,14 +483,16 @@ func TestCloudKMS_GetPublicKey(t *testing.T) {
 		{"fail name", fields{&MockClient{}}, args{&apiv1.GetPublicKeyRequest{}}, nil, true},
 		{"fail get public key", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return nil, testError
 				},
 			}},
 			args{&apiv1.GetPublicKeyRequest{Name: keyName}}, nil, true},
 		{"fail parse pem", fields{
 			&MockClient{
-				getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+					assert.NotContains(t, r.Name, "cloudkms:")
 					return &kmspb.PublicKey{Pem: string("bad pem")}, nil
 				},
 			}},

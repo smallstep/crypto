@@ -39,19 +39,19 @@ func NewDecrypter(client KeyManagementClient, decryptionKey string) (*Decrypter,
 		client:        client,
 		decryptionKey: resourceName(decryptionKey),
 	}
-	if err := decrypter.preloadKey(decryptionKey); err != nil { // TODO(hs): (option for) lazy load instead?
+	if err := decrypter.preloadKey(); err != nil { // TODO(hs): (option for) lazy load instead?
 		return nil, err
 	}
 
 	return decrypter, nil
 }
 
-func (d *Decrypter) preloadKey(signingKey string) error {
+func (d *Decrypter) preloadKey() error {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
 	response, err := d.client.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
-		Name: signingKey,
+		Name: d.decryptionKey,
 	})
 	if err != nil {
 		return fmt.Errorf("cloudKMS GetPublicKey failed: %w", err)
