@@ -39,22 +39,26 @@ func TestCloudKMS_CreateDecrypter(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
 		{"ok with uri", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: "cloudkms:resource=" + keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
 		{"ok with opaque uri", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: "cloudkms:" + keyName}}, &Decrypter{client: &MockClient{}, decryptionKey: keyName, publicKey: pk}, false},
 		{"fail", fields{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return nil, fmt.Errorf("test error")
 			},
 		}}, args{&apiv1.CreateDecrypterRequest{DecryptionKey: ""}}, nil, true},
@@ -92,17 +96,20 @@ func TestNewDecrypter(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}, "decryptionKey"}, &Decrypter{client: &MockClient{}, decryptionKey: "decryptionKey", publicKey: pk}, false},
 		{"fail get public key", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return nil, fmt.Errorf("an error")
 			},
 		}, "decryptionKey"}, nil, true},
 		{"fail parse pem", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string("bad pem")}, nil
 			},
 		}, "decryptionKey"}, nil, true},
@@ -160,21 +167,25 @@ func TestDecrypter_Decrypt(t *testing.T) {
 	keyName := "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"
 	okClient := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
+			assert.NotContains(t, adr.Name, "cloudkms:")
 			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("decrypted"))), VerifiedCiphertextCrc32C: true}, nil
 		},
 	}
 	failClient := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
+			assert.NotContains(t, adr.Name, "cloudkms:")
 			return nil, fmt.Errorf("an error")
 		},
 	}
 	requestCRC32Client := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
+			assert.NotContains(t, adr.Name, "cloudkms:")
 			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("decrypted"))), VerifiedCiphertextCrc32C: false}, nil
 		},
 	}
 	responseCRC32Client := &MockClient{
 		asymmetricDecrypt: func(ctx context.Context, adr *kmspb.AsymmetricDecryptRequest, co ...gax.CallOption) (*kmspb.AsymmetricDecryptResponse, error) {
+			assert.NotContains(t, adr.Name, "cloudkms:")
 			return &kmspb.AsymmetricDecryptResponse{Plaintext: []byte("decrypted"), PlaintextCrc32C: wrapperspb.Int64(crc32c([]byte("wrong"))), VerifiedCiphertextCrc32C: true}, nil
 		},
 	}

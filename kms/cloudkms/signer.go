@@ -28,19 +28,19 @@ func NewSigner(c KeyManagementClient, signingKey string) (*Signer, error) {
 		client:     c,
 		signingKey: resourceName(signingKey),
 	}
-	if err := signer.preloadKey(signingKey); err != nil {
+	if err := signer.preloadKey(); err != nil {
 		return nil, err
 	}
 
 	return signer, nil
 }
 
-func (s *Signer) preloadKey(signingKey string) error {
+func (s *Signer) preloadKey() error {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
 	response, err := s.client.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
-		Name: signingKey,
+		Name: s.signingKey,
 	})
 	if err != nil {
 		return errors.Wrap(err, "cloudKMS GetPublicKey failed")

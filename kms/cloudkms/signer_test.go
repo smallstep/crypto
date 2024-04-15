@@ -13,18 +13,16 @@ import (
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/pemutil"
 )
 
-func Test_newSigner(t *testing.T) {
+func Test_NewSigner(t *testing.T) {
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pk, err := pemutil.ParseKey(pemBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type args struct {
 		c          KeyManagementClient
@@ -37,27 +35,32 @@ func Test_newSigner(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}, "signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
 		{"ok with uri", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}, "cloudkms:resource=signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
 		{"ok with opaque uri", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string(pemBytes)}, nil
 			},
 		}, "cloudkms:signingKey"}, &Signer{client: &MockClient{}, signingKey: "signingKey", publicKey: pk}, false},
 		{"fail get public key", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return nil, fmt.Errorf("an error")
 			},
 		}, "signingKey"}, nil, true},
 		{"fail parse pem", args{&MockClient{
-			getPublicKey: func(_ context.Context, _ *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+			getPublicKey: func(_ context.Context, r *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
+				assert.NotContains(t, r.Name, "cloudkms:")
 				return &kmspb.PublicKey{Pem: string("bad pem")}, nil
 			},
 		}, "signingKey"}, nil, true},
@@ -81,13 +84,9 @@ func Test_newSigner(t *testing.T) {
 
 func Test_signer_Public(t *testing.T) {
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pk, err := pemutil.ParseKey(pemBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type fields struct {
 		client     KeyManagementClient
@@ -118,12 +117,14 @@ func Test_signer_Public(t *testing.T) {
 func Test_signer_Sign(t *testing.T) {
 	keyName := "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"
 	okClient := &MockClient{
-		asymmetricSign: func(_ context.Context, _ *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
+		asymmetricSign: func(_ context.Context, r *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
+			assert.NotContains(t, r.Name, "cloudkms:")
 			return &kmspb.AsymmetricSignResponse{Signature: []byte("ok signature")}, nil
 		},
 	}
 	failClient := &MockClient{
-		asymmetricSign: func(_ context.Context, _ *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
+		asymmetricSign: func(_ context.Context, r *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
+			assert.NotContains(t, r.Name, "cloudkms:")
 			return nil, fmt.Errorf("an error")
 		},
 	}
@@ -170,9 +171,7 @@ func Test_signer_Sign(t *testing.T) {
 
 func TestSigner_SignatureAlgorithm(t *testing.T) {
 	pemBytes, err := os.ReadFile("testdata/pub.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	client := &MockClient{
 		getPublicKey: func(_ context.Context, req *kmspb.GetPublicKeyRequest, _ ...gax.CallOption) (*kmspb.PublicKey, error) {
