@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/internal/utils"
@@ -299,6 +300,16 @@ func ReadCertificate(filename string, opts ...Options) (*x509.Certificate, error
 	}
 }
 
+type noValidPEMCertError struct {
+	filename string
+}
+
+func (e *noValidPEMCertError) Error() string {
+	return fmt.Sprintf("file %s does not contain a valid PEM formatted certificate", e.filename)
+}
+
+var ErrNoValidPEMCert *noValidPEMCertError
+
 // ReadCertificateBundle returns a list of *x509.Certificate from the given
 // filename. It supports certificates formats PEM and DER. If a DER-formatted
 // file is given only one certificate will be returned.
@@ -328,7 +339,7 @@ func ReadCertificateBundle(filename string) ([]*x509.Certificate, error) {
 			bundle = append(bundle, crt)
 		}
 		if len(bundle) == 0 {
-			return nil, errors.Errorf("file %s does not contain a valid PEM formatted certificate", filename)
+			return nil, &noValidPEMCertError{filename}
 		}
 		return bundle, nil
 	}
@@ -351,16 +362,19 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 
 	// PEM format
 	if bytes.Contains(b, PEMBlockHeader) {
-		csr, err := Parse(b, WithFilename(filename))
-		if err != nil {
-			return nil, err
+		var block *pem.Block
+		for len(b) > 0 {
+			block, b = pem.Decode(b)
+			if block == nil {
+				break
+			}
+			if !strings.HasSuffix(block.Type, "CERTIFICATE REQUEST") {
+				continue
+			}
+			csr, err := x509.ParseCertificateRequest(block.Bytes)
+			return csr, errors.Wrapf(err, "error parsing %s; CSR PEM block is invalid", filename)
 		}
-		switch csr := csr.(type) {
-		case *x509.CertificateRequest:
-			return csr, nil
-		default:
-			return nil, errors.Errorf("error decoding PEM: file '%s' does not contain a certificate request", filename)
-		}
+		return nil, errors.Errorf("file %s does not contain a valid PEM formatted CSR", filename)
 	}
 
 	// DER format (binary)
