@@ -802,7 +802,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 
 		keyIDBytes, err := hex.DecodeString(keyID)
 		if err != nil {
-			return fmt.Errorf("%v must be in hex format: %w", KeyIDArg, err)
+			return fmt.Errorf("%s must be in hex format: %w", KeyIDArg, err)
 		}
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
