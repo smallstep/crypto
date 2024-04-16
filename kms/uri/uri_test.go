@@ -356,20 +356,28 @@ func TestURI_GetHexEncoded(t *testing.T) {
 		key string
 	}
 	tests := []struct {
-		name string
-		uri  *URI
-		args args
-		want []byte
+		name    string
+		uri     *URI
+		args    args
+		want    []byte
+		wantErr bool
 	}{
-		{"ok", mustParse(t, "capi:sha1=9a"), args{"sha1"}, []byte{0x9a}},
-		{"ok first", mustParse(t, "capi:sha1=9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}},
-		{"ok prefix", mustParse(t, "capi:sha1=0x9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}},
-		{"ok missing", mustParse(t, "capi:foo=9a"), args{"sha1"}, nil},
-		{"ok odd hex", mustParse(t, "capi:sha1=09a?bar=zar"), args{"sha1"}, nil},
+		{"ok", mustParse(t, "capi:sha1=9a"), args{"sha1"}, []byte{0x9a}, false},
+		{"ok first", mustParse(t, "capi:sha1=9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}, false},
+		{"ok prefix", mustParse(t, "capi:sha1=0x9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}, false},
+		{"ok missing", mustParse(t, "capi:foo=9a"), args{"sha1"}, nil, false},
+		{"fail odd hex", mustParse(t, "capi:sha1=09a?bar=zar"), args{"sha1"}, nil, true},
+		{"fail invalid hex", mustParse(t, "capi:sha1=9z?bar=zar"), args{"sha1"}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.uri.GetHexEncoded(tt.args.key)
+			got, err := tt.uri.GetHexEncoded(tt.args.key)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
+				return
+			}
+
 			assert.Equal(t, tt.want, got)
 		})
 	}

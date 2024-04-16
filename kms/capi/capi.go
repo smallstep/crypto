@@ -503,7 +503,10 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	sha1Hash := u.GetHexEncoded(HashArg)
+	sha1Hash, err := u.GetHexEncoded(HashArg)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting %s from URI %q: %w", HashArg, req.Name, err)
+	}
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
 	serialNumber := u.Get(SerialNumberArg)
@@ -521,7 +524,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 	case "machine":
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return nil, fmt.Errorf("invalid cert store location %v", storeLocation)
+		return nil, fmt.Errorf("invalid cert store location %q", storeLocation)
 	}
 
 	var storeName string
@@ -538,7 +541,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		certStoreLocation,
 		uintptr(unsafe.Pointer(wide(storeName))))
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
+		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
 	}
 
 	var certHandle *windows.CertContext
@@ -564,7 +567,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", HashArg, keyID)}
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -573,7 +576,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 
 		keyIDBytes, err := hex.DecodeString(keyID)
 		if err != nil {
-			return nil, fmt.Errorf("%v must be in hex format: %w", KeyIDArg, err)
+			return nil, fmt.Errorf("%s must be in hex format: %w", KeyIDArg, err)
 		}
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
@@ -591,7 +594,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%s not found", KeyIDArg, keyID)}
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
@@ -605,13 +608,13 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
 			serialBytes, err = hex.DecodeString(serialNumber)
 			if err != nil {
-				return nil, fmt.Errorf("invalid hex format for %v: %w", SerialNumberArg, err)
+				return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
 			}
 		} else {
 			bi := new(big.Int)
 			bi, ok := bi.SetString(serialNumber, 10)
 			if !ok {
-				return nil, fmt.Errorf("invalid %v - must be in hex or integer format", SerialNumberArg)
+				return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
 			}
 			serialBytes = bi.Bytes()
 		}
@@ -628,7 +631,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			}
 
 			if certHandle == nil {
-				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %v=%v and %v=%v not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)}
+				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q and %s=%q not found", IssuerNameArg, issuerName, SerialNumberArg, serialNumber)}
 			}
 
 			x509Cert, err := certContextToX509(certHandle)
@@ -645,7 +648,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 			prevCert = certHandle
 		}
 	default:
-		return nil, fmt.Errorf("%s, %s, or %s and %s is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
+		return nil, fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
 }
 
@@ -667,7 +670,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	case "machine":
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return fmt.Errorf("invalid cert store location %v", storeLocation)
+		return fmt.Errorf("invalid cert store location %q", storeLocation)
 	}
 
 	var storeName string
@@ -700,7 +703,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		certStoreLocation,
 		uintptr(unsafe.Pointer(wide(storeName))))
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
+		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
 	}
 
 	// Add the cert context to the system certificate store
@@ -725,7 +728,10 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		return fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	sha1Hash := u.GetHexEncoded(HashArg)
+	sha1Hash, err := u.GetHexEncoded(HashArg)
+	if err != nil {
+		return fmt.Errorf("failed getting %s from URI %q: %w", HashArg, req.Name, err)
+	}
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
 	serialNumber := u.Get(SerialNumberArg)
@@ -742,7 +748,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	case "machine":
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return fmt.Errorf("invalid cert store location %v", storeLocation)
+		return fmt.Errorf("invalid cert store location %q", storeLocation)
 	}
 
 	var storeName string
@@ -757,7 +763,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		certStoreLocation,
 		uintptr(unsafe.Pointer(wide(storeName))))
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %v store %v returned: %w", storeLocation, storeName, err)
+		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
 	}
 
 	var certHandle *windows.CertContext
@@ -832,13 +838,13 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
 			serialBytes, err = hex.DecodeString(serialNumber)
 			if err != nil {
-				return fmt.Errorf("invalid hex format for %v: %w", SerialNumberArg, err)
+				return fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
 			}
 		} else {
 			bi := new(big.Int)
 			bi, ok := bi.SetString(serialNumber, 10)
 			if !ok {
-				return fmt.Errorf("invalid %v - must be in hex or integer format", SerialNumberArg)
+				return fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
 			}
 			serialBytes = bi.Bytes()
 		}
