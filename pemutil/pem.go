@@ -284,11 +284,11 @@ type PEMType int
 func (pt PEMType) String() string {
 	switch pt {
 	case PEMTypeCertificate:
-		return "Certificate"
+		return "certificate"
 	case PEMTypeCertificateRequest:
-		return "Certificate Request"
+		return "certificate request"
 	default:
-		return "Undefined"
+		return "undefined"
 	}
 }
 
@@ -304,24 +304,28 @@ const (
 // InvalidPEMError represents an error that occurs when parsing a file with
 // PEM encoded data.
 type InvalidPEMError struct {
-	Type         PEMType
-	File         string
-	Reason       string
-	WrappedError error
+	Type   PEMType
+	File   string
+	Reason string
+	Err    error
 }
 
 func (e *InvalidPEMError) Error() string {
 	switch {
 	case e.Reason != "":
 		return e.Reason
-	case e.WrappedError != nil:
-		return e.WrappedError.Error()
+	case e.Err != nil:
+		return e.Err.Error()
 	default:
 		if e.Type == PEMTypeUndefined {
 			return fmt.Sprintf("file %s does not contain valid PEM encoded data", e.File)
 		}
 		return fmt.Sprintf("file %s does not contain a valid PEM encoded %s", e.File, e.Type)
 	}
+}
+
+func (e *InvalidPEMError) Unwrap() error {
+	return e.Err
 }
 
 // ReadCertificate returns a *x509.Certificate from the given filename. It
@@ -409,7 +413,7 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 			}
 			csr, err := x509.ParseCertificateRequest(block.Bytes)
 			return csr, &InvalidPEMError{File: filename, Type: PEMTypeCertificateRequest,
-				WrappedError: errors.Wrapf(err, "error parsing %s; CSR PEM block is invalid", filename)}
+				Err: fmt.Errorf("error parsing %s: CSR PEM block is invalid: %w", filename, err)}
 		}
 		return nil, &InvalidPEMError{File: filename, Type: PEMTypeCertificateRequest}
 	}
