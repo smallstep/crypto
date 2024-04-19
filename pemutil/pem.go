@@ -315,12 +315,17 @@ func (e *InvalidPEMError) Error() string {
 	case e.Message != "":
 		return e.Message
 	case e.Err != nil:
-		return e.Err.Error()
+		return fmt.Errorf("error decoding PEM data: %w", e.Err).Error()
 	default:
-		if e.Type == PEMTypeUndefined {
-			return fmt.Sprintf("file %s does not contain valid PEM encoded data", e.File)
+		var prefix = "input"
+		if e.File != "" {
+			prefix = fmt.Sprintf("file %s", e.File)
 		}
-		return fmt.Sprintf("file %s does not contain a valid PEM encoded %s", e.File, e.Type)
+		if e.Type == PEMTypeUndefined {
+			return fmt.Sprintf("%s does not contain valid PEM encoded data", prefix)
+		}
+		return fmt.Sprintf("%s does not contain a valid PEM encoded %s", prefix, e.Type)
+
 	}
 }
 
@@ -413,7 +418,9 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 			}
 			csr, err := x509.ParseCertificateRequest(block.Bytes)
 			return csr, &InvalidPEMError{File: filename, Type: PEMTypeCertificateRequest,
-				Err: fmt.Errorf("error parsing %s: CSR PEM block is invalid: %w", filename, err)}
+				Message: fmt.Errorf("error parsing %s: CSR PEM block is invalid: %w", filename, err).Error(),
+				Err:     err,
+			}
 		}
 		return nil, &InvalidPEMError{File: filename, Type: PEMTypeCertificateRequest}
 	}
