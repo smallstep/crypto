@@ -304,16 +304,16 @@ const (
 // InvalidPEMError represents an error that occurs when parsing a file with
 // PEM encoded data.
 type InvalidPEMError struct {
-	Type   PEMType
-	File   string
-	Reason string
-	Err    error
+	Type    PEMType
+	File    string
+	Message string
+	Err     error
 }
 
 func (e *InvalidPEMError) Error() string {
 	switch {
-	case e.Reason != "":
-		return e.Reason
+	case e.Message != "":
+		return e.Message
 	case e.Err != nil:
 		return e.Err.Error()
 	default:
