@@ -384,28 +384,26 @@ func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
 
-	if len(chain) == 0 {
-		return errors.New("certificate chain must contain at least one certificate")
-	}
-
 	akPublic, err := ak.public(internalCall(ctx))
 	if err != nil {
 		return fmt.Errorf("failed getting AK public key: %w", err)
 	}
 
-	leaf := chain[0]
-	leafPK, ok := leaf.PublicKey.(crypto.PublicKey)
-	if !ok {
-		return fmt.Errorf("unexpected type for AK certificate public key: %T", leaf.PublicKey)
-	}
+	if len(chain) > 0 {
+		leaf := chain[0]
+		leafPK, ok := leaf.PublicKey.(crypto.PublicKey)
+		if !ok {
+			return fmt.Errorf("unexpected type for AK certificate public key: %T", leaf.PublicKey)
+		}
 
-	publicKey, ok := leafPK.(comparablePublicKey)
-	if !ok {
-		return errors.New("certificate public key can't be compared to a crypto.PublicKey")
-	}
+		publicKey, ok := leafPK.(comparablePublicKey)
+		if !ok {
+			return errors.New("certificate public key can't be compared to a crypto.PublicKey")
+		}
 
-	if !publicKey.Equal(akPublic) {
-		return errors.New("AK public key does not match the leaf certificate public key")
+		if !publicKey.Equal(akPublic) {
+			return errors.New("AK public key does not match the leaf certificate public key")
+		}
 	}
 
 	ak.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?

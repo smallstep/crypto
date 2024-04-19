@@ -21,6 +21,11 @@ type objectProperties struct {
 	store                     string
 	intermediateStoreLocation string
 	intermediateStore         string
+	skipFindCertificateKey    bool
+	keyID                     string
+	sha1                      string
+	serial                    string
+	issuer                    string
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -59,6 +64,11 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		o.store = u.Get("store")
 		o.intermediateStoreLocation = u.Get("intermediate-store-location")
 		o.intermediateStore = u.Get("intermediate-store")
+		o.skipFindCertificateKey = u.GetBool("skip-find-certificate-key")
+		o.keyID = u.Get("key-id")
+		o.sha1 = u.Get("sha1")
+		o.serial = u.Get("serial")
+		o.issuer = u.Get("issuer")
 
 		// validation
 		if o.ak && o.attestBy != "" {
