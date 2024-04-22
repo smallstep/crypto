@@ -315,7 +315,7 @@ func (e *InvalidPEMError) Error() string {
 	case e.Message != "":
 		return e.Message
 	case e.Err != nil:
-		return fmt.Errorf("error decoding PEM data: %w", e.Err).Error()
+		return fmt.Sprintf("error decoding PEM data: %v", e.Err)
 	default:
 		var prefix = "input"
 		if e.File != "" {
