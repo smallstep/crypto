@@ -1,13 +1,14 @@
 package utils
 
 import (
-	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadFile(t *testing.T) {
@@ -35,6 +36,62 @@ func TestReadFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Set content to be read from mock STDIN
+func setStdinContent(t *testing.T, content string) (cleanup func()) {
+	f, err := os.CreateTemp("" /* dir */, "utils-read-test")
+	require.NoError(t, err)
+	_, err = f.WriteString(content)
+	require.NoError(t, err)
+	_, err = f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	old := stdin
+	stdin = f
+
+	return func() {
+		stdin = old
+		require.NoError(t, f.Close())
+		require.NoError(t, os.Remove(f.Name()))
+	}
+}
+
+func TestReadFromStdin(t *testing.T) {
+	cleanup := setStdinContent(t, "input on STDIN")
+	t.Cleanup(func() {
+		cleanup()
+	})
+
+	b, err := ReadFile(stdinFilename)
+	require.NoError(t, err)
+	require.Equal(t, "input on STDIN", string(b))
+}
+
+// Sets STDIN to a file that is already closed, and thus fails
+// to be read from.
+func setFailingStdin(t *testing.T) (cleanup func()) {
+	f, err := os.CreateTemp("" /* dir */, "utils-read-test")
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+	old := stdin
+	stdin = f
+
+	return func() {
+		stdin = old
+		require.NoError(t, os.Remove(f.Name()))
+	}
+}
+
+func TestReadFromStdinFails(t *testing.T) {
+	cleanup := setFailingStdin(t)
+	t.Cleanup(func() {
+		cleanup()
+	})
+
+	b, err := ReadFile(stdinFilename)
+	require.Error(t, err)
+	require.Empty(t, b)
 }
 
 func TestReadPasswordFromFile(t *testing.T) {
@@ -65,11 +122,20 @@ func TestReadPasswordFromFile(t *testing.T) {
 	}
 }
 
+func TestReadPasswordFromStdin(t *testing.T) {
+	cleanup := setStdinContent(t, "this-is-a-secret-testing-password")
+	t.Cleanup(func() {
+		cleanup()
+	})
+
+	b, err := ReadPasswordFromFile(stdinFilename)
+	require.NoError(t, err)
+	require.Equal(t, "this-is-a-secret-testing-password", string(b))
+}
+
 func TestWriteFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp(os.TempDir(), "go-tests")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		os.RemoveAll(tmpDir)
 	})
@@ -97,8 +163,7 @@ func TestWriteFile(t *testing.T) {
 }
 
 func Test_maybeUnwrap(t *testing.T) {
-	wantErr := fmt.Errorf("the error")
-
+	wantErr := errors.New("the error")
 	type args struct {
 		err error
 	}
@@ -113,9 +178,7 @@ func Test_maybeUnwrap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := maybeUnwrap(tt.args.err)
-			if !reflect.DeepEqual(err, tt.wantErr) { //nolint:govet // legacy deep equal error check
-				t.Errorf("maybeUnwrap() error = %v, wantErr %v", err, tt.wantErr)
-			}
+			require.Equal(t, tt.wantErr, err)
 		})
 	}
 }
