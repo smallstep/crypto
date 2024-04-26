@@ -18,30 +18,30 @@ func maybeUnwrap(err error) error {
 	return err
 }
 
-// stdinFilename is the name of the file that is used in many command line utilities
-// to denote input is to be read from STDIN.
+// stdinFilename is the name of the file that is used in many command
+// line utilities to denote input is to be read from STDIN.
 const stdinFilename = "-"
 
-// stdin points to os.Stdin.
+// stdin points to STDIN through os.Stdin.
 var stdin = os.Stdin
 
-// ReadFile reads the file named by filename and returns the
-// contents. If filename is equal to "-", it will read from
+// ReadFile reads the file identified by filename and returns
+// the contents. If filename is equal to "-", it will read from
 // STDIN.
-func ReadFile(name string) (b []byte, err error) {
-	if name == stdinFilename {
-		name = "/dev/stdin"
+func ReadFile(filename string) (b []byte, err error) {
+	if filename == stdinFilename {
+		filename = "/dev/stdin"
 		b, err = io.ReadAll(stdin)
 	} else {
 		var contents []byte
-		contents, err = os.ReadFile(name)
+		contents, err = os.ReadFile(filename)
 		if err != nil {
-			return nil, errors.Wrapf(maybeUnwrap(err), "error reading %s", name)
+			return nil, errors.Wrapf(maybeUnwrap(err), "error reading %q", filename)
 		}
 		b, err = io.ReadAll(utfbom.SkipOnly(bytes.NewReader(contents)))
 	}
 	if err != nil {
-		return nil, errors.Wrapf(maybeUnwrap(err), "error reading %s", name)
+		return nil, errors.Wrapf(maybeUnwrap(err), "error reading %q", filename)
 	}
 	return
 }
