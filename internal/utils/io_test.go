@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 )
 
 func TestReadFile(t *testing.T) {
-	t.Parallel()
 	type args struct {
 		filename string
 	}
@@ -44,7 +42,7 @@ func TestReadFile(t *testing.T) {
 func setStdinContent(t *testing.T, content string) (cleanup func()) {
 	f, err := os.CreateTemp("" /* dir */, "utils-read-test")
 	require.NoError(t, err)
-	_, err = f.Write([]byte(content))
+	_, err = f.WriteString(content)
 	require.NoError(t, err)
 	_, err = f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
@@ -97,7 +95,6 @@ func TestReadFromStdinFails(t *testing.T) {
 }
 
 func TestReadPasswordFromFile(t *testing.T) {
-	t.Parallel()
 	type args struct {
 		filename string
 	}
@@ -166,9 +163,7 @@ func TestWriteFile(t *testing.T) {
 }
 
 func Test_maybeUnwrap(t *testing.T) {
-	t.Parallel()
-	wantErr := fmt.Errorf("the error")
-
+	wantErr := errors.New("the error")
 	type args struct {
 		err error
 	}
@@ -183,9 +178,7 @@ func Test_maybeUnwrap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := maybeUnwrap(tt.args.err)
-			if !reflect.DeepEqual(err, tt.wantErr) { //nolint:govet // legacy deep equal error check
-				t.Errorf("maybeUnwrap() error = %v, wantErr %v", err, tt.wantErr)
-			}
+			require.Equal(t, tt.wantErr, err)
 		})
 	}
 }
