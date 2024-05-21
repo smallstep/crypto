@@ -282,8 +282,8 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 	return &secretResp, nil
 }
 
-func newRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+func newRequest(ctx context.Context, method, requestURL string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 	if err != nil {
 		return nil, err
 	}
