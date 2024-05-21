@@ -23,7 +23,7 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 }
 
 // requestIDHeader is the header name used for propagating request IDs from
-// the CA client to the CA and back again.
+// the attestation client to the attestation CA and back again.
 const requestIDHeader = "X-Request-Id"
 
 // newRequestID generates a new random UUIDv4 request ID. If it fails,
