@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -214,7 +215,7 @@ func (ac *Client) attest(ctx context.Context, info *tpm.Info, ek *tpm.EK, attest
 	}
 
 	attestURL := ac.baseURL.JoinPath("attest").String()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, attestURL, bytes.NewReader(body))
+	req, err := newRequest(ctx, http.MethodPost, attestURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed creating POST http request for %q: %w", attestURL, err)
 	}
@@ -258,7 +259,7 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 	}
 
 	secretURL := ac.baseURL.JoinPath("secret").String()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, secretURL, bytes.NewReader(body))
+	req, err := newRequest(ctx, http.MethodPost, secretURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed creating POST http request for %q: %w", secretURL, err)
 	}
@@ -279,4 +280,15 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 	}
 
 	return &secretResp, nil
+}
+
+func newRequest(ctx context.Context, method, requestURL string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
+	if err != nil {
+		return nil, err
+	}
+	enforceRequestID(req)
+	setUserAgent(req)
+
+	return req, nil
 }
