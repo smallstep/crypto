@@ -78,6 +78,7 @@ func mustParseURL(t *testing.T, urlString string) *url.URL {
 
 func TestClient_Attest(t *testing.T) {
 	ctx := context.Background()
+	ctx = NewRequestIDContext(ctx, "requestID")
 	instance := newSimulatedTPM(t)
 	ak, err := instance.CreateAK(ctx, "ak1")
 	require.NoError(t, err)
@@ -140,6 +141,9 @@ func TestClient_Attest(t *testing.T) {
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/attest":
+					assert.Equal(t, "step-attestation-http-client/1.0", r.Header.Get("User-Agent"))
+					assert.Equal(t, "requestID", r.Header.Get("X-Request-Id"))
+
 					var ar attestationRequest
 					err := json.NewDecoder(r.Body).Decode(&ar)
 					require.NoError(t, err)
@@ -165,6 +169,9 @@ func TestClient_Attest(t *testing.T) {
 						Secret:     encryptedCredentials.Secret,
 					})
 				case "/secret":
+					assert.Equal(t, "step-attestation-http-client/1.0", r.Header.Get("User-Agent"))
+					assert.Equal(t, "requestID", r.Header.Get("X-Request-Id"))
+
 					var sr secretRequest
 					err := json.NewDecoder(r.Body).Decode(&sr)
 					require.NoError(t, err)
