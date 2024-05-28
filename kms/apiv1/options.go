@@ -139,6 +139,10 @@ const (
 	TPMKMS Type = "tpmkms"
 	// MacKMS is the KMS implementation using macOS Keychain and Secure Enclave.
 	MacKMS Type = "mackms"
+	// PlatformKMS is a KMS implementation that uses other KMS implementations
+	// depending on the OS. It will use mackms on macOS, and tpmkms on linux and
+	// windows.
+	PlatformKMS Type = "kms"
 )
 
 // TypeOf returns the type of of the given uri.
@@ -169,7 +173,7 @@ func (t Type) Validate() error {
 		return nil
 	case YubiKey, PKCS11, TPMKMS: // Hardware based kms.
 		return nil
-	case SSHAgentKMS, CAPIKMS, MacKMS: // Others
+	case SSHAgentKMS, CAPIKMS, MacKMS, PlatformKMS: // Others
 		return nil
 	}
 

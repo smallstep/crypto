@@ -433,6 +433,36 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}, nil
 }
 
+// DeleteKey deletes a key identified by name from the TPMKMS.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *TPMKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
+	if req.Name == "" {
+		return fmt.Errorf("deleteKeyRequest 'name' cannot be empty")
+	}
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	if properties.ak {
+		err := k.tpm.DeleteAK(ctx, properties.name)
+		if err != nil && !errors.Is(err, tpm.ErrNotFound) {
+			return err
+		}
+	} else {
+		err := k.tpm.DeleteKey(ctx, properties.name)
+		if err != nil && !errors.Is(err, tpm.ErrNotFound) {
+			return err
+		}
+	}
+	return nil
+}
+
 // CreateSigner creates a signer using a key present in the TPM KMS.
 //
 // The `signingKey` in the [apiv1.CreateSignerRequest] can be used to specify
