@@ -433,6 +433,73 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 	}
 }
 
+func TestTPMKMS_DeleteKey(t *testing.T) {
+	okTPM := newSimulatedTPM(t,
+		withAK("ak1"), withAK("ak2"),
+		withKey("key1"), withKey("key2"),
+	)
+
+	validatePending := func(t *testing.T, k *TPMKMS) {
+		_, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=ak2;ak=true"})
+		assert.NoError(t, err)
+		_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=key2"})
+		assert.NoError(t, err)
+	}
+
+	type fields struct {
+		tpm *tpmp.TPM
+	}
+	type args struct {
+		req *apiv1.DeleteKeyRequest
+	}
+	tests := []struct {
+		name      string
+		fields    fields
+		args      args
+		assertion assert.ErrorAssertionFunc
+		validate  func(*testing.T, *TPMKMS)
+	}{
+		{"ok", fields{okTPM}, args{&apiv1.DeleteKeyRequest{
+			Name: "tpmkms:name=key1",
+		}}, assert.NoError, func(t *testing.T, k *TPMKMS) {
+			_, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=ak1;ak=true"})
+			assert.NoError(t, err)
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=ak2;ak=true"})
+			assert.NoError(t, err)
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=key1"})
+			assert.ErrorIs(t, err, apiv1.NotFoundError{})
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=key2"})
+			assert.NoError(t, err)
+		}},
+		{"ok ak", fields{okTPM}, args{&apiv1.DeleteKeyRequest{
+			Name: "tpmkms:name=ak1;ak=true",
+		}}, assert.NoError, func(t *testing.T, k *TPMKMS) {
+			_, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=ak1;ak=true"})
+			assert.ErrorIs(t, err, apiv1.NotFoundError{})
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=ak2;ak=true"})
+			assert.NoError(t, err)
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=key1"})
+			assert.ErrorIs(t, err, apiv1.NotFoundError{})
+			_, err = k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: "tpmkms:name=key2"})
+			assert.NoError(t, err)
+		}},
+		{"fail name", fields{okTPM}, args{&apiv1.DeleteKeyRequest{Name: ""}}, assert.Error, validatePending},
+		{"fail not ak", fields{okTPM}, args{&apiv1.DeleteKeyRequest{Name: "tpmkms:name=ak2"}}, assert.Error, validatePending},
+		{"fail not key", fields{okTPM}, args{&apiv1.DeleteKeyRequest{Name: "tpmkms:name=key2;ak=true"}}, assert.Error, validatePending},
+		{"fail missing other", fields{okTPM}, args{&apiv1.DeleteKeyRequest{Name: "tpmkms:name=missing"}}, assert.Error, validatePending},
+		{"fail uri", fields{okTPM}, args{&apiv1.DeleteKeyRequest{Name: "kms:name=key2"}}, assert.Error, validatePending},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &TPMKMS{
+				tpm: tt.fields.tpm,
+			}
+			tt.assertion(t, k.DeleteKey(tt.args.req))
+			tt.validate(t, k)
+		})
+	}
+}
+
 func TestTPMKMS_CreateSigner(t *testing.T) {
 	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
 

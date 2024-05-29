@@ -3,12 +3,15 @@ package tpmkms
 import (
 	"context"
 	"encoding/asn1"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/tss2"
 )
 
@@ -105,6 +108,33 @@ func Test_parseTSS2(t *testing.T) {
 			got, err := parseTSS2(tt.args.pemBytes)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_notFoundError(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name      string
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"nil", args{nil}, assert.NoError},
+		{"tpm not found", args{tpm.ErrNotFound}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, i...)
+		}},
+		{"tpm not found wrapped", args{fmt.Errorf("some error: %w", tpm.ErrNotFound)}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, i...)
+		}},
+		{"other", args{tpm.ErrExists}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.False(t, errors.Is(err, apiv1.NotFoundError{}), i...)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, notFoundError(tt.args.err))
 		})
 	}
 }

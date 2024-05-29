@@ -433,6 +433,35 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}, nil
 }
 
+// DeleteKey deletes a key identified by name from the TPMKMS.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *TPMKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
+	if req.Name == "" {
+		return fmt.Errorf("deleteKeyRequest 'name' cannot be empty")
+	}
+	properties, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	ctx := context.Background()
+	if properties.ak {
+		if err := k.tpm.DeleteAK(ctx, properties.name); err != nil {
+			return notFoundError(err)
+		}
+	} else {
+		if err := k.tpm.DeleteKey(ctx, properties.name); err != nil {
+			return notFoundError(err)
+		}
+	}
+
+	return nil
+}
+
 // CreateSigner creates a signer using a key present in the TPM KMS.
 //
 // The `signingKey` in the [apiv1.CreateSignerRequest] can be used to specify
@@ -460,7 +489,7 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		switch {
 		case properties.name != "":
 			ctx := context.Background()
-			key, err := k.tpm.GetKey(ctx, properties.name)
+			key, err := k.getKey(ctx, properties.name)
 			if err != nil {
 				return nil, err
 			}
@@ -518,7 +547,7 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 	switch {
 	case properties.name != "":
 		if properties.ak {
-			ak, err := k.tpm.GetAK(ctx, properties.name)
+			ak, err := k.getAK(ctx, properties.name)
 			if err != nil {
 				return nil, err
 			}
@@ -529,7 +558,7 @@ func (k *TPMKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 			return akPub, nil
 		}
 
-		key, err := k.tpm.GetKey(ctx, properties.name)
+		key, err := k.getKey(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
@@ -598,13 +627,13 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	ctx := context.Background()
 	var chain []*x509.Certificate
 	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
+		ak, err := k.getAK(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
 		chain = ak.CertificateChain()
 	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
+		key, err := k.getKey(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
@@ -741,7 +770,7 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 
 	ctx := context.Background()
 	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
+		ak, err := k.getAK(ctx, properties.name)
 		if err != nil {
 			return err
 		}
@@ -750,7 +779,7 @@ func (k *TPMKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
 		}
 	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
+		key, err := k.getKey(ctx, properties.name)
 		if err != nil {
 			return err
 		}
@@ -898,7 +927,7 @@ func (k *TPMKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 
 	ctx := context.Background()
 	if properties.ak {
-		ak, err := k.tpm.GetAK(ctx, properties.name)
+		ak, err := k.getAK(ctx, properties.name)
 		if err != nil {
 			return err
 		}
@@ -906,7 +935,7 @@ func (k *TPMKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			return fmt.Errorf("failed storing certificate for AK %q: %w", properties.name, err)
 		}
 	} else {
-		key, err := k.tpm.GetKey(ctx, properties.name)
+		key, err := k.getKey(ctx, properties.name)
 		if err != nil {
 			return err
 		}
@@ -1060,7 +1089,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	var key *tpm.Key
 	akName := properties.name
 	if !properties.ak {
-		key, err = k.tpm.GetKey(ctx, properties.name)
+		key, err = k.getKey(ctx, properties.name)
 		if err != nil {
 			return nil, err
 		}
@@ -1070,7 +1099,7 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		akName = key.AttestedBy()
 	}
 
-	ak, err := k.tpm.GetAK(ctx, akName)
+	ak, err := k.getAK(ctx, akName)
 	if err != nil {
 		return nil, err
 	}
@@ -1225,6 +1254,31 @@ func (k *TPMKMS) hasValidIdentity(ak *tpm.AK, ekURL *url.URL) error {
 	// a usable identity too.
 
 	return ErrIdentityCertificateInvalid
+}
+
+func (k *TPMKMS) getAK(ctx context.Context, name string) (*tpm.AK, error) {
+	ak, err := k.tpm.GetAK(ctx, name)
+	if err != nil {
+		return nil, notFoundError(err)
+	}
+	return ak, nil
+}
+
+func (k *TPMKMS) getKey(ctx context.Context, name string) (*tpm.Key, error) {
+	key, err := k.tpm.GetKey(ctx, name)
+	if err != nil {
+		return nil, notFoundError(err)
+	}
+	return key, nil
+}
+
+func notFoundError(err error) error {
+	if errors.Is(err, tpm.ErrNotFound) {
+		return apiv1.NotFoundError{
+			Message: err.Error(),
+		}
+	}
+	return err
 }
 
 // generateKeyID generates a key identifier from the
