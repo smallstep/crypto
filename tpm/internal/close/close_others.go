@@ -14,7 +14,9 @@ import (
 )
 
 func closeRWC(rwc io.ReadWriteCloser) error {
-	// TODO(hs): support an intercepted emulator connection
+	if ic, ok := rwc.(*interceptor.RWC); ok {
+		rwc = ic.Unwrap()
+	}
 	if _, ok := rwc.(*tpmutil.EmulatorReadWriteCloser); ok {
 		return nil // EmulatorReadWriteCloser automatically closes on every write/read cycle
 	}

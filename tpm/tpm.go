@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"runtime"
 	"sync"
 
 	"github.com/smallstep/go-attestation/attest"
@@ -101,7 +101,9 @@ func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 
 // WithTap is used to configure a tap. The tap taps into all of
 // the communication to and from the TPM. This can be used to
-// inspect and debug the commands and responses.
+// inspect and debug the commands and responses. Due to how TPM
+// operations (that go through go-attestation) work, the tap option
+// is ignored on Windows.
 func WithTap(tap debug.Tap) NewTPMOption {
 	return func(o *options) error {
 		o.tap = tap
@@ -196,6 +198,9 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			t.attestTPM = at
 		}
 		t.rwc = t.simulator
+		if t.tap != nil {
+			t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
+		}
 	} else {
 		// TODO(hs): when an internal call to open is performed, but when
 		// switching the "TPM implementation" to use between the two types,
@@ -208,6 +213,9 @@ func (t *TPM) open(ctx context.Context) (err error) {
 				return fmt.Errorf("failed opening TPM: %w", err)
 			}
 			t.rwc = rwc
+			if t.tap != nil {
+				t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
+			}
 		} else {
 			// TODO(hs): attest.OpenTPM doesn't currently take into account the
 			// device name provided. This doesn't seem to be an available option
@@ -264,10 +272,11 @@ func (t *TPM) initializeCommandChannel() error {
 		}
 	}
 
-	t.tap = debug.NewTap(&wrapper{os.Stderr, "in"}, &wrapper{os.Stderr, "out"}) // TODO(hs): remove
-
-	if t.tap != nil {
-		t.commandChannel = interceptor.FromTap(t.tap).Wrap(t.commandChannel)
+	// enable tapping into TPM communication. This does not work on Windows, because go-attestation
+	// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
+	// with a TPM through binary commands directly.
+	if t.tap != nil && runtime.GOOS != "windows" {
+		t.commandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
 	}
 
 	// update `attestConfig` with the command channel, so that it is used whenever
@@ -279,19 +288,6 @@ func (t *TPM) initializeCommandChannel() error {
 	}
 
 	return nil
-}
-
-type wrapper struct {
-	w         io.Writer
-	direction string
-}
-
-func (w *wrapper) Write(data []byte) (int, error) {
-	if w.direction == "in" {
-		return w.w.Write([]byte(fmt.Sprintf("<- %v\n", data)))
-	} else {
-		return w.w.Write([]byte(fmt.Sprintf("-> %v\n", data)))
-	}
 }
 
 // trySocketCommandChannel tries
