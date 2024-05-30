@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/smallstep/go-attestation/attest"
 
+	"go.step.sm/crypto/tpm/debug"
 	closer "go.step.sm/crypto/tpm/internal/close"
+	"go.step.sm/crypto/tpm/internal/interceptor"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
@@ -31,6 +34,7 @@ type TPM struct {
 	store                  storage.TPMStore
 	simulator              simulator.Simulator
 	commandChannel         CommandChannel
+	tap                    debug.Tap
 	downloader             *downloader
 	options                *options
 	initCommandChannelOnce sync.Once
@@ -86,9 +90,21 @@ func WithSimulator(sim simulator.Simulator) NewTPMOption {
 
 type CommandChannel attest.CommandChannelTPM20
 
+// WithCommandChannel is used to configure a preconfigured and
+// preinitialized TPM command channel.
 func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	return func(o *options) error {
 		o.commandChannel = commandChannel
+		return nil
+	}
+}
+
+// WithTap is used to configure a tap. The tap taps into all of
+// the communication to and from the TPM. This can be used to
+// inspect and debug the commands and responses.
+func WithTap(tap debug.Tap) NewTPMOption {
+	return func(o *options) error {
+		o.tap = tap
 		return nil
 	}
 }
@@ -100,6 +116,7 @@ type options struct {
 	commandChannel CommandChannel
 	store          storage.TPMStore
 	downloader     *downloader
+	tap            debug.Tap
 }
 
 func (o *options) validate() error {
@@ -133,6 +150,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		downloader:     tpmOptions.downloader,
 		simulator:      tpmOptions.simulator,
 		commandChannel: tpmOptions.commandChannel,
+		tap:            tpmOptions.tap,
 		options:        &tpmOptions,
 	}, nil
 }
@@ -246,6 +264,12 @@ func (t *TPM) initializeCommandChannel() error {
 		}
 	}
 
+	t.tap = debug.NewTap(&wrapper{os.Stderr, "in"}, &wrapper{os.Stderr, "out"}) // TODO(hs): remove
+
+	if t.tap != nil {
+		t.commandChannel = interceptor.FromTap(t.tap).Wrap(t.commandChannel)
+	}
+
 	// update `attestConfig` with the command channel, so that it is used whenever
 	// attestation operations are being performed. Note that the command channel can
 	// still be nil. It simply won't be used (wrapped) by `go-attestation` in that case.
@@ -255,6 +279,19 @@ func (t *TPM) initializeCommandChannel() error {
 	}
 
 	return nil
+}
+
+type wrapper struct {
+	w         io.Writer
+	direction string
+}
+
+func (w *wrapper) Write(data []byte) (int, error) {
+	if w.direction == "in" {
+		return w.w.Write([]byte(fmt.Sprintf("<- %v\n", data)))
+	} else {
+		return w.w.Write([]byte(fmt.Sprintf("-> %v\n", data)))
+	}
 }
 
 // trySocketCommandChannel tries
