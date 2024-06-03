@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 	"sync"
 
@@ -13,6 +14,7 @@ import (
 
 	"go.step.sm/crypto/tpm/debug"
 	closer "go.step.sm/crypto/tpm/internal/close"
+	"go.step.sm/crypto/tpm/internal/inject"
 	"go.step.sm/crypto/tpm/internal/interceptor"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/internal/socket"
@@ -145,6 +147,8 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		return nil, fmt.Errorf("invalid TPM options provided: %w", err)
 	}
 
+	tpmOptions.tap = debug.NewTextTap(os.Stderr, os.Stderr)
+
 	return &TPM{
 		deviceName:     tpmOptions.deviceName,
 		attestConfig:   tpmOptions.attestConfig,
@@ -161,9 +165,13 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 // in use. This makes using the instance safe for
 // concurrent use.
 func (t *TPM) open(ctx context.Context) (err error) {
+
+	fmt.Println("open called")
+
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
+		fmt.Println("internal call")
 		return
 	}
 
@@ -198,7 +206,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			t.attestTPM = at
 		}
 		t.rwc = t.simulator
-		if t.tap != nil {
+		if t.tap != nil && runtime.GOOS != "windows" {
 			t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
 		}
 	} else {
@@ -213,17 +221,36 @@ func (t *TPM) open(ctx context.Context) (err error) {
 				return fmt.Errorf("failed opening TPM: %w", err)
 			}
 			t.rwc = rwc
-			if t.tap != nil {
+			if t.tap != nil && runtime.GOOS != "windows" {
 				t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
 			}
 		} else {
 			// TODO(hs): attest.OpenTPM doesn't currently take into account the
 			// device name provided. This doesn't seem to be an available option
 			// to filter on currently?
-			at, err := attest.OpenTPM(t.attestConfig)
-			if err != nil {
-				return fmt.Errorf("failed opening TPM: %w", err)
+			// enable tapping into TPM communication. This does not work on Windows, because go-attestation
+			// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
+			// with a TPM through binary commands directly.
+			var at *attest.TPM
+			if t.tap != nil && runtime.GOOS != "windows" {
+				rwc, err := open.TPM(t.deviceName)
+				if err != nil {
+					return fmt.Errorf("failed opening TPM: %w", err)
+				}
+				fmt.Println("tapping command channel")
+				//t.rwc =
+				at = inject.Inject(interceptor.RWCFromTap(t.tap).Wrap(rwc))
+
+				//t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
 			}
+			if at == nil {
+				fmt.Println("at is nil")
+				at, err = attest.OpenTPM(t.attestConfig)
+				if err != nil {
+					return fmt.Errorf("failed opening TPM: %w", err)
+				}
+			}
+
 			t.attestTPM = at
 		}
 	}
@@ -272,13 +299,6 @@ func (t *TPM) initializeCommandChannel() error {
 		}
 	}
 
-	// enable tapping into TPM communication. This does not work on Windows, because go-attestation
-	// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
-	// with a TPM through binary commands directly.
-	if t.tap != nil && runtime.GOOS != "windows" {
-		t.commandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
-	}
-
 	// update `attestConfig` with the command channel, so that it is used whenever
 	// attestation operations are being performed. Note that the command channel can
 	// still be nil. It simply won't be used (wrapped) by `go-attestation` in that case.
@@ -302,6 +322,9 @@ func trySocketCommandChannel(path string) (*socket.CommandChannelWithoutMeasurem
 // Close closes the TPM instance, cleaning up resources and
 // marking it ready to be use again.
 func (t *TPM) close(ctx context.Context) error {
+
+	fmt.Println("tpm close called")
+
 	// prevent closing the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
@@ -323,7 +346,7 @@ func (t *TPM) close(ctx context.Context) error {
 
 	// clean up the attest.TPM
 	if t.attestTPM != nil {
-		defer func() { t.attestTPM = nil }()
+		defer func() { t.attestTPM = nil; fmt.Println("attest TPM set to nil") }()
 		if err := closer.AttestTPM(t.attestTPM, t.attestConfig); err != nil {
 			return fmt.Errorf("failed closing attest.TPM: %w", err)
 		}
@@ -331,7 +354,7 @@ func (t *TPM) close(ctx context.Context) error {
 
 	// clean up the go-tpm rwc
 	if t.rwc != nil {
-		defer func() { t.rwc = nil }()
+		defer func() { t.rwc = nil; fmt.Println("rwc set to nil") }()
 		if err := closer.RWC(t.rwc); err != nil {
 			return fmt.Errorf("failed closing rwc: %w", err)
 		}

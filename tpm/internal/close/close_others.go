@@ -26,7 +26,8 @@ func closeRWC(rwc io.ReadWriteCloser) error {
 func attestTPM(t *attest.TPM, c *attest.OpenConfig) error {
 	cc := c.CommandChannel
 	if ic, ok := cc.(*interceptor.CommandChannel); ok {
-		cc = ic.Unwrap()
+		//cc = ic.Unwrap()
+		_ = ic
 	}
 	if _, ok := cc.(*socket.CommandChannelWithoutMeasurementLog); ok {
 		return nil // backed by tpmutil.EmulatorReadWriteCloser; already closed
