@@ -232,14 +232,25 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
 			// with a TPM through binary commands directly.
 			var at *attest.TPM
+			fmt.Println("command channel", t.attestConfig.CommandChannel)
 			if t.tap != nil && runtime.GOOS != "windows" {
-				rwc, err := open.TPM(t.deviceName)
-				if err != nil {
-					return fmt.Errorf("failed opening TPM: %w", err)
+				if t.attestConfig.CommandChannel == nil {
+					rwc, err := open.TPM(t.deviceName)
+					if err != nil {
+						return fmt.Errorf("failed opening TPM: %w", err)
+					}
+					// cc := interceptor.RWCFromTap(t.tap).Wrap(rwc)
+					at = inject.Inject(interceptor.RWCFromTap(t.tap).Wrap(rwc)) // TODO: can we circumvent inject?
+					// t.attestConfig.CommandChannel = cc
+					// cc := &linuxCmdChannel{rwc}
+					// t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(cc)
+				} else {
+					t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
 				}
+
 				fmt.Println("tapping command channel")
 				//t.rwc =
-				at = inject.Inject(interceptor.RWCFromTap(t.tap).Wrap(rwc))
+				//at = inject.Inject(interceptor.RWCFromTap(t.tap).Wrap(rwc))
 
 				//t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
 			}
@@ -256,6 +267,15 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	}
 
 	return nil
+}
+
+type linuxCmdChannel struct {
+	io.ReadWriteCloser
+}
+
+// MeasurementLog implements CommandChannelTPM20.
+func (cc *linuxCmdChannel) MeasurementLog() ([]byte, error) {
+	return os.ReadFile("/sys/kernel/security/tpm0/binary_bios_measurements")
 }
 
 // initializeCommandChannel initializes the TPM's command channel based on
@@ -297,6 +317,10 @@ func (t *TPM) initializeCommandChannel() error {
 		} else {
 			t.commandChannel = socketCommandChannel
 		}
+	}
+
+	if t.tap != nil && runtime.GOOS != "windows" {
+
 	}
 
 	// update `attestConfig` with the command channel, so that it is used whenever

@@ -75,6 +75,8 @@ func TestTPM_Info(t *testing.T) {
 	}
 
 	require.Equal(t, expected, info)
+
+	t.Fail()
 }
 
 func TestTPM_GenerateRandom(t *testing.T) {
@@ -86,6 +88,8 @@ func TestTPM_GenerateRandom(t *testing.T) {
 	b, err = tpm.GenerateRandom(context.Background(), 10)
 	require.NoError(t, err)
 	require.Len(t, b, 10)
+
+	t.Fail()
 }
 
 func newErrorTPM(t *testing.T) *TPM {
