@@ -251,7 +251,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 }
 
 func (t *TPM) tapCommandChannel() error {
-	if t.tap == nil || runtime.GOOS != "linux" {
+	if t.tap == nil || runtime.GOOS == "windows" {
 		return nil
 	}
 
@@ -264,7 +264,7 @@ func (t *TPM) tapCommandChannel() error {
 		t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(cc)
 		t.shouldRetap = true // retap required; the wrapped command channel is closed and thus needs to be tapped again
 	} else {
-		t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.attestConfig.CommandChannel)
+		t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
 	}
 
 	return nil
