@@ -92,9 +92,9 @@ var decodeOptions = gopacket.DecodeOptions{
 const snapLen = uint32(65536)
 
 var once sync.Once
-var headerWriteError error
+var errHeaderWrite error
 
-func write(w *pcapgo.Writer, data []byte, in bool, inSeq uint32, outSeq uint32) error {
+func write(w *pcapgo.Writer, data []byte, in bool, inSeq, outSeq uint32) error {
 	var tcpLayer = &layers.TCP{Window: 16}
 	if in {
 		tcpLayer.SrcPort = layers.TCPPort(2321)
@@ -126,11 +126,11 @@ func write(w *pcapgo.Writer, data []byte, in bool, inSeq uint32, outSeq uint32) 
 	once.Do(func() {
 		// TODO: do once on the very first write to the output; if it's a file, check there's no pcap header yet
 		if err := w.WriteFileHeader(snapLen, layers.LinkTypeEthernet); err != nil {
-			headerWriteError = err
+			errHeaderWrite = err
 		}
 	})
-	if headerWriteError != nil {
-		return fmt.Errorf("failed writing pcap header: %w", headerWriteError)
+	if errHeaderWrite != nil {
+		return fmt.Errorf("failed writing pcap header: %w", errHeaderWrite)
 	}
 
 	ci := p.Metadata().CaptureInfo

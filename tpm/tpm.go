@@ -318,22 +318,6 @@ func (t *TPM) initializeCommandChannel() error {
 		}
 	}
 
-	// if t.tap != nil && runtime.GOOS != "windows" {
-	// 	if t.commandChannel == nil {
-	// 		rwc, err := open.TPM(t.deviceName)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed opening TPM: %w", err)
-	// 		}
-	// 		//cc := interceptor.RWCFromTap(t.tap).Wrap(rwc)
-	// 		//at = inject.Inject(interceptor.RWCFromTap(t.tap).Wrap(rwc)) // TODO: can we circumvent inject?
-	// 		//t.attestConfig.CommandChannel = cc
-	// 		cc := &linuxCmdChannel{rwc}
-	// 		t.tappedChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(cc)
-	// 	} else {
-	// 		t.tappedChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
-	// 	}
-	// }
-
 	// update `attestConfig` with the command channel, so that it is used whenever
 	// attestation operations are being performed. Note that the command channel can
 	// still be nil. It simply won't be used (wrapped) by `go-attestation` in that case.

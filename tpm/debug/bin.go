@@ -22,9 +22,9 @@ func NewBinTap(w io.Writer) Tap {
 	return &binTap{w: w}
 }
 
-func (w *binTap) Write(data []byte) (int, error) {
-	w.Lock()
-	defer w.Unlock()
+func (t *binTap) Write(data []byte) (int, error) {
+	t.Lock()
+	defer t.Unlock()
 
-	return w.w.Write(data)
+	return t.w.Write(data)
 }

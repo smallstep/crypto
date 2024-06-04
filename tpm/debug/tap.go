@@ -14,15 +14,15 @@ type tap struct {
 	out io.Writer
 }
 
-func (t tap) Rx() io.Writer {
+func (t *tap) Rx() io.Writer {
 	return t.in
 }
 
-func (t tap) Tx() io.Writer {
+func (t *tap) Tx() io.Writer {
 	return t.out
 }
 
-func NewTap(rx io.Writer, tx io.Writer) Tap {
+func NewTap(rx, tx io.Writer) Tap {
 	return &tap{
 		in:  rx,
 		out: tx,
