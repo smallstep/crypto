@@ -147,8 +147,6 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		return nil, fmt.Errorf("invalid TPM options provided: %w", err)
 	}
 
-	tpmOptions.tap = debug.NewTextTap(os.Stderr, os.Stderr)
-
 	return &TPM{
 		deviceName:     tpmOptions.deviceName,
 		attestConfig:   tpmOptions.attestConfig,
