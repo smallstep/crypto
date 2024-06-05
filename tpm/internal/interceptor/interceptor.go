@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/smallstep/go-attestation/attest"
+
 	"go.step.sm/crypto/tpm/debug"
 )
 

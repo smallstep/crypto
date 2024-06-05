@@ -207,9 +207,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			t.attestTPM = at
 		}
 		t.rwc = t.simulator
-		if t.tap != nil && runtime.GOOS != "windows" {
-			t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
-		}
+		t.tapRWC()
 	} else {
 		// TODO(hs): when an internal call to open is performed, but when
 		// switching the "TPM implementation" to use between the two types,
@@ -222,9 +220,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 				return fmt.Errorf("failed opening TPM: %w", err)
 			}
 			t.rwc = rwc
-			if t.tap != nil && runtime.GOOS != "windows" {
-				t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
-			}
+			t.tapRWC()
 		} else {
 			// enable tapping into TPM communication. This does not work on Windows, because go-attestation
 			// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
@@ -246,6 +242,14 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	}
 
 	return nil
+}
+
+func (t *TPM) tapRWC() {
+	if t.tap == nil || runtime.GOOS == "windows" {
+		return
+	}
+
+	t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
 }
 
 func (t *TPM) tapCommandChannel() error {
