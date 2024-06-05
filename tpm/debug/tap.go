@@ -4,27 +4,11 @@ import (
 	"io"
 )
 
+// Tap is an interface providing TPM communication tapping
+// capabilities. [Tx] and [Rx] provide access to [io.Writer]s
+// that correspond to all (serialized) transmitted and received
+// TPM commands and responses, respectively.
 type Tap interface {
 	Tx() io.Writer
 	Rx() io.Writer
-}
-
-type tap struct {
-	in  io.Writer
-	out io.Writer
-}
-
-func (t *tap) Rx() io.Writer {
-	return t.in
-}
-
-func (t *tap) Tx() io.Writer {
-	return t.out
-}
-
-func NewTap(rx, tx io.Writer) Tap {
-	return &tap{
-		in:  rx,
-		out: tx,
-	}
 }
