@@ -22,7 +22,9 @@ package mackms
 
 import (
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"fmt"
 	"io"
@@ -109,4 +111,105 @@ func getSecKeyAlgorithm(pub crypto.PublicKey, opts crypto.SignerOpts) (security.
 	default:
 		return 0, fmt.Errorf("unsupported key type %T", pub)
 	}
+}
+
+// ECDH extends [Signer] with ECDH exchange method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type ECDH struct {
+	*Signer
+}
+
+// ECDH performs an ECDH exchange and returns the shared secret. The private key
+// and public key must use the same curve.
+//
+// For NIST curves, this performs ECDH as specified in SEC 1, Version 2.0,
+// Section 3.3.1, and returns the x-coordinate encoded according to SEC 1,
+// Version 2.0, Section 2.3.5. The result is never the point at infinity.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (e *ECDH) ECDH(pub *ecdh.PublicKey) ([]byte, error) {
+	key, err := getPrivateKey(e.Signer.keyAttributes)
+	if err != nil {
+		return nil, fmt.Errorf("mackms ECDH failed: %w", err)
+	}
+	defer key.Release()
+
+	pubData, err := cf.NewData(pub.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("mackms ECDH failed: %w", err)
+	}
+	defer pubData.Release()
+
+	pubDict, err := cf.NewDictionary(cf.Dictionary{
+		security.KSecAttrKeyType:  security.KSecAttrKeyTypeECSECPrimeRandom,
+		security.KSecAttrKeyClass: security.KSecAttrKeyClassPublic,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mackms ECDH failed: %w", err)
+	}
+	defer pubDict.Release()
+
+	pubRef, err := security.SecKeyCreateWithData(pubData, pubDict)
+	if err != nil {
+		return nil, fmt.Errorf("macOS SecKeyCreateWithData failed: %w", err)
+	}
+	defer pubRef.Release()
+
+	sharedSecret, err := security.SecKeyCopyKeyExchangeResult(key, security.KSecKeyAlgorithmECDHKeyExchangeStandard, pubRef, &cf.DictionaryRef{})
+	if err != nil {
+		return nil, fmt.Errorf("macOS SecKeyCopyKeyExchangeResult failed: %w", err)
+	}
+	defer sharedSecret.Release()
+
+	return sharedSecret.Bytes(), nil
+}
+
+// Curve returns the [ecdh.Curve] of the key. If the key is not an ECDSA key it
+// will return nil.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (e *ECDH) Curve() ecdh.Curve {
+	pub, ok := e.Signer.pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil
+	}
+	switch pub.Curve {
+	case elliptic.P256():
+		return ecdh.P256()
+	case elliptic.P384():
+		return ecdh.P384()
+	case elliptic.P521():
+		return ecdh.P521()
+	default:
+		return nil
+	}
+}
+
+// PublicKey returns the [ecdh.PublicKey] representation of the key. If the key
+// is not an ECDSA or it cannot be converted it will return nil.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (e *ECDH) PublicKey() *ecdh.PublicKey {
+	pub, ok := e.Signer.pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil
+	}
+	ecdhPub, err := pub.ECDH()
+	if err != nil {
+		return nil
+	}
+	return ecdhPub
 }
