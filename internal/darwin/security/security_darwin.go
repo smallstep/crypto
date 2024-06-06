@@ -100,6 +100,7 @@ var (
 	KSecKeyAlgorithmRSASignatureDigestPSSSHA256      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA256
 	KSecKeyAlgorithmRSASignatureDigestPSSSHA384      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA384
 	KSecKeyAlgorithmRSASignatureDigestPSSSHA512      = C.kSecKeyAlgorithmRSASignatureDigestPSSSHA512
+	KSecKeyAlgorithmECDHKeyExchangeStandard          = C.kSecKeyAlgorithmECDHKeyExchangeStandard
 )
 
 type SecAccessControlCreateFlags = C.SecAccessControlCreateFlags
@@ -268,6 +269,28 @@ func SecCertificateCreateWithData(certData *cf.DataRef) (*SecCertificateRef, err
 	}
 	return &SecCertificateRef{
 		Value: certRef,
+	}, nil
+}
+
+func SecKeyCreateWithData(keyData *cf.DataRef, attributes *cf.DictionaryRef) (*SecKeyRef, error) {
+	var cerr C.CFErrorRef
+	keyRef := C.SecKeyCreateWithData(C.CFDataRef(keyData.Value), C.CFDictionaryRef(attributes.Value), &cerr)
+	if err := goCFErrorRef(cerr); err != nil {
+		return nil, err
+	}
+	return &SecKeyRef{
+		Value: keyRef,
+	}, nil
+}
+
+func SecKeyCopyKeyExchangeResult(privateKey *SecKeyRef, algorithm SecKeyAlgorithm, publicKey *SecKeyRef, parameters *cf.DictionaryRef) (*cf.DataRef, error) {
+	var cerr C.CFErrorRef
+	dataRef := C.SecKeyCopyKeyExchangeResult(privateKey.Value, algorithm, publicKey.Value, C.CFDictionaryRef(parameters.Value), &cerr)
+	if err := goCFErrorRef(cerr); err != nil {
+		return nil, err
+	}
+	return &cf.DataRef{
+		Value: cf.CFDataRef(dataRef),
 	}, nil
 }
 
