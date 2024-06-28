@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
+	"time"
 
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/randutil"
@@ -20,8 +21,8 @@ type Certificate struct {
 	Type            CertType          `json:"type"`
 	KeyID           string            `json:"keyId"`
 	Principals      []string          `json:"principals"`
-	ValidAfter      uint64            `json:"-"`
-	ValidBefore     uint64            `json:"-"`
+	ValidAfter      time.Time         `json:"validAfter"`
+	ValidBefore     time.Time         `json:"validBefore"`
 	CriticalOptions map[string]string `json:"criticalOptions"`
 	Extensions      map[string]string `json:"extensions"`
 	Reserved        []byte            `json:"reserved"`
@@ -62,8 +63,8 @@ func (c *Certificate) GetCertificate() *ssh.Certificate {
 		CertType:        uint32(c.Type),
 		KeyId:           c.KeyID,
 		ValidPrincipals: c.Principals,
-		ValidAfter:      c.ValidAfter,
-		ValidBefore:     c.ValidBefore,
+		ValidAfter:      uint64(c.ValidAfter.Unix()),
+		ValidBefore:     uint64(c.ValidBefore.Unix()),
 		Permissions: ssh.Permissions{
 			CriticalOptions: c.CriticalOptions,
 			Extensions:      c.Extensions,

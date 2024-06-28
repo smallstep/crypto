@@ -249,6 +249,7 @@ func TestWithTemplateFile(t *testing.T) {
 	rsa2048, _ := createRSACertificateRequest(t, 2048, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 	rsa3072, _ := createRSACertificateRequest(t, 3072, "foo", []string{"foo.com", "foo@foo.com", "::1", "https://foo.com"})
 
+	now := time.Now().UTC().Truncate(time.Second)
 	data := TemplateData{
 		SANsKey: []SubjectAlternativeName{
 			{Type: "dns", Value: "foo.com"},
@@ -259,6 +260,12 @@ func TestWithTemplateFile(t *testing.T) {
 		TokenKey: map[string]interface{}{
 			"iss": "https://iss",
 			"sub": "sub",
+			"nbf": now.Unix(),
+		},
+		WebhooksKey: map[string]interface{}{
+			"Test": map[string]interface{}{
+				"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
+			},
 		},
 	}
 	type args struct {
@@ -278,6 +285,8 @@ func TestWithTemplateFile(t *testing.T) {
 	"sans": [{"type":"dns","value":"foo.com"},{"type":"email","value":"root@foo.com"},{"type":"ip","value":"127.0.0.1"},{"type":"uri","value":"uri:foo:bar"}],
 	"emailAddresses": ["foo@foo.com"],
 	"uris": "https://iss#sub",
+	"notBefore": "` + now.Format(time.RFC3339) + `",
+	"notAfter": "` + now.Add(10*time.Hour).Format(time.RFC3339) + `",
 	"keyUsage": ["digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),
@@ -288,6 +297,8 @@ func TestWithTemplateFile(t *testing.T) {
 	"sans": [{"type":"dns","value":"foo.com"},{"type":"email","value":"root@foo.com"},{"type":"ip","value":"127.0.0.1"},{"type":"uri","value":"uri:foo:bar"}],
 	"emailAddresses": ["foo@foo.com"],
 	"uris": "https://iss#sub",
+	"notBefore": "` + now.Format(time.RFC3339) + `",
+	"notAfter": "` + now.Add(10*time.Hour).Format(time.RFC3339) + `",
 	"keyUsage": ["keyEncipherment", "digitalSignature"],
 	"extKeyUsage": ["serverAuth", "clientAuth"]
 }`),

@@ -10,7 +10,9 @@ import (
 	"io"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -71,6 +73,7 @@ func mustGeneratePublicKey(t *testing.T) ssh.PublicKey {
 }
 
 func TestNewCertificate(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
 	key := mustGeneratePublicKey(t)
 	cr := CertificateRequest{
 		Key: key,
@@ -100,8 +103,8 @@ func TestNewCertificate(t *testing.T) {
 			Type:            UserCert,
 			KeyID:           "jane@doe.com",
 			Principals:      []string{"jane"},
-			ValidAfter:      0,
-			ValidBefore:     0,
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: nil,
 			Extensions: map[string]string{
 				"permit-X11-forwarding":   "",
@@ -121,8 +124,8 @@ func TestNewCertificate(t *testing.T) {
 			Type:            HostCert,
 			KeyID:           "foobar",
 			Principals:      []string{"foo.internal", "bar.internal"},
-			ValidAfter:      0,
-			ValidBefore:     0,
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: nil,
 			Extensions:      nil,
 			Reserved:        nil,
@@ -136,8 +139,8 @@ func TestNewCertificate(t *testing.T) {
 			Type:            HostCert,
 			KeyID:           `foobar", "criticalOptions": {"foo": "bar"},"foo":"`,
 			Principals:      []string{"foo.internal", "bar.internal"},
-			ValidAfter:      0,
-			ValidBefore:     0,
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: nil,
 			Extensions:      nil,
 			Reserved:        nil,
@@ -159,11 +162,43 @@ func TestNewCertificate(t *testing.T) {
 			Type:            UserCert,
 			KeyID:           "john@doe.com",
 			Principals:      []string{"john", "john@doe.com"},
-			ValidAfter:      0,
-			ValidBefore:     0,
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: nil,
 			Extensions: map[string]string{
 				"login@github.com":        "john",
+				"permit-X11-forwarding":   "",
+				"permit-agent-forwarding": "",
+				"permit-port-forwarding":  "",
+				"permit-pty":              "",
+				"permit-user-rc":          "",
+			},
+			Reserved:     nil,
+			SignatureKey: nil,
+			Signature:    nil,
+		}, false},
+		{"file with dates", args{cr, []Option{WithTemplateFile("./testdata/date.tpl", TemplateData{
+			TypeKey:       UserCert,
+			KeyIDKey:      "john@doe.com",
+			PrincipalsKey: []string{"john", "john@doe.com"},
+			ExtensionsKey: DefaultExtensions(UserCert),
+			InsecureKey: TemplateData{
+				"User": map[string]interface{}{"username": "john"},
+			},
+			WebhooksKey: TemplateData{
+				"Test": map[string]interface{}{"validity": "16h"},
+			},
+		})}}, &Certificate{
+			Nonce:           nil,
+			Key:             key,
+			Serial:          0,
+			Type:            UserCert,
+			KeyID:           "john@doe.com",
+			Principals:      []string{"john", "john@doe.com"},
+			ValidAfter:      now,
+			ValidBefore:     now.Add(16 * time.Hour),
+			CriticalOptions: nil,
+			Extensions: map[string]string{
 				"permit-X11-forwarding":   "",
 				"permit-agent-forwarding": "",
 				"permit-port-forwarding":  "",
@@ -181,8 +216,8 @@ func TestNewCertificate(t *testing.T) {
 			Type:            HostCert,
 			KeyID:           "foo.internal",
 			Principals:      nil,
-			ValidAfter:      0,
-			ValidBefore:     0,
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: nil,
 			Extensions:      nil,
 			Reserved:        nil,
@@ -203,6 +238,16 @@ func TestNewCertificate(t *testing.T) {
 				t.Errorf("NewCertificate() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+			if got != nil && tt.want != nil {
+				if assert.WithinDuration(t, tt.want.ValidAfter, got.ValidAfter, time.Second) {
+					tt.want.ValidAfter = got.ValidAfter
+				}
+				if assert.WithinDuration(t, tt.want.ValidBefore, got.ValidBefore, time.Second) {
+					tt.want.ValidBefore = got.ValidBefore
+				}
+
+			}
+			assert.Equal(t, tt.want, got)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCertificate() = %v, want %v", got, tt.want)
 			}
@@ -212,6 +257,7 @@ func TestNewCertificate(t *testing.T) {
 
 func TestCertificate_GetCertificate(t *testing.T) {
 	key := mustGeneratePublicKey(t)
+	now := time.Now()
 
 	type fields struct {
 		Nonce           []byte
@@ -220,8 +266,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 		Type            CertType
 		KeyID           string
 		Principals      []string
-		ValidAfter      uint64
-		ValidBefore     uint64
+		ValidAfter      time.Time
+		ValidBefore     time.Time
 		CriticalOptions map[string]string
 		Extensions      map[string]string
 		Reserved        []byte
@@ -240,8 +286,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			Type:            UserCert,
 			KeyID:           "key-id",
 			Principals:      []string{"john"},
-			ValidAfter:      1111,
-			ValidBefore:     2222,
+			ValidAfter:      now,
+			ValidBefore:     now.Add(time.Hour),
 			CriticalOptions: map[string]string{"foo": "bar"},
 			Extensions:      map[string]string{"login@github.com": "john"},
 			Reserved:        []byte("reserved"),
@@ -254,8 +300,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			CertType:        ssh.UserCert,
 			KeyId:           "key-id",
 			ValidPrincipals: []string{"john"},
-			ValidAfter:      1111,
-			ValidBefore:     2222,
+			ValidAfter:      uint64(now.Unix()),
+			ValidBefore:     uint64(now.Add(time.Hour).Unix()),
 			Permissions: ssh.Permissions{
 				CriticalOptions: map[string]string{"foo": "bar"},
 				Extensions:      map[string]string{"login@github.com": "john"},
@@ -269,8 +315,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			Type:            HostCert,
 			KeyID:           "key-id",
 			Principals:      []string{"foo.internal", "bar.internal"},
-			ValidAfter:      1111,
-			ValidBefore:     2222,
+			ValidAfter:      now,
+			ValidBefore:     now.Add(time.Hour),
 			CriticalOptions: map[string]string{"foo": "bar"},
 			Extensions:      nil,
 			Reserved:        []byte("reserved"),
@@ -283,8 +329,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			CertType:        ssh.HostCert,
 			KeyId:           "key-id",
 			ValidPrincipals: []string{"foo.internal", "bar.internal"},
-			ValidAfter:      1111,
-			ValidBefore:     2222,
+			ValidAfter:      uint64(now.Unix()),
+			ValidBefore:     uint64(now.Add(time.Hour).Unix()),
 			Permissions: ssh.Permissions{
 				CriticalOptions: map[string]string{"foo": "bar"},
 				Extensions:      nil,
