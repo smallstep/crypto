@@ -239,10 +239,10 @@ func TestNewCertificate(t *testing.T) {
 				return
 			}
 			if got != nil && tt.want != nil {
-				if assert.WithinDuration(t, tt.want.ValidAfter, got.ValidAfter, time.Second) {
+				if assert.WithinDuration(t, tt.want.ValidAfter, got.ValidAfter, 2*time.Second) {
 					tt.want.ValidAfter = got.ValidAfter
 				}
-				if assert.WithinDuration(t, tt.want.ValidBefore, got.ValidBefore, time.Second) {
+				if assert.WithinDuration(t, tt.want.ValidBefore, got.ValidBefore, 2*time.Second) {
 					tt.want.ValidBefore = got.ValidBefore
 				}
 

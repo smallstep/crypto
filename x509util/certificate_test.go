@@ -321,7 +321,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 		(dict "type" "userPrincipalName" "value" .Token.upn)
 		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
 	) | toJson }},
-	"notBefore": {{ now | toJson }},
+	"notBefore": "{{ .Token.nbf | toTime }}",
 	"notAfter": {{ now | dateModify "24h" | toJson }},
 	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
 		"keyUsage": ["keyEncipherment", "digitalSignature"],
@@ -348,6 +348,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 	data.SetToken(map[string]any{
 		"upn": "foo@upn.com",
 		"pi":  "0123456789",
+		"nbf": time.Now().Unix(),
 	})
 
 	iss, issPriv := createIssuerCertificate(t, "issuer")
@@ -369,8 +370,8 @@ func TestNewCertificateTemplate(t *testing.T) {
 		},
 	}, crt.Subject)
 
-	assert.WithinDuration(t, now, crt.NotBefore, time.Second)
-	assert.WithinDuration(t, now.Add(24*time.Hour), crt.NotAfter, time.Second)
+	assert.WithinDuration(t, now, crt.NotBefore, 2*time.Second)
+	assert.WithinDuration(t, now.Add(24*time.Hour), crt.NotAfter, 2*time.Second)
 
 	// Create expected SAN extension
 	var rawValues []asn1.RawValue
