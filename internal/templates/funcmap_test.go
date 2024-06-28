@@ -52,7 +52,6 @@ func TestGetFuncMap_toTime(t *testing.T) {
 		{"unix float64", args{float64(now.Unix()) + 0.999}, expected},
 		{"jose.NumericDate", args{*numericDate}, expected},
 		{"jose.NumericDate pointer", args{numericDate}, expected},
-		{"default", args{nil}, expected},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,4 +61,15 @@ func TestGetFuncMap_toTime(t *testing.T) {
 			assert.Equal(t, tt.want, fn(tt.args.v))
 		})
 	}
+
+	t.Run("default", func(t *testing.T) {
+		var failMesage string
+		fns := GetFuncMap(&failMesage)
+		fn := fns["toTime"].(func(any) string)
+		want := time.Now()
+		got, err := time.Parse(time.RFC3339, fn(nil))
+		require.NoError(t, err)
+		assert.WithinDuration(t, want, got, time.Second)
+		assert.Equal(t, got.Location(), time.UTC)
+	})
 }
