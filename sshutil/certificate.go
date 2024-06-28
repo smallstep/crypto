@@ -63,8 +63,8 @@ func (c *Certificate) GetCertificate() *ssh.Certificate {
 		CertType:        uint32(c.Type),
 		KeyId:           c.KeyID,
 		ValidPrincipals: c.Principals,
-		ValidAfter:      uint64(c.ValidAfter.Unix()),
-		ValidBefore:     uint64(c.ValidBefore.Unix()),
+		ValidAfter:      toValidity(c.ValidAfter),
+		ValidBefore:     toValidity(c.ValidBefore),
 		Permissions: ssh.Permissions{
 			CriticalOptions: c.CriticalOptions,
 			Extensions:      c.Extensions,
@@ -124,4 +124,11 @@ func CreateCertificate(cert *ssh.Certificate, signer ssh.Signer) (*ssh.Certifica
 	cert.Signature = sig
 
 	return cert, nil
+}
+
+func toValidity(t time.Time) uint64 {
+	if t.IsZero() {
+		return 0
+	}
+	return uint64(t.Unix())
 }

@@ -247,7 +247,6 @@ func TestNewCertificate(t *testing.T) {
 				}
 
 			}
-			assert.Equal(t, tt.want, got)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCertificate() = %v, want %v", got, tt.want)
 			}
@@ -315,8 +314,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			Type:            HostCert,
 			KeyID:           "key-id",
 			Principals:      []string{"foo.internal", "bar.internal"},
-			ValidAfter:      now,
-			ValidBefore:     now.Add(time.Hour),
+			ValidAfter:      time.Time{},
+			ValidBefore:     time.Time{},
 			CriticalOptions: map[string]string{"foo": "bar"},
 			Extensions:      nil,
 			Reserved:        []byte("reserved"),
@@ -329,8 +328,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			CertType:        ssh.HostCert,
 			KeyId:           "key-id",
 			ValidPrincipals: []string{"foo.internal", "bar.internal"},
-			ValidAfter:      uint64(now.Unix()),
-			ValidBefore:     uint64(now.Add(time.Hour).Unix()),
+			ValidAfter:      0,
+			ValidBefore:     0,
 			Permissions: ssh.Permissions{
 				CriticalOptions: map[string]string{"foo": "bar"},
 				Extensions:      nil,

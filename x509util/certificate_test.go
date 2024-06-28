@@ -296,7 +296,6 @@ func TestNewCertificate(t *testing.T) {
 				t.Errorf("NewCertificate() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			assert.Equal(t, got, tt.want)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCertificate() = %v, want %v", got, tt.want)
 			}
@@ -601,6 +600,7 @@ func TestNewCertificateFromX509(t *testing.T) {
 }
 
 func TestCertificate_GetCertificate(t *testing.T) {
+	now := time.Now()
 	type fields struct {
 		Version               int
 		Subject               Subject
@@ -611,6 +611,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 		IPAddresses           MultiIP
 		URIs                  MultiURL
 		SANs                  []SubjectAlternativeName
+		NotBefore             time.Time
+		NotAfter              time.Time
 		Extensions            []Extension
 		KeyUsage              KeyUsage
 		ExtKeyUsage           ExtKeyUsage
@@ -647,6 +649,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				{Type: EmailType, Value: "admin@foo.com"},
 				{Type: URIType, Value: "mailto:admin@foo.com"},
 			},
+			NotBefore:  now,
+			NotAfter:   time.Time{},
 			Extensions: []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("custom extension")}},
 			KeyUsage:   KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
@@ -670,6 +674,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			Subject:         pkix.Name{CommonName: "commonName", Organization: []string{"smallstep"}},
 			Issuer:          pkix.Name{},
 			SerialNumber:    big.NewInt(123),
+			NotBefore:       now,
+			NotAfter:        time.Time{},
 			DNSNames:        []string{"foo.bar", "www.foo.bar"},
 			EmailAddresses:  []string{"root@foo.com", "admin@foo.com"},
 			IPAddresses:     []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
@@ -709,6 +715,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				IPAddresses:           tt.fields.IPAddresses,
 				URIs:                  tt.fields.URIs,
 				SANs:                  tt.fields.SANs,
+				NotBefore:             tt.fields.NotBefore,
+				NotAfter:              tt.fields.NotAfter,
 				Extensions:            tt.fields.Extensions,
 				KeyUsage:              tt.fields.KeyUsage,
 				ExtKeyUsage:           tt.fields.ExtKeyUsage,
