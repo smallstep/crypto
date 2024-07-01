@@ -10,13 +10,12 @@ import (
 )
 
 // GetFuncMap returns the list of functions provided by sprig. It adds the
-// function "toTime" and changes the function "fail". 
+// function "toTime" and changes the function "fail".
 //
-// The "toTime" function receives a time or a Unix epoch and formats it to 
-// RFC3339 in UTC. The "fail" function sets the provided message, so that 
+// The "toTime" function receives a time or a Unix epoch and formats it to
+// RFC3339 in UTC. The "fail" function sets the provided message, so that
 // template errors are reported directly to the template without having the
 // wrapper that text/template adds.
-// 
 //
 // sprig "env" and "expandenv" functions are removed to avoid the leak of
 // information.
