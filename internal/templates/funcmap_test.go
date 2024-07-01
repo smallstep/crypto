@@ -70,6 +70,6 @@ func TestGetFuncMap_toTime(t *testing.T) {
 		got, err := time.Parse(time.RFC3339, fn(nil))
 		require.NoError(t, err)
 		assert.WithinDuration(t, want, got, time.Second)
-		assert.Equal(t, got.Location(), time.UTC)
+		assert.Equal(t, time.UTC, got.Location())
 	})
 }

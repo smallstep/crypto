@@ -168,7 +168,7 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 		e.Set(cert)
 	}
 
-	// Validity bpunds.
+	// Validity bounds.
 	cert.NotBefore = c.NotBefore
 	cert.NotAfter = c.NotAfter
 
