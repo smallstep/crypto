@@ -4,6 +4,7 @@
 package tpm
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -26,16 +27,19 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
+	"go.step.sm/crypto/tpm/debug"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
 	"go.step.sm/crypto/x509util"
 )
 
-func newSimulatedTPM(t *testing.T) *TPM {
+func newSimulatedTPM(t *testing.T, opts ...NewTPMOption) *TPM {
 	t.Helper()
 	tmpDir := t.TempDir()
-	tpm, err := New(withSimulator(t), WithStore(storage.NewDirstore(tmpDir))) // TODO: provide in-memory storage implementation instead
+	allOpts := append([]NewTPMOption{}, withSimulator(t), WithStore(storage.NewDirstore(tmpDir))) // TODO: provide in-memory storage implementation instead
+	allOpts = append(allOpts, opts...)
+	tpm, err := New(allOpts...)
 	require.NoError(t, err)
 	return tpm
 }
@@ -77,6 +81,31 @@ func TestTPM_Info(t *testing.T) {
 	require.Equal(t, expected, info)
 }
 
+func TestTPM_InfoWithTap(t *testing.T) {
+	var reads bytes.Buffer
+	var writes bytes.Buffer
+	tpm := newSimulatedTPM(t, WithTap(debug.NewTextTap(&reads, &writes)))
+	info, err := tpm.Info(context.Background())
+	require.NoError(t, err)
+
+	// expected TPM info for the Microsoft TPM simulator
+	expected := &Info{
+		Version:      Version(2),
+		Interface:    Interface(3),
+		Manufacturer: GetManufacturerByID(1297303124),
+		VendorInfo:   "xCG fTPM",
+		FirmwareVersion: FirmwareVersion{
+			Major: 8215,
+			Minor: 1561,
+		},
+	}
+
+	require.Equal(t, expected, info)
+
+	assert.Equal(t, "<- 80010000001b000000000100000006000000010000010678434720\n<- 80010000001b00000000010000000600000001000001076654504d\n<- 80010000001b000000000100000006000000010000010800000000\n<- 80010000001b000000000100000006000000010000010900000000\n<- 80010000001b00000000010000000600000001000001054d534654\n<- 80010000001b000000000100000006000000010000010b20170619\n", reads.String())
+	assert.Equal(t, "-> 8001000000160000017a000000060000010600000001\n-> 8001000000160000017a000000060000010700000001\n-> 8001000000160000017a000000060000010800000001\n-> 8001000000160000017a000000060000010900000001\n-> 8001000000160000017a000000060000010500000001\n-> 8001000000160000017a000000060000010b00000001\n", writes.String())
+}
+
 func TestTPM_GenerateRandom(t *testing.T) {
 	tpm := newSimulatedTPM(t)
 	b, err := tpm.GenerateRandom(context.Background(), 16)
@@ -86,6 +115,22 @@ func TestTPM_GenerateRandom(t *testing.T) {
 	b, err = tpm.GenerateRandom(context.Background(), 10)
 	require.NoError(t, err)
 	require.Len(t, b, 10)
+}
+
+func TestTPM_GenerateRandomWithTap(t *testing.T) {
+	var reads bytes.Buffer
+	var writes bytes.Buffer
+	tpm := newSimulatedTPM(t, WithTap(debug.NewTextTap(&reads, &writes)))
+	b, err := tpm.GenerateRandom(context.Background(), 16)
+	require.NoError(t, err)
+	require.Len(t, b, 16)
+
+	b, err = tpm.GenerateRandom(context.Background(), 10)
+	require.NoError(t, err)
+	require.Len(t, b, 10)
+
+	assert.Len(t, reads.Bytes(), 108)
+	assert.Equal(t, "-> 80010000000c0000017b0010\n-> 80010000000c0000017b000a\n", writes.String())
 }
 
 func newErrorTPM(t *testing.T) *TPM {

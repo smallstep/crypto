@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime"
 	"sync"
 
 	"github.com/smallstep/go-attestation/attest"
 
+	"go.step.sm/crypto/tpm/debug"
 	closer "go.step.sm/crypto/tpm/internal/close"
+	"go.step.sm/crypto/tpm/internal/interceptor"
 	"go.step.sm/crypto/tpm/internal/open"
 	"go.step.sm/crypto/tpm/internal/socket"
 	"go.step.sm/crypto/tpm/simulator"
@@ -31,6 +35,8 @@ type TPM struct {
 	store                  storage.TPMStore
 	simulator              simulator.Simulator
 	commandChannel         CommandChannel
+	tap                    debug.Tap
+	shouldRetap            bool
 	downloader             *downloader
 	options                *options
 	initCommandChannelOnce sync.Once
@@ -86,9 +92,23 @@ func WithSimulator(sim simulator.Simulator) NewTPMOption {
 
 type CommandChannel attest.CommandChannelTPM20
 
+// WithCommandChannel is used to configure a preconfigured and
+// preinitialized TPM command channel.
 func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	return func(o *options) error {
 		o.commandChannel = commandChannel
+		return nil
+	}
+}
+
+// WithTap is used to configure a tap. The tap taps into all of
+// the communication to and from the TPM. This can be used to
+// inspect and debug the commands and responses. Due to how TPM
+// operations (that go through go-attestation) work, the tap option
+// is ignored on Windows.
+func WithTap(tap debug.Tap) NewTPMOption {
+	return func(o *options) error {
+		o.tap = tap
 		return nil
 	}
 }
@@ -100,6 +120,7 @@ type options struct {
 	commandChannel CommandChannel
 	store          storage.TPMStore
 	downloader     *downloader
+	tap            debug.Tap
 }
 
 func (o *options) validate() error {
@@ -133,6 +154,8 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		downloader:     tpmOptions.downloader,
 		simulator:      tpmOptions.simulator,
 		commandChannel: tpmOptions.commandChannel,
+		tap:            tpmOptions.tap,
+		shouldRetap:    false,
 		options:        &tpmOptions,
 	}, nil
 }
@@ -171,6 +194,12 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	// The simulator is currently only used for testing.
 	if t.simulator != nil {
 		if t.attestTPM == nil {
+			// enable tapping into TPM communication. This does not work on Windows, because go-attestation
+			// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
+			// with a TPM through binary commands directly.
+			if err := t.tapCommandChannel(); err != nil {
+				return fmt.Errorf("failed tapping TPM command channel: %w", err)
+			}
 			at, err := attest.OpenTPM(t.attestConfig)
 			if err != nil {
 				return fmt.Errorf("failed opening attest.TPM: %w", err)
@@ -178,6 +207,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			t.attestTPM = at
 		}
 		t.rwc = t.simulator
+		t.tapRWC()
 	} else {
 		// TODO(hs): when an internal call to open is performed, but when
 		// switching the "TPM implementation" to use between the two types,
@@ -190,7 +220,15 @@ func (t *TPM) open(ctx context.Context) (err error) {
 				return fmt.Errorf("failed opening TPM: %w", err)
 			}
 			t.rwc = rwc
+			t.tapRWC()
 		} else {
+			// enable tapping into TPM communication. This does not work on Windows, because go-attestation
+			// relies on calling into the Windows Platform Crypto Provider libraries instead of interacting
+			// with a TPM through binary commands directly.
+			if err := t.tapCommandChannel(); err != nil {
+				return fmt.Errorf("failed tapping TPM command channel: %w", err)
+			}
+
 			// TODO(hs): attest.OpenTPM doesn't currently take into account the
 			// device name provided. This doesn't seem to be an available option
 			// to filter on currently?
@@ -198,11 +236,49 @@ func (t *TPM) open(ctx context.Context) (err error) {
 			if err != nil {
 				return fmt.Errorf("failed opening TPM: %w", err)
 			}
+
 			t.attestTPM = at
 		}
 	}
 
 	return nil
+}
+
+func (t *TPM) tapRWC() {
+	if t.tap == nil || runtime.GOOS == "windows" {
+		return
+	}
+
+	t.rwc = interceptor.RWCFromTap(t.tap).Wrap(t.rwc)
+}
+
+func (t *TPM) tapCommandChannel() error {
+	if t.tap == nil || runtime.GOOS == "windows" {
+		return nil
+	}
+
+	if t.attestConfig.CommandChannel == nil || t.shouldRetap {
+		rwc, err := open.TPM(t.deviceName)
+		if err != nil {
+			return fmt.Errorf("failed opening TPM: %w", err)
+		}
+		cc := &linuxCmdChannel{rwc}
+		t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(cc)
+		t.shouldRetap = true // retap required; the wrapped command channel is closed and thus needs to be tapped again
+	} else {
+		t.attestConfig.CommandChannel = interceptor.CommandChannelFromTap(t.tap).Wrap(t.commandChannel)
+	}
+
+	return nil
+}
+
+type linuxCmdChannel struct {
+	io.ReadWriteCloser
+}
+
+// MeasurementLog implements CommandChannelTPM20.
+func (cc *linuxCmdChannel) MeasurementLog() ([]byte, error) {
+	return os.ReadFile("/sys/kernel/security/tpm0/binary_bios_measurements")
 }
 
 // initializeCommandChannel initializes the TPM's command channel based on

@@ -9,10 +9,14 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/smallstep/go-attestation/attest"
 
+	"go.step.sm/crypto/tpm/internal/interceptor"
 	"go.step.sm/crypto/tpm/internal/socket"
 )
 
 func closeRWC(rwc io.ReadWriteCloser) error {
+	if ic, ok := rwc.(*interceptor.RWC); ok {
+		rwc = ic.Unwrap()
+	}
 	if _, ok := rwc.(*tpmutil.EmulatorReadWriteCloser); ok {
 		return nil // EmulatorReadWriteCloser automatically closes on every write/read cycle
 	}
@@ -20,8 +24,13 @@ func closeRWC(rwc io.ReadWriteCloser) error {
 }
 
 func attestTPM(t *attest.TPM, c *attest.OpenConfig) error {
-	if _, ok := c.CommandChannel.(*socket.CommandChannelWithoutMeasurementLog); ok {
+	cc := c.CommandChannel
+	if ic, ok := cc.(*interceptor.CommandChannel); ok {
+		cc = ic.Unwrap()
+	}
+	if _, ok := cc.(*socket.CommandChannelWithoutMeasurementLog); ok {
 		return nil // backed by tpmutil.EmulatorReadWriteCloser; already closed
 	}
+
 	return t.Close()
 }
