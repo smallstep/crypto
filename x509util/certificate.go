@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/json"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -23,6 +24,8 @@ type Certificate struct {
 	IPAddresses           MultiIP                  `json:"ipAddresses"`
 	URIs                  MultiURL                 `json:"uris"`
 	SANs                  []SubjectAlternativeName `json:"sans"`
+	NotBefore             time.Time                `json:"notBefore"`
+	NotAfter              time.Time                `json:"notAfter"`
 	Extensions            []Extension              `json:"extensions"`
 	KeyUsage              KeyUsage                 `json:"keyUsage"`
 	ExtKeyUsage           ExtKeyUsage              `json:"extKeyUsage"`
@@ -164,6 +167,10 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	for _, e := range c.Extensions {
 		e.Set(cert)
 	}
+
+	// Validity bounds.
+	cert.NotBefore = c.NotBefore
+	cert.NotAfter = c.NotAfter
 
 	// Others.
 	c.SerialNumber.Set(cert)

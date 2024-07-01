@@ -112,6 +112,7 @@ func (b *badSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]
 }
 
 func TestNewCertificate(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
 	cr, priv := createCertificateRequest(t, "commonName", []string{"foo.com", "root@foo.com"})
 	crBadSignateure, _ := createCertificateRequest(t, "fail", []string{"foo.com"})
 	crBadSignateure.PublicKey = priv.Public()
@@ -195,12 +196,20 @@ func TestNewCertificate(t *testing.T) {
 			TokenKey: map[string]interface{}{
 				"iss": "https://iss",
 				"sub": "sub",
+				"nbf": now.Unix(),
+			},
+			WebhooksKey: map[string]interface{}{
+				"Test": map[string]interface{}{
+					"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
+				},
 			},
 		})}}, &Certificate{
 			Subject:        Subject{CommonName: "commonName"},
 			SANs:           []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
 			EmailAddresses: []string{"root@foo.com"},
 			URIs:           []*url.URL{{Scheme: "https", Host: "iss", Fragment: "sub"}},
+			NotBefore:      now,
+			NotAfter:       now.Add(10 * time.Hour),
 			KeyUsage:       KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
 				x509.ExtKeyUsageServerAuth,
@@ -219,6 +228,8 @@ func TestNewCertificate(t *testing.T) {
 			EmailAddresses:        []string{"jane@doe.com"},
 			URIs:                  []*url.URL{{Scheme: "https", Host: "doe.com"}},
 			SANs:                  []SubjectAlternativeName{{Type: DNSType, Value: "www.doe.com"}},
+			NotBefore:             time.Unix(1234567890, 0).UTC(),
+			NotAfter:              time.Unix(1234654290, 0).UTC(),
 			Extensions:            []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("extension")}},
 			KeyUsage:              KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage:           ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
@@ -309,6 +320,8 @@ func TestNewCertificateTemplate(t *testing.T) {
 		(dict "type" "userPrincipalName" "value" .Token.upn)
 		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
 	) | toJson }},
+	"notBefore": "{{ .Token.nbf | toTime }}",
+	"notAfter": {{ now | dateModify "24h" | toJson }},
 	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
 		"keyUsage": ["keyEncipherment", "digitalSignature"],
 	{{- else }}
@@ -334,11 +347,13 @@ func TestNewCertificateTemplate(t *testing.T) {
 	data.SetToken(map[string]any{
 		"upn": "foo@upn.com",
 		"pi":  "0123456789",
+		"nbf": time.Now().Unix(),
 	})
 
 	iss, issPriv := createIssuerCertificate(t, "issuer")
 	cr, priv := createCertificateRequest(t, "commonName", sans)
 
+	now := time.Now().Truncate(time.Second)
 	cert, err := NewCertificate(cr, WithTemplate(tpl, data))
 	require.NoError(t, err)
 
@@ -353,6 +368,9 @@ func TestNewCertificateTemplate(t *testing.T) {
 			{Type: asn1.ObjectIdentifier{1, 2, 840, 113556, 1, 4, 656}, Value: "foo@upn.com"},
 		},
 	}, crt.Subject)
+
+	assert.WithinDuration(t, now, crt.NotBefore, 2*time.Second)
+	assert.WithinDuration(t, now.Add(24*time.Hour), crt.NotAfter, 2*time.Second)
 
 	// Create expected SAN extension
 	var rawValues []asn1.RawValue
@@ -415,6 +433,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 }
 
 func TestNewCertificateFromX509(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	template := &x509.Certificate{ // similar template as the certificate request for TestNewCertificate
@@ -500,11 +519,18 @@ func TestNewCertificateFromX509(t *testing.T) {
 				"iss": "https://iss",
 				"sub": "sub",
 			},
+			WebhooksKey: map[string]interface{}{
+				"Test": map[string]interface{}{
+					"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
+				},
+			},
 		})}}, &Certificate{
 			Subject:        Subject{CommonName: "commonName"},
 			SANs:           []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
 			EmailAddresses: []string{"root@foo.com"},
 			URIs:           []*url.URL{{Scheme: "https", Host: "iss", Fragment: "sub"}},
+			NotBefore:      now,
+			NotAfter:       now.Add(10 * time.Hour),
 			KeyUsage:       KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
 				x509.ExtKeyUsageServerAuth,
@@ -523,6 +549,8 @@ func TestNewCertificateFromX509(t *testing.T) {
 			EmailAddresses:        []string{"jane@doe.com"},
 			URIs:                  []*url.URL{{Scheme: "https", Host: "doe.com"}},
 			SANs:                  []SubjectAlternativeName{{Type: DNSType, Value: "www.doe.com"}},
+			NotBefore:             time.Unix(1234567890, 0).UTC(),
+			NotAfter:              time.Unix(1234654290, 0).UTC(),
 			Extensions:            []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("extension")}},
 			KeyUsage:              KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage:           ExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
@@ -572,6 +600,7 @@ func TestNewCertificateFromX509(t *testing.T) {
 }
 
 func TestCertificate_GetCertificate(t *testing.T) {
+	now := time.Now()
 	type fields struct {
 		Version               int
 		Subject               Subject
@@ -582,6 +611,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 		IPAddresses           MultiIP
 		URIs                  MultiURL
 		SANs                  []SubjectAlternativeName
+		NotBefore             time.Time
+		NotAfter              time.Time
 		Extensions            []Extension
 		KeyUsage              KeyUsage
 		ExtKeyUsage           ExtKeyUsage
@@ -618,6 +649,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				{Type: EmailType, Value: "admin@foo.com"},
 				{Type: URIType, Value: "mailto:admin@foo.com"},
 			},
+			NotBefore:  now,
+			NotAfter:   time.Time{},
 			Extensions: []Extension{{ID: []int{1, 2, 3, 4}, Critical: true, Value: []byte("custom extension")}},
 			KeyUsage:   KeyUsage(x509.KeyUsageDigitalSignature),
 			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
@@ -641,6 +674,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			Subject:         pkix.Name{CommonName: "commonName", Organization: []string{"smallstep"}},
 			Issuer:          pkix.Name{},
 			SerialNumber:    big.NewInt(123),
+			NotBefore:       now,
+			NotAfter:        time.Time{},
 			DNSNames:        []string{"foo.bar", "www.foo.bar"},
 			EmailAddresses:  []string{"root@foo.com", "admin@foo.com"},
 			IPAddresses:     []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
@@ -680,6 +715,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				IPAddresses:           tt.fields.IPAddresses,
 				URIs:                  tt.fields.URIs,
 				SANs:                  tt.fields.SANs,
+				NotBefore:             tt.fields.NotBefore,
+				NotAfter:              tt.fields.NotAfter,
 				Extensions:            tt.fields.Extensions,
 				KeyUsage:              tt.fields.KeyUsage,
 				ExtKeyUsage:           tt.fields.ExtKeyUsage,

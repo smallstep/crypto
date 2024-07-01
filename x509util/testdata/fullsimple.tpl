@@ -8,6 +8,8 @@
     "ipAddresses": "127.0.0.1",
     "uris": "https://doe.com",
     "sans": [{"type":"dns", "value":"www.doe.com"}],
+    "notBefore": "2009-02-13T23:31:30Z",
+    "notAfter": "2009-02-14T23:31:30Z",
     "extensions": [{"id":"1.2.3.4","critical":true,"value":"ZXh0ZW5zaW9u"}],
     "keyUsage": ["digitalSignature"],
     "extKeyUsage": ["serverAuth"],
