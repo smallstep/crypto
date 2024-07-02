@@ -320,7 +320,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 		(dict "type" "userPrincipalName" "value" .Token.upn)
 		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
 	) | toJson }},
-	"notBefore": "{{ .Token.nbf | toTime }}",
+	"notBefore": "{{ .Token.nbf | formatTime }}",
 	"notAfter": {{ now | dateModify "24h" | toJson }},
 	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
 		"keyUsage": ["keyEncipherment", "digitalSignature"],
