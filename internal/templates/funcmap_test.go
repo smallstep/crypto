@@ -26,7 +26,7 @@ func Test_GetFuncMap_fail(t *testing.T) {
 	}
 }
 
-func TestGetFuncMap_toTime(t *testing.T) {
+func TestGetFuncMap_formatTime(t *testing.T) {
 	now := time.Now()
 	numericDate := jose.NewNumericDate(now)
 	expected := now.UTC().Format(time.RFC3339)
@@ -57,7 +57,7 @@ func TestGetFuncMap_toTime(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var failMesage string
 			fns := GetFuncMap(&failMesage)
-			fn := fns["toTime"].(func(any) string)
+			fn := fns["formatTime"].(func(any) string)
 			assert.Equal(t, tt.want, fn(tt.args.v))
 		})
 	}
@@ -65,7 +65,7 @@ func TestGetFuncMap_toTime(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
 		var failMesage string
 		fns := GetFuncMap(&failMesage)
-		fn := fns["toTime"].(func(any) string)
+		fn := fns["formatTime"].(func(any) string)
 		want := time.Now()
 		got, err := time.Parse(time.RFC3339, fn(nil))
 		require.NoError(t, err)
