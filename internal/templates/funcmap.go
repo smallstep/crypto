@@ -18,7 +18,7 @@ import (
 // in UTC. The "formatTime" function uses "toTime" and formats the resulting
 // time using RFC3339. The functions "parseTime" and "mustParseTime" parse a
 // string and return the time.Time it represents. The "toTimeLayout" function
-// converts strings like "time.RFC3339" or "time.UnixDate" to the actual layout
+// converts strings like "time.RFC3339" or "UnixDate" to the actual layout
 // represented by the Go constant with the same name. The "fail" function sets
 // the provided message, so that template errors are reported directly to the
 // template without having the wrapper that text/template adds.
@@ -36,7 +36,7 @@ import (
 //	{{ parseTime "time.UnixDate" "Tue Jul  2 16:20:48 PDT 2024" "America/Los_Angeles" }}
 //	    => loc, _ := time.LoadLocation("America/Los_Angeles")
 //	       time.ParseInLocation(time.UnixDate, "Tue Jul  2 16:20:48 PDT 2024", loc)
-//	{{ toTimeLayout "time.RFC3339" }}
+//	{{ toTimeLayout "RFC3339" }}
 //	    => time.RFC3339
 //
 // sprig "env" and "expandenv" functions are removed to avoid the leak of
@@ -113,49 +113,45 @@ func mustParseTime(v ...string) (time.Time, error) {
 }
 
 func toTimeLayout(fmt string) string {
-	if !strings.HasPrefix(fmt, "time.") {
-		return fmt
-	}
-
-	switch fmt {
-	case "time.Layout":
+	switch strings.TrimPrefix(fmt, "time.") {
+	case "Layout":
 		return time.Layout
-	case "time.ANSIC":
+	case "ANSIC":
 		return time.ANSIC
-	case "time.UnixDate":
+	case "UnixDate":
 		return time.UnixDate
-	case "time.RubyDate":
+	case "RubyDate":
 		return time.RubyDate
-	case "time.RFC822":
+	case "RFC822":
 		return time.RFC822
-	case "time.RFC822Z":
+	case "RFC822Z":
 		return time.RFC822Z
-	case "time.RFC850":
+	case "RFC850":
 		return time.RFC850
-	case "time.RFC1123":
+	case "RFC1123":
 		return time.RFC1123
-	case "time.RFC1123Z":
+	case "RFC1123Z":
 		return time.RFC1123Z
-	case "time.RFC3339":
+	case "RFC3339":
 		return time.RFC3339
-	case "time.RFC3339Nano":
+	case "RFC3339Nano":
 		return time.RFC3339Nano
 	// From the ones bellow, only time.DateTime will parse a complete date.
-	case "time.Kitchen":
+	case "Kitchen":
 		return time.Kitchen
-	case "time.Stamp":
+	case "Stamp":
 		return time.Stamp
-	case "time.StampMilli":
+	case "StampMilli":
 		return time.StampMilli
-	case "time.StampMicro":
+	case "StampMicro":
 		return time.StampMicro
-	case "time.StampNano":
+	case "StampNano":
 		return time.StampNano
-	case "time.DateTime":
+	case "DateTime":
 		return time.DateTime
-	case "time.DateOnly":
+	case "DateOnly":
 		return time.DateOnly
-	case "time.TimeOnly":
+	case "TimeOnly":
 		return time.TimeOnly
 	default:
 		return fmt

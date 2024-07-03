@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"text/template"
 	"time"
@@ -170,7 +171,7 @@ func TestGetFuncMap_toTimeLayout(t *testing.T) {
 		{"time.DateTime", args{"time.DateTime"}, time.DateTime},
 		{"time.DateOnly", args{"time.DateOnly"}, time.DateOnly},
 		{"time.TimeOnly", args{"time.TimeOnly"}, time.TimeOnly},
-		{"default", args{"time.MyFormat"}, "time.MyFormat"},
+		{"default", args{"MyFormat"}, "MyFormat"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -178,6 +179,8 @@ func TestGetFuncMap_toTimeLayout(t *testing.T) {
 			fns := GetFuncMap(&failMesage)
 			toTimeLayoutFunc := fns["toTimeLayout"].(func(string) string)
 			assert.Equal(t, tt.want, toTimeLayoutFunc(tt.args.fmt))
+			fmt := strings.TrimPrefix(tt.args.fmt, "time.")
+			assert.Equal(t, tt.want, toTimeLayoutFunc(fmt))
 		})
 	}
 }
@@ -224,6 +227,9 @@ func TestTemplates(t *testing.T) {
 		{"parseTime time.UnixDate America/Los_Angeles", args{`{{ parseTime "time.UnixDate" .notAfter "America/Los_Angeles" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"parseTime dateModify", args{`{{ .notBefore | parseTime | dateModify "1h" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"parseTime in sprig ", args{`{{ toDate "Mon Jan _2 15:04:05 MST 2006" .notAfter }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
+		{"toTimeLayout", args{`{{ toTimeLayout "time.RFC3339" }}`}, time.RFC3339, assert.NoError, assert.Empty},
+		{"toTimeLayout short", args{`{{ toTimeLayout "RFC3339" }}`}, time.RFC3339, assert.NoError, assert.Empty},
+		{"toTime toTimeLayout date", args{`{{ .nbf | toTime | date (toTimeLayout "time.RFC3339") }}`}, now.Local().Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"toTime toTimeLayout date", args{`{{ .nbf | toTime | date (toTimeLayout "time.RFC3339") }}`}, now.Local().Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"parseTime error", args{`{{ parseTime "time.UnixDate" .notAfter "America/FooBar" }}`}, "0001-01-01 00:00:00 +0000 UTC", assert.NoError, assert.Empty},
 		{"mustParseTime error", args{`{{ mustParseTime "time.UnixDate" .notAfter "America/FooBar" }}`}, "", assert.Error, assert.Empty},
