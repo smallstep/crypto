@@ -113,14 +113,14 @@ func mustParseTime(v ...string) (time.Time, error) {
 }
 
 func toTimeLayout(fmt string) string {
-	switch strings.TrimPrefix(fmt, "time.") {
-	case "Layout":
+	switch strings.ToUpper(strings.TrimPrefix(fmt, "time.")) {
+	case "LAYOUT":
 		return time.Layout
 	case "ANSIC":
 		return time.ANSIC
-	case "UnixDate":
+	case "UNIXDATE":
 		return time.UnixDate
-	case "RubyDate":
+	case "RUBYDATE":
 		return time.RubyDate
 	case "RFC822":
 		return time.RFC822
@@ -134,24 +134,24 @@ func toTimeLayout(fmt string) string {
 		return time.RFC1123Z
 	case "RFC3339":
 		return time.RFC3339
-	case "RFC3339Nano":
+	case "RFC3339NANO":
 		return time.RFC3339Nano
-	// From the ones bellow, only time.DateTime will parse a complete date.
-	case "Kitchen":
+	// From the ones below, only time.DateTime will parse a complete date.
+	case "KITCHEN":
 		return time.Kitchen
-	case "Stamp":
+	case "STAMP":
 		return time.Stamp
-	case "StampMilli":
+	case "STAMPMILLI":
 		return time.StampMilli
-	case "StampMicro":
+	case "STAMPMICRO":
 		return time.StampMicro
-	case "StampNano":
+	case "STAMPNANO":
 		return time.StampNano
-	case "DateTime":
+	case "DATETIME":
 		return time.DateTime
-	case "DateOnly":
+	case "DATEONLY":
 		return time.DateOnly
-	case "TimeOnly":
+	case "TIMEONLY":
 		return time.TimeOnly
 	default:
 		return fmt

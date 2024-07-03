@@ -171,6 +171,8 @@ func TestGetFuncMap_toTimeLayout(t *testing.T) {
 		{"time.DateTime", args{"time.DateTime"}, time.DateTime},
 		{"time.DateOnly", args{"time.DateOnly"}, time.DateOnly},
 		{"time.TimeOnly", args{"time.TimeOnly"}, time.TimeOnly},
+		{"uppercase", args{"UNIXDATE"}, time.UnixDate},
+		{"lowercase", args{"rfc3339"}, time.RFC3339},
 		{"default", args{"MyFormat"}, "MyFormat"},
 	}
 	for _, tt := range tests {
