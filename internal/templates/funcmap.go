@@ -16,28 +16,28 @@ import (
 //
 // The "toTime" function receives a time or a Unix epoch and returns a time.Time
 // in UTC. The "formatTime" function uses "toTime" and formats the resulting
-// time using RFC3339. The functions "parseTime" and "mustParseTime" parses a
-// string and returns the time.Time it represents. The "toLayout" function
+// time using RFC3339. The functions "parseTime" and "mustParseTime" parse a
+// string and return the time.Time it represents. The "toLayout" function
 // converts strings like "time.RFC3339" or "time.UnixDate" to the actual layout
-// represented by the Go constant with the same name. The "fail" function sets
+// represented by the Go constant with the same nameß. The "fail" function sets
 // the provided message, so that template errors are reported directly to the
 // template without having the wrapper that text/template adds.
 //
 //	{{ toTime }}
-//		=> time.Now().UTC()
+//	    => time.Now().UTC()
 //	{{ .Token.nbf | toTime }}
-//		=> time.Unix(.Token.nbf, 0).UTC()
+//	    => time.Unix(.Token.nbf, 0).UTC()
 //	{{ .Token.nbf | formatTime }}
-//		=> time.Unix(.Token.nbf, 0).UTC().Format(time.RFC3339)
+//	    => time.Unix(.Token.nbf, 0).UTC().Format(time.RFC3339)
 //	{{ "2024-07-02T23:16:02Z" | parseTime }}
-//		=> time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
+//	    => time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
 //	{{ parseTime "time.RFC339" "2024-07-02T23:16:02Z" }}
-//		=> time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
+//	    => time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
 //	{{ parseTime "time.UnixDate" "Tue Jul  2 16:20:48 PDT 2024" "America/Los_Angeles" }}
-//		=> loc, _ := time.LoadLocation("America/Los_Angeles")
-//		   time.ParseInLocation(time.UnixDate, "Tue Jul  2 16:20:48 PDT 2024", loc)
+//	    => loc, _ := time.LoadLocation("America/Los_Angeles")
+//	       time.ParseInLocation(time.UnixDate, "Tue Jul  2 16:20:48 PDT 2024", loc)
 //	{{ toLayout "time.RFC3339" }}
-//		=> time.RFC3339
+//	    => time.RFC3339
 //
 // sprig "env" and "expandenv" functions are removed to avoid the leak of
 // information.

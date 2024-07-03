@@ -84,7 +84,12 @@ func TestGetFuncMap_toTime_formatTime(t *testing.T) {
 
 func TestGetFuncMap_parseTime_mustParseTime(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
-	loc, err := time.LoadLocation("America/Los_Angeles")
+	loc := time.Local
+	if zone, _ := now.Zone(); zone == "UTC" {
+		loc = time.UTC
+	}
+
+	losAngeles, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
 
 	type args struct {
@@ -96,15 +101,15 @@ func TestGetFuncMap_parseTime_mustParseTime(t *testing.T) {
 		want      time.Time
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"now", args{[]string{now.Format(time.RFC3339)}}, now.Local(), assert.NoError},
+		{"now", args{[]string{now.Format(time.RFC3339)}}, now.In(loc), assert.NoError},
 		{"with real layout", args{[]string{time.UnixDate, now.UTC().Format(time.UnixDate)}}, now.UTC(), assert.NoError},
-		{"with name layout", args{[]string{"time.UnixDate", now.Format(time.UnixDate)}}, now.Local(), assert.NoError},
+		{"with name layout", args{[]string{"time.UnixDate", now.Format(time.UnixDate)}}, now.In(loc), assert.NoError},
 		{"with locale UTC", args{[]string{"time.UnixDate", now.UTC().Format(time.UnixDate), "UTC"}}, now.UTC(), assert.NoError},
-		{"with locale other", args{[]string{"time.UnixDate", now.In(loc).Format(time.UnixDate), "America/Los_Angeles"}}, now.In(loc), assert.NoError},
+		{"with locale other", args{[]string{"time.UnixDate", now.In(losAngeles).Format(time.UnixDate), "America/Los_Angeles"}}, now.In(losAngeles), assert.NoError},
 		{"fail parse", args{[]string{now.Format(time.UnixDate)}}, time.Time{}, assert.Error},
 		{"fail parse with layout", args{[]string{"time.UnixDate", now.Format(time.RFC3339)}}, time.Time{}, assert.Error},
 		{"fail parse with locale", args{[]string{"time.UnixDate", now.Format(time.RFC3339), "america/Los_Angeles"}}, time.Time{}, assert.Error},
-		{"fail load locale", args{[]string{"time.UnixDate", now.In(loc).Format(time.UnixDate), "America/The_Angels"}}, time.Time{}, assert.Error},
+		{"fail load locale", args{[]string{"time.UnixDate", now.In(losAngeles).Format(time.UnixDate), "America/The_Angels"}}, time.Time{}, assert.Error},
 		{"fail arguments", args{[]string{"time.Layout", now.Format(time.Layout), "America/The_Angels", "extra"}}, time.Time{}, assert.Error},
 	}
 	for _, tt := range tests {
@@ -205,8 +210,8 @@ func TestTemplates(t *testing.T) {
 		errorAssertion assert.ErrorAssertionFunc
 		failAssertion  assert.ValueAssertionFunc
 	}{
-		{"toTime", args{`{{ .nbf | toTime }}`}, now.String(), assert.NoError, assert.Empty},
-		{"toTime toJson", args{`{{ .nbf | toTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
+		{"toTime int64", args{`{{ .nbf | toTime }}`}, now.String(), assert.NoError, assert.Empty},
+		{"toTime int64 toJson", args{`{{ .nbf | toTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
 		{"toTime float64 toJson", args{`{{ .float64 | toTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
 		{"formatTime", args{`{{ .nbf | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"formatTime float64", args{`{{ .float64 | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
