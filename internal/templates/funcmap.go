@@ -11,15 +11,15 @@ import (
 )
 
 // GetFuncMap returns the list of functions provided by sprig. It adds the
-// functions "formatTime", "toTime", "mustToTime", and changes the function
-// "fail".
+// functions "toTime", "formatTime", "parseTime", "mustParseTime",
+// "toTimeLayout" and changes the function "fail".
 //
 // The "toTime" function receives a time or a Unix epoch and returns a time.Time
 // in UTC. The "formatTime" function uses "toTime" and formats the resulting
 // time using RFC3339. The functions "parseTime" and "mustParseTime" parse a
-// string and return the time.Time it represents. The "toLayout" function
+// string and return the time.Time it represents. The "toTimeLayout" function
 // converts strings like "time.RFC3339" or "time.UnixDate" to the actual layout
-// represented by the Go constant with the same nameß. The "fail" function sets
+// represented by the Go constant with the same name. The "fail" function sets
 // the provided message, so that template errors are reported directly to the
 // template without having the wrapper that text/template adds.
 //
@@ -36,7 +36,7 @@ import (
 //	{{ parseTime "time.UnixDate" "Tue Jul  2 16:20:48 PDT 2024" "America/Los_Angeles" }}
 //	    => loc, _ := time.LoadLocation("America/Los_Angeles")
 //	       time.ParseInLocation(time.UnixDate, "Tue Jul  2 16:20:48 PDT 2024", loc)
-//	{{ toLayout "time.RFC3339" }}
+//	{{ toTimeLayout "time.RFC3339" }}
 //	    => time.RFC3339
 //
 // sprig "env" and "expandenv" functions are removed to avoid the leak of
@@ -53,7 +53,7 @@ func GetFuncMap(failMessage *string) template.FuncMap {
 	m["toTime"] = toTime
 	m["parseTime"] = parseTime
 	m["mustParseTime"] = mustParseTime
-	m["toLayout"] = toLayout
+	m["toTimeLayout"] = toTimeLayout
 	return m
 }
 
@@ -98,10 +98,10 @@ func mustParseTime(v ...string) (time.Time, error) {
 	case 1:
 		return time.Parse(time.RFC3339, v[0])
 	case 2:
-		layout := toLayout(v[0])
+		layout := toTimeLayout(v[0])
 		return time.Parse(layout, v[1])
 	case 3:
-		layout := toLayout(v[0])
+		layout := toTimeLayout(v[0])
 		loc, err := time.LoadLocation(v[2])
 		if err != nil {
 			return time.Time{}, err
@@ -112,7 +112,7 @@ func mustParseTime(v ...string) (time.Time, error) {
 	}
 }
 
-func toLayout(fmt string) string {
+func toTimeLayout(fmt string) string {
 	if !strings.HasPrefix(fmt, "time.") {
 		return fmt
 	}

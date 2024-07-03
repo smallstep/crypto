@@ -141,7 +141,7 @@ func TestGetFuncMap_parseTime_mustParseTime(t *testing.T) {
 	})
 }
 
-func TestGetFuncMap_toLayout(t *testing.T) {
+func TestGetFuncMap_toTimeLayout(t *testing.T) {
 	type args struct {
 		fmt string
 	}
@@ -176,8 +176,8 @@ func TestGetFuncMap_toLayout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var failMesage string
 			fns := GetFuncMap(&failMesage)
-			toLayoutFunc := fns["toLayout"].(func(string) string)
-			assert.Equal(t, tt.want, toLayoutFunc(tt.args.fmt))
+			toTimeLayoutFunc := fns["toTimeLayout"].(func(string) string)
+			assert.Equal(t, tt.want, toTimeLayoutFunc(tt.args.fmt))
 		})
 	}
 }
@@ -213,6 +213,7 @@ func TestTemplates(t *testing.T) {
 		{"toTime int64", args{`{{ .nbf | toTime }}`}, now.String(), assert.NoError, assert.Empty},
 		{"toTime int64 toJson", args{`{{ .nbf | toTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
 		{"toTime float64 toJson", args{`{{ .float64 | toTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
+		{"toTime dateModify", args{`{{ .nbf | toTime | dateModify "1h" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"formatTime", args{`{{ .nbf | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"formatTime float64", args{`{{ .float64 | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"formatTime in sprig", args{`{{ dateInZone "2006-01-02T15:04:05Z07:00" .float64 "UTC" }}`}, now.UTC().Format(time.RFC3339), assert.NoError, assert.Empty},
@@ -221,8 +222,9 @@ func TestTemplates(t *testing.T) {
 		{"parseTime time.UnixDate", args{`{{ .notAfter | parseTime "time.UnixDate" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"parseTime time.UnixDate toJson", args{`{{ .notAfter | parseTime "time.UnixDate" | toJson }}`}, strconv.Quote(now.Add(time.Hour).Format(time.RFC3339)), assert.NoError, assert.Empty},
 		{"parseTime time.UnixDate America/Los_Angeles", args{`{{ parseTime "time.UnixDate" .notAfter "America/Los_Angeles" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
+		{"parseTime dateModify", args{`{{ .notBefore | parseTime | dateModify "1h" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"parseTime in sprig ", args{`{{ toDate "Mon Jan _2 15:04:05 MST 2006" .notAfter }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
-		{"toTime toLayout date", args{`{{ .nbf | toTime | date (toLayout "time.RFC3339") }}`}, now.Local().Format(time.RFC3339), assert.NoError, assert.Empty},
+		{"toTime toTimeLayout date", args{`{{ .nbf | toTime | date (toTimeLayout "time.RFC3339") }}`}, now.Local().Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"parseTime error", args{`{{ parseTime "time.UnixDate" .notAfter "America/FooBar" }}`}, "0001-01-01 00:00:00 +0000 UTC", assert.NoError, assert.Empty},
 		{"mustParseTime error", args{`{{ mustParseTime "time.UnixDate" .notAfter "America/FooBar" }}`}, "", assert.Error, assert.Empty},
 		{"fail", args{`{{ fail "error" }}`}, "", assert.Error, assert.NotEmpty},
