@@ -11,16 +11,33 @@ import (
 )
 
 // GetFuncMap returns the list of functions provided by sprig. It adds the
-// function "formatTime", "toTime", "mustToTime", and changes the function
+// functions "formatTime", "toTime", "mustToTime", and changes the function
 // "fail".
 //
-// The "formatTime" function receives a time or a Unix epoch and formats it to
-// RFC3339 in UTC. The "toTime" and "mustToTime" functions parses a formatted
-// string and returns the time value it represents. The "toLayout" function
+// The "toTime" function receives a time or a Unix epoch and returns a time.Time
+// in UTC. The "formatTime" function uses "toTime" and formats the resulting
+// time using RFC3339. The functions "parseTime" and "mustParseTime" parses a
+// string and returns the time.Time it represents. The "toLayout" function
 // converts strings like "time.RFC3339" or "time.UnixDate" to the actual layout
 // represented by the Go constant with the same name. The "fail" function sets
 // the provided message, so that template errors are reported directly to the
 // template without having the wrapper that text/template adds.
+//
+//	{{ toTime }}
+//		=> time.Now().UTC()
+//	{{ .Token.nbf | toTime }}
+//		=> time.Unix(.Token.nbf, 0).UTC()
+//	{{ .Token.nbf | formatTime }}
+//		=> time.Unix(.Token.nbf, 0).UTC().Format(time.RFC3339)
+//	{{ "2024-07-02T23:16:02Z" | parseTime }}
+//		=> time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
+//	{{ parseTime "time.RFC339" "2024-07-02T23:16:02Z" }}
+//		=> time.Parse(time.RFC3339, "2024-07-02T23:16:02Z")
+//	{{ parseTime "time.UnixDate" "Tue Jul  2 16:20:48 PDT 2024" "America/Los_Angeles" }}
+//		=> loc, _ := time.LoadLocation("America/Los_Angeles")
+//		   time.ParseInLocation(time.UnixDate, "Tue Jul  2 16:20:48 PDT 2024", loc)
+//	{{ toLayout "time.RFC3339" }}
+//		=> time.RFC3339
 //
 // sprig "env" and "expandenv" functions are removed to avoid the leak of
 // information.
@@ -34,12 +51,13 @@ func GetFuncMap(failMessage *string) template.FuncMap {
 	}
 	m["formatTime"] = formatTime
 	m["toTime"] = toTime
-	m["mustToTime"] = mustToTime
+	m["parseTime"] = parseTime
+	m["mustParseTime"] = mustParseTime
 	m["toLayout"] = toLayout
 	return m
 }
 
-func formatTime(v any) string {
+func toTime(v any) time.Time {
 	var t time.Time
 	switch date := v.(type) {
 	case time.Time:
@@ -61,15 +79,19 @@ func formatTime(v any) string {
 	default:
 		t = time.Now()
 	}
-	return t.UTC().Format(time.RFC3339)
+	return t.UTC()
 }
 
-func toTime(v ...string) time.Time {
-	t, _ := mustToTime(v...)
+func formatTime(v any) string {
+	return toTime(v).Format(time.RFC3339)
+}
+
+func parseTime(v ...string) time.Time {
+	t, _ := mustParseTime(v...)
 	return t
 }
 
-func mustToTime(v ...string) (time.Time, error) {
+func mustParseTime(v ...string) (time.Time, error) {
 	switch len(v) {
 	case 0:
 		return time.Now().UTC(), nil
