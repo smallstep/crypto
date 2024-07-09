@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.step.sm/crypto/pemutil"
 )
 
 func createCertificateRequest(t *testing.T, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
@@ -47,6 +48,21 @@ func createCertificateRequest(t *testing.T, commonName string, sans []string) (*
 		t.Fatal(err)
 	}
 	return cr, priv
+}
+
+func readCertificateRequest(t *testing.T, filename, keyFilename string) (*x509.CertificateRequest, crypto.Signer) {
+	t.Helper()
+
+	cr, err := pemutil.ReadCertificateRequest(filename)
+	require.NoError(t, err)
+
+	key, err := pemutil.Read(keyFilename)
+	require.NoError(t, err)
+
+	signer, ok := key.(crypto.Signer)
+	require.True(t, ok)
+
+	return cr, signer
 }
 
 func createIssuerCertificate(t *testing.T, commonName string) (*x509.Certificate, crypto.Signer) {
@@ -134,6 +150,8 @@ func TestNewCertificate(t *testing.T) {
 		}
 		return ipNet
 	}
+
+	rawSubjectCR, rawSubjectKey := readCertificateRequest(t, "testdata/rawSubject.csr", "testdata/rawSubject.key")
 
 	type args struct {
 		cr   *x509.CertificateRequest
@@ -282,6 +300,38 @@ func TestNewCertificate(t *testing.T) {
 			}),
 			PublicKey:          priv.Public(),
 			PublicKeyAlgorithm: x509.Ed25519,
+		}, false},
+		{"okRawSubject", args{rawSubjectCR, []Option{WithTemplateFile("./testdata/rawSubject.tpl", TemplateData{
+			SANsKey: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+			},
+			CertificateRequestKey: NewCertificateRequestFromX509(rawSubjectCR),
+		})}}, &Certificate{
+			Subject: Subject{},
+			RawSubject: []byte{
+				0x30, 0x68, 0x31, 0x0b, 0x30, 0x09, 0x06, 0x03,
+				0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31,
+				0x13, 0x30, 0x11, 0x06, 0x03, 0x55, 0x04, 0x08,
+				0x0c, 0x0a, 0x43, 0x61, 0x6c, 0x69, 0x66, 0x6f,
+				0x72, 0x6e, 0x69, 0x61, 0x31, 0x16, 0x30, 0x14,
+				0x06, 0x03, 0x55, 0x04, 0x07, 0x0c, 0x0d, 0x53,
+				0x61, 0x6e, 0x20, 0x46, 0x72, 0x61, 0x6e, 0x63,
+				0x69, 0x73, 0x63, 0x6f, 0x31, 0x1d, 0x30, 0x1b,
+				0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x14, 0x53,
+				0x6d, 0x61, 0x6c, 0x6c, 0x73, 0x74, 0x65, 0x70,
+				0x20, 0x4c, 0x61, 0x62, 0x73, 0x2c, 0x20, 0x49,
+				0x6e, 0x63, 0x2e, 0x31, 0x0d, 0x30, 0x0b, 0x06,
+				0x03, 0x55, 0x04, 0x03, 0x0c, 0x04, 0x54, 0x65,
+				0x73, 0x74,
+			},
+			SANs:     []SubjectAlternativeName{{Type: DNSType, Value: "foo.com"}},
+			KeyUsage: KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage([]x509.ExtKeyUsage{
+				x509.ExtKeyUsageServerAuth,
+				x509.ExtKeyUsageClientAuth,
+			}),
+			PublicKey:          rawSubjectKey.Public(),
+			PublicKeyAlgorithm: x509.ECDSA,
 		}, false},
 		{"badSignature", args{crBadSignateure, nil}, nil, true},
 		{"failTemplate", args{cr, []Option{WithTemplate(`{{ fail "fatal error }}`, CreateTemplateData("commonName", []string{"foo.com"}))}}, nil, true},
