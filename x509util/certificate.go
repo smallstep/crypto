@@ -17,6 +17,7 @@ import (
 type Certificate struct {
 	Version               int                      `json:"version"`
 	Subject               Subject                  `json:"subject"`
+	RawSubject            []byte                   `json:"rawSubject"`
 	Issuer                Issuer                   `json:"issuer"`
 	SerialNumber          SerialNumber             `json:"serialNumber"`
 	DNSNames              MultiString              `json:"dnsNames"`
@@ -128,6 +129,7 @@ func (c *Certificate) GetCertificate() *x509.Certificate {
 	// Unparsed data
 	cert.PublicKey = c.PublicKey
 	cert.PublicKeyAlgorithm = c.PublicKeyAlgorithm
+	cert.RawSubject = c.RawSubject
 
 	// Subject
 	c.Subject.Set(cert)
