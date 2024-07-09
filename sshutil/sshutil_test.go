@@ -4,10 +4,10 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/elliptic"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/keyutil"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -36,14 +36,17 @@ func generateKey(t *testing.T, kty, crv string, size int) (crypto.PublicKey, ssh
 }
 
 func generateFakeSKKey(t *testing.T, pub crypto.PublicKey) ssh.PublicKey {
+	t.Helper()
 	switch k := pub.(type) {
 	case *ecdsa.PublicKey:
+		p, err := k.ECDH()
+		require.NoError(t, err)
 		w := struct {
 			Name        string
 			ID          string
 			Key         []byte
 			Application string
-		}{"sk-ecdsa-sha2-nistp256@openssh.com", "nistp256", elliptic.Marshal(k.Curve, k.X, k.Y), "ssh"}
+		}{"sk-ecdsa-sha2-nistp256@openssh.com", "nistp256", p.Bytes(), "ssh"}
 		return &skKey{
 			typ:   "sk-ecdsa-sha2-nistp256@openssh.com",
 			bytes: ssh.Marshal(w),
