@@ -61,6 +61,7 @@ type context struct {
 	firstBlock       bool
 	passwordPrompt   string
 	passwordPrompter PasswordPrompter
+	allowDER         bool
 }
 
 // newContext initializes the context with a filename.
@@ -209,6 +210,15 @@ func WithFirstBlock() Options {
 	}
 }
 
+// WithAllowDER will avoid failing if a PEM contains more than one block or
+// certificate and it will only look at the first.
+func WithAllowDER() Options {
+	return func(ctx *context) error {
+		ctx.allowDER = true
+		return nil
+	}
+}
+
 // ParseCertificate extracts the first certificate from the given pem.
 func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
 	var block *pem.Block
@@ -231,52 +241,123 @@ func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
 	return nil, errors.New("error parsing certificate: no certificate found")
 }
 
-// ParseCertificateBundle extracts all the certificates in the given data.
-func ParseCertificateBundle(pemData []byte) ([]*x509.Certificate, error) {
-	var block *pem.Block
-	var certs []*x509.Certificate
-	for len(pemData) > 0 {
-		block, pemData = pem.Decode(pemData)
-		if block == nil {
-			return nil, errors.New("error decoding pem block")
-		}
-		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
-			continue
-		}
+// ParseCertificateBundle returns a list of *x509.Certificate parsed from
+// the given bytes.
+//
+// - supports PEM and DER certificate formats
+//   - DER format requires WithAllowDER() option
+//   - If a DER-formatted file is given only one certificate will be returned.
+func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, error) {
+	var err error
+	// Populate options
+	ctx := newContext("certificate-bundle-bytes")
+	if err := ctx.apply(opts); err != nil {
+		return nil, err
+	}
 
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return nil, errors.Wrap(err, "error parsing certificate")
+	// PEM format
+	if bytes.Contains(data, PEMBlockHeader) {
+		var block *pem.Block
+		var bundle []*x509.Certificate
+		for len(data) > 0 {
+			block, data = pem.Decode(data)
+			if block == nil {
+				break
+			}
+			if block.Type != "CERTIFICATE" {
+				continue
+			}
+			var crt *x509.Certificate
+			crt, err = x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				if ctx.filename == "" {
+					return nil, errors.Wrapf(err, "error parsing certificate bundle bytes input")
+				}
+				return nil, errors.Wrapf(err, "error parsing %s", ctx.filename)
+			}
+			bundle = append(bundle, crt)
 		}
-		certs = append(certs, cert)
+		if len(bundle) == 0 {
+			return nil, &InvalidPEMError{File: ctx.filename, Type: PEMTypeCertificate}
+		}
+		return bundle, nil
 	}
-	if len(certs) == 0 {
-		return nil, errors.New("error parsing certificate: no certificate found")
+
+	if !ctx.allowDER {
+		return nil, &InvalidPEMError{
+			File:    ctx.filename,
+			Type:    PEMTypeCertificate,
+			Message: "input does not contain any PEM encoded blocks",
+		}
 	}
-	return certs, nil
+
+	// DER format (binary)
+	crt, err := x509.ParseCertificate(data)
+	if err != nil {
+		if ctx.filename == "" {
+			return nil, errors.Wrapf(err, "error parsing certificate bundle bytes input")
+		}
+		return nil, errors.Wrapf(err, "error parsing %s", ctx.filename)
+	}
+	return []*x509.Certificate{crt}, nil
 }
 
-// ParseCertificateRequest extracts the first certificate from the given pem.
-func ParseCertificateRequest(pemData []byte) (*x509.CertificateRequest, error) {
-	var block *pem.Block
-	for len(pemData) > 0 {
-		block, pemData = pem.Decode(pemData)
-		if block == nil {
-			return nil, errors.New("error decoding pem block")
-		}
-		if (block.Type != "CERTIFICATE REQUEST" && block.Type != "NEW CERTIFICATE REQUEST") ||
-			len(block.Headers) != 0 {
-			continue
-		}
-
-		csr, err := x509.ParseCertificateRequest(block.Bytes)
-		if err != nil {
-			return nil, errors.Wrap(err, "error parsing certificate request")
-		}
-		return csr, nil
+// ParseCertificateRequest extracts the first *x509.CertificateRequest
+// from the given data.
+//
+// - supports PEM and DER certificate formats
+//   - DER format requires WithAllowDER() option
+//   - If a DER-formatted file is given only one certificate will be returned.
+func ParseCertificateRequest(data []byte, opts ...Options) (*x509.CertificateRequest, error) {
+	// Populate options
+	ctx := newContext("certificate-request-bytes")
+	if err := ctx.apply(opts); err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("error parsing certificate request: no certificate found")
+	// PEM format
+	if bytes.Contains(data, PEMBlockHeader) {
+		var block *pem.Block
+		for len(data) > 0 {
+			block, data = pem.Decode(data)
+			if block == nil {
+				break
+			}
+			if !strings.HasSuffix(block.Type, "CERTIFICATE REQUEST") {
+				continue
+			}
+			csr, err := x509.ParseCertificateRequest(block.Bytes)
+			if err != nil {
+				var msg = fmt.Sprintf("error parsing certificate request bytes input: CSR PEM block is invalid: %v", err)
+				if ctx.filename != "" {
+					msg = fmt.Sprintf("error parsing %s: CSR PEM block is invalid: %v", ctx.filename, err)
+				}
+				return nil, &InvalidPEMError{
+					File: ctx.filename, Type: PEMTypeCertificateRequest,
+					Message: msg,
+					Err:     err,
+				}
+			}
+
+			return csr, nil
+		}
+	}
+
+	if !ctx.allowDER {
+		return nil, &InvalidPEMError{
+			File:    ctx.filename,
+			Type:    PEMTypeCertificate,
+			Message: "input does not contain any PEM encoded blocks",
+		}
+	}
+
+	// DER format (binary)
+	csr, err := x509.ParseCertificateRequest(data)
+	if err != nil && ctx.filename == "" {
+		return nil, errors.Wrapf(err, "error parsing certificate request bytes input")
+	}
+	return csr, errors.Wrapf(err, "error parsing %s", ctx.filename)
+
 }
 
 // PEMType represents a PEM block type. (e.g., CERTIFICATE, CERTIFICATE REQUEST, etc.)
@@ -366,60 +447,10 @@ func ReadCertificateBundle(filename string) ([]*x509.Certificate, error) {
 		return nil, err
 	}
 
-	return ReadCertificateBundleBytes(b, WithFilename(filename))
-}
-
-// ReadCertificateBundleBytes returns a list of *x509.Certificate parsed from
-// the given bytes.
-//
-// - supports PEM and DER certificate formats
-//   - If a DER-formatted file is given only one certificate will be returned.
-func ReadCertificateBundleBytes(b []byte, opts ...Options) ([]*x509.Certificate, error) {
-	var err error
-
-	// Populate options
-	ctx := newContext("certificate-bundle-bytes")
-	if err := ctx.apply(opts); err != nil {
-		return nil, err
-	}
-
-	// PEM format
-	if bytes.Contains(b, PEMBlockHeader) {
-		var block *pem.Block
-		var bundle []*x509.Certificate
-		for len(b) > 0 {
-			block, b = pem.Decode(b)
-			if block == nil {
-				break
-			}
-			if block.Type != "CERTIFICATE" {
-				continue
-			}
-			var crt *x509.Certificate
-			crt, err = x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				if ctx.filename == "" {
-					return nil, errors.Wrapf(err, "error parsing certificate bundle bytes input")
-				}
-				return nil, errors.Wrapf(err, "error parsing %s", ctx.filename)
-			}
-			bundle = append(bundle, crt)
-		}
-		if len(bundle) == 0 {
-			return nil, &InvalidPEMError{File: ctx.filename, Type: PEMTypeCertificate}
-		}
-		return bundle, nil
-	}
-
-	// DER format (binary)
-	crt, err := x509.ParseCertificate(b)
-	if err != nil {
-		if ctx.filename == "" {
-			return nil, errors.Wrapf(err, "error parsing certificate bundle bytes input")
-		}
-		return nil, errors.Wrapf(err, "error parsing %s", ctx.filename)
-	}
-	return []*x509.Certificate{crt}, nil
+	return ParseCertificateBundle(b,
+		WithFilename(filename),
+		WithAllowDER(),
+	)
 }
 
 // ReadCertificateRequest reads the given filename and returns a
@@ -433,53 +464,10 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 		return nil, err
 	}
 
-	return ReadCertificateRequestBytes(b, WithFilename(filename))
-}
-
-// ReadCertificateRequestBytes returns a *x509.CertificateRequest from the given
-// bytes. It supports PEM and DER Certificate Request formats.
-func ReadCertificateRequestBytes(b []byte, opts ...Options) (*x509.CertificateRequest, error) {
-	// Populate options
-	ctx := newContext("certificate-request-bytes")
-	if err := ctx.apply(opts); err != nil {
-		return nil, err
-	}
-
-	// PEM format
-	if bytes.Contains(b, PEMBlockHeader) {
-		var block *pem.Block
-		for len(b) > 0 {
-			block, b = pem.Decode(b)
-			if block == nil {
-				break
-			}
-			if !strings.HasSuffix(block.Type, "CERTIFICATE REQUEST") {
-				continue
-			}
-			csr, err := x509.ParseCertificateRequest(block.Bytes)
-			if err != nil {
-				var msg = fmt.Sprintf("error parsing certificate request bytes input: CSR PEM block is invalid: %v", err)
-				if ctx.filename != "" {
-					msg = fmt.Sprintf("error parsing %s: CSR PEM block is invalid: %v", ctx.filename, err)
-				}
-				return nil, &InvalidPEMError{
-					File: ctx.filename, Type: PEMTypeCertificateRequest,
-					Message: msg,
-					Err:     err,
-				}
-			}
-
-			return csr, nil
-		}
-	}
-	fmt.Println("Does not have pem block header")
-
-	// DER format (binary)
-	csr, err := x509.ParseCertificateRequest(b)
-	if err != nil && ctx.filename == "" {
-		return nil, errors.Wrapf(err, "error parsing certificate request bytes input")
-	}
-	return csr, errors.Wrapf(err, "error parsing %s", ctx.filename)
+	return ParseCertificateRequest(b,
+		WithFilename(filename),
+		WithAllowDER(),
+	)
 }
 
 // Parse returns the key or certificate PEM-encoded in the given bytes.
