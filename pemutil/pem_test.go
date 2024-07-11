@@ -280,9 +280,9 @@ func TestReadCertificate(t *testing.T) {
 		{"testdata/bundle.crt", nil, errors.New("error decoding testdata/bundle.crt: contains more than one PEM encoded block")},
 		{"testdata/notexists.crt", nil, errors.New(`error reading "testdata/notexists.crt": no such file or directory`)},
 		{"testdata/badca.crt", nil, errors.New("error parsing testdata/badca.crt")},
-		{"testdata/badpem.crt", nil, errors.New("file testdata/badpem.crt does not contain a valid PEM encoded certificate")},
+		{"testdata/badpem.crt", nil, errors.New("error parsing testdata/badpem.crt: does not contain a valid PEM encoded certificate")},
 		{"testdata/badder.crt", nil, errors.New("error parsing testdata/badder.crt")},
-		{"testdata/openssl.p256.pem", nil, errors.New("file testdata/openssl.p256.pem does not contain a valid PEM encoded certificate")},
+		{"testdata/openssl.p256.pem", nil, errors.New("error parsing testdata/openssl.p256.pem: does not contain a valid PEM encoded certificate")},
 	}
 
 	for _, tc := range tests {
@@ -313,9 +313,9 @@ func TestReadCertificateBundle(t *testing.T) {
 		{"testdata/extrajunkbundle.crt", 2, nil},
 		{"testdata/notexists.crt", 0, errors.New(`error reading "testdata/notexists.crt": no such file or directory`)},
 		{"testdata/badca.crt", 0, errors.New("error parsing testdata/badca.crt")},
-		{"testdata/badpem.crt", 0, errors.New("file testdata/badpem.crt does not contain a valid PEM encoded certificate")},
+		{"testdata/badpem.crt", 0, errors.New("error parsing testdata/badpem.crt: does not contain a valid PEM encoded certificate")},
 		{"testdata/badder.crt", 0, errors.New("error parsing testdata/badder.crt")},
-		{"testdata/openssl.p256.pem", 0, errors.New("file testdata/openssl.p256.pem does not contain a valid PEM encoded certificate")},
+		{"testdata/openssl.p256.pem", 0, errors.New("error parsing testdata/openssl.p256.pem: does not contain a valid PEM encoded certificate")},
 	}
 
 	for _, tc := range tests {
@@ -346,14 +346,14 @@ func TestParseCertificateBundle(t *testing.T) {
 	}{
 		{"ok cert", "testdata/ca.crt", []Options{WithFilename("testdata/ca.crt")}, 1, nil},
 		{"ok non PEM header", "testdata/nonPEMHeaderCa.crt", []Options{WithFilename("testdata/nonPEMHeaderCa.crt")}, 1, nil},
-		{"ok der", "testdata/ca.der", []Options{WithFilename("testdata/ca.der"), WithAllowDER()}, 1, nil},
-		{"fail der not allowed", "testdata/ca.der", []Options{WithFilename("testdata/ca.der")}, 0, errors.New(`input does not contain any PEM encoded blocks`)},
+		{"ok der", "testdata/ca.der", []Options{WithFilename("testdata/ca.der")}, 1, nil},
 		{"ok bundle", "testdata/bundle.crt", []Options{WithFilename("testdata/bundle.crt")}, 2, nil},
 		{"ok extra junk in bundle", "testdata/extrajunkbundle.crt", []Options{WithFilename("testdata/extrajunkbundle.crt")}, 2, nil},
-		{"fail bad cert", "testdata/badca.crt", []Options{WithFilename("testdata/badca.crt")}, 0, errors.New("error parsing testdata/badca.crt")},
-		{"fail no PEM", "testdata/badpem.crt", []Options{WithFilename("testdata/badpem.crt")}, 0, errors.New("file testdata/badpem.crt does not contain a valid PEM encoded certificate")},
-		{"fail bad der", "testdata/badder.crt", []Options{WithFilename("testdata/badder.crt"), WithAllowDER()}, 0, errors.New("error parsing testdata/badder.crt")},
-		{"fail no valid PEM", "testdata/openssl.p256.pem", []Options{WithFilename("testdata/openssl.p256.pem")}, 0, errors.New("file testdata/openssl.p256.pem does not contain a valid PEM encoded certificate")},
+		{"fail bad cert w/ file", "testdata/badca.crt", []Options{WithFilename("testdata/badca.crt")}, 0, errors.New("error parsing testdata/badca.crt")},
+		{"fail no PEM", "testdata/badpem.crt", []Options{WithFilename("testdata/badpem.crt")}, 0, errors.New("error parsing testdata/badpem.crt")},
+		{"fail no PEM", "testdata/badpem.crt", []Options{}, 0, errors.New("error parsing input")},
+		{"fail bad der", "testdata/badder.crt", []Options{WithFilename("testdata/badder.crt")}, 0, errors.New("error parsing testdata/badder.crt")},
+		{"fail no valid PEM", "testdata/openssl.p256.pem", []Options{WithFilename("testdata/openssl.p256.pem")}, 0, errors.New("error parsing testdata/openssl.p256.pem")},
 	}
 
 	for _, tc := range tests {
@@ -1132,12 +1132,11 @@ func TestParseCertificateRequest(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{"testdata/test.csr", []Options{WithFilename("testdata/test.csr")}}, expected, false},
-		{"fail der not allowed", args{"testdata/test.der", []Options{WithFilename("testdata/test.der")}}, nil, true},
-		{"ok der", args{"testdata/test.der", []Options{WithFilename("testdata/test.der"), WithAllowDER()}}, expected, false},
+		{"ok der", args{"testdata/test.der", []Options{WithFilename("testdata/test.der")}}, expected, false},
 		{"ok keytool", args{"testdata/keytool.csr", []Options{WithFilename("testdata/keytool.csr")}}, expected, false},
 		{"fail bad csr", args{"testdata/bad.csr", []Options{WithFilename("testata/bad.csr")}}, nil, true},
 		{"fail certificate", args{"testdata/ca.crt", []Options{WithFilename("testata/ca.csrt")}}, nil, true},
-		{"fail certificate der", args{"testdata/ca.der", []Options{WithFilename("testata/ca.der"), WithAllowDER()}}, nil, true},
+		{"fail certificate der", args{"testdata/ca.der", []Options{WithFilename("testata/ca.der")}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
