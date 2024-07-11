@@ -357,7 +357,6 @@ func ParseCertificateRequest(data []byte, opts ...Options) (*x509.CertificateReq
 		return nil, errors.Wrapf(err, "error parsing certificate request bytes input")
 	}
 	return csr, errors.Wrapf(err, "error parsing %s", ctx.filename)
-
 }
 
 // PEMType represents a PEM block type. (e.g., CERTIFICATE, CERTIFICATE REQUEST, etc.)
