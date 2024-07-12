@@ -340,20 +340,19 @@ func TestParseCertificateBundle(t *testing.T) {
 	tests := []struct {
 		name string
 		fn   string
-		opts []Options
 		len  int
 		err  error
 	}{
-		{"ok cert", "testdata/ca.crt", []Options{WithFilename("testdata/ca.crt")}, 1, nil},
-		{"ok non PEM header", "testdata/nonPEMHeaderCa.crt", []Options{WithFilename("testdata/nonPEMHeaderCa.crt")}, 1, nil},
-		{"ok der", "testdata/ca.der", []Options{WithFilename("testdata/ca.der")}, 1, nil},
-		{"ok bundle", "testdata/bundle.crt", []Options{WithFilename("testdata/bundle.crt")}, 2, nil},
-		{"ok extra junk in bundle", "testdata/extrajunkbundle.crt", []Options{WithFilename("testdata/extrajunkbundle.crt")}, 2, nil},
-		{"fail bad cert w/ file", "testdata/badca.crt", []Options{WithFilename("testdata/badca.crt")}, 0, errors.New("error parsing testdata/badca.crt")},
-		{"fail no PEM", "testdata/badpem.crt", []Options{WithFilename("testdata/badpem.crt")}, 0, errors.New("error parsing testdata/badpem.crt")},
-		{"fail no PEM", "testdata/badpem.crt", []Options{}, 0, errors.New("error parsing input")},
-		{"fail bad der", "testdata/badder.crt", []Options{WithFilename("testdata/badder.crt")}, 0, errors.New("error parsing testdata/badder.crt")},
-		{"fail no valid PEM", "testdata/openssl.p256.pem", []Options{WithFilename("testdata/openssl.p256.pem")}, 0, errors.New("error parsing testdata/openssl.p256.pem")},
+		{"ok cert", "testdata/ca.crt", 1, nil},
+		{"ok non PEM header", "testdata/nonPEMHeaderCa.crt", 1, nil},
+		{"ok der", "testdata/ca.der", 1, nil},
+		{"ok bundle", "testdata/bundle.crt", 2, nil},
+		{"ok extra junk in bundle", "testdata/extrajunkbundle.crt", 2, nil},
+		{"fail bad cert w/ file", "testdata/badca.crt", 0, errors.New("error decoding PEM data: x509: trailing data")},
+		{"fail no PEM", "testdata/badpem.crt", 0, errors.New("does not contain a valid PEM encoded certificate")},
+		{"fail no PEM", "testdata/badpem.crt", 0, errors.New("does not contain a valid PEM encoded certificate")},
+		{"fail bad der", "testdata/badder.crt", 0, errors.New("error parsing certificate as DER format: x509: malformed certificate")},
+		{"fail no valid PEM", "testdata/openssl.p256.pem", 0, errors.New("does not contain a valid PEM encoded certificate")},
 	}
 
 	for _, tc := range tests {
@@ -362,7 +361,7 @@ func TestParseCertificateBundle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			certs, err := ParseCertificateBundle(b, tc.opts...)
+			certs, err := ParseCertificateBundle(b)
 			if tc.err != nil {
 				if assert.Error(t, err, tc.fn, "- expected error but got nil") {
 					assert.HasPrefix(t, err.Error(), tc.err.Error())
@@ -1123,7 +1122,6 @@ func TestParseCertificateRequest(t *testing.T) {
 	}
 	type args struct {
 		filename string
-		opts     []Options
 	}
 	tests := []struct {
 		name    string
@@ -1131,12 +1129,12 @@ func TestParseCertificateRequest(t *testing.T) {
 		want    *x509.CertificateRequest
 		wantErr bool
 	}{
-		{"ok", args{"testdata/test.csr", []Options{WithFilename("testdata/test.csr")}}, expected, false},
-		{"ok der", args{"testdata/test.der", []Options{WithFilename("testdata/test.der")}}, expected, false},
-		{"ok keytool", args{"testdata/keytool.csr", []Options{WithFilename("testdata/keytool.csr")}}, expected, false},
-		{"fail bad csr", args{"testdata/bad.csr", []Options{WithFilename("testata/bad.csr")}}, nil, true},
-		{"fail certificate", args{"testdata/ca.crt", []Options{WithFilename("testata/ca.csrt")}}, nil, true},
-		{"fail certificate der", args{"testdata/ca.der", []Options{WithFilename("testata/ca.der")}}, nil, true},
+		{"ok", args{"testdata/test.csr"}, expected, false},
+		{"ok der", args{"testdata/test.der"}, expected, false},
+		{"ok keytool", args{"testdata/keytool.csr"}, expected, false},
+		{"fail bad csr", args{"testdata/bad.csr"}, nil, true},
+		{"fail certificate", args{"testdata/ca.crt"}, nil, true},
+		{"fail certificate der", args{"testdata/ca.der"}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1144,7 +1142,7 @@ func TestParseCertificateRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := ParseCertificateRequest(b, tt.args.opts...)
+			got, err := ParseCertificateRequest(b)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseCertificateRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return

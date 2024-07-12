@@ -235,20 +235,9 @@ func ParseCertificate(pemData []byte) (*x509.Certificate, error) {
 // the given bytes.
 //
 // - supports PEM and DER certificate formats
-//   - DER format requires WithAllowDER() option
 //   - If a DER-formatted file is given only one certificate will be returned.
-func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, error) {
+func ParseCertificateBundle(data []byte) ([]*x509.Certificate, error) {
 	var err error
-	// Populate options
-	ctx := newContext("")
-	if err := ctx.apply(opts); err != nil {
-		return nil, err
-	}
-
-	filename := "input"
-	if ctx.filename != "" {
-		filename = ctx.filename
-	}
 
 	// PEM format
 	if bytes.Contains(data, PEMBlockHeader) {
@@ -259,14 +248,13 @@ func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, 
 			if block == nil {
 				break
 			}
-			if block.Type != "CERTIFICATE" {
+			if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
 				continue
 			}
 			var crt *x509.Certificate
 			crt, err = x509.ParseCertificate(block.Bytes)
 			if err != nil {
 				return nil, &InvalidPEMError{
-					File: ctx.filename,
 					Err:  err,
 					Type: PEMTypeCertificate,
 				}
@@ -275,9 +263,7 @@ func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, 
 		}
 		if len(bundle) == 0 {
 			return nil, &InvalidPEMError{
-				File:    ctx.filename,
-				Type:    PEMTypeCertificate,
-				Message: fmt.Sprintf("error parsing %s: does not contain a valid PEM encoded certificate", filename),
+				Type: PEMTypeCertificate,
 			}
 		}
 		return bundle, nil
@@ -287,8 +273,7 @@ func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, 
 	crt, err := x509.ParseCertificate(data)
 	if err != nil {
 		return nil, &InvalidPEMError{
-			File:    ctx.filename,
-			Message: fmt.Sprintf("error parsing %s as DER format: %v", filename, err),
+			Message: fmt.Sprintf("error parsing certificate as DER format: %v", err),
 			Type:    PEMTypeCertificate,
 		}
 	}
@@ -299,20 +284,8 @@ func ParseCertificateBundle(data []byte, opts ...Options) ([]*x509.Certificate, 
 // from the given data.
 //
 // - supports PEM and DER certificate formats
-//   - DER format requires WithAllowDER() option
 //   - If a DER-formatted file is given only one certificate will be returned.
-func ParseCertificateRequest(data []byte, opts ...Options) (*x509.CertificateRequest, error) {
-	// Populate options
-	ctx := newContext("")
-	if err := ctx.apply(opts); err != nil {
-		return nil, err
-	}
-
-	filename := "input"
-	if ctx.filename != "" {
-		filename = ctx.filename
-	}
-
+func ParseCertificateRequest(data []byte) (*x509.CertificateRequest, error) {
 	// PEM format
 	if bytes.Contains(data, PEMBlockHeader) {
 		var block *pem.Block
@@ -327,7 +300,6 @@ func ParseCertificateRequest(data []byte, opts ...Options) (*x509.CertificateReq
 			csr, err := x509.ParseCertificateRequest(block.Bytes)
 			if err != nil {
 				return nil, &InvalidPEMError{
-					File: ctx.filename,
 					Type: PEMTypeCertificateRequest,
 					Err:  err,
 				}
@@ -341,8 +313,7 @@ func ParseCertificateRequest(data []byte, opts ...Options) (*x509.CertificateReq
 	csr, err := x509.ParseCertificateRequest(data)
 	if err != nil {
 		return nil, &InvalidPEMError{
-			File:    ctx.filename,
-			Message: fmt.Sprintf("error parsing %s as DER format: %v", filename, err),
+			Message: fmt.Sprintf("error parsing certificate request as DER format: %v", err),
 			Type:    PEMTypeCertificateRequest,
 		}
 	}
@@ -386,19 +357,12 @@ func (e *InvalidPEMError) Error() string {
 	case e.Message != "":
 		return e.Message
 	case e.Err != nil:
-		if e.File == "" {
-			return fmt.Sprintf("error decoding PEM data: %v", e.Err)
-		}
-		return fmt.Sprintf("error parsing %s: %v", e.File, e.Err)
+		return fmt.Sprintf("error decoding PEM data: %v", e.Err)
 	default:
-		var prefix = "input"
-		if e.File != "" {
-			prefix = fmt.Sprintf("file %s", e.File)
-		}
 		if e.Type == PEMTypeUndefined {
-			return fmt.Sprintf("%s does not contain valid PEM encoded data", prefix)
+			return "does not contain valid PEM encoded data"
 		}
-		return fmt.Sprintf("%s does not contain a valid PEM encoded %s", prefix, e.Type)
+		return fmt.Sprintf("does not contain a valid PEM encoded %s", e.Type)
 	}
 }
 
@@ -439,9 +403,11 @@ func ReadCertificateBundle(filename string) ([]*x509.Certificate, error) {
 		return nil, err
 	}
 
-	return ParseCertificateBundle(b,
-		WithFilename(filename),
-	)
+	bundle, err := ParseCertificateBundle(b)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing %s: %w", filename, err)
+	}
+	return bundle, nil
 }
 
 // ReadCertificateRequest reads the given filename and returns a
@@ -455,9 +421,11 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 		return nil, err
 	}
 
-	return ParseCertificateRequest(b,
-		WithFilename(filename),
-	)
+	cr, err := ParseCertificateRequest(b)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing %s: %w", filename, err)
+	}
+	return cr, nil
 }
 
 // Parse returns the key or certificate PEM-encoded in the given bytes.
