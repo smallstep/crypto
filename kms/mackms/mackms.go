@@ -555,7 +555,7 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	return nil
 }
 
-func (*MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
 	if req.Query == "" {
 		return nil, fmt.Errorf("searchKeysRequest 'query' cannot be empty")
 	}
@@ -572,42 +572,32 @@ func (*MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespon
 
 	results := make([]apiv1.SearchKeyResult, len(keys))
 	for i, key := range keys {
-		pub, hash, err := extractPublicKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed extracting public key: %w", err)
-		}
+		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
+		defer d.Release()
 
-		attrs := security.SecKeyCopyAttributes(key)
-		defer attrs.Release()
-
-		h := security.GetSecAttrApplicationLabel(attrs)
-		fmt.Println("h", h, string(h)) // TODO: remove debugging
-
-		a := security.GetSecAttrApplicationTag(attrs)
-		fmt.Println("a", a, string(a))
-
-		l := security.GetSecAttrLabel(attrs)
-		fmt.Println("l", l)
-
-		j := attrs.XML()
-		fmt.Println("j", string(j))
+		fmt.Println(string(d.XML())) // TODO: remove debug
 
 		name := uri.New(Scheme, url.Values{
-			"hash": []string{hex.EncodeToString(hash)},
+			"hash":  []string{hex.EncodeToString(security.GetSecAttrApplicationLabel(d))},
+			"label": []string{security.GetSecAttrLabel(d)},
+			"tag":   []string{security.GetSecAttrApplicationTag(d)},
 		})
 
-		// TODO: should we rely on the values from u only? Or can we get them from key properties too?
-		if u.label != "" {
-			name.Values.Set("label", u.label)
-		}
-		if u.tag != "" {
-			name.Values.Set("tag", u.tag)
-		}
+		// TODO: extract those from the attributes too
 		if u.useSecureEnclave {
 			name.Values.Set("se", "true")
 		}
 		if u.useBiometrics {
 			name.Values.Set("bio", "true")
+		}
+
+		// obtain the public key by requesting it, as the current
+		// representation of the key are just the attributes.
+		pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: name.String(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed getting public key: %w", err)
 		}
 
 		results[i] = apiv1.SearchKeyResult{
@@ -617,9 +607,6 @@ func (*MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespon
 				SigningKey: name.String(),
 			},
 		}
-
-		// ensure the resource is released
-		key.Release()
 	}
 
 	return &apiv1.SearchKeysResponse{
@@ -699,12 +686,12 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 	return security.NewSecKeyRef(key), nil
 }
 
-func getPrivateKeys(u *keyAttributes) ([]*security.SecKeyRef, error) {
+func getPrivateKeys(u *keyAttributes) ([]*security.SecKeychainItemRef, error) {
 	dict := cf.Dictionary{
-		security.KSecClass:        security.KSecClassKey,
-		security.KSecAttrKeyClass: security.KSecAttrKeyClassPrivate,
-		security.KSecReturnRef:    cf.True,
-		security.KSecMatchLimit:   security.KSecMatchLimitAll,
+		security.KSecClass:            security.KSecClassKey,
+		security.KSecAttrKeyClass:     security.KSecAttrKeyClassPrivate,
+		security.KSecReturnAttributes: cf.True, // return keychain attributes, i.e. tag and label
+		security.KSecMatchLimit:       security.KSecMatchLimitAll,
 	}
 
 	if u.tag != "" {
@@ -749,10 +736,10 @@ func getPrivateKeys(u *keyAttributes) ([]*security.SecKeyRef, error) {
 	array := cf.NewArrayRef(result)
 	defer array.Release()
 
-	keys := make([]*security.SecKeyRef, array.Len())
+	keys := make([]*security.SecKeychainItemRef, array.Len())
 	for i := 0; i < array.Len(); i++ {
 		item := array.Get(i)
-		key := security.NewSecKeyRef(item)
+		key := security.NewSecKeychainItemRef(item)
 		key.Retain() // retain the key, so that it's not released early
 		keys[i] = key
 	}

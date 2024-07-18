@@ -1268,9 +1268,11 @@ func TestMacKMS_SearchKeys(t *testing.T) {
 	for _, key := range got.Results {
 		u, err := uri.ParseWithScheme(Scheme, key.Name)
 		require.NoError(t, err)
+		assert.Equal(t, tag, u.Get("tag"))
 		if hash := u.Get("hash"); hash != "" {
 			hashes = append(hashes, hash)
 		}
+
 	}
 
 	assert.Equal(t, expectedHashes, hashes)

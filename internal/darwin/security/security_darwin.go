@@ -84,6 +84,7 @@ var (
 	KSecPublicKeyAttrs                               = cf.TypeRef(C.kSecPublicKeyAttrs)
 	KSecPrivateKeyAttrs                              = cf.TypeRef(C.kSecPrivateKeyAttrs)
 	KSecReturnRef                                    = cf.TypeRef(C.kSecReturnRef)
+	KSecReturnAttributes                             = cf.TypeRef(C.kSecReturnAttributes)
 	KSecValueRef                                     = cf.TypeRef(C.kSecValueRef)
 	KSecValueData                                    = cf.TypeRef(C.kSecValueData)
 )
@@ -138,6 +139,20 @@ const (
 	// Indicates that at least one constraint must be satisfied.
 	KSecAccessControlOr = SecAccessControlCreateFlags(C.kSecAccessControlOr)
 )
+
+type SecKeychainItemRef struct {
+	Value C.SecKeychainItemRef
+}
+
+func NewSecKeychainItemRef(ref cf.TypeRef) *SecKeychainItemRef {
+	return &SecKeychainItemRef{
+		Value: C.SecKeychainItemRef(ref),
+	}
+}
+
+func (v *SecKeychainItemRef) Release()              { cf.Release(v) }
+func (v *SecKeychainItemRef) TypeRef() cf.CFTypeRef { return cf.CFTypeRef(v.Value) }
+func (v *SecKeychainItemRef) Retain()               { cf.Retain(v) }
 
 type SecKeyRef struct {
 	Value C.SecKeyRef
@@ -312,12 +327,11 @@ func GetSecAttrApplicationLabel(v *cf.DictionaryRef) []byte {
 }
 
 func GetSecAttrApplicationTag(v *cf.DictionaryRef) string {
-	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrApplicationTag)))
-	tag := ""
-	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
-		tag = C.GoString(cstr)
-	}
-	return tag
+	data := C.CFDataRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrApplicationTag)))
+	return string(C.GoBytes(
+		unsafe.Pointer(C.CFDataGetBytePtr(data)),
+		C.int(C.CFDataGetLength(data)),
+	))
 }
 
 func GetSecAttrLabel(v *cf.DictionaryRef) string {
