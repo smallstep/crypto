@@ -80,6 +80,7 @@ var (
 	KSecClassIdentity                                = cf.TypeRef(C.kSecClassIdentity)
 	KSecMatchLimit                                   = cf.TypeRef(C.kSecMatchLimit)
 	KSecMatchLimitOne                                = cf.TypeRef(C.kSecMatchLimitOne)
+	KSecMatchLimitAll                                = cf.TypeRef(C.kSecMatchLimitAll)
 	KSecPublicKeyAttrs                               = cf.TypeRef(C.kSecPublicKeyAttrs)
 	KSecPrivateKeyAttrs                              = cf.TypeRef(C.kSecPrivateKeyAttrs)
 	KSecReturnRef                                    = cf.TypeRef(C.kSecReturnRef)
@@ -150,6 +151,7 @@ func NewSecKeyRef(ref cf.TypeRef) *SecKeyRef {
 
 func (v *SecKeyRef) Release()              { cf.Release(v) }
 func (v *SecKeyRef) TypeRef() cf.CFTypeRef { return cf.CFTypeRef(v.Value) }
+func (v *SecKeyRef) Retain()               { cf.Retain(v) }
 
 type SecCertificateRef struct {
 	Value C.SecCertificateRef
@@ -307,6 +309,24 @@ func GetSecAttrApplicationLabel(v *cf.DictionaryRef) []byte {
 		unsafe.Pointer(C.CFDataGetBytePtr(data)),
 		C.int(C.CFDataGetLength(data)),
 	)
+}
+
+func GetSecAttrApplicationTag(v *cf.DictionaryRef) string {
+	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrApplicationTag)))
+	tag := ""
+	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
+		tag = C.GoString(cstr)
+	}
+	return tag
+}
+
+func GetSecAttrLabel(v *cf.DictionaryRef) string {
+	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrLabel)))
+	label := ""
+	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
+		label = C.GoString(cstr)
+	}
+	return label
 }
 
 func GetSecValueData(v *cf.DictionaryRef) []byte {

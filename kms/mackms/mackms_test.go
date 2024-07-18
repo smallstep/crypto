@@ -1233,3 +1233,45 @@ func Test_apiv1Error(t *testing.T) {
 		})
 	}
 }
+
+func TestMacKMS_SearchKeys(t *testing.T) {
+	name, err := randutil.Hex(10)
+	require.NoError(t, err)
+	tag := fmt.Sprintf("com.smallstep.crypto.test.%s", name) // unique tag per test execution
+
+	k := &MacKMS{}
+	key1, err := k.CreateKey(&apiv1.CreateKeyRequest{Name: fmt.Sprintf("mackms:name=test-step-1;label=test-step-1;tag=%s;se=false", tag)})
+	require.NoError(t, err)
+	key2, err := k.CreateKey(&apiv1.CreateKeyRequest{Name: fmt.Sprintf("mackms:name=test-step-2;label=test-step-2;tag=%s;se=false", tag)})
+	require.NoError(t, err)
+	u1, err := uri.ParseWithScheme(Scheme, key1.Name)
+	require.NoError(t, err)
+	u2, err := uri.ParseWithScheme(Scheme, key2.Name)
+	require.NoError(t, err)
+	expectedHashes := []string{u1.Get("hash"), u2.Get("hash")}
+	require.Len(t, expectedHashes, 2)
+	t.Cleanup(func() {
+		err = k.DeleteKey(&apiv1.DeleteKeyRequest{Name: key1.Name})
+		require.NoError(t, err)
+		err = k.DeleteKey(&apiv1.DeleteKeyRequest{Name: key2.Name})
+		require.NoError(t, err)
+	})
+
+	// search by tag
+	got, err := k.SearchKeys(&apiv1.SearchKeysRequest{Query: fmt.Sprintf("mackms:tag=%s", tag)})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Len(t, got.Results, 2)
+
+	// check if the correct keys were found by comparing hashes
+	var hashes []string
+	for _, key := range got.Results {
+		u, err := uri.ParseWithScheme(Scheme, key.Name)
+		require.NoError(t, err)
+		if hash := u.Get("hash"); hash != "" {
+			hashes = append(hashes, hash)
+		}
+	}
+
+	assert.Equal(t, expectedHashes, hashes)
+}

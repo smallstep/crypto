@@ -555,6 +555,80 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	return nil
 }
 
+func (*MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+	if req.Query == "" {
+		return nil, fmt.Errorf("searchKeysRequest 'query' cannot be empty")
+	}
+
+	u, err := parseSearchURI(req.Query)
+	if err != nil {
+		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
+	}
+
+	keys, err := getPrivateKeys(u)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting keys: %w", err)
+	}
+
+	results := make([]apiv1.SearchKeyResult, len(keys))
+	for i, key := range keys {
+		pub, hash, err := extractPublicKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed extracting public key: %w", err)
+		}
+
+		attrs := security.SecKeyCopyAttributes(key)
+		defer attrs.Release()
+
+		h := security.GetSecAttrApplicationLabel(attrs)
+		fmt.Println("h", h, string(h)) // TODO: remove debugging
+
+		a := security.GetSecAttrApplicationTag(attrs)
+		fmt.Println("a", a, string(a))
+
+		l := security.GetSecAttrLabel(attrs)
+		fmt.Println("l", l)
+
+		j := attrs.XML()
+		fmt.Println("j", string(j))
+
+		name := uri.New(Scheme, url.Values{
+			"hash": []string{hex.EncodeToString(hash)},
+		})
+
+		// TODO: should we rely on the values from u only? Or can we get them from key properties too?
+		if u.label != "" {
+			name.Values.Set("label", u.label)
+		}
+		if u.tag != "" {
+			name.Values.Set("tag", u.tag)
+		}
+		if u.useSecureEnclave {
+			name.Values.Set("se", "true")
+		}
+		if u.useBiometrics {
+			name.Values.Set("bio", "true")
+		}
+
+		results[i] = apiv1.SearchKeyResult{
+			Name:      name.String(),
+			PublicKey: pub,
+			CreateSignerRequest: apiv1.CreateSignerRequest{
+				SigningKey: name.String(),
+			},
+		}
+
+		// ensure the resource is released
+		key.Release()
+	}
+
+	return &apiv1.SearchKeysResponse{
+		Results: results,
+	}, nil
+}
+
+var _ apiv1.SearchableKeyManager = (*MacKMS)(nil)
+
 func deleteItem(dict cf.Dictionary, hash []byte) error {
 	if len(hash) > 0 {
 		d, err := cf.NewData(hash)
@@ -623,6 +697,67 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 		return nil, fmt.Errorf("macOS SecItemCopyMatching failed: %w", err)
 	}
 	return security.NewSecKeyRef(key), nil
+}
+
+func getPrivateKeys(u *keyAttributes) ([]*security.SecKeyRef, error) {
+	dict := cf.Dictionary{
+		security.KSecClass:        security.KSecClassKey,
+		security.KSecAttrKeyClass: security.KSecAttrKeyClassPrivate,
+		security.KSecReturnRef:    cf.True,
+		security.KSecMatchLimit:   security.KSecMatchLimitAll,
+	}
+
+	if u.tag != "" {
+		cfTag, err := cf.NewData([]byte(u.tag))
+		if err != nil {
+			return nil, err
+		}
+		defer cfTag.Release()
+		dict[security.KSecAttrApplicationTag] = cfTag
+	}
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
+		if err != nil {
+			return nil, err
+		}
+		defer cfLabel.Release()
+		dict[security.KSecAttrLabel] = cfLabel
+	}
+	if len(u.hash) > 0 {
+		cfHash, err := cf.NewData(u.hash)
+		if err != nil {
+			return nil, err
+		}
+		defer cfHash.Release()
+		dict[security.KSecAttrApplicationLabel] = cfHash
+	}
+
+	// construct the query
+	query, err := cf.NewDictionary(dict)
+	if err != nil {
+		return nil, err
+	}
+	defer query.Release()
+
+	// perform the query
+	var result cf.TypeRef
+	err = security.SecItemCopyMatching(query, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed matching: %w", err)
+	}
+
+	array := cf.NewArrayRef(result)
+	defer array.Release()
+
+	keys := make([]*security.SecKeyRef, array.Len())
+	for i := 0; i < array.Len(); i++ {
+		item := array.Get(i)
+		key := security.NewSecKeyRef(item)
+		key.Retain() // retain the key, so that it's not released early
+		keys[i] = key
+	}
+
+	return keys, nil
 }
 
 func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, error) {
@@ -912,6 +1047,49 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	return &certAttributes{
 		label:        label,
 		serialNumber: serialNumber,
+	}, nil
+}
+
+func parseSearchURI(rawuri string) (*keyAttributes, error) {
+	// When rawuri is just the key name
+	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
+		return &keyAttributes{
+			label: rawuri,
+			tag:   DefaultTag,
+		}, nil
+	}
+
+	// When rawuri is a mackms uri.
+	u, err := uri.ParseWithScheme(Scheme, rawuri)
+	if err != nil {
+		return nil, err
+	}
+
+	// Special case for mackms:label
+	if len(u.Values) == 1 {
+		for k, v := range u.Values {
+			if (len(v) == 1 && v[0] == "") || len(v) == 0 {
+				return &keyAttributes{
+					label: k,
+					tag:   DefaultTag,
+				}, nil
+			}
+		}
+	}
+
+	// With regular values, uris look like this:
+	// mackms:label=my-key;tag=my-tag;hash=010a...;se=true;bio=true
+	label := u.Get("label") // when searching, the label can be empty
+	tag := u.Get("tag")
+	if tag == "" {
+		tag = DefaultTag
+	}
+	return &keyAttributes{
+		label:            label,
+		tag:              tag,
+		hash:             u.GetEncoded("hash"),
+		useSecureEnclave: u.GetBool("se"),
+		useBiometrics:    u.GetBool("bio"),
 	}, nil
 }
 

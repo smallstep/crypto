@@ -33,6 +33,7 @@ const (
 	nilCFData       C.CFDataRef       = 0
 	nilCFString     C.CFStringRef     = 0
 	nilCFDictionary C.CFDictionaryRef = 0
+	nilCFArray      C.CFArrayRef      = 0
 	nilCFError      C.CFErrorRef      = 0
 	nilCFType       C.CFTypeRef       = 0
 )
@@ -45,10 +46,15 @@ func Release(ref TypeReferer) {
 	C.CFRelease(ref.TypeRef())
 }
 
+func Retain(ref TypeReferer) {
+	C.CFRetain(ref.TypeRef())
+}
+
 type CFTypeRef = C.CFTypeRef
 type CFStringRef = C.CFStringRef
 type CFErrorRef = C.CFErrorRef
 type CFDictionaryRef = C.CFDictionaryRef
+type CFArrayRef = C.CFArrayRef
 type CFDataRef = C.CFDataRef
 
 type TypeRef C.CFTypeRef
@@ -166,6 +172,46 @@ func NewDictionaryRef(ref TypeRef) *DictionaryRef {
 
 func (v *DictionaryRef) Release()           { Release(v) }
 func (v *DictionaryRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
+
+func (v *DictionaryRef) XML() []byte {
+	if v == nil {
+		return nil
+	}
+
+	ref := C.CFPropertyListCreateData(AllocatorDefault, v.TypeRef(), C.kCFPropertyListXMLFormat_v1_0, 0, nil)
+
+	// TODO: release?
+	return C.GoBytes(
+		unsafe.Pointer(C.CFDataGetBytePtr(ref)),
+		C.int(C.CFDataGetLength(ref)),
+	)
+}
+
+type ArrayRef struct {
+	Value C.CFArrayRef
+}
+
+func NewArrayRef(ref TypeRef) *ArrayRef {
+	return &ArrayRef{
+		Value: C.CFArrayRef(ref),
+	}
+}
+
+func (v *ArrayRef) Release()           { Release(v) }
+func (v *ArrayRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
+
+func (v *ArrayRef) Len() int {
+	arrayCount := C.CFArrayGetCount(v.Value)
+
+	// TODO: release array count?
+
+	return int(arrayCount)
+}
+
+func (v *ArrayRef) Get(index int) TypeRef {
+	item := C.CFArrayGetValueAtIndex(v.Value, C.CFIndex(index))
+	return TypeRef(item)
+}
 
 //nolint:errname // type name matches original name
 type ErrorRef C.CFErrorRef
