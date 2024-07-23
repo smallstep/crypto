@@ -5,7 +5,7 @@ go 1.21
 require (
 	cloud.google.com/go/kms v1.18.3
 	filippo.io/edwards25519 v1.1.0
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.12.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.13.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.10.0
 	github.com/Masterminds/sprig/v3 v3.2.3
@@ -39,7 +39,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.4.0 // indirect
 	cloud.google.com/go/iam v1.1.10 // indirect
 	cloud.google.com/go/longrunning v0.5.9 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.9.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
