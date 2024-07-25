@@ -19,7 +19,7 @@ type KeyManager interface {
 }
 
 // SearchableKeyManager is an optional interface for KMS implementations
-// that support searching for keys based on crtain attributes.
+// that support searching for keys based on certain attributes.
 //
 // # Experimental
 //

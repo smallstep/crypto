@@ -173,20 +173,6 @@ func NewDictionaryRef(ref TypeRef) *DictionaryRef {
 func (v *DictionaryRef) Release()           { Release(v) }
 func (v *DictionaryRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
 
-func (v *DictionaryRef) XML() []byte {
-	if v == nil {
-		return nil
-	}
-
-	ref := C.CFPropertyListCreateData(AllocatorDefault, v.TypeRef(), C.kCFPropertyListXMLFormat_v1_0, 0, nil)
-
-	// TODO: release?
-	return C.GoBytes(
-		unsafe.Pointer(C.CFDataGetBytePtr(ref)),
-		C.int(C.CFDataGetLength(ref)),
-	)
-}
-
 type ArrayRef struct {
 	Value C.CFArrayRef
 }
@@ -201,11 +187,7 @@ func (v *ArrayRef) Release()           { Release(v) }
 func (v *ArrayRef) TypeRef() CFTypeRef { return C.CFTypeRef(v.Value) }
 
 func (v *ArrayRef) Len() int {
-	arrayCount := C.CFArrayGetCount(v.Value)
-
-	// TODO: release array count?
-
-	return int(arrayCount)
+	return int(C.CFArrayGetCount(v.Value))
 }
 
 func (v *ArrayRef) Get(index int) TypeRef {

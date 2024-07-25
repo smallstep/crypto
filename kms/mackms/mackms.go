@@ -562,7 +562,7 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 
 	u, err := parseSearchURI(req.Query)
 	if err != nil {
-		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
+		return nil, fmt.Errorf("failed parsing query: %w", err)
 	}
 
 	keys, err := getPrivateKeys(u)
@@ -575,20 +575,14 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
 		defer d.Release()
 
-		fmt.Println(string(d.XML())) // TODO: remove debug
-
 		name := uri.New(Scheme, url.Values{
 			"hash":  []string{hex.EncodeToString(security.GetSecAttrApplicationLabel(d))},
 			"label": []string{security.GetSecAttrLabel(d)},
 			"tag":   []string{security.GetSecAttrApplicationTag(d)},
 		})
 
-		// TODO: extract those from the attributes too
-		if u.useSecureEnclave {
+		if tokenID := security.GetSecAttrTokenID(d); tokenID == "com.apple.setoken" {
 			name.Values.Set("se", "true")
-		}
-		if u.useBiometrics {
-			name.Values.Set("bio", "true")
 		}
 
 		// obtain the public key by requesting it, as the current

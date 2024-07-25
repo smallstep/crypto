@@ -334,13 +334,44 @@ func GetSecAttrApplicationTag(v *cf.DictionaryRef) string {
 	))
 }
 
-func GetSecAttrLabel(v *cf.DictionaryRef) string {
+func GetSecAttrLabel(v *cf.DictionaryRef) (label string) {
 	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrLabel)))
-	label := ""
 	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
 		label = C.GoString(cstr)
 	}
 	return label
+}
+
+func GetSecAttrTokenID(v *cf.DictionaryRef) (tokenID string) {
+	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrTokenID)))
+	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
+		tokenID = C.GoString(cstr)
+	}
+	return tokenID
+}
+
+func GetSecAttrAccessControl(v *cf.DictionaryRef) *SecAccessControlRef {
+	var keyAttributes unsafe.Pointer
+	tokenID := GetSecAttrTokenID(v)
+	if tokenID == "com.apple.setoken" {
+		keyAttributes = C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecPrivateKeyAttrs))
+	} else {
+		keyAttributes = C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecPublicKeyAttrs))
+	}
+	if keyAttributes == nil {
+		return nil
+	}
+
+	dv := C.CFDictionaryGetValue(C.CFDictionaryRef(keyAttributes), unsafe.Pointer(C.kSecAttrAccessControl))
+	if dv == nil {
+		return nil
+	}
+
+	ref := &SecAccessControlRef{
+		ref: C.SecAccessControlRef(dv),
+	}
+
+	return ref
 }
 
 func GetSecValueData(v *cf.DictionaryRef) []byte {
