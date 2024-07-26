@@ -1239,7 +1239,15 @@ func TestMacKMS_SearchKeys(t *testing.T) {
 	require.NoError(t, err)
 	tag := fmt.Sprintf("com.smallstep.crypto.test.%s", name) // unique tag per test execution
 
+	// initialize MacKMS
 	k := &MacKMS{}
+
+	// search by tag; expect 0 keys before the test
+	got, err := k.SearchKeys(&apiv1.SearchKeysRequest{Query: fmt.Sprintf("mackms:tag=%s", tag)})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Len(t, got.Results, 0)
+
 	key1, err := k.CreateKey(&apiv1.CreateKeyRequest{Name: fmt.Sprintf("mackms:name=test-step-1;label=test-step-1;tag=%s;se=false", tag)})
 	require.NoError(t, err)
 	key2, err := k.CreateKey(&apiv1.CreateKeyRequest{Name: fmt.Sprintf("mackms:name=test-step-2;label=test-step-2;tag=%s;se=false", tag)})
@@ -1258,7 +1266,7 @@ func TestMacKMS_SearchKeys(t *testing.T) {
 	})
 
 	// search by tag
-	got, err := k.SearchKeys(&apiv1.SearchKeysRequest{Query: fmt.Sprintf("mackms:tag=%s", tag)})
+	got, err = k.SearchKeys(&apiv1.SearchKeysRequest{Query: fmt.Sprintf("mackms:tag=%s", tag)})
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Results, 2)

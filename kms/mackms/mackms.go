@@ -555,6 +555,18 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	return nil
 }
 
+// SearchKeys searches for keys according to the query URI in the request.
+//
+//   - "" will return all keys managed by the KMS (using the default tag)
+//   - "mackms:" will return all keys managed by the KMS  (using the default tag)
+//   - "mackms:label=my-label" will return all keys using label "my-label" (and the default tag)
+//   - "mackms:hash=the-hash" will return all keys having hash "hash" (and the default tag; generally one result)
+//   - "mackms:tag=my-tag" will search for all keys with "my-tag"
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
 	if req.Query == "" {
 		return nil, fmt.Errorf("searchKeysRequest 'query' cannot be empty")
@@ -586,7 +598,7 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 		}
 
 		// obtain the public key by requesting it, as the current
-		// representation of the key are just the attributes.
+		// representation of the key includes just the attributes.
 		pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: name.String(),
 		})
@@ -724,7 +736,10 @@ func getPrivateKeys(u *keyAttributes) ([]*security.SecKeychainItemRef, error) {
 	var result cf.TypeRef
 	err = security.SecItemCopyMatching(query, &result)
 	if err != nil {
-		return nil, fmt.Errorf("failed matching: %w", err)
+		if errors.Is(err, security.ErrNotFound) {
+			return []*security.SecKeychainItemRef{}, nil
+		}
+		return nil, fmt.Errorf("macOS SecItemCopyMatching failed: %w", err)
 	}
 
 	array := cf.NewArrayRef(result)
@@ -1041,7 +1056,7 @@ func parseSearchURI(rawuri string) (*keyAttributes, error) {
 	}
 
 	// When rawuri is a mackms uri.
-	u, err := uri.ParseWithScheme(Scheme, rawuri)
+	u, err := uri.Parse(rawuri)
 	if err != nil {
 		return nil, err
 	}
@@ -1066,11 +1081,9 @@ func parseSearchURI(rawuri string) (*keyAttributes, error) {
 		tag = DefaultTag
 	}
 	return &keyAttributes{
-		label:            label,
-		tag:              tag,
-		hash:             u.GetEncoded("hash"),
-		useSecureEnclave: u.GetBool("se"),
-		useBiometrics:    u.GetBool("bio"),
+		label: label,
+		tag:   tag,
+		hash:  u.GetEncoded("hash"),
 	}, nil
 }
 
