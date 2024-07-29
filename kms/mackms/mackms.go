@@ -597,7 +597,6 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 	results := make([]apiv1.SearchKeyResult, len(keys))
 	for i, key := range keys {
 		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
-		defer key.Release()
 		defer d.Release()
 
 		name := uri.New(Scheme, url.Values{})
