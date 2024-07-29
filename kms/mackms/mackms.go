@@ -58,6 +58,14 @@ type keyAttributes struct {
 	keySize          int
 }
 
+type keySearchAttributes struct {
+	label            string
+	tag              string
+	hash             []byte
+	secureEnclaveSet bool
+	useSecureEnclave bool
+}
+
 type certAttributes struct {
 	label        string
 	serialNumber *big.Int
@@ -555,13 +563,17 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	return nil
 }
 
-// SearchKeys searches for keys according to the query URI in the request.
+// SearchKeys searches for keys according to the query URI in the request. By default,
+// all keys managed by the KMS using the default tag, and both Secure Enclave as well as
+// non-Secure Enclave keys will be returned.
 //
 //   - "" will return all keys managed by the KMS (using the default tag)
 //   - "mackms:" will return all keys managed by the KMS  (using the default tag)
 //   - "mackms:label=my-label" will return all keys using label "my-label" (and the default tag)
 //   - "mackms:hash=the-hash" will return all keys having hash "hash" (and the default tag; generally one result)
 //   - "mackms:tag=my-tag" will search for all keys with "my-tag"
+//   - "mackms:se=true" will return all Secure Enclave keys managed by the KMS (using the default tag)
+//   - "mackms:se=false" will return all non-Secure Enclave keys managed by the KMS (using the default tag)
 //
 // # Experimental
 //
@@ -585,17 +597,29 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 	results := make([]apiv1.SearchKeyResult, len(keys))
 	for i, key := range keys {
 		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
+		defer key.Release()
 		defer d.Release()
 
-		name := uri.New(Scheme, url.Values{
-			"hash":  []string{hex.EncodeToString(security.GetSecAttrApplicationLabel(d))},
-			"label": []string{security.GetSecAttrLabel(d)},
-			"tag":   []string{security.GetSecAttrApplicationTag(d)},
-		})
-
-		if tokenID := security.GetSecAttrTokenID(d); tokenID == "com.apple.setoken" {
+		name := uri.New(Scheme, url.Values{})
+		tokenID := security.GetSecAttrTokenID(d)
+		keyInSecureEnclave := tokenID == "com.apple.setoken"
+		switch {
+		case !u.secureEnclaveSet && keyInSecureEnclave:
 			name.Values.Set("se", "true")
+		case !u.secureEnclaveSet && !keyInSecureEnclave:
+			name.Values.Set("se", "false")
+		case u.useSecureEnclave && keyInSecureEnclave:
+			name.Values.Set("se", "true")
+		case !u.useSecureEnclave && !keyInSecureEnclave:
+			name.Values.Set("se", "false")
+		default:
+			// skip in case the query doesn't match the actual property
+			continue
 		}
+
+		name.Values.Set("hash", hex.EncodeToString(security.GetSecAttrApplicationLabel(d)))
+		name.Values.Set("label", security.GetSecAttrLabel(d))
+		name.Values.Set("tag", security.GetSecAttrApplicationTag(d))
 
 		// obtain the public key by requesting it, as the current
 		// representation of the key includes just the attributes.
@@ -692,7 +716,7 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 	return security.NewSecKeyRef(key), nil
 }
 
-func getPrivateKeys(u *keyAttributes) ([]*security.SecKeychainItemRef, error) {
+func getPrivateKeys(u *keySearchAttributes) ([]*security.SecKeychainItemRef, error) {
 	dict := cf.Dictionary{
 		security.KSecClass:            security.KSecClassKey,
 		security.KSecAttrKeyClass:     security.KSecAttrKeyClassPrivate,
@@ -1046,10 +1070,10 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	}, nil
 }
 
-func parseSearchURI(rawuri string) (*keyAttributes, error) {
+func parseSearchURI(rawuri string) (*keySearchAttributes, error) {
 	// When rawuri is just the key name
 	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
-		return &keyAttributes{
+		return &keySearchAttributes{
 			label: rawuri,
 			tag:   DefaultTag,
 		}, nil
@@ -1065,7 +1089,7 @@ func parseSearchURI(rawuri string) (*keyAttributes, error) {
 	if len(u.Values) == 1 {
 		for k, v := range u.Values {
 			if (len(v) == 1 && v[0] == "") || len(v) == 0 {
-				return &keyAttributes{
+				return &keySearchAttributes{
 					label: k,
 					tag:   DefaultTag,
 				}, nil
@@ -1080,10 +1104,12 @@ func parseSearchURI(rawuri string) (*keyAttributes, error) {
 	if tag == "" {
 		tag = DefaultTag
 	}
-	return &keyAttributes{
-		label: label,
-		tag:   tag,
-		hash:  u.GetEncoded("hash"),
+	return &keySearchAttributes{
+		label:            label,
+		tag:              tag,
+		hash:             u.GetEncoded("hash"),
+		secureEnclaveSet: u.Values.Has("se"),
+		useSecureEnclave: u.GetBool("se"),
 	}, nil
 }
 
