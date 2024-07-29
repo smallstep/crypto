@@ -178,6 +178,24 @@ type CreateKeyResponse struct {
 	CreateSignerRequest CreateSignerRequest
 }
 
+// SearchKeysRequest is the request for the SearchKeys method. It takes
+// a Query string with the attributes to match when searching the
+// KMS.
+type SearchKeysRequest struct {
+	Query string
+}
+
+// SearchKeyResult is a single result returned from the SearchKeys
+// method.
+type SearchKeyResult CreateKeyResponse
+
+// SearchKeysResponse is the response for the SearchKeys method. It
+// wraps a slice of SearchKeyResult structs. The Results slice can
+// be empty in case no key was found for the search query.
+type SearchKeysResponse struct {
+	Results []SearchKeyResult
+}
+
 // CreateSignerRequest is the parameter used in the kms.CreateSigner method.
 type CreateSignerRequest struct {
 	Signer           crypto.Signer
