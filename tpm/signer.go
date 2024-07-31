@@ -62,10 +62,14 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
 			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
+		case errors.Is(err, storage.ErrNoStorageConfigured):
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNoStorageConfigured)
+		default:
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, err)
 		}
-		return nil, err
 	}
 
 	loadedKey, err := t.attestTPM.LoadKey(key.Data)

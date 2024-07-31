@@ -46,7 +46,7 @@ func TestAK_MarshalJSON(t *testing.T) {
 	data, err := json.Marshal(ak)
 	require.NoError(t, err)
 
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	err = json.Unmarshal(data, &m)
 	require.NoError(t, err)
 
@@ -65,12 +65,12 @@ func TestAK_MarshalJSON(t *testing.T) {
 	data, err = json.Marshal(ak)
 	require.NoError(t, err)
 
-	m = map[string]interface{}{}
+	m = map[string]any{}
 	err = json.Unmarshal(data, &m)
 	require.NoError(t, err)
 
 	require.Equal(t, m["name"], ak.name)
 	require.Equal(t, m["data"], base64.StdEncoding.EncodeToString(ak.data))
-	require.Equal(t, m["chain"], []interface{}{base64.StdEncoding.EncodeToString(cert.Raw), base64.StdEncoding.EncodeToString(ca.Intermediate.Raw)})
+	require.Equal(t, m["chain"], []any{base64.StdEncoding.EncodeToString(cert.Raw), base64.StdEncoding.EncodeToString(ca.Intermediate.Raw)})
 	require.Equal(t, m["createdAt"], ak.createdAt.Format("2006-01-02T15:04:05Z"))
 }

@@ -154,7 +154,11 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		return nil, err
 	}
 
-	if _, err := t.store.GetKey(name); err == nil {
+	_, err = t.store.GetKey(name)
+	switch {
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrNoStorageConfigured)
+	case err == nil:
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
 	}
 
@@ -178,6 +182,9 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	if err := t.store.AddKey(key.toStorage()); err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return nil, fmt.Errorf("failed adding key %q to storage: %w", name, ErrNoStorageConfigured)
+		}
 		return nil, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
@@ -219,13 +226,24 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		return nil, err
 	}
 
-	if _, err := t.store.GetKey(name); err == nil {
+	_, err = t.store.GetKey(name)
+	switch {
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrNoStorageConfigured)
+	case err == nil:
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
 	}
 
 	ak, err := t.store.GetAK(akName)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
+		case errors.Is(err, storage.ErrNoStorageConfigured):
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNoStorageConfigured)
+		default:
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
+		}
 	}
 
 	loadedAK, err := t.attestTPM.LoadAK(ak.Data)
@@ -263,6 +281,9 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	}
 
 	if err := t.store.AddKey(key.toStorage()); err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return nil, fmt.Errorf("failed adding key %q to storage: %w", name, ErrNoStorageConfigured)
+		}
 		return nil, fmt.Errorf("failed adding key %q to storage: %w", name, err)
 	}
 
@@ -283,10 +304,14 @@ func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
 
 	skey, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
 			return nil, fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
+		case errors.Is(err, storage.ErrNoStorageConfigured):
+			return nil, fmt.Errorf("failed getting key %q: %w", name, ErrNoStorageConfigured)
+		default:
+			return nil, fmt.Errorf("failed getting key %q: %w", name, err)
 		}
-		return nil, fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
 	return keyFromStorage(skey, t), nil
@@ -302,6 +327,9 @@ func (t *TPM) ListKeys(ctx context.Context) (keys []*Key, err error) {
 
 	skeys, err := t.store.ListKeys()
 	if err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return nil, fmt.Errorf("failed listing keys: %w", ErrNoStorageConfigured)
+		}
 		return nil, fmt.Errorf("failed listing keys: %w", err)
 	}
 
@@ -323,6 +351,9 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key
 
 	skeys, err := t.store.ListKeys()
 	if err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return nil, fmt.Errorf("failed listing keys: %w", ErrNoStorageConfigured)
+		}
 		return nil, fmt.Errorf("failed listing keys: %w", err)
 	}
 
@@ -346,10 +377,14 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
 			return fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
+		case errors.Is(err, storage.ErrNoStorageConfigured):
+			return fmt.Errorf("failed getting key %q: %w", name, ErrNoStorageConfigured)
+		default:
+			return fmt.Errorf("failed getting key %q: %w", name, err)
 		}
-		return fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
 	if err := t.attestTPM.DeleteKey(key.Data); err != nil {
@@ -357,6 +392,9 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 	}
 
 	if err := t.store.DeleteKey(name); err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return fmt.Errorf("failed deleting key %q from storage: %w", name, ErrNoStorageConfigured)
+		}
 		return fmt.Errorf("failed deleting key %q from storage: %w", name, err)
 	}
 
@@ -455,6 +493,9 @@ func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	k.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
 
 	if err := k.tpm.store.UpdateKey(k.toStorage()); err != nil {
+		if errors.Is(err, storage.ErrNoStorageConfigured) {
+			return fmt.Errorf("failed updating key %q: %w", k.name, ErrNoStorageConfigured)
+		}
 		return fmt.Errorf("failed updating key %q: %w", k.name, err)
 	}
 
