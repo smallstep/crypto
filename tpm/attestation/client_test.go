@@ -25,7 +25,7 @@ func TestNewClient(t *testing.T) {
 				tpmAttestationCABaseURL: baseURL,
 				options:                 nil,
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &Client{}, i1) {
 					c, _ := i1.(*Client)
 					if assert.NotNil(t, c) {
@@ -48,7 +48,7 @@ func TestNewClient(t *testing.T) {
 				tpmAttestationCABaseURL: baseURL,
 				options:                 []Option{WithInsecure(), WithRootsFile("testdata/roots.pem")},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &Client{}, i1) {
 					c, _ := i1.(*Client)
 					if assert.NotNil(t, c) {

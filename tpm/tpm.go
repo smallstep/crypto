@@ -86,6 +86,8 @@ func WithSimulator(sim simulator.Simulator) NewTPMOption {
 
 type CommandChannel attest.CommandChannelTPM20
 
+// WithCommandChannel is used to configure a [CommandChannel] as the
+// interface to interact with instead of with an actual TPM.
 func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	return func(o *options) error {
 		o.commandChannel = commandChannel
@@ -110,7 +112,10 @@ func (o *options) validate() error {
 }
 
 // New creates a new TPM instance. It takes `opts` to configure
-// the instance.
+// the instance. By default it uses a blackhole storage, meaning
+// that there's no actual persistence. Some operations require
+// an actual persistence mechanism, and will return an error if
+// none is configured.
 func New(opts ...NewTPMOption) (*TPM, error) {
 	tpmOptions := options{
 		attestConfig: &attest.OpenConfig{TPMVersion: attest.TPMVersion20},                      // default configuration for TPM attestation use cases

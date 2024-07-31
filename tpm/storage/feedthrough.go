@@ -1,8 +1,8 @@
 package storage
 
 // FeedthroughStore is a TPMStore that feeds through storage operations
-// to the underlying TPMStore. If no backing TPMStore is set, the operations
-// effectively become NOOPs.
+// to the underlying TPMStore. If no backing TPMStore is set, but the
+// operation requires one, [ErrNoStorageConfigured] will be returned.
 type FeedthroughStore struct {
 	store TPMStore
 }

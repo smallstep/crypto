@@ -15,40 +15,47 @@ func TestFeedthroughStore_NilKeyOperations(t *testing.T) {
 	key2 := &Key{Name: "2nd-key"}
 
 	err := store.AddKey(key1)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.AddKey(key2)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.AddKey(&Key{Name: "1st-key"})
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	k, err := store.GetKey("1st-key")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 	require.Nil(t, k)
 
 	err = store.UpdateKey(k)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	k, err = store.GetKey("3rd-key")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 	require.Nil(t, k)
 
 	names := store.ListKeyNames()
-	require.Equal(t, []string{}, names)
+	require.Empty(t, names)
 
 	keys, err := store.ListKeys()
-	require.NoError(t, err)
-	require.ElementsMatch(t, []*Key{}, keys)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+	require.Empty(t, keys)
 
 	err = store.DeleteKey("3rd-key")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.DeleteKey("1st-key")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
 	keys, err = store.ListKeys()
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+	require.Empty(t, keys)
+
+	err = store.Persist()
 	require.NoError(t, err)
-	require.ElementsMatch(t, []*Key{}, keys)
+
+	err = store.Load()
+	require.NoError(t, err)
 }
 
 func TestFeedthroughStore_KeyOperations(t *testing.T) {
@@ -97,9 +104,16 @@ func TestFeedthroughStore_KeyOperations(t *testing.T) {
 
 	err = store.DeleteKey("1st-key")
 	require.NoError(t, err)
+
 	keys, err = store.ListKeys()
 	require.NoError(t, err)
 	require.ElementsMatch(t, []*Key{key2}, keys)
+
+	err = store.Persist()
+	require.NoError(t, err)
+
+	err = store.Load()
+	require.NoError(t, err)
 }
 
 func TestFeedthroughStore_NilAKOperations(t *testing.T) {
@@ -111,40 +125,47 @@ func TestFeedthroughStore_NilAKOperations(t *testing.T) {
 	ak2 := &AK{Name: "2nd-ak"}
 
 	err := store.AddAK(ak1)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.AddAK(ak2)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.AddAK(&AK{Name: "1st-ak"})
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	k, err := store.GetAK("1st-ak")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 	require.Nil(t, k)
 
 	err = store.UpdateAK(k)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	k, err = store.GetAK("3rd-ak")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 	require.Nil(t, k)
 
 	names := store.ListAKNames()
-	require.Equal(t, []string{}, names)
+	require.Empty(t, names)
 
 	aks, err := store.ListAKs()
-	require.NoError(t, err)
-	require.ElementsMatch(t, []*AK{}, aks)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+	require.Empty(t, aks)
 
 	err = store.DeleteAK("3rd-ak")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
 
 	err = store.DeleteAK("1st-ak")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
 	aks, err = store.ListAKs()
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+	require.Empty(t, aks)
+
+	err = store.Persist()
 	require.NoError(t, err)
-	require.ElementsMatch(t, []*AK{}, aks)
+
+	err = store.Load()
+	require.NoError(t, err)
 }
 
 func TestFeedthroughStore_AKOperations(t *testing.T) {
@@ -193,7 +214,14 @@ func TestFeedthroughStore_AKOperations(t *testing.T) {
 
 	err = store.DeleteAK("1st-ak")
 	require.NoError(t, err)
+
 	aks, err = store.ListAKs()
 	require.NoError(t, err)
 	require.ElementsMatch(t, []*AK{ak2}, aks)
+
+	err = store.Persist()
+	require.NoError(t, err)
+
+	err = store.Load()
+	require.NoError(t, err)
 }
