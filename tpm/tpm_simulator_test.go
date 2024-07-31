@@ -164,7 +164,7 @@ func Test_generator_Read(t *testing.T) {
 		{"ok/tooLongForSimulator", fields{tpm}, args{data: tooLongForSimulator}, 256, nil},
 		{"ok/max", fields{tpm}, args{data: maximumLength}, math.MaxUint16, nil},
 		{"ok/readError", fields{errorTPM}, args{data: readError}, 0, nil},
-		{"fail/longerThanMax", fields{tpm}, args{data: longerThanMax}, 0, errors.New("number of random bytes to read cannot exceed 65535")},
+		{"ok/longerThanMax", fields{tpm}, args{data: longerThanMax}, math.MaxUint16, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
