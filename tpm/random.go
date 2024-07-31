@@ -59,7 +59,7 @@ func (g *generator) Read(p []byte) (n int, err error) {
 		return 0, fmt.Errorf("failed generating random bytes in previous call to Read: %s: %w", errMsg, io.EOF)
 	}
 	if len(p) > math.MaxUint16 {
-		return 0, fmt.Errorf("number of random bytes to read cannot exceed %d", math.MaxUint16)
+		p = p[:math.MaxUint16]
 	}
 
 	ctx := context.Background()
