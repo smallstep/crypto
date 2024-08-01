@@ -144,11 +144,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 		return nil, err
 	}
 
-	_, err = t.store.GetAK(name)
-	switch {
-	case errors.Is(err, storage.ErrNoStorageConfigured):
-		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrNoStorageConfigured)
-	case err == nil:
+	if _, err := t.store.GetAK(name); err == nil {
 		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
 	}
 
@@ -174,9 +170,6 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	}
 
 	if err := t.store.AddAK(ak.toStorage()); err != nil {
-		if errors.Is(err, storage.ErrNoStorageConfigured) {
-			return nil, fmt.Errorf("failed adding AK %q: %w", name, ErrNoStorageConfigured)
-		}
 		return nil, fmt.Errorf("failed adding AK %q: %w", name, err)
 	}
 
@@ -197,14 +190,10 @@ func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
 
 	sak, err := t.store.GetAK(name)
 	if err != nil {
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
-		case errors.Is(err, storage.ErrNoStorageConfigured):
-			return nil, fmt.Errorf("failed getting AK %q: %w", name, ErrNoStorageConfigured)
-		default:
-			return nil, fmt.Errorf("failed getting AK %q: %w", name, err)
 		}
+		return nil, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
 	return akFromStorage(sak, t), nil
@@ -250,9 +239,6 @@ func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
 
 	saks, err := t.store.ListAKs()
 	if err != nil {
-		if errors.Is(err, storage.ErrNoStorageConfigured) {
-			return nil, fmt.Errorf("failed listing AKs: %w", ErrNoStorageConfigured)
-		}
 		return nil, fmt.Errorf("failed listing AKs: %w", err)
 	}
 
@@ -277,14 +263,10 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
+		if errors.Is(err, storage.ErrNotFound) {
 			return fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
-		case errors.Is(err, storage.ErrNoStorageConfigured):
-			return fmt.Errorf("failed getting AK %q: %w", name, ErrNoStorageConfigured)
-		default:
-			return fmt.Errorf("failed getting AK %q: %w", name, err)
 		}
+		return fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
 	// prevent deleting the AK if the TPM (storage) contains keys that
@@ -305,9 +287,6 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 	}
 
 	if err := t.store.DeleteAK(name); err != nil {
-		if errors.Is(err, storage.ErrNoStorageConfigured) {
-			return fmt.Errorf("failed deleting AK %q from storage: %w", name, ErrNoStorageConfigured)
-		}
 		return fmt.Errorf("failed deleting AK %q from storage: %w", name, err)
 	}
 
@@ -430,9 +409,6 @@ func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate
 	ak.chain = chain // TODO(hs): deep copy, so that certs can't be changed by pointer?
 
 	if err := ak.tpm.store.UpdateAK(ak.toStorage()); err != nil {
-		if errors.Is(err, storage.ErrNoStorageConfigured) {
-			return fmt.Errorf("failed updating AK %q: %w", ak.name, ErrNoStorageConfigured)
-		}
 		return fmt.Errorf("failed updating AK %q: %w", ak.name, err)
 	}
 

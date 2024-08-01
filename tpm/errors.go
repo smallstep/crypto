@@ -1,6 +1,10 @@
 package tpm
 
-import "errors"
+import (
+	"errors"
+
+	"go.step.sm/crypto/tpm/storage"
+)
 
 // ErrNotFound is returned when a Key or AK cannot be found
 var ErrNotFound = errors.New("not found")
@@ -10,4 +14,4 @@ var ErrExists = errors.New("already exists")
 
 // ErrNoStorageConfigured is returned when a TPM operation is
 // performed that requires a storage to have been configured
-var ErrNoStorageConfigured = errors.New("no storage configured")
+var ErrNoStorageConfigured = storage.ErrNoStorageConfigured
