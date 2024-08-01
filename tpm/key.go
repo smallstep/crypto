@@ -226,10 +226,10 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	_, err = t.store.GetKey(name)
 	switch {
-	case errors.Is(err, storage.ErrNoStorageConfigured):
-		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	case err == nil:
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
 	ak, err := t.store.GetAK(akName)
