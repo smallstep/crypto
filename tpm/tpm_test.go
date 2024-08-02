@@ -79,6 +79,5 @@ func Test_close(t *testing.T) {
 
 func TestTPMNoStorageConfiguredError(t *testing.T) {
 	err := ErrNoStorageConfigured
-	require.ErrorIs(t, err, ErrNoStorageConfigured)
 	require.ErrorIs(t, err, storage.ErrNoStorageConfigured)
 }
