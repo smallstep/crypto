@@ -3,11 +3,9 @@ package tpm
 import (
 	"context"
 	"crypto"
-	"errors"
 	"fmt"
 	"io"
 
-	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
 )
 
@@ -62,9 +60,6 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
-		}
 		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, err)
 	}
 
