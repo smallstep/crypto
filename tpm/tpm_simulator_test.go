@@ -20,9 +20,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/smallstep/go-attestation/attest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/smallstep/go-attestation/attest"
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
