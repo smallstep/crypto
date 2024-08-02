@@ -1023,3 +1023,52 @@ func Test_tss2Signer_Sign_RSAPSS(t *testing.T) {
 		Hash: crypto.SHA256,
 	}))
 }
+
+func TestTPMOnlyFailsWithoutStorageWhenRequired(t *testing.T) {
+	tpm, err := New(withSimulator(t)) // defaults to blackhole; no storage
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// some operations do not require storage, so must not fail
+	_, err = tpm.Info(ctx)
+	require.NoError(t, err)
+	_, err = tpm.GenerateRandom(ctx, uint16(8))
+	require.NoError(t, err)
+	err = tpm.Available()
+	require.NoError(t, err)
+
+	// most operations require storage, so must fail
+	_, err = tpm.CreateKey(ctx, "key", CreateKeyConfig{Algorithm: "RSA", Size: 3072})
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.AttestKey(ctx, "ak", "key", AttestKeyConfig{Algorithm: "RSA", Size: 3072, QualifyingData: nil})
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.GetKey(ctx, "key")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.ListKeys(ctx)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	err = tpm.DeleteKey(ctx, "key")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.GetKeysAttestedBy(ctx, "ak")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.CreateAK(ctx, "ak")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.GetAK(ctx, "ak")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.ListAKs(ctx)
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	err = tpm.DeleteAK(ctx, "ak")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+
+	_, err = tpm.GetAKByPermanentIdentifier(ctx, "permanent-identifier")
+	require.ErrorIs(t, err, ErrNoStorageConfigured)
+}

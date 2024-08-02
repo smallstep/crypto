@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/smallstep/go-attestation/attest"
+
 	internalkey "go.step.sm/crypto/tpm/internal/key"
 	"go.step.sm/crypto/tpm/storage"
 )
@@ -154,8 +155,12 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		return nil, err
 	}
 
-	if _, err := t.store.GetKey(name); err == nil {
+	_, err = t.store.GetKey(name)
+	switch {
+	case err == nil:
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
 	createConfig := internalkey.CreateConfig{
@@ -219,12 +224,19 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		return nil, err
 	}
 
-	if _, err := t.store.GetKey(name); err == nil {
+	_, err = t.store.GetKey(name)
+	switch {
+	case err == nil:
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
 	ak, err := t.store.GetAK(akName)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
+		}
 		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
 

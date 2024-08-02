@@ -144,8 +144,12 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 		return nil, err
 	}
 
-	if _, err := t.store.GetAK(name); err == nil {
+	_, err = t.store.GetAK(name)
+	switch {
+	case err == nil:
 		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
+	case errors.Is(err, storage.ErrNoStorageConfigured):
+		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
 
 	akConfig := attest.AKConfig{
@@ -153,7 +157,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	}
 	aak, err := t.attestTPM.NewAK(&akConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating new AK %q: %w", name, err)
+		return nil, fmt.Errorf("failed creating AK %q: %w", name, err)
 	}
 	defer aak.Close(t.attestTPM)
 

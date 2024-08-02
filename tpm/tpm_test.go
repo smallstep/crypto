@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"go.step.sm/crypto/tpm/storage"
 )
 
 type closeSimulator struct {
@@ -73,4 +75,9 @@ func Test_close(t *testing.T) {
 	require.Nil(t, tpm.simulator)
 	closeTPM(context.Background(), newCloseErrorTPM(t), &closeErr)
 	require.EqualError(t, closeErr, "failed closing attest.TPM: closeErr") // attest.TPM is backed by the closeSimulator
+}
+
+func TestTPMNoStorageConfiguredError(t *testing.T) {
+	err := ErrNoStorageConfigured
+	require.ErrorIs(t, err, storage.ErrNoStorageConfigured)
 }

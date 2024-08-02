@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/x509util"
@@ -71,7 +72,7 @@ func TestEK_MarshalJSON(t *testing.T) {
 	data, err := json.Marshal(ek)
 	require.NoError(t, err)
 
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	err = json.Unmarshal(data, &m)
 	require.NoError(t, err)
 

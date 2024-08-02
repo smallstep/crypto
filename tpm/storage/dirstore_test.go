@@ -74,10 +74,10 @@ func TestDirstore_KeyOperations(t *testing.T) {
 
 	err = store.DeleteKey("1st-key")
 	require.NoError(t, err)
+
 	keys, err = store.ListKeys()
 	require.NoError(t, err)
 	require.ElementsMatch(t, []*Key{key2}, keys)
-
 }
 
 func TestDirstore_AKOperations(t *testing.T) {
@@ -117,8 +117,8 @@ func TestDirstore_AKOperations(t *testing.T) {
 
 	err = store.DeleteAK("1st-ak")
 	require.NoError(t, err)
+
 	aks, err = store.ListAKs()
 	require.NoError(t, err)
 	require.ElementsMatch(t, []*AK{ak2}, aks)
-
 }

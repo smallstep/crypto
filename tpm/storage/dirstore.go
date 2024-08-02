@@ -10,10 +10,10 @@ import (
 	"github.com/peterbourgon/diskv/v3"
 )
 
-// Dirstore is a concrete implementation of the TPMStore interface that
+// Dirstore is a concrete implementation of the [TPMStore] interface that
 // stores TPM objects in a directory. Each object will be stored in a
-// separate file. The name of the file is constructed by prefixing the
-// name of the object with its type.
+// separate file in the directory. The name of the file is constructed
+// by prefixing the name of the object with its type.
 type Dirstore struct {
 	store     *diskv.Diskv
 	directory string

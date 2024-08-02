@@ -55,7 +55,7 @@ var defaultKeyParamsRSAPSS = tpm2.Public{
 	},
 }
 
-func assertMaybeError(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
+func assertMaybeError(t assert.TestingT, err error, msgAndArgs ...any) bool {
 	return true
 }
 

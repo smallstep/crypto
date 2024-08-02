@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/x509util"
 )
 
 func TestAK_MarshalUnmarshal(t *testing.T) {
-
 	ca, err := minica.New()
 	require.NoError(t, err)
 
@@ -47,7 +47,6 @@ func TestAK_MarshalUnmarshal(t *testing.T) {
 }
 
 func TestKey_MarshalUnmarshal(t *testing.T) {
-
 	ca, err := minica.New()
 	require.NoError(t, err)
 

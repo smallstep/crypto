@@ -1,8 +1,8 @@
 package storage
 
 // FeedthroughStore is a TPMStore that feeds through storage operations
-// to the underlying TPMStore. If no backing TPMStore is set, the operations
-// effectively become NOOPs.
+// to the underlying TPMStore. If no backing TPMStore is set, but the
+// operation requires one, [ErrNoStorageConfigured] will be returned.
 type FeedthroughStore struct {
 	store TPMStore
 }
@@ -15,84 +15,84 @@ func NewFeedthroughStore(store TPMStore) *FeedthroughStore {
 
 func (f *FeedthroughStore) ListKeys() ([]*Key, error) {
 	if f.store == nil {
-		return nil, nil
+		return nil, ErrNoStorageConfigured
 	}
 	return f.store.ListKeys()
 }
 
 func (f *FeedthroughStore) ListKeyNames() []string {
 	if f.store == nil {
-		return []string{}
+		return nil
 	}
 	return f.store.ListKeyNames()
 }
 
 func (f *FeedthroughStore) GetKey(name string) (*Key, error) {
 	if f.store == nil {
-		return nil, nil //nolint:nilnil // intentional noop
+		return nil, ErrNoStorageConfigured
 	}
 	return f.store.GetKey(name)
 }
 
 func (f *FeedthroughStore) AddKey(key *Key) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.AddKey(key)
 }
 
 func (f *FeedthroughStore) UpdateKey(key *Key) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.UpdateKey(key)
 }
 
 func (f *FeedthroughStore) DeleteKey(name string) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.DeleteKey(name)
 }
 
 func (f *FeedthroughStore) ListAKs() ([]*AK, error) {
 	if f.store == nil {
-		return nil, nil
+		return nil, ErrNoStorageConfigured
 	}
 	return f.store.ListAKs()
 }
 
 func (f *FeedthroughStore) ListAKNames() []string {
 	if f.store == nil {
-		return []string{}
+		return nil
 	}
 	return f.store.ListAKNames()
 }
 
 func (f *FeedthroughStore) GetAK(name string) (*AK, error) {
 	if f.store == nil {
-		return nil, nil //nolint:nilnil // intentional noop
+		return nil, ErrNoStorageConfigured
 	}
 	return f.store.GetAK(name)
 }
 
 func (f *FeedthroughStore) AddAK(ak *AK) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.AddAK(ak)
 }
 
 func (f *FeedthroughStore) UpdateAK(ak *AK) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.UpdateAK(ak)
 }
 
 func (f *FeedthroughStore) DeleteAK(name string) error {
 	if f.store == nil {
-		return nil
+		return ErrNoStorageConfigured
 	}
 	return f.store.DeleteAK(name)
 }
