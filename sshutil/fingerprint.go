@@ -1,7 +1,7 @@
 package sshutil
 
 import (
-	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
+	"crypto/dsa" // support for DSA fingerprints
 	"crypto/rsa"
 	"crypto/sha256"
 	"fmt"
