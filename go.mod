@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.21
+go 1.22
 
 require (
 	cloud.google.com/go/kms v1.18.5
@@ -15,7 +15,7 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/go-piv/piv-go v1.11.0
 	github.com/golang/mock v1.6.0
-	github.com/google/go-tpm v0.9.0
+	github.com/google/go-tpm v0.9.1
 	github.com/google/go-tpm-tools v0.4.4
 	github.com/googleapis/gax-go/v2 v2.13.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
