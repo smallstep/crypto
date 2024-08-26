@@ -15,6 +15,48 @@ import (
 	"go.step.sm/crypto/pemutil"
 )
 
+// AWSOptions implements the crypto.SignerOpts interface, it provides a Raw
+// boolean field to indicate to the AWS KMS operation that the MessageType is
+// RAW.
+//
+// Example:
+//
+//	 // Sign a raw message with KMS
+//	 client := kms.NewFromConfig(cfg)
+//	 kmsSigner, err := awskms.NewSigner(client, "my-key-id")
+//	 if err != nil {
+//		// handle error ...
+//	 }
+//	 raw := []byte("my raw message")
+//	 sig, err := kmsSigner.Sign(rand.Reader, raw, &awskms.AWSOptions{
+//		Raw: true,
+//		Options: crypto.SHA256,
+//	 })
+//	 if err != nil {
+//		// handle error ...
+//	 }
+type AWSOptions struct {
+	// Raw specifies to the AWS KMS operation that MessageType is RAW.
+	Raw     bool
+	Options crypto.SignerOpts
+}
+
+// HashFunc implements crypto.SignerOpts.
+func (a *AWSOptions) HashFunc() crypto.Hash {
+	// The GoLang [crypto.SignerOpt] interfaces states that if the [HashFunc]
+	// returns 0, then it indicates to the [Sign] function that no hashing
+	// has occured over the message.
+	// However, the AWS KMS Sign operation always requires that a
+	// SigningAlgorithm is specified.
+	// As such, the AWSOptions HashFunc() must return a valid (non-zero) Hash,
+	// such that the [getMessageTypeAndSigningAlgorithm] function can return a valid AWS KMS
+	// [types.SigningAlgorithmSpec]
+	return a.Options.HashFunc()
+}
+
+// compile time check that AWSOptions implements crypto.SignerOpts
+var _ crypto.SignerOpts = (*AWSOptions)(nil)
+
 // Signer implements a crypto.Signer using the AWS KMS.
 type Signer struct {
 	client    KeyManagementClient
@@ -63,7 +105,7 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign signs digest with the private key stored in the AWS KMS.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	alg, err := getSigningAlgorithm(s.Public(), opts)
+	messageType, alg, err := getMessageTypeAndSigningAlgorithm(s.Public(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +114,7 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 		KeyId:            pointer(s.keyID),
 		SigningAlgorithm: alg,
 		Message:          digest,
-		MessageType:      types.MessageTypeDigest,
+		MessageType:      messageType,
 	}
 
 	ctx, cancel := defaultContext()
@@ -86,41 +128,49 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 	return resp.Signature, nil
 }
 
-func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (types.SigningAlgorithmSpec, error) {
+func getMessageTypeAndSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (types.MessageType, types.SigningAlgorithmSpec, error) {
+	messageType := types.MessageTypeDigest
+	if awsOpts, ok := opts.(*AWSOptions); ok {
+		if awsOpts.Raw {
+			messageType = types.MessageTypeRaw
+		}
+		opts = awsOpts.Options
+	}
+
 	switch key.(type) {
 	case *rsa.PublicKey:
 		_, isPSS := opts.(*rsa.PSSOptions)
 		switch h := opts.HashFunc(); h {
 		case crypto.SHA256:
 			if isPSS {
-				return types.SigningAlgorithmSpecRsassaPssSha256, nil
+				return messageType, types.SigningAlgorithmSpecRsassaPssSha256, nil
 			}
-			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha256, nil
+			return messageType, types.SigningAlgorithmSpecRsassaPkcs1V15Sha256, nil
 		case crypto.SHA384:
 			if isPSS {
-				return types.SigningAlgorithmSpecRsassaPssSha384, nil
+				return messageType, types.SigningAlgorithmSpecRsassaPssSha384, nil
 			}
-			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha384, nil
+			return messageType, types.SigningAlgorithmSpecRsassaPkcs1V15Sha384, nil
 		case crypto.SHA512:
 			if isPSS {
-				return types.SigningAlgorithmSpecRsassaPssSha512, nil
+				return messageType, types.SigningAlgorithmSpecRsassaPssSha512, nil
 			}
-			return types.SigningAlgorithmSpecRsassaPkcs1V15Sha512, nil
+			return messageType, types.SigningAlgorithmSpecRsassaPkcs1V15Sha512, nil
 		default:
-			return "", errors.Errorf("unsupported hash function %v", h)
+			return messageType, "", errors.Errorf("unsupported hash function %v", h)
 		}
 	case *ecdsa.PublicKey:
 		switch h := opts.HashFunc(); h {
 		case crypto.SHA256:
-			return types.SigningAlgorithmSpecEcdsaSha256, nil
+			return messageType, types.SigningAlgorithmSpecEcdsaSha256, nil
 		case crypto.SHA384:
-			return types.SigningAlgorithmSpecEcdsaSha384, nil
+			return messageType, types.SigningAlgorithmSpecEcdsaSha384, nil
 		case crypto.SHA512:
-			return types.SigningAlgorithmSpecEcdsaSha512, nil
+			return messageType, types.SigningAlgorithmSpecEcdsaSha512, nil
 		default:
-			return "", errors.Errorf("unsupported hash function %v", h)
+			return messageType, "", errors.Errorf("unsupported hash function %v", h)
 		}
 	default:
-		return "", errors.Errorf("unsupported key type %T", key)
+		return messageType, "", errors.Errorf("unsupported key type %T", key)
 	}
 }
