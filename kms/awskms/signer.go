@@ -45,7 +45,7 @@ type AWSOptions struct {
 func (a *AWSOptions) HashFunc() crypto.Hash {
 	// The GoLang [crypto.SignerOpt] interfaces states that if the [HashFunc]
 	// returns 0, then it indicates to the [Sign] function that no hashing
-	// has occured over the message.
+	// has occurred over the message.
 	// However, the AWS KMS Sign operation always requires that a
 	// SigningAlgorithm is specified.
 	// As such, the AWSOptions HashFunc() must return a valid (non-zero) Hash,
