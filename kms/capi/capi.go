@@ -862,7 +862,12 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			if certHandle == nil {
 				return nil
 			}
-			defer windows.CertFreeCertificateContext(certHandle)
+			defer func() {
+				if certHandle == nil { // TODO(hs): ensure this is an OK fix; I don't think it should happen in the first place
+					return
+				}
+				windows.CertFreeCertificateContext(certHandle)
+			}()
 
 			x509Cert, err := certContextToX509(certHandle)
 			if err != nil {
