@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/google/go-tpm/legacy/tpm2"
 	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -73,21 +74,34 @@ type TPMKMS struct {
 }
 
 type algorithmAttributes struct {
-	Type  string
-	Curve int
+	Type     string
+	Curve    int
+	Requires []tpm2.Algorithm
 }
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes{
-	apiv1.UnspecifiedSignAlgorithm: {"RSA", -1},
-	apiv1.SHA256WithRSA:            {"RSA", -1},
-	apiv1.SHA384WithRSA:            {"RSA", -1},
-	apiv1.SHA512WithRSA:            {"RSA", -1},
-	apiv1.SHA256WithRSAPSS:         {"RSA", -1},
-	apiv1.SHA384WithRSAPSS:         {"RSA", -1},
-	apiv1.SHA512WithRSAPSS:         {"RSA", -1},
-	apiv1.ECDSAWithSHA256:          {"ECDSA", 256},
-	apiv1.ECDSAWithSHA384:          {"ECDSA", 384},
-	apiv1.ECDSAWithSHA512:          {"ECDSA", 521},
+	apiv1.UnspecifiedSignAlgorithm: {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA}},
+	apiv1.SHA256WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA256}},
+	apiv1.SHA384WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA384}},
+	apiv1.SHA512WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA512}},
+	apiv1.SHA256WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA256}},
+	apiv1.SHA384WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA384}},
+	apiv1.SHA512WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA512}},
+	apiv1.ECDSAWithSHA256:          {"ECDSA", 256, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA256}},
+	apiv1.ECDSAWithSHA384:          {"ECDSA", 384, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA384}},
+	apiv1.ECDSAWithSHA512:          {"ECDSA", 521, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA512}},
+}
+
+var preferredAlgorithm = []apiv1.SignatureAlgorithm{
+	apiv1.ECDSAWithSHA384,
+	apiv1.ECDSAWithSHA512,
+	apiv1.ECDSAWithSHA256,
+	apiv1.SHA512WithRSA,
+	apiv1.SHA384WithRSA,
+	apiv1.SHA256WithRSA,
+	apiv1.SHA512WithRSAPSS,
+	apiv1.SHA384WithRSAPSS,
+	apiv1.SHA256WithRSAPSS,
 }
 
 const (
@@ -326,9 +340,32 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	v, ok := signatureAlgorithmMapping[req.SignatureAlgorithm]
-	if !ok {
-		return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", req.SignatureAlgorithm)
+	ctx := context.Background()
+	caps, err := k.tpm.GetCapabilities(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not get TPM capabilities %w", err)
+	}
+
+	var (
+		v  algorithmAttributes
+		ok bool
+	)
+	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm {
+		for _, alg := range preferredAlgorithm {
+			v, ok = signatureAlgorithmMapping[alg]
+			if caps.SupportsAlgorithms(v.Requires...) {
+				break
+			}
+		}
+	} else {
+		v, ok = signatureAlgorithmMapping[req.SignatureAlgorithm]
+		if !ok {
+			return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", req.SignatureAlgorithm)
+		}
+
+		if !caps.SupportsAlgorithms(v.Requires...) {
+			return nil, fmt.Errorf("signature algorithm is %q not supported by the TPM device", req.SignatureAlgorithm)
+		}
 	}
 
 	if properties.ak && v.Type == "ECDSA" {
@@ -347,8 +384,6 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	if v.Type == "ECDSA" {
 		size = v.Curve
 	}
-
-	ctx := context.Background()
 
 	var privateKey any
 	if properties.ak {
