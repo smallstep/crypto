@@ -791,7 +791,6 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		if certHandle == nil {
 			return nil
 		}
-		defer windows.CertFreeCertificateContext(certHandle)
 
 		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)
@@ -822,7 +821,6 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		if certHandle == nil {
 			return nil
 		}
-		defer windows.CertFreeCertificateContext(certHandle)
 
 		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)
@@ -862,10 +860,10 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			if certHandle == nil {
 				return nil
 			}
-			defer windows.CertFreeCertificateContext(certHandle)
 
 			x509Cert, err := certContextToX509(certHandle)
 			if err != nil {
+				defer windows.CertFreeCertificateContext(certHandle)
 				return fmt.Errorf("could not unmarshal certificate to DER: %w", err)
 			}
 
