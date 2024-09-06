@@ -34,7 +34,9 @@ func (c *Capabilities) SupportsAlgorithms(algs ...tpm2.Algorithm) bool {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err error) {
-	caps = &Capabilities{}
+	if t.caps != nil {
+		return t.caps, nil
+	}
 
 	if err = t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -42,6 +44,7 @@ func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err erro
 	defer closeTPM(ctx, t, &err)
 
 	current := tpm2.AlgUnknown // 0x0000, first property
+	caps = &Capabilities{}
 
 	for {
 		var (
@@ -66,6 +69,8 @@ func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err erro
 
 		current++
 	}
+
+	t.caps = caps
 
 	return
 }

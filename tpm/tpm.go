@@ -35,6 +35,7 @@ type TPM struct {
 	options                *options
 	initCommandChannelOnce sync.Once
 	info                   *Info
+	caps                   *Capabilities
 	eks                    []*EK
 }
 
