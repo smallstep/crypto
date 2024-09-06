@@ -48,7 +48,7 @@ func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err erro
 
 	for {
 		var (
-			data []interface{}
+			data []any
 			more bool
 		)
 
