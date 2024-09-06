@@ -13,13 +13,13 @@ type Capabilities struct {
 	Algorithms []algorithm.Algorithm
 }
 
-func (c *Capabilities) SupportsAlgorithms(algs ...tpm2.Algorithm) bool {
+func (c *Capabilities) SupportsAlgorithms(algs ...algorithm.Algorithm) bool {
 	if len(algs) == 0 {
 		return false
 	}
 
 	for _, alg := range algs {
-		if !slices.Contains(c.Algorithms, algorithm.Algorithm(alg)) {
+		if !slices.Contains(c.Algorithms, alg) {
 			return false
 		}
 	}
