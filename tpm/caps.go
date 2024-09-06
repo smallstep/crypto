@@ -27,11 +27,9 @@ func (c *Capabilities) SupportsAlgorithms(algs ...tpm2.Algorithm) bool {
 	return true
 }
 
-// Capabilities returns the capabilities of the TPM
+// GetCapabilities returns the capabilities of the TPM
 //
-// # Current supports enumerating the supported TPM algorithms
-//
-// # Experimental
+// Currently supports enumerating the supported TPM algorithms
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
