@@ -26,6 +26,7 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
+	"go.step.sm/crypto/tpm/algorithm"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
@@ -71,6 +72,48 @@ func TestTPM_Info(t *testing.T) {
 		FirmwareVersion: FirmwareVersion{
 			Major: 8215,
 			Minor: 1561,
+		},
+	}
+
+	require.Equal(t, expected, info)
+}
+
+func TestTPM_GetCapabilities(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	info, err := tpm.GetCapabilities(context.Background())
+	require.NoError(t, err)
+
+	// expected TPM capabilities for the Microsoft TPM simulator
+	expected := &Capabilities{
+		Algorithms: []algorithm.Algorithm{
+			algorithm.AlgorithmRSA,
+			algorithm.AlgorithmSHA1,
+			algorithm.AlgorithmHMAC,
+			algorithm.AlgorithmAES,
+			algorithm.AlgorithmMGF1,
+			algorithm.AlgorithmKeyedHash,
+			algorithm.AlgorithmXOR,
+			algorithm.AlgorithmSHA256,
+			algorithm.AlgorithmSHA384,
+			algorithm.AlgorithmSHA512,
+			algorithm.AlgorithmRSASSA,
+			algorithm.AlgorithmRSAES,
+			algorithm.AlgorithmRSAPSS,
+			algorithm.AlgorithmOAEP,
+			algorithm.AlgorithmECDSA,
+			algorithm.AlgorithmECDH,
+			algorithm.AlgorithmECDAA,
+			algorithm.AlgorithmECSchnorr,
+			algorithm.AlgorithmKDF1_56A,
+			algorithm.AlgorithmKDF1_108,
+			algorithm.AlgorithmECC,
+			algorithm.AlgorithmSymCipher,
+			algorithm.AlgorithmCMAC,
+			algorithm.AlgorithmCTR,
+			algorithm.AlgorithmOFB,
+			algorithm.AlgorithmCBC,
+			algorithm.AlgorithmCFB,
+			algorithm.AlgorithmECB,
 		},
 	}
 

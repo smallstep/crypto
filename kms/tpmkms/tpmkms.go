@@ -356,6 +356,10 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm && len(PreferredSignatureAlgorithms) > 0 {
 		for _, alg := range PreferredSignatureAlgorithms {
 			v, ok = signatureAlgorithmMapping[alg]
+			if !ok {
+				return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", alg)
+			}
+
 			if caps.SupportsAlgorithms(v.Requires...) {
 				break
 			}
