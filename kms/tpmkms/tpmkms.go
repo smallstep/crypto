@@ -42,7 +42,7 @@ func init() {
 
 // PreferredSignatureAlgorithms indicates the preferred selection of signature
 // algorithms when an explicit value is omitted in CreateKeyRequest
-var PreferredSignatureAlgorithms []apiv1.SignatureAlgorithm
+var preferredSignatureAlgorithms []apiv1.SignatureAlgorithm
 
 // SetPreferredSignatureAlgorithms sets the preferred signature algorithms
 // to select from when explicit values are omitted in CreateKeyRequest
@@ -52,7 +52,18 @@ var PreferredSignatureAlgorithms []apiv1.SignatureAlgorithm
 // Notice: This method is EXPERIMENTAL and may be changed or removed in a later
 // release.
 func SetPreferredSignatureAlgorithms(algs []apiv1.SignatureAlgorithm) {
-	PreferredSignatureAlgorithms = algs
+	preferredSignatureAlgorithms = algs
+}
+
+// PreferredSignatureAlgorithms returns the preferred signature algorithms
+// to select from when explicit values are omitted in CreateKeyRequest
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func PreferredSignatureAlgorithms() []apiv1.SignatureAlgorithm {
+	return preferredSignatureAlgorithms
 }
 
 // Scheme is the scheme used in TPM KMS URIs, the string "tpmkms".
@@ -350,11 +361,11 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 
 	var (
-		v  algorithmAttributes
+		v algorithmAttributes
 		ok bool
 	)
-	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm && len(PreferredSignatureAlgorithms) > 0 {
-		for _, alg := range PreferredSignatureAlgorithms {
+	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm && len(preferredSignatureAlgorithms) > 0 {
+		for _, alg := range preferredSignatureAlgorithms {
 			v, ok = signatureAlgorithmMapping[alg]
 			if !ok {
 				return nil, fmt.Errorf("TPMKMS does not support signature algorithm %q", alg)

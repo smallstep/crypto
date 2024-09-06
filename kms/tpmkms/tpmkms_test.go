@@ -138,3 +138,13 @@ func Test_notFoundError(t *testing.T) {
 		})
 	}
 }
+
+func Test_SetPreferredSignatureAlgorithms(t *testing.T) {
+	old := preferredSignatureAlgorithms
+	want := []apiv1.SignatureAlgorithm{
+		apiv1.ECDSAWithSHA256,
+	}
+	SetPreferredSignatureAlgorithms(want)
+	assert.Equal(t, preferredSignatureAlgorithms, want)
+	SetPreferredSignatureAlgorithms(old)
+}
