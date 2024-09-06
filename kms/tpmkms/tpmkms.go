@@ -346,7 +346,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	ctx := context.Background()
 	caps, err := k.tpm.GetCapabilities(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("could not get TPM capabilities %w", err)
+		return nil, fmt.Errorf("could not get TPM capabilities: %w", err)
 	}
 
 	var (
@@ -367,7 +367,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 
 		if !caps.SupportsAlgorithms(v.Requires...) {
-			return nil, fmt.Errorf("signature algorithm is %q not supported by the TPM device", req.SignatureAlgorithm)
+			return nil, fmt.Errorf("signature algorithm %q not supported by the TPM device", req.SignatureAlgorithm)
 		}
 	}
 
