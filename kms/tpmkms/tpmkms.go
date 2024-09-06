@@ -24,11 +24,11 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/google/go-tpm/legacy/tpm2"
 	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
+	"go.step.sm/crypto/tpm/algorithm"
 	"go.step.sm/crypto/tpm/attestation"
 	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
@@ -91,20 +91,20 @@ type TPMKMS struct {
 type algorithmAttributes struct {
 	Type     string
 	Curve    int
-	Requires []tpm2.Algorithm
+	Requires []algorithm.Algorithm
 }
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes{
-	apiv1.UnspecifiedSignAlgorithm: {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA}},
-	apiv1.SHA256WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA256}},
-	apiv1.SHA384WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA384}},
-	apiv1.SHA512WithRSA:            {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSA, tpm2.AlgSHA512}},
-	apiv1.SHA256WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA256}},
-	apiv1.SHA384WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA384}},
-	apiv1.SHA512WithRSAPSS:         {"RSA", -1, []tpm2.Algorithm{tpm2.AlgRSAPSS, tpm2.AlgSHA512}},
-	apiv1.ECDSAWithSHA256:          {"ECDSA", 256, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA256}},
-	apiv1.ECDSAWithSHA384:          {"ECDSA", 384, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA384}},
-	apiv1.ECDSAWithSHA512:          {"ECDSA", 521, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA512}},
+	apiv1.UnspecifiedSignAlgorithm: {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSA}},
+	apiv1.SHA256WithRSA:            {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSA, algorithm.AlgorithmSHA256}},
+	apiv1.SHA384WithRSA:            {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSA, algorithm.AlgorithmSHA384}},
+	apiv1.SHA512WithRSA:            {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSA, algorithm.AlgorithmSHA512}},
+	apiv1.SHA256WithRSAPSS:         {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSAPSS, algorithm.AlgorithmSHA256}},
+	apiv1.SHA384WithRSAPSS:         {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSAPSS, algorithm.AlgorithmSHA384}},
+	apiv1.SHA512WithRSAPSS:         {"RSA", -1, []algorithm.Algorithm{algorithm.AlgorithmRSAPSS, algorithm.AlgorithmSHA512}},
+	apiv1.ECDSAWithSHA256:          {"ECDSA", 256, []algorithm.Algorithm{algorithm.AlgorithmECDSA, algorithm.AlgorithmSHA256}},
+	apiv1.ECDSAWithSHA384:          {"ECDSA", 384, []algorithm.Algorithm{algorithm.AlgorithmECDSA, algorithm.AlgorithmSHA384}},
+	apiv1.ECDSAWithSHA512:          {"ECDSA", 521, []algorithm.Algorithm{algorithm.AlgorithmECDSA, algorithm.AlgorithmSHA512}},
 }
 
 const (

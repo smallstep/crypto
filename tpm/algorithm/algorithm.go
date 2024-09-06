@@ -2,70 +2,110 @@ package algorithm
 
 import (
 	"encoding/json"
+)
 
-	"github.com/google/go-tpm/legacy/tpm2"
+// Supported Algorithms.
+const (
+	AlgorithmUnknown   Algorithm = 0x0000
+	AlgorithmRSA       Algorithm = 0x0001
+	Algorithm3DES      Algorithm = 0x0003
+	AlgorithmSHA1      Algorithm = 0x0004
+	AlgorithmHMAC      Algorithm = 0x0005
+	AlgorithmAES       Algorithm = 0x0006
+	AlgorithmMGF1      Algorithm = 0x0007
+	AlgorithmKeyedHash Algorithm = 0x0008
+	AlgorithmXOR       Algorithm = 0x000A
+	AlgorithmSHA256    Algorithm = 0x000B
+	AlgorithmSHA384    Algorithm = 0x000C
+	AlgorithmSHA512    Algorithm = 0x000D
+	AlgorithmNull      Algorithm = 0x0010
+	AlgorithmSM3256    Algorithm = 0x0012
+	AlgorithmSM4       Algorithm = 0x0013
+	AlgorithmRSASSA    Algorithm = 0x0014
+	AlgorithmRSAES     Algorithm = 0x0015
+	AlgorithmRSAPSS    Algorithm = 0x0016
+	AlgorithmOAEP      Algorithm = 0x0017
+	AlgorithmECDSA     Algorithm = 0x0018
+	AlgorithmECDH      Algorithm = 0x0019
+	AlgorithmECDAA     Algorithm = 0x001A
+	AlgorithmECSchnorr Algorithm = 0x001C
+	AlgorithmKDF1_56A  Algorithm = 0x0020
+	AlgorithmKDF2      Algorithm = 0x0021
+	AlgorithmKDF1_108  Algorithm = 0x0022
+	AlgorithmECC       Algorithm = 0x0023
+	AlgorithmSymCipher Algorithm = 0x0025
+	AlgorithmCamellia  Algorithm = 0x0026
+	AlgorithmSHA3_256  Algorithm = 0x0027
+	AlgorithmSHA3_384  Algorithm = 0x0028
+	AlgorithmSHA3_512  Algorithm = 0x0029
+	AlgorithmCMAC      Algorithm = 0x003F
+	AlgorithmCTR       Algorithm = 0x0040
+	AlgorithmOFB       Algorithm = 0x0041
+	AlgorithmCBC       Algorithm = 0x0042
+	AlgorithmCFB       Algorithm = 0x0043
+	AlgorithmECB       Algorithm = 0x0044
 )
 
 // https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM2_r1p59_Part2_Structures_pub.pdf
-var algs = map[tpm2.Algorithm]string{
+var algs = map[Algorithm]string{
 	// object types
-	tpm2.AlgRSA: "RSA",
-	tpm2.AlgECC: "ECC",
+	AlgorithmRSA: "RSA",
+	AlgorithmECC: "ECC",
 
 	// encryption algs
-	tpm2.AlgRSAES: "RSAES",
+	AlgorithmRSAES: "RSAES",
 
 	// block ciphers
-	tpm2.Algorithm(0x0003): "3DES",
-	tpm2.AlgAES:            "AES",
-	tpm2.Algorithm(0x0026): "Camellia",
-	tpm2.AlgECB:            "ECB",
-	tpm2.AlgCFB:            "CFB",
-	tpm2.AlgOFB:            "OFB",
-	tpm2.AlgCBC:            "CBC",
-	tpm2.AlgCTR:            "CTR",
-	tpm2.AlgSymCipher:      "Symmetric Cipher",
-	tpm2.Algorithm(0x003F): "CMAC",
+	Algorithm3DES:      "3DES",
+	AlgorithmAES:       "AES",
+	AlgorithmCamellia:  "Camellia",
+	AlgorithmECB:       "ECB",
+	AlgorithmCFB:       "CFB",
+	AlgorithmOFB:       "OFB",
+	AlgorithmCBC:       "CBC",
+	AlgorithmCTR:       "CTR",
+	AlgorithmSymCipher: "Symmetric Cipher",
+	AlgorithmCMAC:      "CMAC",
 
 	// other ciphers
-	tpm2.AlgXOR:  "XOR",
-	tpm2.AlgNull: "Null Cipher",
+	AlgorithmXOR:  "XOR",
+	AlgorithmNull: "Null Cipher",
 
 	// hash algs
-	tpm2.AlgSHA1:           "SHA-1",
-	tpm2.AlgHMAC:           "HMAC",
-	tpm2.Algorithm(0x0007): "MGF1",
-	tpm2.AlgKeyedHash:      "Keyed Hash",
-	tpm2.Algorithm(0x0012): "SM3-256",
-	tpm2.AlgSHA256:         "SHA-256",
-	tpm2.AlgSHA384:         "SHA-384",
-	tpm2.AlgSHA512:         "SHA-512",
-	tpm2.AlgSHA3_256:       "SHA3-256",
-	tpm2.AlgSHA3_384:       "SHA3-384",
-	tpm2.AlgSHA3_512:       "SHA3-512",
+	AlgorithmSHA1:      "SHA-1",
+	AlgorithmHMAC:      "HMAC",
+	AlgorithmMGF1:      "MGF1",
+	AlgorithmKeyedHash: "Keyed Hash",
+	AlgorithmSM3256:    "SM3-256",
+	AlgorithmSHA256:    "SHA-256",
+	AlgorithmSHA384:    "SHA-384",
+	AlgorithmSHA512:    "SHA-512",
+	AlgorithmSHA3_256:  "SHA3-256",
+	AlgorithmSHA3_384:  "SHA3-384",
+	AlgorithmSHA3_512:  "SHA3-512",
 
 	// signature algs
-	tpm2.Algorithm(0x0013): "SM4",
-	tpm2.AlgRSASSA:         "RSA-SSA",
-	tpm2.AlgRSAPSS:         "RSA-PSS",
-	tpm2.AlgECDSA:          "ECDSA",
-	tpm2.AlgECDAA:          "ECDAA",
-	tpm2.Algorithm(0x001C): "EC-Schnorr",
+	AlgorithmSM4:       "SM4",
+	AlgorithmRSASSA:    "RSA-SSA",
+	AlgorithmRSAPSS:    "RSA-PSS",
+	AlgorithmECDSA:     "ECDSA",
+	AlgorithmECDAA:     "ECDAA",
+	AlgorithmECSchnorr: "EC-Schnorr",
 
 	// encryption schemes
-	tpm2.AlgOAEP: "OAEP",
-	tpm2.AlgECDH: "ECDH",
+	AlgorithmOAEP: "OAEP",
+	AlgorithmECDH: "ECDH",
 
 	// key derivation
-	tpm2.Algorithm(0x0020): "KDF1",
-	tpm2.Algorithm(0x0022): "KDF1",
-	tpm2.AlgKDF2:           "KDF2",
+	AlgorithmKDF1_56A: "KDF1-SP800-56A",
+	AlgorithmKDF1_108: "KDF1-SP800-108",
+	AlgorithmKDF2:     "KDF2",
 }
 
-type Algorithm tpm2.Algorithm
+type Algorithm uint16
 
 func (a Algorithm) String() string {
-	return algs[tpm2.Algorithm(int(a))]
+	return algs[Algorithm(int(a))]
 }
 
 func (a Algorithm) MarshalJSON() ([]byte, error) {
