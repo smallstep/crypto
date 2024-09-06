@@ -40,6 +40,21 @@ func init() {
 	})
 }
 
+// PreferredSignatureAlgorithms indicates the preferred selection of signature
+// algorithms when an explicit value is omitted in CreateKeyRequest
+var PreferredSignatureAlgorithms []apiv1.SignatureAlgorithm
+
+// SetPreferredSignatureAlgorithms sets the preferred signature algorithms
+// to select from when explicit values are omitted in CreateKeyRequest
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func SetPreferredSignatureAlgorithms(algs []apiv1.SignatureAlgorithm) {
+	PreferredSignatureAlgorithms = algs
+}
+
 // Scheme is the scheme used in TPM KMS URIs, the string "tpmkms".
 const Scheme = string(apiv1.TPMKMS)
 
@@ -90,18 +105,6 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 	apiv1.ECDSAWithSHA256:          {"ECDSA", 256, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA256}},
 	apiv1.ECDSAWithSHA384:          {"ECDSA", 384, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA384}},
 	apiv1.ECDSAWithSHA512:          {"ECDSA", 521, []tpm2.Algorithm{tpm2.AlgECDSA, tpm2.AlgSHA512}},
-}
-
-var preferredAlgorithm = []apiv1.SignatureAlgorithm{
-	apiv1.ECDSAWithSHA384,
-	apiv1.ECDSAWithSHA512,
-	apiv1.ECDSAWithSHA256,
-	apiv1.SHA512WithRSA,
-	apiv1.SHA384WithRSA,
-	apiv1.SHA256WithRSA,
-	apiv1.SHA512WithRSAPSS,
-	apiv1.SHA384WithRSAPSS,
-	apiv1.SHA256WithRSAPSS,
 }
 
 const (
@@ -350,8 +353,8 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		v  algorithmAttributes
 		ok bool
 	)
-	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm {
-		for _, alg := range preferredAlgorithm {
+	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm && len(PreferredSignatureAlgorithms) > 0 {
+		for _, alg := range PreferredSignatureAlgorithms {
 			v, ok = signatureAlgorithmMapping[alg]
 			if caps.SupportsAlgorithms(v.Requires...) {
 				break
