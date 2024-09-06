@@ -52,7 +52,8 @@ func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err erro
 			more bool
 		)
 
-		if data, more, err = tpm2.GetCapability(t.rwc, tpm2.CapabilityAlgs, 1, uint32(current)); err != nil {
+		data, more, err := tpm2.GetCapability(t.rwc, tpm2.CapabilityAlgs, 1, uint32(current)); 
+		if err != nil {
 			return nil, fmt.Errorf("error getting algorithms capability: %w", err)
 		}
 
