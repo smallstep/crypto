@@ -9,21 +9,25 @@ import (
 	"go.step.sm/crypto/tpm/algorithm"
 )
 
+// Capabilities represents the capabilities of the TPM.
 type Capabilities struct {
 	Algorithms []algorithm.Algorithm
 }
 
-func (c *Capabilities) SupportsAlgorithms(algs ...algorithm.Algorithm) bool {
-	if len(algs) == 0 {
-		return false
-	}
+// SupportsAlgorithm return whether the provided algorithm
+// is supported by the TPM
+func (c *Capabilities) SupportsAlgorithm(alg algorithm.Algorithm) bool {
+	return slices.Contains(c.Algorithms, alg)
+}
 
+// SupportsAlgorithms return whether all algorithms in the provided
+// slice are supported by the TPM
+func (c *Capabilities) SupportsAlgorithms(algs []algorithm.Algorithm) bool {
 	for _, alg := range algs {
-		if !slices.Contains(c.Algorithms, alg) {
+		if !c.SupportsAlgorithm(alg) {
 			return false
 		}
 	}
-
 	return true
 }
 
