@@ -361,7 +361,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 
 	var (
-		v algorithmAttributes
+		v  algorithmAttributes
 		ok bool
 	)
 	if !properties.ak && req.SignatureAlgorithm == apiv1.UnspecifiedSignAlgorithm && len(preferredSignatureAlgorithms) > 0 {
