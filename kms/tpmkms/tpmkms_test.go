@@ -148,3 +148,7 @@ func Test_SetPreferredSignatureAlgorithms(t *testing.T) {
 	assert.Equal(t, preferredSignatureAlgorithms, want)
 	SetPreferredSignatureAlgorithms(old)
 }
+
+func Test_PreferredSignatureAlgorithms(t *testing.T) {
+	assert.Equal(t, PreferredSignatureAlgorithms(), preferredSignatureAlgorithms)
+}

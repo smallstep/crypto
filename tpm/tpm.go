@@ -75,6 +75,15 @@ func WithDisableDownload() NewTPMOption {
 	}
 }
 
+// WithCapabilities explicits sets the capabilities rather
+// than acquiring them from the TPM directly.
+func WithCapabilities(caps *Capabilities) NewTPMOption {
+	return func(o *options) error {
+		o.caps = caps
+		return nil
+	}
+}
+
 // WithSimulator is used to configure a TPM simulator implementation
 // that simulates TPM operations instead of interacting with an actual
 // TPM.
@@ -103,6 +112,7 @@ type options struct {
 	commandChannel CommandChannel
 	store          storage.TPMStore
 	downloader     *downloader
+	caps           *Capabilities
 }
 
 func (o *options) validate() error {
@@ -139,6 +149,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		downloader:     tpmOptions.downloader,
 		simulator:      tpmOptions.simulator,
 		commandChannel: tpmOptions.commandChannel,
+		caps:           tpmOptions.caps,
 		options:        &tpmOptions,
 	}, nil
 }
