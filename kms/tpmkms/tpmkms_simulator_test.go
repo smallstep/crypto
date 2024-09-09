@@ -59,7 +59,7 @@ func withKey(name string) newSimulatedTPMOption {
 	}
 }
 
-func newSimulatedTPM(t *testing.T, caps *tpmp.Capabilities, opts ...newSimulatedTPMOption) *tpmp.TPM {
+func newSimulatedTPM(t *testing.T, opts ...newSimulatedTPMOption) *tpmp.TPM {
 	t.Helper()
 	tmpDir := t.TempDir()
 	tpmOpts := []tpmp.NewTPMOption{
@@ -67,9 +67,6 @@ func newSimulatedTPM(t *testing.T, caps *tpmp.Capabilities, opts ...newSimulated
 		tpmp.WithStore(storage.NewDirstore(tmpDir)),
 	}
 
-	if caps != nil {
-		tpmOpts = append(tpmOpts, tpmp.WithCapabilities(caps))
-	}
 	tpm, err := tpmp.New(tpmOpts...)
 
 	require.NoError(t, err)
@@ -97,7 +94,7 @@ func withSimulator(t *testing.T) tpmp.NewTPMOption {
 }
 
 func TestTPMKMS_CreateKey(t *testing.T) {
-	tpmWithAK := newSimulatedTPM(t, nil, withAK("ak1"))
+	tpmWithAK := newSimulatedTPM(t, withAK("ak1"))
 	type fields struct {
 		tpm *tpmp.TPM
 	}
@@ -442,62 +439,8 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 	}
 }
 
-func TestTPMKMS_CreateKey_Capabilities(t *testing.T) {
-	tpmWithNoCaps := newSimulatedTPM(t, &tpmp.Capabilities{}, withAK("ak1"))
-	type fields struct {
-		tpm *tpmp.TPM
-	}
-	type args struct {
-		req *apiv1.CreateKeyRequest
-	}
-	tests := []struct {
-		name       string
-		fields     fields
-		args       args
-		assertFunc assert.ValueAssertionFunc
-		expErr     error
-	}{
-		{
-			name: "fail/unsupported-algorithm",
-			fields: fields{
-				tpm: tpmWithNoCaps,
-			},
-			args: args{
-				req: &apiv1.CreateKeyRequest{
-					Name:               "tpmkms:name=key1",
-					SignatureAlgorithm: apiv1.SHA256WithRSA,
-					Bits:               2048,
-				},
-			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
-				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
-					r, _ := i1.(*apiv1.CreateKeyResponse)
-					return assert.Nil(t, r)
-				}
-				return false
-			},
-			expErr: errors.New(`signature algorithm "SHA256-RSA" not supported by the TPM device`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &TPMKMS{
-				tpm: tt.fields.tpm,
-			}
-			got, err := k.CreateKey(tt.args.req)
-			if tt.expErr != nil {
-				assert.EqualError(t, err, tt.expErr.Error())
-				return
-			}
-
-			assert.NoError(t, err)
-			assert.True(t, tt.assertFunc(t, got))
-		})
-	}
-}
-
 func TestTPMKMS_DeleteKey(t *testing.T) {
-	okTPM := newSimulatedTPM(t, nil,
+	okTPM := newSimulatedTPM(t,
 		withAK("ak1"), withAK("ak2"),
 		withKey("key1"), withKey("key2"),
 	)
@@ -564,7 +507,7 @@ func TestTPMKMS_DeleteKey(t *testing.T) {
 }
 
 func TestTPMKMS_CreateSigner(t *testing.T) {
-	tpmWithKey := newSimulatedTPM(t, nil, withKey("key1"))
+	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
 
 	key, err := tpmWithKey.GetKey(context.Background(), "key1")
 	require.NoError(t, err)
@@ -725,7 +668,7 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 }
 
 func TestTPMKMS_GetPublicKey(t *testing.T) {
-	tpmWithKey := newSimulatedTPM(t, nil, withKey("key1"))
+	tpmWithKey := newSimulatedTPM(t, withKey("key1"))
 	_, err := tpmWithKey.CreateAK(context.Background(), "ak1")
 	require.NoError(t, err)
 	type fields struct {
@@ -866,7 +809,7 @@ func TestTPMKMS_GetPublicKey(t *testing.T) {
 
 func TestTPMKMS_LoadCertificate(t *testing.T) {
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
@@ -1031,7 +974,7 @@ func TestTPMKMS_LoadCertificate(t *testing.T) {
 
 func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
@@ -1202,7 +1145,7 @@ func TestTPMKMS_LoadCertificateChain(t *testing.T) {
 
 func TestTPMKMS_StoreCertificate(t *testing.T) {
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
@@ -1372,7 +1315,7 @@ func TestTPMKMS_StoreCertificate(t *testing.T) {
 
 func TestTPMKMS_StoreCertificateChain(t *testing.T) {
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	config := tpmp.CreateKeyConfig{
 		Algorithm: "RSA",
 		Size:      1024,
@@ -1601,7 +1544,7 @@ func (c *customAttestationClient) Attest(context.Context) ([]*x509.Certificate, 
 
 func TestTPMKMS_CreateAttestation(t *testing.T) {
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	eks, err := tpm.GetEKs(ctx)
 	require.NoError(t, err)
 	ek := getPreferredEK(eks)
@@ -2192,7 +2135,7 @@ func Test_hasValidIdentity(t *testing.T) {
 		identityRenewalPeriodPercentage: 60,
 	}
 	ctx := context.Background()
-	tpm := newSimulatedTPM(t, nil)
+	tpm := newSimulatedTPM(t)
 	eks, err := tpm.GetEKs(ctx)
 	require.NoError(t, err)
 	ek := getPreferredEK(eks)
