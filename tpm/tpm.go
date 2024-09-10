@@ -35,6 +35,7 @@ type TPM struct {
 	options                *options
 	initCommandChannelOnce sync.Once
 	info                   *Info
+	caps                   *Capabilities
 	eks                    []*EK
 }
 
@@ -95,6 +96,21 @@ func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	}
 }
 
+// WithCapabilities explicitly sets the capabilities rather
+// than acquiring them from the TPM directly. The primary use
+// for this option is to ease testing different TPM capabilities.
+//
+// # Experimental
+//
+// Notice: This option is EXPERIMENTAL and may be changed or removed
+// in a later release.
+func WithCapabilities(caps *Capabilities) NewTPMOption {
+	return func(o *options) error {
+		o.caps = caps
+		return nil
+	}
+}
+
 type options struct {
 	deviceName     string
 	attestConfig   *attest.OpenConfig
@@ -102,6 +118,7 @@ type options struct {
 	commandChannel CommandChannel
 	store          storage.TPMStore
 	downloader     *downloader
+	caps           *Capabilities
 }
 
 func (o *options) validate() error {
@@ -138,6 +155,7 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 		downloader:     tpmOptions.downloader,
 		simulator:      tpmOptions.simulator,
 		commandChannel: tpmOptions.commandChannel,
+		caps:           tpmOptions.caps,
 		options:        &tpmOptions,
 	}, nil
 }

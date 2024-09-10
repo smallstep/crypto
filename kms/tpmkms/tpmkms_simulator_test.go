@@ -37,9 +37,11 @@ import (
 	"go.step.sm/crypto/tpm/tss2"
 )
 
-type newSimulatedTPMOption func(t *testing.T, tpm *tpmp.TPM)
+type newSimulatedTPMOption any
 
-func withAK(name string) newSimulatedTPMOption {
+type newSimulatedTPMPreparerOption func(t *testing.T, tpm *tpmp.TPM)
+
+func withAK(name string) newSimulatedTPMPreparerOption {
 	return func(t *testing.T, tpm *tpmp.TPM) {
 		t.Helper()
 		_, err := tpm.CreateAK(context.Background(), name)
@@ -47,7 +49,7 @@ func withAK(name string) newSimulatedTPMOption {
 	}
 }
 
-func withKey(name string) newSimulatedTPMOption {
+func withKey(name string) newSimulatedTPMPreparerOption {
 	return func(t *testing.T, tpm *tpmp.TPM) {
 		t.Helper()
 		config := tpmp.CreateKeyConfig{
@@ -59,14 +61,38 @@ func withKey(name string) newSimulatedTPMOption {
 	}
 }
 
+func withCapabilities(caps *tpmp.Capabilities) tpmp.NewTPMOption {
+	return tpmp.WithCapabilities(caps)
+}
+
 func newSimulatedTPM(t *testing.T, opts ...newSimulatedTPMOption) *tpmp.TPM {
 	t.Helper()
+
 	tmpDir := t.TempDir()
-	tpm, err := tpmp.New(withSimulator(t), tpmp.WithStore(storage.NewDirstore(tmpDir)))
+	tpmOpts := []tpmp.NewTPMOption{
+		withSimulator(t),
+		tpmp.WithStore(storage.NewDirstore(tmpDir)),
+	}
+
+	var preparers []newSimulatedTPMPreparerOption
+	for _, opt := range opts {
+		switch o := opt.(type) {
+		case tpmp.NewTPMOption:
+			tpmOpts = append(tpmOpts, o)
+		case newSimulatedTPMPreparerOption:
+			preparers = append(preparers, o)
+		default:
+			require.Fail(t, "invalid TPM option type provided", `TPM option type "%T"`, o)
+		}
+	}
+
+	tpm, err := tpmp.New(tpmOpts...)
 	require.NoError(t, err)
-	for _, applyTo := range opts {
+
+	for _, applyTo := range preparers {
 		applyTo(t, tpm)
 	}
+
 	return tpm
 }
 
@@ -85,6 +111,60 @@ func withSimulator(t *testing.T) tpmp.NewTPMOption {
 	err = sim.Open()
 	require.NoError(t, err)
 	return tpmp.WithSimulator(sim)
+}
+
+func TestTPMKMS_CreateKey_Capabilities(t *testing.T) {
+	tpmWithNoCaps := newSimulatedTPM(t, withCapabilities(&tpmp.Capabilities{}))
+	type fields struct {
+		tpm *tpmp.TPM
+	}
+	type args struct {
+		req *apiv1.CreateKeyRequest
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		args       args
+		assertFunc assert.ValueAssertionFunc
+		expErr     error
+	}{
+		{
+			name: "fail/unsupported-algorithm",
+			fields: fields{
+				tpm: tpmWithNoCaps,
+			},
+			args: args{
+				req: &apiv1.CreateKeyRequest{
+					Name:               "tpmkms:name=key1",
+					SignatureAlgorithm: apiv1.SHA256WithRSA,
+					Bits:               2048,
+				},
+			},
+			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
+					r, _ := i1.(*apiv1.CreateKeyResponse)
+					return assert.Nil(t, r)
+				}
+				return false
+			},
+			expErr: errors.New(`signature algorithm "SHA256-RSA" not supported by the TPM device`),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &TPMKMS{
+				tpm: tt.fields.tpm,
+			}
+			got, err := k.CreateKey(tt.args.req)
+			if tt.expErr != nil {
+				assert.EqualError(t, err, tt.expErr.Error())
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.True(t, tt.assertFunc(t, got))
+		})
+	}
 }
 
 func TestTPMKMS_CreateKey(t *testing.T) {
