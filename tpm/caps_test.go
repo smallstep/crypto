@@ -3,7 +3,8 @@ package tpm
 import (
 	"testing"
 
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
+
 	"go.step.sm/crypto/tpm/algorithm"
 )
 

@@ -75,15 +75,6 @@ func WithDisableDownload() NewTPMOption {
 	}
 }
 
-// WithCapabilities explicits sets the capabilities rather
-// than acquiring them from the TPM directly.
-func WithCapabilities(caps *Capabilities) NewTPMOption {
-	return func(o *options) error {
-		o.caps = caps
-		return nil
-	}
-}
-
 // WithSimulator is used to configure a TPM simulator implementation
 // that simulates TPM operations instead of interacting with an actual
 // TPM.
@@ -101,6 +92,21 @@ type CommandChannel attest.CommandChannelTPM20
 func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	return func(o *options) error {
 		o.commandChannel = commandChannel
+		return nil
+	}
+}
+
+// WithCapabilities explicitly sets the capabilities rather
+// than acquiring them from the TPM directly. The primary use
+// for this option is to ease testing different TPM capabilities.
+//
+// # Experimental
+//
+// Notice: This option is EXPERIMENTAL and may be changed or removed
+// in a later release.
+func WithCapabilities(caps *Capabilities) NewTPMOption {
+	return func(o *options) error {
+		o.caps = caps
 		return nil
 	}
 }
