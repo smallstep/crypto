@@ -10,7 +10,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.10.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/ThalesIgnite/crypto11 v1.2.5
-	github.com/aws/aws-sdk-go-v2/config v1.27.33
+	github.com/aws/aws-sdk-go-v2/config v1.27.34
 	github.com/aws/aws-sdk-go-v2/service/kms v1.35.7
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/go-piv/piv-go v1.11.0
