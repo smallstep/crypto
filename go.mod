@@ -3,7 +3,7 @@ module go.step.sm/crypto
 go 1.22
 
 require (
-	cloud.google.com/go/kms v1.19.1
+	cloud.google.com/go/kms v1.20.0
 	filippo.io/edwards25519 v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
@@ -37,8 +37,8 @@ require (
 	cloud.google.com/go/auth v0.9.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
-	cloud.google.com/go/iam v1.2.0 // indirect
-	cloud.google.com/go/longrunning v0.6.0 // indirect
+	cloud.google.com/go/iam v1.2.1 // indirect
+	cloud.google.com/go/longrunning v0.6.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1 // indirect
