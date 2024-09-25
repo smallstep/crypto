@@ -153,6 +153,42 @@ func TestParseWithScheme(t *testing.T) {
 	}
 }
 
+func TestURI_Has(t *testing.T) {
+	mustParse := func(s string) *URI {
+		u, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	type args struct {
+		key string
+	}
+	tests := []struct {
+		name string
+		uri  *URI
+		args args
+		want bool
+	}{
+		{"ok", mustParse("yubikey:slot-id=9a"), args{"slot-id"}, true},
+		{"ok empty", mustParse("yubikey:slot-id="), args{"slot-id"}, true},
+		{"ok query", mustParse("yubikey:pin=123456?slot-id="), args{"slot-id"}, true},
+		{"ok empty no equal", mustParse("yubikey:slot-id"), args{"slot-id"}, true},
+		{"ok query no equal", mustParse("yubikey:pin=123456?slot-id"), args{"slot-id"}, true},
+		{"ok empty no equal other", mustParse("yubikey:slot-id;pin=123456"), args{"slot-id"}, true},
+		{"ok query no equal other", mustParse("yubikey:pin=123456?slot-id&pin=123456"), args{"slot-id"}, true},
+		{"fail", mustParse("yubikey:pin=123456"), args{"slot-id"}, false},
+		{"fail with query", mustParse("yubikey:pin=123456?slot=9a"), args{"slot-id"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.uri.Has(tt.args.key); got != tt.want {
+				t.Errorf("URI.Has() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestURI_Get(t *testing.T) {
 	mustParse := func(s string) *URI {
 		u, err := Parse(s)

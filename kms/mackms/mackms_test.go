@@ -332,6 +332,7 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: r1.Name}}, r1.PublicKey, assert.NoError},
+		{"ok no tag", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256;tag="}}, r1.PublicKey, assert.NoError},
 		{"ok private only ECDSA ", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-ecdsa"}}, r2.PublicKey, assert.NoError},
 		{"ok private only RSA ", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: r3.Name}}, r3.PublicKey, assert.NoError},
 		{"ok no uri", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "test-p256"}}, r1.PublicKey, assert.NoError},
@@ -356,6 +357,9 @@ func TestMacKMS_CreateKey(t *testing.T) {
 		kms := &MacKMS{}
 		assert.NoError(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{
 			Name: "mackms:label=test-p256",
+		}))
+		assert.NoError(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{
+			Name: "mackms:label=test-p256-2;tag=",
 		}))
 	})
 
@@ -382,6 +386,21 @@ func TestMacKMS_CreateKey(t *testing.T) {
 				require.NoError(tt, err)
 				require.NotEmpty(tt, u.label)
 				require.NotEmpty(tt, u.tag)
+				require.NotEmpty(tt, u.hash)
+			}, assert.NoError},
+		{"ok no tag", &MacKMS{}, args{&apiv1.CreateKeyRequest{Name: "mackms:label=test-p256-2;tag="}},
+			func(tt require.TestingT, i1 interface{}, i2 ...interface{}) {
+				require.IsType(tt, &apiv1.CreateKeyResponse{}, i1)
+				resp := i1.(*apiv1.CreateKeyResponse)
+				require.NotEmpty(tt, resp.Name)
+				require.NotNil(tt, resp.PublicKey)
+				require.Nil(tt, resp.PrivateKey)
+				require.NotEmpty(tt, resp.CreateSignerRequest)
+
+				u, err := parseURI(resp.Name)
+				require.NoError(tt, err)
+				require.NotEmpty(tt, u.label)
+				require.Empty(tt, u.tag)
 				require.NotEmpty(tt, u.hash)
 			}, assert.NoError},
 		{"fail name", &MacKMS{}, args{&apiv1.CreateKeyRequest{}}, require.Nil, assert.Error},
@@ -524,6 +543,8 @@ func Test_parseURI(t *testing.T) {
 		{"ok", args{"mackms:label=the-label;tag=the-tag;hash=0102abcd"}, &keyAttributes{label: "the-label", tag: "the-tag", hash: []byte{1, 2, 171, 205}}, assert.NoError},
 		{"ok label", args{"the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag}, assert.NoError},
 		{"ok label uri", args{"mackms:label=the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag}, assert.NoError},
+		{"ok label empty tag", args{"mackms:label=the-label;tag="}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
+		{"ok label empty tag no equal", args{"mackms:label=the-label;tag"}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
 		{"fail parse", args{"mackms:::label=the-label"}, nil, assert.Error},
 		{"fail missing label", args{"mackms:hash=0102abcd"}, nil, assert.Error},
 	}

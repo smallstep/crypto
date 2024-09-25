@@ -105,6 +105,11 @@ func (u *URI) String() string {
 	return u.URL.String()
 }
 
+// Has checks whether a given key is set.
+func (u *URI) Has(key string) bool {
+	return u.Values.Has(key) || u.URL.Query().Has(key)
+}
+
 // Get returns the first value in the uri with the given key, it will return
 // empty string if that field is not present.
 func (u *URI) Get(key string) string {
