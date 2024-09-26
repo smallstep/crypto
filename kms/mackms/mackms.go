@@ -95,6 +95,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // CreateKey methods can create keys with the following URIs:
 //   - mackms:label=my-name
 //   - mackms:label=my-name;tag=com.smallstep.crypto
+//   - mackms;label=my-name;tag=
 //   - mackms;label=my-name;se=true;bio=true
 //
 // GetPublicKey and CreateSigner accepts the above URIs as well as the following
@@ -107,7 +108,8 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //     represents the key name. You will be able to see the keys in the Keychain,
 //     looking for the value.
 //   - "tag" corresponds with kSecAttrApplicationTag. It defaults to
-//     com.smallstep.crypto.
+//     com.smallstep.crypto. If tag is an empty string ("tag="), the attribute
+//     will not be set.
 //   - "se" is a boolean. If set to true, it will store the key in the
 //     Secure Enclave. This option requires the application to be code-signed
 //     with the appropriate entitlements.
