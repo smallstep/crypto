@@ -95,6 +95,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // CreateKey methods can create keys with the following URIs:
 //   - mackms:label=my-name
 //   - mackms:label=my-name;tag=com.smallstep.crypto
+//   - mackms;label=my-name;tag=
 //   - mackms;label=my-name;se=true;bio=true
 //
 // GetPublicKey and CreateSigner accepts the above URIs as well as the following
@@ -107,7 +108,8 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //     represents the key name. You will be able to see the keys in the Keychain,
 //     looking for the value.
 //   - "tag" corresponds with kSecAttrApplicationTag. It defaults to
-//     com.smallstep.crypto.
+//     com.smallstep.crypto. If tag is an empty string ("tag="), the attribute
+//     will not be set.
 //   - "se" is a boolean. If set to true, it will store the key in the
 //     Secure Enclave. This option requires the application to be code-signed
 //     with the appropriate entitlements.
@@ -189,12 +191,6 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 
 	// Define key attributes
-	cfTag, err := cf.NewData([]byte(u.tag))
-	if err != nil {
-		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
-	}
-	defer cfTag.Release()
-
 	cfLabel, err := cf.NewString(u.label)
 	if err != nil {
 		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
@@ -202,8 +198,15 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	defer cfLabel.Release()
 
 	keyAttributesDict := cf.Dictionary{
-		security.KSecAttrApplicationTag: cfTag,
-		security.KSecAttrIsPermanent:    cf.True,
+		security.KSecAttrIsPermanent: cf.True,
+	}
+	if u.tag != "" {
+		cfTag, err := cf.NewData([]byte(u.tag))
+		if err != nil {
+			return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
+		}
+		defer cfTag.Release()
+		keyAttributesDict[security.KSecAttrApplicationTag] = cfTag
 	}
 	if u.useSecureEnclave {
 		// After the first unlock, the data remains accessible until the next
@@ -491,12 +494,6 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("mackms DeleteKey failed: %w", err)
 	}
 
-	cfTag, err := cf.NewData([]byte(u.tag))
-	if err != nil {
-		return fmt.Errorf("mackms DeleteKey failed: %w", err)
-	}
-	defer cfTag.Release()
-
 	cfLabel, err := cf.NewString(u.label)
 	if err != nil {
 		return fmt.Errorf("mackms DeleteKey failed: %w", err)
@@ -505,10 +502,17 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 
 	for _, keyClass := range []cf.TypeRef{security.KSecAttrKeyClassPublic, security.KSecAttrKeyClassPrivate} {
 		dict := cf.Dictionary{
-			security.KSecClass:              security.KSecClassKey,
-			security.KSecAttrApplicationTag: cfTag,
-			security.KSecAttrLabel:          cfLabel,
-			security.KSecAttrKeyClass:       keyClass,
+			security.KSecClass:        security.KSecClassKey,
+			security.KSecAttrLabel:    cfLabel,
+			security.KSecAttrKeyClass: keyClass,
+		}
+		if u.tag != "" {
+			cfTag, err := cf.NewData([]byte(u.tag))
+			if err != nil {
+				return fmt.Errorf("mackms DeleteKey failed: %w", err)
+			}
+			defer cfTag.Release()
+			dict[security.KSecAttrApplicationTag] = cfTag
 		}
 		// Extract logic to deleteItem to avoid defer on loops
 		if err := deleteItem(dict, u.hash); err != nil {
@@ -672,12 +676,6 @@ func deleteItem(dict cf.Dictionary, hash []byte) error {
 }
 
 func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
-	cfTag, err := cf.NewData([]byte(u.tag))
-	if err != nil {
-		return nil, err
-	}
-	defer cfTag.Release()
-
 	cfLabel, err := cf.NewString(u.label)
 	if err != nil {
 		return nil, err
@@ -685,12 +683,19 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 	defer cfLabel.Release()
 
 	dict := cf.Dictionary{
-		security.KSecClass:              security.KSecClassKey,
-		security.KSecAttrApplicationTag: cfTag,
-		security.KSecAttrLabel:          cfLabel,
-		security.KSecAttrKeyClass:       security.KSecAttrKeyClassPrivate,
-		security.KSecReturnRef:          cf.True,
-		security.KSecMatchLimit:         security.KSecMatchLimitOne,
+		security.KSecClass:        security.KSecClassKey,
+		security.KSecAttrLabel:    cfLabel,
+		security.KSecAttrKeyClass: security.KSecAttrKeyClassPrivate,
+		security.KSecReturnRef:    cf.True,
+		security.KSecMatchLimit:   security.KSecMatchLimitOne,
+	}
+	if u.tag != "" {
+		cfTag, err := cf.NewData([]byte(u.tag))
+		if err != nil {
+			return nil, err
+		}
+		defer cfTag.Release()
+		dict[security.KSecAttrApplicationTag] = cfTag
 	}
 	if len(u.hash) > 0 {
 		d, err := cf.NewData(u.hash)
@@ -1013,7 +1018,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 		return nil, fmt.Errorf("error parsing %q: label is required", rawuri)
 	}
 	tag := u.Get("tag")
-	if tag == "" {
+	if tag == "" && !u.Has("tag") {
 		tag = DefaultTag
 	}
 	return &keyAttributes{
@@ -1100,7 +1105,7 @@ func parseSearchURI(rawuri string) (*keySearchAttributes, error) {
 	// mackms:label=my-key;tag=my-tag;hash=010a...;se=true;bio=true
 	label := u.Get("label") // when searching, the label can be empty
 	tag := u.Get("tag")
-	if tag == "" {
+	if tag == "" && !u.Has("tag") {
 		tag = DefaultTag
 	}
 	return &keySearchAttributes{
