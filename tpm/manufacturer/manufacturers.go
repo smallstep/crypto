@@ -38,7 +38,7 @@ func GetEncodings(id ID) (ascii, hexa string) {
 // GetNameByASCII returns the manufacturer name based on its
 // ASCII identifier.
 func GetNameByASCII(ascii string) string {
-	if name, ok := manufacturerByASCII[ascii]; ok {
+	if name, ok := manufacturerByASCII[strings.TrimSpace(ascii)]; ok {
 		return name
 	}
 	return "unknown"
