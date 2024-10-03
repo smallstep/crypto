@@ -193,6 +193,18 @@ func (s *stubPivKey) GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypt
 			return nil, err
 		}
 		signer = key
+	case piv.AlgorithmRSA3072:
+		key, err := rsa.GenerateKey(rand.Reader, 3072)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
+	case piv.AlgorithmRSA4096:
+		key, err := rsa.GenerateKey(rand.Reader, 4096)
+		if err != nil {
+			return nil, err
+		}
+		signer = key
 	default:
 		return nil, errors.New("unsupported algorithm")
 	}
@@ -298,6 +310,7 @@ func TestNew(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
@@ -654,6 +667,32 @@ func TestYubiKey_CreateKey(t *testing.T) {
 				},
 			}
 		}, false},
+		{"ok rsa 3072", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA256WithRSAPSS,
+			Bits:               3072,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
+		{"ok rsa 4096", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+			Name:               "yubikey:slot-id=82",
+			SignatureAlgorithm: apiv1.SHA512WithRSAPSS,
+			Bits:               4096,
+		}}, func() *apiv1.CreateKeyResponse {
+			return &apiv1.CreateKeyResponse{
+				Name:      "yubikey:slot-id=82",
+				PublicKey: yk.signerMap[slotMapping["82"]].(crypto.Signer).Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "yubikey:slot-id=82",
+				},
+			}
+		}, false},
 		{"ok with policies", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
 			Name:               "yubikey:slot-id=82",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
@@ -668,10 +707,10 @@ func TestYubiKey_CreateKey(t *testing.T) {
 				},
 			}
 		}, false},
-		{"fail rsa 4096", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
+		{"fail rsa 512", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
 			Name:               "yubikey:slot-id=82",
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
-			Bits:               4096,
+			Bits:               512,
 		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
 		{"fail getSignatureAlgorithm", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateKeyRequest{
 			Name:               "yubikey:slot-id=82",
@@ -1182,15 +1221,23 @@ func Test_getSignatureAlgorithm(t *testing.T) {
 		{"ECDSAWithSHA256", args{apiv1.ECDSAWithSHA256, 0}, piv.AlgorithmEC256, false},
 		{"ECDSAWithSHA384", args{apiv1.ECDSAWithSHA384, 0}, piv.AlgorithmEC384, false},
 		{"PureEd25519", args{apiv1.PureEd25519, 0}, piv.AlgorithmEd25519, false},
-		{"SHA256WithRSA 2048", args{apiv1.SHA256WithRSA, 2048}, piv.AlgorithmRSA2048, false},
-		{"SHA512WithRSA 2048", args{apiv1.SHA512WithRSA, 2048}, piv.AlgorithmRSA2048, false},
-		{"SHA256WithRSAPSS 2048", args{apiv1.SHA256WithRSAPSS, 2048}, piv.AlgorithmRSA2048, false},
-		{"SHA512WithRSAPSS 2048", args{apiv1.SHA512WithRSAPSS, 2048}, piv.AlgorithmRSA2048, false},
 		{"SHA256WithRSA 1024", args{apiv1.SHA256WithRSA, 1024}, piv.AlgorithmRSA1024, false},
 		{"SHA512WithRSA 1024", args{apiv1.SHA512WithRSA, 1024}, piv.AlgorithmRSA1024, false},
 		{"SHA256WithRSAPSS 1024", args{apiv1.SHA256WithRSAPSS, 1024}, piv.AlgorithmRSA1024, false},
 		{"SHA512WithRSAPSS 1024", args{apiv1.SHA512WithRSAPSS, 1024}, piv.AlgorithmRSA1024, false},
-		{"fail 4096", args{apiv1.SHA256WithRSA, 4096}, 0, true},
+		{"SHA256WithRSA 2048", args{apiv1.SHA256WithRSA, 2048}, piv.AlgorithmRSA2048, false},
+		{"SHA512WithRSA 2048", args{apiv1.SHA512WithRSA, 2048}, piv.AlgorithmRSA2048, false},
+		{"SHA256WithRSAPSS 2048", args{apiv1.SHA256WithRSAPSS, 2048}, piv.AlgorithmRSA2048, false},
+		{"SHA512WithRSAPSS 2048", args{apiv1.SHA512WithRSAPSS, 2048}, piv.AlgorithmRSA2048, false},
+		{"SHA256WithRSA 3072", args{apiv1.SHA256WithRSA, 3072}, piv.AlgorithmRSA3072, false},
+		{"SHA512WithRSA 3072", args{apiv1.SHA512WithRSA, 3072}, piv.AlgorithmRSA3072, false},
+		{"SHA256WithRSAPSS 3072", args{apiv1.SHA256WithRSAPSS, 3072}, piv.AlgorithmRSA3072, false},
+		{"SHA512WithRSAPSS 3072", args{apiv1.SHA512WithRSAPSS, 3072}, piv.AlgorithmRSA3072, false},
+		{"SHA256WithRSA 4096", args{apiv1.SHA256WithRSA, 4096}, piv.AlgorithmRSA4096, false},
+		{"SHA512WithRSA 4096", args{apiv1.SHA512WithRSA, 4096}, piv.AlgorithmRSA4096, false},
+		{"SHA256WithRSAPSS 4096", args{apiv1.SHA256WithRSAPSS, 4096}, piv.AlgorithmRSA4096, false},
+		{"SHA512WithRSAPSS 4096", args{apiv1.SHA512WithRSAPSS, 4096}, piv.AlgorithmRSA4096, false},
+		{"fail 512", args{apiv1.SHA256WithRSA, 512}, 0, true},
 		{"fail unknown", args{apiv1.SignatureAlgorithm(100), 0}, 0, true},
 		{"fail default case", args{apiv1.SignatureAlgorithm(1000), 0}, 0, true},
 	}
