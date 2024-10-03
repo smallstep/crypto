@@ -16,8 +16,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-piv/piv-go/piv"
+	"github.com/go-piv/piv-go/v2/piv"
 	"github.com/pkg/errors"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 )
@@ -34,13 +35,13 @@ type YubiKey struct {
 	yk            pivKey
 	pin           string
 	card          string
-	managementKey [24]byte
+	managementKey []byte
 }
 
 type pivKey interface {
 	Certificate(slot piv.Slot) (*x509.Certificate, error)
-	SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Certificate) error
-	GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
+	SetCertificate(key []byte, slot piv.Slot, cert *x509.Certificate) error
+	GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
 	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
 	Attest(slot piv.Slot) (*x509.Certificate, error)
 	Serial() (uint32, error)
@@ -122,7 +123,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		if len(b) != 24 {
 			return nil, errors.New("invalid managementKey: length is not 24 bytes")
 		}
-		copy(managementKey[:], b[:24])
+		copy(managementKey, b[:24])
 	}
 
 	if opts.Pin != "" {
