@@ -123,7 +123,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		if len(b) != 24 {
 			return nil, errors.New("invalid managementKey: length is not 24 bytes")
 		}
-		copy(managementKey[:], b[:24])
+		copy(managementKey, b[:24])
 	}
 
 	if opts.Pin != "" {

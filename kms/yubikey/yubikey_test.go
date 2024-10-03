@@ -149,7 +149,7 @@ func (s *stubPivKey) Certificate(slot piv.Slot) (*x509.Certificate, error) {
 }
 
 func (s *stubPivKey) SetCertificate(key []byte, slot piv.Slot, cert *x509.Certificate) error {
-	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
+	if !bytes.Equal(piv.DefaultManagementKey, key) {
 		return errors.New("missing or invalid management key")
 	}
 	s.certMap[slot] = cert
@@ -157,7 +157,7 @@ func (s *stubPivKey) SetCertificate(key []byte, slot piv.Slot, cert *x509.Certif
 }
 
 func (s *stubPivKey) GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error) {
-	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
+	if !bytes.Equal(piv.DefaultManagementKey, key) {
 		return nil, errors.New("missing or invalid management key")
 	}
 
