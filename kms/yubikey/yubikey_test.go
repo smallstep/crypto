@@ -21,9 +21,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-piv/piv-go/piv"
+	"github.com/go-piv/piv-go/v2/piv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
 )
@@ -147,7 +148,7 @@ func (s *stubPivKey) Certificate(slot piv.Slot) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func (s *stubPivKey) SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Certificate) error {
+func (s *stubPivKey) SetCertificate(key []byte, slot piv.Slot, cert *x509.Certificate) error {
 	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
 		return errors.New("missing or invalid management key")
 	}
@@ -155,7 +156,7 @@ func (s *stubPivKey) SetCertificate(key [24]byte, slot piv.Slot, cert *x509.Cert
 	return nil
 }
 
-func (s *stubPivKey) GenerateKey(key [24]byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error) {
+func (s *stubPivKey) GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error) {
 	if !bytes.Equal(piv.DefaultManagementKey[:], key[:]) {
 		return nil, errors.New("missing or invalid management key")
 	}
@@ -306,7 +307,7 @@ func TestNew(t *testing.T) {
 			pivMap = sync.Map{}
 			pivCards = okMultiplePivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "111111", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		}, &YubiKey{yk: yk, pin: "111111", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
 		{"ok with uri and serial", args{ctx, apiv1.Options{
 			URI: "yubikey:serial=112233?pin-value=123456",
 		}}, func() {
@@ -329,7 +330,7 @@ func TestNew(t *testing.T) {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: [24]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
 		{"fail uri", args{ctx, apiv1.Options{URI: "badschema:"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
@@ -390,7 +391,7 @@ func TestYubiKey_LoadCertificate(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.LoadCertificateRequest
@@ -450,7 +451,7 @@ func TestYubiKey_StoreCertificate(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.StoreCertificateRequest
@@ -472,7 +473,7 @@ func TestYubiKey_StoreCertificate(t *testing.T) {
 			Name:        "slot-id=9c",
 			Certificate: cert,
 		}}, true},
-		{"fail setCertificate", fields{yk, "123456", [24]byte{}}, args{&apiv1.StoreCertificateRequest{
+		{"fail setCertificate", fields{yk, "123456", []byte{}}, args{&apiv1.StoreCertificateRequest{
 			Name:        "yubikey:slot-id=9c",
 			Certificate: cert,
 		}}, true},
@@ -497,7 +498,7 @@ func TestYubiKey_GetPublicKey(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
@@ -544,7 +545,7 @@ func TestYubiKey_CreateKey(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -680,7 +681,7 @@ func TestYubiKey_CreateKey(t *testing.T) {
 			Name:               "yubikey:foo=82",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
-		{"fail generateKey", fields{yk, "123456", [24]byte{}}, args{&apiv1.CreateKeyRequest{
+		{"fail generateKey", fields{yk, "123456", []byte{}}, args{&apiv1.CreateKeyRequest{
 			Name:               "yubikey:slot-id=82",
 			SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 		}}, func() *apiv1.CreateKeyResponse { return nil }, true},
@@ -711,7 +712,7 @@ func TestYubiKey_CreateKey_policies(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -867,7 +868,7 @@ func TestYubiKey_CreateSigner(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.CreateSignerRequest
@@ -929,7 +930,7 @@ func TestYubiKey_CreateDecrypter(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.CreateDecrypterRequest
@@ -991,7 +992,7 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	type args struct {
 		req *apiv1.CreateAttestationRequest
@@ -1079,7 +1080,7 @@ func TestYubiKey_Close(t *testing.T) {
 	type fields struct {
 		yk            pivKey
 		pin           string
-		managementKey [24]byte
+		managementKey []byte
 	}
 	tests := []struct {
 		name    string
