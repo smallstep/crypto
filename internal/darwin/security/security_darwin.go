@@ -320,34 +320,22 @@ func SecCopyErrorMessageString(status C.OSStatus) *cf.StringRef {
 
 func GetSecAttrApplicationLabel(v *cf.DictionaryRef) []byte {
 	data := C.CFDataRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrApplicationLabel)))
-	return C.GoBytes(
-		unsafe.Pointer(C.CFDataGetBytePtr(data)),
-		C.int(C.CFDataGetLength(data)),
-	)
+	return goBytes(data)
 }
 
 func GetSecAttrApplicationTag(v *cf.DictionaryRef) string {
 	data := C.CFDataRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrApplicationTag)))
-	return string(C.GoBytes(
-		unsafe.Pointer(C.CFDataGetBytePtr(data)),
-		C.int(C.CFDataGetLength(data)),
-	))
+	return string(goBytes(data))
 }
 
-func GetSecAttrLabel(v *cf.DictionaryRef) (label string) {
+func GetSecAttrLabel(v *cf.DictionaryRef) string {
 	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrLabel)))
-	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
-		label = C.GoString(cstr)
-	}
-	return label
+	return goString(ref)
 }
 
-func GetSecAttrTokenID(v *cf.DictionaryRef) (tokenID string) {
+func GetSecAttrTokenID(v *cf.DictionaryRef) string {
 	ref := C.CFStringRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecAttrTokenID)))
-	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
-		tokenID = C.GoString(cstr)
-	}
-	return tokenID
+	return goString(ref)
 }
 
 func GetSecAttrAccessControl(v *cf.DictionaryRef) *SecAccessControlRef {
@@ -376,10 +364,7 @@ func GetSecAttrAccessControl(v *cf.DictionaryRef) *SecAccessControlRef {
 
 func GetSecValueData(v *cf.DictionaryRef) []byte {
 	data := C.CFDataRef(C.CFDictionaryGetValue(C.CFDictionaryRef(v.Value), unsafe.Pointer(C.kSecValueData)))
-	return C.GoBytes(
-		unsafe.Pointer(C.CFDataGetBytePtr(data)),
-		C.int(C.CFDataGetLength(data)),
-	)
+	return goBytes(data)
 }
 
 type osStatusError struct {
@@ -406,15 +391,48 @@ func goOSStatus(status C.OSStatus) error {
 
 	var message string
 	if ref := SecCopyErrorMessageString(status); ref.Value != 0 {
-		if cstr := C.CFStringGetCStringPtr(C.CFStringRef(ref.Value), C.kCFStringEncodingUTF8); cstr != nil {
-			message = C.GoString(cstr)
-		}
+		message = goString(C.CFStringRef(ref.Value))
 		defer ref.Release()
 	}
 	return osStatusError{
 		code:    int(status),
 		message: message,
 	}
+}
+
+func goBytes(data C.CFDataRef) []byte {
+	if data == 0 {
+		return nil
+	}
+	return C.GoBytes(
+		unsafe.Pointer(C.CFDataGetBytePtr(data)),
+		C.int(C.CFDataGetLength(data)),
+	)
+}
+
+func goString(ref C.CFStringRef) string {
+	if ref == 0 {
+		return ""
+	}
+
+	// CFStringGetCStringPtr either returns the requested pointer immediately,
+	// with no memory allocations and no copying, in constant time, or returns
+	// NULL.
+	if cstr := C.CFStringGetCStringPtr(ref, C.kCFStringEncodingUTF8); cstr != nil {
+		return C.GoString(cstr)
+	}
+
+	// The documentation recommends using CFStringGetCString if the previous one
+	// fails.
+	length := C.CFStringGetLength(ref)
+	buf := (*C.char)(C.malloc(C.size_t(length) + 1))
+	defer C.free(unsafe.Pointer(buf))
+
+	if C.CFStringGetCString(ref, buf, length+1, C.kCFStringEncodingUTF8) == 0 {
+		return ""
+	}
+
+	return C.GoString(buf)
 }
 
 type cfError struct {
