@@ -65,10 +65,8 @@ type keyAttributes struct {
 // would return the tag empty if it was set using the default value.
 func (k *keyAttributes) retryAttributes() *keyAttributes {
 	if !k.retry {
-		fmt.Println("no retry")
 		return nil
 	}
-	fmt.Println("retry")
 	return &keyAttributes{
 		label: k.label,
 		hash:  k.hash,
