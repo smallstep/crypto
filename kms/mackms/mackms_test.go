@@ -307,7 +307,7 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 
 	// Create private keys only
 	r2 := createPrivateKeyOnly(t, "mackms:label=test-ecdsa", apiv1.ECDSAWithSHA256)
-	r3 := createPrivateKeyOnly(t, "mackms:label=test-rsa", apiv1.SHA256WithRSA)
+	r3 := createPrivateKeyOnly(t, "mackms:label=test-rsa;tag=", apiv1.SHA256WithRSA)
 
 	t.Cleanup(func() {
 		assert.NoError(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{
@@ -334,7 +334,8 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 		{"ok", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: r1.Name}}, r1.PublicKey, assert.NoError},
 		{"ok no tag", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256;tag="}}, r1.PublicKey, assert.NoError},
 		{"ok private only ECDSA ", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-ecdsa"}}, r2.PublicKey, assert.NoError},
-		{"ok private only RSA ", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: r3.Name}}, r3.PublicKey, assert.NoError},
+		{"ok private only RSA", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: r3.Name}}, r3.PublicKey, assert.NoError},
+		{"ok private only RSA with retry", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-rsa"}}, r3.PublicKey, assert.NoError},
 		{"ok no uri", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "test-p256"}}, r1.PublicKey, assert.NoError},
 		{"ok uri simple", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:test-p256"}}, r1.PublicKey, assert.NoError},
 		{"ok uri label", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256"}}, r1.PublicKey, assert.NoError},
@@ -541,11 +542,12 @@ func Test_parseURI(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", args{"mackms:label=the-label;tag=the-tag;hash=0102abcd"}, &keyAttributes{label: "the-label", tag: "the-tag", hash: []byte{1, 2, 171, 205}}, assert.NoError},
-		{"ok label", args{"the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag}, assert.NoError},
-		{"ok label uri", args{"mackms:label=the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag}, assert.NoError},
+		{"ok label", args{"the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
+		{"ok label uri", args{"mackms:label=the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
+		{"ok label uri simple", args{"mackms:the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
 		{"ok label empty tag", args{"mackms:label=the-label;tag="}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
 		{"ok label empty tag no equal", args{"mackms:label=the-label;tag"}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
-		{"fail parse", args{"mackms:::label=the-label"}, nil, assert.Error},
+		{"fail parse", args{"mackms:%label=the-label"}, nil, assert.Error},
 		{"fail missing label", args{"mackms:hash=0102abcd"}, nil, assert.Error},
 	}
 	for _, tt := range tests {
@@ -1305,4 +1307,59 @@ func TestMacKMS_SearchKeys(t *testing.T) {
 	}
 
 	assert.Equal(t, expectedHashes, hashes)
+}
+
+func Test_keyAttributes_retryAttributes(t *testing.T) {
+	type fields struct {
+		label string
+		tag   string
+		hash  []byte
+		retry bool
+	}
+
+	mustFields := func(s string) fields {
+		t.Helper()
+		u, err := parseURI(s)
+		require.NoError(t, err)
+		return fields{
+			label: u.label,
+			tag:   u.tag,
+			hash:  u.hash,
+			retry: u.retry,
+		}
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+		want   *keyAttributes
+	}{
+		{"with tag", mustFields("mackms:label=label;tag=tag"), nil},
+		{"with tag and hash", mustFields("mackms:label=label;hash=FF00;tag=tag"), nil},
+		{"with empty tag", mustFields("mackms:label=label;tag="), nil},
+		{"with no tag", mustFields("mackms:label=label;hash=FF00"), &keyAttributes{
+			label: "label",
+			hash:  []byte{0xFF, 0x00},
+		}},
+		{"legacy name only", mustFields("label"), &keyAttributes{
+			label: "label",
+		}},
+		{"legacy with schema", mustFields("mackms:label"), &keyAttributes{
+			label: "label",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &keyAttributes{
+				label: tt.fields.label,
+				tag:   tt.fields.tag,
+				hash:  tt.fields.hash,
+				retry: tt.fields.retry,
+			}
+			if tt.name == "with no tag" {
+				t.Log("foo")
+			}
+			assert.Equal(t, tt.want, k.retryAttributes())
+		})
+	}
 }
