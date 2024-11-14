@@ -52,10 +52,26 @@ type keyAttributes struct {
 	label            string
 	tag              string
 	hash             []byte
+	retry            bool
 	useSecureEnclave bool
 	useBiometrics    bool
 	sigAlgorithm     apiv1.SignatureAlgorithm
 	keySize          int
+}
+
+// retryAttributes returns the original URI attributes used to get a private
+// key, but only if they are different that the ones set. It will return nil, if
+// they are the same. The only attribute that can change is the tag. This method
+// would return the tag empty if it was set using the default value.
+func (k *keyAttributes) retryAttributes() *keyAttributes {
+	if !k.retry {
+		return nil
+	}
+	return &keyAttributes{
+		label: k.label,
+		hash:  k.hash,
+		retry: false,
+	}
 }
 
 type keySearchAttributes struct {
@@ -715,6 +731,12 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 
 	var key cf.TypeRef
 	if err := security.SecItemCopyMatching(query, &key); err != nil {
+		// If not found retry without the tag if it wasn't set.
+		if errors.Is(err, security.ErrNotFound) {
+			if ru := u.retryAttributes(); ru != nil {
+				return getPrivateKey(ru)
+			}
+		}
 		return nil, fmt.Errorf("macOS SecItemCopyMatching failed: %w", err)
 	}
 	return security.NewSecKeyRef(key), nil
@@ -990,6 +1012,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 		return &keyAttributes{
 			label: rawuri,
 			tag:   DefaultTag,
+			retry: true,
 		}, nil
 	}
 
@@ -1006,6 +1029,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 				return &keyAttributes{
 					label: k,
 					tag:   DefaultTag,
+					retry: true,
 				}, nil
 			}
 		}
@@ -1025,6 +1049,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 		label:            label,
 		tag:              tag,
 		hash:             u.GetEncoded("hash"),
+		retry:            !u.Has("tag"),
 		useSecureEnclave: u.GetBool("se"),
 		useBiometrics:    u.GetBool("bio"),
 	}, nil
