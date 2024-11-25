@@ -48,8 +48,8 @@ func init() {
 	// manufacturerByASCII contains a mapping of TPM manufacturer
 	// ASCII names to full manufacturer names. It is mainly based on the data
 	// provided on https://trustedcomputinggroup.org/resource/vendor-id-registry/,
-	// e.g. https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM_VendorIDRegistry_v106_r94v91_9May23-1.pdf
-	// Some additional known manufacturers are provided too.
+	// e.g. https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Family-1.2-and-2.0-Version-1.07-Revision-0.02_pub.pdf
+	// Some additional known manufacturers that are not on the list are provided too.
 	manufacturerByASCII = map[string]string{
 		// 4.1 Product Implementations
 		"AMD":  "AMD",
@@ -70,15 +70,18 @@ func init() {
 		"MSFT": "Microsoft",
 		"NSM":  "National Semiconductor",
 		"NTZ":  "Nationz",
+		"NSG":  "NSING",
 		"NTC":  "Nuvoton Technology",
 		"QCOM": "Qualcomm",
 		"SMSN": "Samsung",
+		"SECE": "SecEdge",
 		"SNS":  "Sinosun",
 		"SMSC": "SMSC",
 		//"":     "Solidigm", // TODO: Solidigm was added to the list of Vendor ID interfaces, but not in the ASCII identifier list; haven't found ASCII identifier yet
-		"STM": "ST Microelectronics",
-		"TXN": "Texas Instruments",
-		"WEC": "Winbond",
+		"STM":  "ST Microelectronics",
+		"TXN":  "Texas Instruments",
+		"WEC":  "Winbond",
+		"SEAL": "WiseKey",
 
 		// 4.2 Simulator and Testing Implementations
 		"SIM0": "Simulator 0",
