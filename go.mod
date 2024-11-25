@@ -1,6 +1,7 @@
 module go.step.sm/crypto
 
 go 1.22
+toolchain go1.22.9
 
 require (
 	cloud.google.com/go/kms v1.20.1
@@ -28,7 +29,7 @@ require (
 	golang.org/x/net v0.31.0
 	golang.org/x/sys v0.27.0
 	google.golang.org/api v0.209.0
-	google.golang.org/grpc v1.67.1
+	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.35.2
 )
 
