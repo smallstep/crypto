@@ -59,12 +59,14 @@ type PKCS11 struct {
 //   - pkcs11:serial=1a2b3c4d5e6f?pin-source=/path/to/pin.txt
 //   - pkcs11:slot-id=5?pin-value=password
 //   - pkcs11:module-path=/path/to/module.so;token=smallstep?pin-value=password
+//   - pkcs11:token=smallstep;max-sessions=100?pin-value=password
 //
 // The scheme is "pkcs11"; "token", "serial", or "slot-id" defines the
 // cryptographic device to use. "module-path" is the path of the PKCS#11 module
 // to use. It will default to the proxy module of the p11-kit project if none is
 // specified (p11-kit-proxy.so). "pin-value" provides the user's PIN, and
-// "pin-source" defines a file that contains the PIN.
+// "pin-source" defines a file that contains the PIN. "max-sessions" defines the
+// maximum number of PKCS#11 sessions, it defaults to 1024.
 //
 // A cryptographic key or object is identified by its "id" or "object"
 // attributes. The "id" is the key identifier for the object, it's a hexadecimal
@@ -95,6 +97,13 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 			return nil, errors.Wrap(err, "kms uri 'slot-id' is not valid")
 		}
 		config.SlotNumber = &n
+	}
+	if v := u.Get("max-sessions"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, errors.Wrap(err, "kms uri 'max-sessions' is not valid")
+		}
+		config.MaxSessions = n
 	}
 
 	// Get module or default to use p11-kit-proxy.so.
