@@ -64,6 +64,10 @@ func TestNew(t *testing.T) {
 			Type: "pkcs11",
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;slot-id=0?pin-value=password",
 		}}, k, false},
+		{"ok with max-sessions", args{context.Background(), apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test;max-sessions=100?pin-value=password",
+		}}, k, false},
 		{"ok with pin", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
@@ -109,6 +113,10 @@ func TestNew(t *testing.T) {
 		{"fail slot-id", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;slot-id=x?pin-value=password",
+		}}, nil, true},
+		{"fail max-sessions", args{context.Background(), apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test;max-sessions=0F?pin-value=password",
 		}}, nil, true},
 		{"fail scheme", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
