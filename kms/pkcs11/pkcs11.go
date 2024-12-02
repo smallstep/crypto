@@ -11,13 +11,16 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/big"
 	"runtime"
 	"strconv"
 	"sync"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/miekg/pkcs11"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/singleflight"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -50,6 +53,7 @@ var p11Configure = func(config *crypto11.Config) (P11, error) {
 type PKCS11 struct {
 	p11    P11
 	closed sync.Once
+	config crypto11.Config
 }
 
 // New returns a new PKCS#11 KMS. To initialize it, you need to provide a URI
@@ -139,7 +143,8 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 	}
 
 	return &PKCS11{
-		p11: p11,
+		p11:    p11,
+		config: config,
 	}, nil
 }
 
@@ -207,7 +212,95 @@ func (k *PKCS11) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		return nil, errors.Wrap(err, "createSigner failed")
 	}
 
-	return signer, nil
+	return &reconnectSigner{
+		Signer:     signer,
+		kms:        k,
+		signingKey: req.SigningKey,
+	}, nil
+}
+
+// reconnectSigner is a crypto.Signer that reconfigures the PKCS#11 session on
+// specific errors. The locking mechanism does not avoid that concurrent signs
+// might reconnect the connection several times.
+type reconnectSigner struct {
+	crypto.Signer
+	rw         sync.RWMutex
+	sf         singleflight.Group
+	kms        *PKCS11
+	signingKey string
+}
+
+// Sign calls the crypto.Signer Sign method and attempts to reconfigure the
+// connection if it the PKCS#11 session fails.
+func (s *reconnectSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	signature, err := s.sign(rand, digest, opts)
+	if err == nil {
+		return signature, nil
+	}
+
+	// Reconnect with errors from functions that use a session handle:
+	//   - CKR_DEVICE_REMOVED: The token was removed from its slot during the
+	//     execution of the function. Utimaco simulator fails with this code if
+	//     we keep more than 256 connections open.
+	//   - CKR_SESSION_HANDLE_INVALID: The specified session handle was invalid
+	//     at the time that the function was invoked.
+	//   - CKR_SESSION_CLOSED: The session was closed during the execution of the
+	//     function.
+	var p11Err pkcs11.Error
+	if !errors.As(err, &p11Err) {
+		return nil, err
+	}
+	switch p11Err {
+	case pkcs11.CKR_DEVICE_REMOVED, pkcs11.CKR_SESSION_HANDLE_INVALID, pkcs11.CKR_SESSION_CLOSED:
+	default:
+		return nil, err
+	}
+
+	// Reconnect and prepare signer
+	if err := s.reconnect(); err != nil {
+		return nil, err
+	}
+
+	// Sign again
+	return s.sign(rand, digest, opts)
+}
+
+// sign signs the digest using the PKCS#11 module. The sign is protected by a
+// RWMutex that will be locked if there is we need to reconnect.
+func (s *reconnectSigner) sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	s.rw.RLock()
+	defer s.rw.RUnlock()
+	return s.Signer.Sign(rand, digest, opts)
+}
+
+// reconnect closes the current connection to the module and reconnects again.
+// It uses singleflight to avoid simultaneous attempts, locks the signer RWMutex
+// to avoid new signs while reconnecting and reconfigures the signer.
+func (s *reconnectSigner) reconnect() error {
+	_, err, _ := s.sf.Do("all", func() (interface{}, error) {
+		s.rw.Lock()
+		defer s.rw.Unlock()
+		if err := s.kms.unsafeReconnect(); err != nil {
+			return nil, err
+		}
+		signer, err := findSigner(s.kms.p11, s.signingKey)
+		if err != nil {
+			return nil, err
+		}
+		s.Signer = signer
+		return nil, nil
+	})
+	return err
+}
+
+func (k *PKCS11) unsafeReconnect() error {
+	_ = k.p11.Close()
+	p11, err := p11Configure(&k.config)
+	if err != nil {
+		return err
+	}
+	k.p11 = p11
+	return nil
 }
 
 // CreateDecrypter creates a decrypter using a key present in the PKCS#11
