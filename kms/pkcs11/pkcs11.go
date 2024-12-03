@@ -288,7 +288,7 @@ func (s *reconnectSigner) reconnect() error {
 			return nil, err
 		}
 		s.Signer = signer
-		return nil, nil
+		return nil, nil //nolint:nilnil // there's nothing to return
 	})
 	return err
 }
