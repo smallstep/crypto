@@ -42,6 +42,7 @@ type pivKey interface {
 	Certificate(slot piv.Slot) (*x509.Certificate, error)
 	SetCertificate(key []byte, slot piv.Slot, cert *x509.Certificate) error
 	GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
+	KeyInfo(slot piv.Slot) (piv.KeyInfo, error)
 	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
 	Attest(slot piv.Slot) (*x509.Certificate, error)
 	Serial() (uint32, error)
@@ -381,17 +382,33 @@ func (k *YubiKey) Close() error {
 	return nil
 }
 
-// getPublicKey returns the public key on a slot. First it attempts to do
-// attestation to get a certificate with the public key in it, if this succeeds
-// means that the key was generated in the device. If not we'll try to get the
-// key from a stored certificate in the same slot.
+// getPublicKey returns the public key on a slot. First it attempts to use
+// KeyInfo to get the public key, then tries to do attestation to get a
+// certificate with the public key in it, if this succeeds means that the key
+// was generated in the device. If not we'll try to get the key from a stored
+// certificate in the same slot.
 func (k *YubiKey) getPublicKey(slot piv.Slot) (crypto.PublicKey, error) {
-	cert, err := k.yk.Attest(slot)
-	if err != nil {
-		if cert, err = k.yk.Certificate(slot); err != nil {
-			return nil, errors.Wrap(err, "error retrieving public key")
-		}
+	// YubiKey >= 5.3.0 (generated and imported keys)
+	if ki, err := k.yk.KeyInfo(slot); err == nil && ki.PublicKey != nil {
+		return ki.PublicKey, nil
 	}
+
+	// YubiKey >= 4.3.0 (generated keys)
+	if cert, err := k.yk.Attest(slot); err == nil {
+		return cert.PublicKey, nil
+	}
+
+	// Fallback to certificate in slot (generated and imported)
+	cert, err := k.yk.Certificate(slot)
+	if err != nil {
+		if errors.Is(err, piv.ErrNotFound) {
+			return nil, apiv1.NotFoundError{
+				Message: err.Error(),
+			}
+		}
+		return nil, fmt.Errorf("error retrieving public key: %w", err)
+	}
+
 	return cert.PublicKey, nil
 }
 
