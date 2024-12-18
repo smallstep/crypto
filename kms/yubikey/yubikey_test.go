@@ -17,6 +17,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"testing"
@@ -33,6 +34,7 @@ type stubPivKey struct {
 	attestCA      *minica.CA
 	attestSigner  privateKey
 	userCA        *minica.CA
+	keyInfoMap    map[piv.Slot]piv.KeyInfo
 	attestMap     map[piv.Slot]*x509.Certificate
 	certMap       map[piv.Slot]*x509.Certificate
 	signerMap     map[piv.Slot]interface{}
@@ -73,8 +75,10 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 		t.Fatal(err)
 	}
 
+	var keyInfoAlgo piv.Algorithm
 	switch alg {
 	case ECDSA:
+		keyInfoAlgo = piv.AlgorithmEC256
 		attSigner, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			t.Fatal(err)
@@ -84,6 +88,7 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 			t.Fatal(err)
 		}
 	case RSA:
+		keyInfoAlgo = piv.AlgorithmRSA2048
 		attSigner, err = rsa.GenerateKey(rand.Reader, rsaKeySize)
 		if err != nil {
 			t.Fatal(err)
@@ -124,6 +129,15 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 		attestCA:     attestCA,
 		attestSigner: attSigner,
 		userCA:       userCA,
+		keyInfoMap: map[piv.Slot]piv.KeyInfo{
+			piv.SlotKeyManagement: {
+				PublicKey:   attSigner.Public(),
+				Algorithm:   keyInfoAlgo,
+				PINPolicy:   piv.PINPolicyOnce,
+				TouchPolicy: piv.TouchPolicyCached,
+				Origin:      piv.OriginGenerated,
+			}, // 9d
+		},
 		attestMap: map[piv.Slot]*x509.Certificate{
 			piv.SlotAuthentication: attCert, // 9a
 		},
@@ -140,10 +154,21 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 	}
 }
 
+func (s *stubPivKey) KeyInfo(slot piv.Slot) (piv.KeyInfo, error) {
+	keyInfo, ok := s.keyInfoMap[slot]
+	if !ok {
+		return piv.KeyInfo{}, errors.New("public key not found")
+	}
+	return keyInfo, nil
+}
+
 func (s *stubPivKey) Certificate(slot piv.Slot) (*x509.Certificate, error) {
 	cert, ok := s.certMap[slot]
 	if !ok {
-		return nil, errors.New("certificate not found")
+		if slot == slotMapping["82"] {
+			return nil, errors.New("command failed: some error")
+		}
+		return nil, fmt.Errorf("command failed: %w", piv.ErrNotFound)
 	}
 	return cert, nil
 }
@@ -523,13 +548,22 @@ func TestYubiKey_GetPublicKey(t *testing.T) {
 		want    crypto.PublicKey
 		wantErr bool
 	}{
-		{"ok", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+		{"ok with keyInfo", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "yubikey:slot-id=9d",
+		}}, yk.keyInfoMap[piv.SlotKeyManagement].PublicKey, false},
+		{"ok with Attest", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "yubikey:slot-id=9a",
+		}}, yk.attestMap[piv.SlotAuthentication].PublicKey, false},
+		{"ok with certificate", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
 			Name: "yubikey:slot-id=9c",
 		}}, yk.certMap[piv.SlotSignature].PublicKey, false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
 			Name: "slot-id=9c",
 		}}, nil, true},
 		{"fail getPublicKey", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
+			Name: "yubikey:slot-id=82",
+		}}, nil, true},
+		{"fail getPublicKey not found", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.GetPublicKeyRequest{
 			Name: "yubikey:slot-id=85",
 		}}, nil, true},
 	}
