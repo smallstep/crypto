@@ -104,9 +104,9 @@ type Manufacturer struct {
 // String returns a textual representation of the TPM
 // manufacturer. An example looks like this:
 //
-//	ST Microelectronics (STM, 53544D20, 1398033696)
+//	ST Microelectronics (<STM >, 53544D20, 1398033696)
 func (m Manufacturer) String() string {
-	return fmt.Sprintf("%s (%s, %s, %d)", m.Name, m.ASCII, m.Hex, m.ID)
+	return fmt.Sprintf("%s (<%s>, %s, %d)", m.Name, m.ASCII, m.Hex, m.ID)
 }
 
 // GetManufacturerByID returns a Manufacturer based on its Manufacturer ID

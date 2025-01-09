@@ -83,11 +83,11 @@ func Test_GetManufacturerByID(t *testing.T) {
 func TestManufacturer_String(t *testing.T) {
 	m := Manufacturer{
 		Name:  "ST Microelectronics",
-		ASCII: "STM",
+		ASCII: "STM ",
 		ID:    1398033696,
 		Hex:   "53544D20",
 	}
-	want := "ST Microelectronics (STM, 53544D20, 1398033696)"
+	want := "ST Microelectronics (<STM >, 53544D20, 1398033696)"
 	if got := m.String(); got != want {
 		t.Errorf("Manufacturer.String() = %v, want %v", got, want)
 	}
