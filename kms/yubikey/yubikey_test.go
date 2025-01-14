@@ -16,8 +16,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -28,6 +31,7 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
+	"go.step.sm/crypto/randutil"
 )
 
 type stubPivKey struct {
@@ -298,6 +302,11 @@ func TestNew(t *testing.T) {
 		pivCards = pCards
 	})
 
+	managementKey, err := randutil.Salt(24)
+	require.NoError(t, err)
+	managementKeyFile := filepath.Join(t.TempDir(), "management.key")
+	require.NoError(t, os.WriteFile(managementKeyFile, []byte(hex.EncodeToString(managementKey)), 0600))
+
 	yk := newStubPivKey(t, ECDSA)
 
 	okPivCards := func() ([]string, error) {
@@ -359,6 +368,13 @@ func TestNew(t *testing.T) {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with management-key-source", args{ctx, apiv1.Options{
+			URI: fmt.Sprintf("yubikey:management-key-source=%s?pin-value=123456", managementKeyFile),
+		}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: managementKey}, false},
 		{"ok with Pin", args{ctx, apiv1.Options{Pin: "222222"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
@@ -380,6 +396,11 @@ func TestNew(t *testing.T) {
 			pivOpen = okPivOpen
 		}, nil, true},
 		{"fail management key size", args{ctx, apiv1.Options{URI: "yubikey:management-key=00112233"}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, nil, true},
+		{"fail management key source", args{ctx, apiv1.Options{URI: "yubikey:management-key-source=missing.txt"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen

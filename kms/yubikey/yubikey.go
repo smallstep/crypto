@@ -4,6 +4,7 @@
 package yubikey
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/go-piv/piv-go/v2/piv"
 	"github.com/pkg/errors"
@@ -85,6 +87,7 @@ func openCard(card string) (pivKey, error) {
 // support multiple cards at the same time.
 //
 //	yubikey:management-key=001122334455667788990011223344556677889900112233?pin-value=123456
+//	yubikey:management-key-source=/var/run/management.key?pin-source=/var/run/yubikey.pin
 //	yubikey:serial=112233?pin-source=/var/run/yubikey.pin
 //
 // You can also define a slot id, this will be ignored in this method but can be
@@ -92,7 +95,7 @@ func openCard(card string) (pivKey, error) {
 //
 //	yubikey:slot-id=9a?pin-value=123456
 //
-// If the pin or the management-key are not provided, we will use the default
+// If the pin or the management key are not provided, we will use the default
 // ones.
 func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
@@ -109,6 +112,14 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		}
 		if v := u.Get("management-key"); v != "" {
 			opts.ManagementKey = v
+		} else if u.Has("management-key-source") {
+			b, err := u.Read("management-key-source")
+			if err != nil {
+				return nil, err
+			}
+			if b = bytes.TrimFunc(b, unicode.IsSpace); len(b) > 0 {
+				opts.ManagementKey = string(b)
+			}
 		}
 		if v := u.Get("serial"); v != "" {
 			serial = v
@@ -119,7 +130,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	if opts.ManagementKey != "" {
 		b, err := hex.DecodeString(opts.ManagementKey)
 		if err != nil {
-			return nil, errors.Wrap(err, "error decoding managementKey")
+			return nil, errors.Wrap(err, "error decoding management key")
 		}
 		if len(b) != 24 {
 			return nil, errors.New("invalid managementKey: length is not 24 bytes")

@@ -2,12 +2,21 @@ package uri
 
 import (
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func mustParse(t *testing.T, s string) *URI {
+	t.Helper()
+	u, err := Parse(s)
+	require.NoError(t, err)
+	return u
+}
 
 func TestNew(t *testing.T) {
 	type args struct {
@@ -154,13 +163,6 @@ func TestParseWithScheme(t *testing.T) {
 }
 
 func TestURI_Has(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -170,15 +172,15 @@ func TestURI_Has(t *testing.T) {
 		args args
 		want bool
 	}{
-		{"ok", mustParse("yubikey:slot-id=9a"), args{"slot-id"}, true},
-		{"ok empty", mustParse("yubikey:slot-id="), args{"slot-id"}, true},
-		{"ok query", mustParse("yubikey:pin=123456?slot-id="), args{"slot-id"}, true},
-		{"ok empty no equal", mustParse("yubikey:slot-id"), args{"slot-id"}, true},
-		{"ok query no equal", mustParse("yubikey:pin=123456?slot-id"), args{"slot-id"}, true},
-		{"ok empty no equal other", mustParse("yubikey:slot-id;pin=123456"), args{"slot-id"}, true},
-		{"ok query no equal other", mustParse("yubikey:pin=123456?slot-id&pin=123456"), args{"slot-id"}, true},
-		{"fail", mustParse("yubikey:pin=123456"), args{"slot-id"}, false},
-		{"fail with query", mustParse("yubikey:pin=123456?slot=9a"), args{"slot-id"}, false},
+		{"ok", mustParse(t, "yubikey:slot-id=9a"), args{"slot-id"}, true},
+		{"ok empty", mustParse(t, "yubikey:slot-id="), args{"slot-id"}, true},
+		{"ok query", mustParse(t, "yubikey:pin=123456?slot-id="), args{"slot-id"}, true},
+		{"ok empty no equal", mustParse(t, "yubikey:slot-id"), args{"slot-id"}, true},
+		{"ok query no equal", mustParse(t, "yubikey:pin=123456?slot-id"), args{"slot-id"}, true},
+		{"ok empty no equal other", mustParse(t, "yubikey:slot-id;pin=123456"), args{"slot-id"}, true},
+		{"ok query no equal other", mustParse(t, "yubikey:pin=123456?slot-id&pin=123456"), args{"slot-id"}, true},
+		{"fail", mustParse(t, "yubikey:pin=123456"), args{"slot-id"}, false},
+		{"fail with query", mustParse(t, "yubikey:pin=123456?slot=9a"), args{"slot-id"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -190,13 +192,6 @@ func TestURI_Has(t *testing.T) {
 }
 
 func TestURI_Get(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -206,12 +201,12 @@ func TestURI_Get(t *testing.T) {
 		args args
 		want string
 	}{
-		{"ok", mustParse("yubikey:slot-id=9a"), args{"slot-id"}, "9a"},
-		{"ok first", mustParse("yubikey:slot-id=9a;slot-id=9b"), args{"slot-id"}, "9a"},
-		{"ok multiple", mustParse("yubikey:slot-id=9a;foo=bar"), args{"foo"}, "bar"},
-		{"ok in query", mustParse("yubikey:slot-id=9a?foo=bar"), args{"foo"}, "bar"},
-		{"fail missing", mustParse("yubikey:slot-id=9a"), args{"foo"}, ""},
-		{"fail missing query", mustParse("yubikey:slot-id=9a?bar=zar"), args{"foo"}, ""},
+		{"ok", mustParse(t, "yubikey:slot-id=9a"), args{"slot-id"}, "9a"},
+		{"ok first", mustParse(t, "yubikey:slot-id=9a;slot-id=9b"), args{"slot-id"}, "9a"},
+		{"ok multiple", mustParse(t, "yubikey:slot-id=9a;foo=bar"), args{"foo"}, "bar"},
+		{"ok in query", mustParse(t, "yubikey:slot-id=9a?foo=bar"), args{"foo"}, "bar"},
+		{"fail missing", mustParse(t, "yubikey:slot-id=9a"), args{"foo"}, ""},
+		{"fail missing query", mustParse(t, "yubikey:slot-id=9a?bar=zar"), args{"foo"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -223,13 +218,6 @@ func TestURI_Get(t *testing.T) {
 }
 
 func TestURI_GetBool(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -239,13 +227,13 @@ func TestURI_GetBool(t *testing.T) {
 		args args
 		want bool
 	}{
-		{"true", mustParse("azurekms:name=foo;vault=bar;hsm=true"), args{"hsm"}, true},
-		{"TRUE", mustParse("azurekms:name=foo;vault=bar;hsm=TRUE"), args{"hsm"}, true},
-		{"tRUe query", mustParse("azurekms:name=foo;vault=bar?hsm=tRUe"), args{"hsm"}, true},
-		{"false", mustParse("azurekms:name=foo;vault=bar;hsm=false"), args{"hsm"}, false},
-		{"false query", mustParse("azurekms:name=foo;vault=bar?hsm=false"), args{"hsm"}, false},
-		{"empty", mustParse("azurekms:name=foo;vault=bar;hsm=?bar=true"), args{"hsm"}, false},
-		{"missing", mustParse("azurekms:name=foo;vault=bar"), args{"hsm"}, false},
+		{"true", mustParse(t, "azurekms:name=foo;vault=bar;hsm=true"), args{"hsm"}, true},
+		{"TRUE", mustParse(t, "azurekms:name=foo;vault=bar;hsm=TRUE"), args{"hsm"}, true},
+		{"tRUe query", mustParse(t, "azurekms:name=foo;vault=bar?hsm=tRUe"), args{"hsm"}, true},
+		{"false", mustParse(t, "azurekms:name=foo;vault=bar;hsm=false"), args{"hsm"}, false},
+		{"false query", mustParse(t, "azurekms:name=foo;vault=bar?hsm=false"), args{"hsm"}, false},
+		{"empty", mustParse(t, "azurekms:name=foo;vault=bar;hsm=?bar=true"), args{"hsm"}, false},
+		{"missing", mustParse(t, "azurekms:name=foo;vault=bar"), args{"hsm"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -257,13 +245,6 @@ func TestURI_GetBool(t *testing.T) {
 }
 
 func TestURI_GetEncoded(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -273,15 +254,15 @@ func TestURI_GetEncoded(t *testing.T) {
 		args args
 		want []byte
 	}{
-		{"ok", mustParse("yubikey:slot-id=9a"), args{"slot-id"}, []byte{0x9a}},
-		{"ok prefix", mustParse("yubikey:slot-id=0x9a"), args{"slot-id"}, []byte{0x9a}},
-		{"ok first", mustParse("yubikey:slot-id=9a9b;slot-id=9b"), args{"slot-id"}, []byte{0x9a, 0x9b}},
-		{"ok percent", mustParse("yubikey:slot-id=9a;foo=%9a%9b%9c"), args{"foo"}, []byte{0x9a, 0x9b, 0x9c}},
-		{"ok in query", mustParse("yubikey:slot-id=9a?foo=9a"), args{"foo"}, []byte{0x9a}},
-		{"ok in query percent", mustParse("yubikey:slot-id=9a?foo=%9a"), args{"foo"}, []byte{0x9a}},
-		{"ok missing", mustParse("yubikey:slot-id=9a"), args{"foo"}, nil},
-		{"ok missing query", mustParse("yubikey:slot-id=9a?bar=zar"), args{"foo"}, nil},
-		{"ok no hex", mustParse("yubikey:slot-id=09a?bar=zar"), args{"slot-id"}, []byte{'0', '9', 'a'}},
+		{"ok", mustParse(t, "yubikey:slot-id=9a"), args{"slot-id"}, []byte{0x9a}},
+		{"ok prefix", mustParse(t, "yubikey:slot-id=0x9a"), args{"slot-id"}, []byte{0x9a}},
+		{"ok first", mustParse(t, "yubikey:slot-id=9a9b;slot-id=9b"), args{"slot-id"}, []byte{0x9a, 0x9b}},
+		{"ok percent", mustParse(t, "yubikey:slot-id=9a;foo=%9a%9b%9c"), args{"foo"}, []byte{0x9a, 0x9b, 0x9c}},
+		{"ok in query", mustParse(t, "yubikey:slot-id=9a?foo=9a"), args{"foo"}, []byte{0x9a}},
+		{"ok in query percent", mustParse(t, "yubikey:slot-id=9a?foo=%9a"), args{"foo"}, []byte{0x9a}},
+		{"ok missing", mustParse(t, "yubikey:slot-id=9a"), args{"foo"}, nil},
+		{"ok missing query", mustParse(t, "yubikey:slot-id=9a?bar=zar"), args{"foo"}, nil},
+		{"ok no hex", mustParse(t, "yubikey:slot-id=09a?bar=zar"), args{"slot-id"}, []byte{'0', '9', 'a'}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -294,22 +275,15 @@ func TestURI_GetEncoded(t *testing.T) {
 }
 
 func TestURI_Pin(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	tests := []struct {
 		name string
 		uri  *URI
 		want string
 	}{
-		{"from value", mustParse("pkcs11:id=%72%73?pin-value=0123456789"), "0123456789"},
-		{"from source", mustParse("pkcs11:id=%72%73?pin-source=testdata/pin.txt"), "trim-this-pin"},
-		{"from missing", mustParse("pkcs11:id=%72%73"), ""},
-		{"from source missing", mustParse("pkcs11:id=%72%73?pin-source=testdata/foo.txt"), ""},
+		{"from value", mustParse(t, "pkcs11:id=%72%73?pin-value=0123456789"), "0123456789"},
+		{"from source", mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/pin.txt"), "trim-this-pin"},
+		{"from missing", mustParse(t, "pkcs11:id=%72%73"), ""},
+		{"from source missing", mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/foo.txt"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -321,13 +295,6 @@ func TestURI_Pin(t *testing.T) {
 }
 
 func TestURI_String(t *testing.T) {
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	tests := []struct {
 		name string
 		uri  *URI
@@ -336,7 +303,7 @@ func TestURI_String(t *testing.T) {
 		{"ok new", New("yubikey", url.Values{"slot-id": []string{"9a"}, "foo": []string{"bar"}}), "yubikey:foo=bar;slot-id=9a"},
 		{"ok newOpaque", NewOpaque("cloudkms", "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"), "cloudkms:projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"},
 		{"ok newFile", NewFile("/path/to/file.key"), "file:///path/to/file.key"},
-		{"ok parse", mustParse("yubikey:slot-id=9a;foo=bar?bar=zar"), "yubikey:foo=bar;slot-id=9a?bar=zar"},
+		{"ok parse", mustParse(t, "yubikey:slot-id=9a;foo=bar?bar=zar"), "yubikey:foo=bar;slot-id=9a?bar=zar"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -349,13 +316,6 @@ func TestURI_String(t *testing.T) {
 
 func TestURI_GetInt(t *testing.T) {
 	seventy := int64(70)
-	mustParse := func(s string) *URI {
-		u, err := Parse(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -365,9 +325,9 @@ func TestURI_GetInt(t *testing.T) {
 		args args
 		want *int64
 	}{
-		{"ok", mustParse("tpmkms:renewal-percentage=70"), args{"renewal-percentage"}, &seventy},
-		{"ok empty", mustParse("tpmkms:empty"), args{"renewal-percentage"}, nil},
-		{"ok non-integer", mustParse("tpmkms:renewal-percentage=not-an-integer"), args{"renewal-percentage"}, nil},
+		{"ok", mustParse(t, "tpmkms:renewal-percentage=70"), args{"renewal-percentage"}, &seventy},
+		{"ok empty", mustParse(t, "tpmkms:empty"), args{"renewal-percentage"}, nil},
+		{"ok non-integer", mustParse(t, "tpmkms:renewal-percentage=not-an-integer"), args{"renewal-percentage"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -382,12 +342,6 @@ func TestURI_GetInt(t *testing.T) {
 }
 
 func TestURI_GetHexEncoded(t *testing.T) {
-	mustParse := func(t *testing.T, s string) *URI {
-		t.Helper()
-		u, err := Parse(s)
-		require.NoError(t, err)
-		return u
-	}
 	type args struct {
 		key string
 	}
@@ -414,6 +368,50 @@ func TestURI_GetHexEncoded(t *testing.T) {
 				return
 			}
 
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestURI_Read(t *testing.T) {
+	// Read does not trim the contents of the file
+	expected := []byte("trim-this-pin \n")
+
+	path := filepath.Join(t.TempDir(), "management.key")
+	require.NoError(t, os.WriteFile(path, expected, 0600))
+	pinURI := &url.URL{
+		Scheme: "file",
+		Path:   path,
+	}
+	pathURI := &URI{
+		URL: &url.URL{Scheme: "yubikey"},
+		Values: url.Values{
+			"management-key-source": []string{pinURI.String()},
+		},
+	}
+
+	type args struct {
+		key string
+	}
+	tests := []struct {
+		name      string
+		uri       *URI
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"from attribute", mustParse(t, "yubikey:management-key-source=testdata/pin.txt"), args{"management-key-source"}, expected, assert.NoError},
+		{"from query attribute", mustParse(t, "yubikey:?management-key-source=testdata/pin.txt"), args{"management-key-source"}, expected, assert.NoError},
+		{"from uri path", pathURI, args{"management-key-source"}, expected, assert.NoError},
+		{"from uri opaque", mustParse(t, "yubikey:management-key-source=file:testdata/pin.txt"), args{"management-key-source"}, expected, assert.NoError},
+		{"from empty attribute", mustParse(t, "yubikey:management-source-key="), args{"management-key-source"}, nil, assert.NoError},
+		{"from missing attribute", mustParse(t, "yubikey:slot-id=82"), args{"management-key-source"}, nil, assert.NoError},
+		{"from missing file", mustParse(t, "yubikey:management-key-source=testdata/foo.txt"), args{"management-key-source"}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.uri.Read(tt.args.key)
+			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})
 	}
