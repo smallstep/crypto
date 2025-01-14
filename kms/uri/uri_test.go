@@ -379,14 +379,14 @@ func TestURI_Read(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "management.key")
 	require.NoError(t, os.WriteFile(path, expected, 0600))
-	pinURI := &url.URL{
+	managementKeyURI := &url.URL{
 		Scheme: "file",
 		Path:   path,
 	}
 	pathURI := &URI{
 		URL: &url.URL{Scheme: "yubikey"},
 		Values: url.Values{
-			"management-key-source": []string{pinURI.String()},
+			"management-key-source": []string{managementKeyURI.String()},
 		},
 	}
 
