@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/jose"
 )
 
@@ -221,7 +222,7 @@ func TestTemplates(t *testing.T) {
 		{"toTime dateModify", args{`{{ .nbf | toTime | dateModify "1h" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},
 		{"formatTime", args{`{{ .nbf | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"formatTime float64", args{`{{ .float64 | formatTime }}`}, now.Format(time.RFC3339), assert.NoError, assert.Empty},
-		{"formatTime in sprig", args{`{{ dateInZone "2006-01-02T15:04:05Z07:00" .float64 "UTC" }}`}, now.UTC().Format(time.RFC3339), assert.NoError, assert.Empty},
+		{"formatTime in sprig", args{`{{ dateInZone "2006-01-02T15:04:05Z07:00" .nbf "UTC" }}`}, now.UTC().Format(time.RFC3339), assert.NoError, assert.Empty},
 		{"parseTime", args{`{{ .notBefore | parseTime }}`}, now.String(), assert.NoError, assert.Empty},
 		{"parseTime toJson", args{`{{ .notBefore | parseTime | toJson }}`}, strconv.Quote(now.Format(time.RFC3339)), assert.NoError, assert.Empty},
 		{"parseTime time.UnixDate", args{`{{ .notAfter | parseTime "time.UnixDate" }}`}, now.Add(time.Hour).String(), assert.NoError, assert.Empty},

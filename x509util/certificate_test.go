@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -568,6 +569,7 @@ func TestNewCertificateFromX509(t *testing.T) {
 			TokenKey: map[string]interface{}{
 				"iss": "https://iss",
 				"sub": "sub",
+				"nbf": now.Unix(),
 			},
 			WebhooksKey: map[string]interface{}{
 				"Test": map[string]interface{}{
