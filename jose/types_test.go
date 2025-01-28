@@ -139,6 +139,8 @@ func TestSignVerify(t *testing.T) {
 		{"rsa2048", args{SigningKey{Key: rsa2048}, nil}, false},
 		{"ed", args{SigningKey{Key: edKey}, nil}, false},
 		{"x25519", args{SigningKey{Key: xKey}, nil}, false},
+		{"signer", args{SigningKey{Key: wrapSigner{edKey}}, nil}, false},
+		{"opaque", args{SigningKey{Key: NewOpaqueSigner(edKey)}, nil}, false},
 		{"fail P224", args{SigningKey{Key: p224}, nil}, true},
 	}
 	for _, tt := range tests {
