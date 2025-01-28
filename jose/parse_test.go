@@ -47,11 +47,11 @@ func (w wrapSigner) Public() crypto.PublicKey {
 	return w.Signer.Public()
 }
 
-func (w wrapSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (w wrapSigner) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if w.Signer == nil {
 		return nil, errors.New("not implemented")
 	}
-	return w.Signer.Sign(rand, digest, opts)
+	return w.Signer.Sign(r, digest, opts)
 }
 
 type testdata struct {

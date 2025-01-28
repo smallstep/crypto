@@ -164,10 +164,13 @@ func TestSignVerify(t *testing.T) {
 				}
 
 				var claims Claims
-				if signer, ok := tt.args.sig.Key.(crypto.Signer); ok {
-					err = Verify(jwt, signer.Public(), &claims)
-				} else {
-					err = Verify(jwt, tt.args.sig.Key, &claims)
+				switch k := tt.args.sig.Key.(type) {
+				case crypto.Signer:
+					err = Verify(jwt, k.Public(), &claims)
+				case OpaqueSigner:
+					err = Verify(jwt, k.Public(), &claims)
+				default:
+					err = Verify(jwt, k, &claims)
 				}
 				if err != nil {
 					t.Errorf("JSONWebSignature.Verify() error = %v", err)
