@@ -139,6 +139,8 @@ func TestSignVerify(t *testing.T) {
 		{"rsa2048", args{SigningKey{Key: rsa2048}, nil}, false},
 		{"ed", args{SigningKey{Key: edKey}, nil}, false},
 		{"x25519", args{SigningKey{Key: xKey}, nil}, false},
+		{"signer", args{SigningKey{Key: wrapSigner{edKey}}, nil}, false},
+		{"opaque", args{SigningKey{Key: NewOpaqueSigner(edKey)}, nil}, false},
 		{"fail P224", args{SigningKey{Key: p224}, nil}, true},
 	}
 	for _, tt := range tests {
@@ -162,10 +164,13 @@ func TestSignVerify(t *testing.T) {
 				}
 
 				var claims Claims
-				if signer, ok := tt.args.sig.Key.(crypto.Signer); ok {
-					err = Verify(jwt, signer.Public(), &claims)
-				} else {
-					err = Verify(jwt, tt.args.sig.Key, &claims)
+				switch k := tt.args.sig.Key.(type) {
+				case crypto.Signer:
+					err = Verify(jwt, k.Public(), &claims)
+				case OpaqueSigner:
+					err = Verify(jwt, k.Public(), &claims)
+				default:
+					err = Verify(jwt, k, &claims)
 				}
 				if err != nil {
 					t.Errorf("JSONWebSignature.Verify() error = %v", err)

@@ -10,7 +10,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -32,6 +35,24 @@ const (
 	rsaPrivateKey
 	octKey
 )
+
+type wrapSigner struct {
+	crypto.Signer
+}
+
+func (w wrapSigner) Public() crypto.PublicKey {
+	if w.Signer == nil {
+		return nil
+	}
+	return w.Signer.Public()
+}
+
+func (w wrapSigner) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	if w.Signer == nil {
+		return nil, errors.New("not implemented")
+	}
+	return w.Signer.Sign(r, digest, opts)
+}
 
 type testdata struct {
 	typ       keyType
@@ -744,10 +765,18 @@ func Test_guessSignatureAlgorithm(t *testing.T) {
 		return args[last-1]
 	}
 
+	p256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	require.NoError(t, err)
+	p521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	require.NoError(t, err)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	_, edKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 	_, x25519Key, err := x25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type args struct {
 		key crypto.PrivateKey
@@ -758,14 +787,28 @@ func Test_guessSignatureAlgorithm(t *testing.T) {
 		want SignatureAlgorithm
 	}{
 		{"byte", args{[]byte("the-key")}, HS256},
-		{"ES256", args{must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))}, ES256},
-		{"ES384", args{must(ecdsa.GenerateKey(elliptic.P384(), rand.Reader))}, ES384},
-		{"ES512", args{must(ecdsa.GenerateKey(elliptic.P521(), rand.Reader))}, ES512},
-		{"RS256", args{must(rsa.GenerateKey(rand.Reader, 2048))}, RS256},
-		{"EdDSA", args{must(ed25519.GenerateKey(rand.Reader))}, EdDSA},
+		{"ES256", args{p256}, ES256},
+		{"ES384", args{p384}, ES384},
+		{"ES512", args{p521}, ES512},
+		{"RS256", args{rsaKey}, RS256},
+		{"EdDSA", args{edKey}, EdDSA},
 		{"XEdDSA", args{x25519Key}, XEdDSA},
 		{"XEdDSA with X25519Signer", args{X25519Signer(x25519Key)}, XEdDSA},
+		{"signer ES256", args{wrapSigner{p256}}, ES256},
+		{"signer ES384", args{wrapSigner{p384}}, ES384},
+		{"signer ES512", args{wrapSigner{p521}}, ES512},
+		{"signer RS256", args{wrapSigner{rsaKey}}, RS256},
+		{"signer EdDSA", args{wrapSigner{edKey}}, EdDSA},
+		{"signer XEdDSA", args{wrapSigner{x25519Key}}, XEdDSA},
+		{"opaque ES256", args{NewOpaqueSigner(p256)}, ES256},
+		{"opaque ES384", args{NewOpaqueSigner(p384)}, ES384},
+		{"opaque ES512", args{NewOpaqueSigner(p521)}, ES512},
+		{"opaque RS256", args{NewOpaqueSigner(rsaKey)}, RS256},
+		{"opaque EdDSA", args{NewOpaqueSigner(edKey)}, EdDSA},
+		{"opaque XEdDSA", args{NewOpaqueSigner(x25519Key)}, XEdDSA},
 		{"empty", args{must(ecdsa.GenerateKey(elliptic.P224(), rand.Reader))}, ""},
+		{"signer empty", args{wrapSigner{}}, ""},
+		{"opaque empty", args{NewOpaqueSigner(wrapSigner{})}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

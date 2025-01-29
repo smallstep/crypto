@@ -248,9 +248,7 @@ func UnixNumericDate(s int64) *NumericDate {
 
 // NewSigner creates an appropriate signer based on the key type
 func NewSigner(sig SigningKey, opts *SignerOptions) (Signer, error) {
-	if k, ok := sig.Key.(x25519.PrivateKey); ok {
-		sig.Key = X25519Signer(k)
-	}
+	sig.Key = guessOpaqueSigner(sig.Key)
 	if sig.Algorithm == "" {
 		sig.Algorithm = guessSignatureAlgorithm(sig.Key)
 	}
