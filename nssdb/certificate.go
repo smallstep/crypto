@@ -71,8 +71,8 @@ func x509CertToObject(cert *x509.Certificate, name string) (*Object, error) {
 }
 
 // AddCertificate returns the id of the certificate and public key objects.
+// Any certificates or public keys with the same subject key id will be replaced.
 // The only supported key type is ECDSA with curve P-256.
-// TODO(areed) what if a cert already has the same label or serial or cka id?
 func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, name string) (uint32, uint32, error) {
 	if cert.PublicKeyAlgorithm != x509.ECDSA {
 		return 0, 0, errors.New("unsupported public key algorithm")
@@ -85,6 +85,16 @@ func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, nam
 	certObj, err := x509CertToObject(cert, name)
 	if err != nil {
 		return 0, 0, err
+	}
+
+	matches, err := db.findByAttr(ctx, CKO_CERTIFICATE, "CKA_ID", cert.SubjectKeyId)
+	if err != nil {
+		return 0, 0, fmt.Errorf("find cka id conflicts: %w", err)
+	}
+	for _, id := range matches {
+		if err := db.DeleteObjectPublic(ctx, id); err != nil {
+			return 0, 0, fmt.Errorf("delete conflicting certificate %d: %w", id, err)
+		}
 	}
 
 	certID, err := db.InsertPublic(ctx, certObj)
@@ -103,7 +113,8 @@ func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, nam
 
 // Import returns (cert id, public key id, private key id) on success. The
 // certificates subject key id will be added as CKA_ID to all three objects to
-// bind them together. The only supported key type is ECDSA with curve P-256.
+// bind them together. Objects with the same CKA_ID will be replaced.
+// The only supported key type is ECDSA with curve P-256.
 func (db *NSSDB) Import(ctx context.Context, name string, cert *x509.Certificate, privKey crypto.PrivateKey) (uint32, uint32, uint32, error) {
 	var privKeyID uint32
 

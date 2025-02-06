@@ -403,3 +403,48 @@ func TestNSSDB_Reset(t *testing.T) {
 		})
 	}
 }
+
+func TestNSSDB_findByAttr(t *testing.T) {
+	ctx := context.Background()
+
+	for _, v := range nssVersions {
+		db := v.connect(t)
+
+		t.Run(v.name("ok certificate"), func(t *testing.T) {
+			ids, err := db.findByAttr(ctx, CKO_CERTIFICATE, "CKA_LABEL", []byte(leafCrt.Subject.CommonName))
+			require.NoError(t, err)
+			require.Len(t, ids, 1)
+			assert.Equal(t, v.certID, ids[0])
+		})
+
+		t.Run(v.name("ok public key"), func(t *testing.T) {
+			ids, err := db.findByAttr(ctx, CKO_PUBLIC_KEY, "CKA_ID", leafCrt.SubjectKeyId)
+			require.NoError(t, err)
+			require.Len(t, ids, 1)
+			assert.Equal(t, v.pubKeyID, ids[0])
+		})
+
+		t.Run(v.name("ok private key"), func(t *testing.T) {
+			ids, err := db.findByAttr(ctx, CKO_PRIVATE_KEY, "CKA_ID", leafCrt.SubjectKeyId)
+			require.NoError(t, err)
+			require.Len(t, ids, 1)
+			assert.Equal(t, v.privateKeyID, ids[0])
+		})
+
+		t.Run(v.name("not found"), func(t *testing.T) {
+			ids, err := db.findByAttr(ctx, CKO_PRIVATE_KEY, "CKA_ID", []byte{0x04})
+			require.NoError(t, err)
+			assert.Len(t, ids, 0)
+		})
+
+		t.Run(v.name("unsupported attribute"), func(t *testing.T) {
+			_, err := db.findByAttr(ctx, CKO_CERTIFICATE, "CKA_NOPE", []byte{0x01})
+			assert.Error(t, err)
+		})
+
+		t.Run(v.name("unsupported class"), func(t *testing.T) {
+			_, err := db.findByAttr(ctx, CKO_SECRET_KEY, "CKA_ID", []byte{0x01})
+			assert.Error(t, err)
+		})
+	}
+}

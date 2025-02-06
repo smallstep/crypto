@@ -3,6 +3,7 @@ package nssdb
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"os/exec"
 	"testing"
 
@@ -129,6 +130,17 @@ func TestNSSDB_AddCertificate(t *testing.T) {
 			pubKeyObj.ID = 0
 			assert.Equal(t, oldPubKeyObj, pubKeyObj)
 		})
+
+		t.Run(v.name("ok"), func(t *testing.T) {
+			certID, pubKeyID, err := db.AddCertificate(ctx, leafCrt, "name")
+			require.NoError(t, err)
+			assert.NotEqual(t, v.certID, certID)
+			assert.NotEqual(t, v.pubKeyID, pubKeyID)
+			_, err = db.GetObjectPublic(ctx, v.certID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
 	}
 }
 
@@ -167,12 +179,16 @@ func TestNSSDB_Import(t *testing.T) {
 			if err != nil {
 				t.Skip("pk1sign not installed")
 			}
+
 			db, dir := v.connectDir(t)
+			require.NoError(t, db.Reset(ctx))
+
 			_, _, _, err = db.Import(ctx, "leaf", leafCrt, leafKey)
 			require.NoError(t, err)
 
 			cmd := exec.Command(p, "-d", dir, "-k", "leaf", "-i", "README.md")
-			assert.NoError(t, cmd.Run())
+			output, err := cmd.CombinedOutput()
+			assert.NoError(t, err, string(output))
 		})
 	}
 }
