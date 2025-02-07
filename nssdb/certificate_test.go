@@ -131,7 +131,7 @@ func TestNSSDB_AddCertificate(t *testing.T) {
 			assert.Equal(t, oldPubKeyObj, pubKeyObj)
 		})
 
-		t.Run(v.name("ok"), func(t *testing.T) {
+		t.Run(v.name("ok replace"), func(t *testing.T) {
 			certID, pubKeyID, err := db.AddCertificate(ctx, leafCrt, "name")
 			require.NoError(t, err)
 			assert.NotEqual(t, v.certID, certID)
@@ -139,6 +139,8 @@ func TestNSSDB_AddCertificate(t *testing.T) {
 			_, err = db.GetObjectPublic(ctx, v.certID)
 			assert.ErrorIs(t, err, sql.ErrNoRows)
 			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPrivate(ctx, v.privateKeyID)
 			assert.ErrorIs(t, err, sql.ErrNoRows)
 		})
 	}
@@ -205,6 +207,71 @@ func TestNSSDB_ListCertificateObjects(t *testing.T) {
 				_, err = obj.ToX509Certificate()
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestNSSDB_DeleteCertificatesByName(t *testing.T) {
+	ctx := context.Background()
+
+	for _, v := range nssVersions {
+		t.Run(v.name("ok"), func(t *testing.T) {
+			db := v.connect(t)
+
+			err := db.DeleteCertificatesByName(ctx, "leaf")
+			require.NoError(t, err)
+			_, err = db.GetObjectPublic(ctx, v.certID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPrivate(ctx, v.privateKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
+
+		t.Run(v.name("ok nothing to do"), func(t *testing.T) {
+			db := v.connect(t)
+
+			err := db.DeleteCertificatesByName(ctx, "leafx")
+			require.NoError(t, err)
+			_, err = db.GetObjectPublic(ctx, v.certID)
+			assert.NoError(t, err)
+			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.NoError(t, err)
+			_, err = db.GetObjectPrivate(ctx, v.privateKeyID)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestNSSDB_DeleteCertificate(t *testing.T) {
+	ctx := context.Background()
+
+	for _, v := range nssVersions {
+		t.Run(v.name("ok"), func(t *testing.T) {
+			db := v.connect(t)
+
+			err := db.DeleteCertificate(ctx, v.certID)
+			require.NoError(t, err)
+			_, err = db.GetObjectPublic(ctx, v.certID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+			_, err = db.GetObjectPrivate(ctx, v.privateKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
+
+		t.Run(v.name("ok nothing to do"), func(t *testing.T) {
+			db := v.connect(t)
+
+			err := db.DeleteCertificate(ctx, 7)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
+
+		t.Run(v.name("fail not a cert"), func(t *testing.T) {
+			db := v.connect(t)
+
+			err := db.DeleteCertificate(ctx, v.pubKeyID)
+			assert.Error(t, err)
 		})
 	}
 }

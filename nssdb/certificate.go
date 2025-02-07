@@ -92,7 +92,7 @@ func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, nam
 		return 0, 0, fmt.Errorf("find cka id conflicts: %w", err)
 	}
 	for _, id := range matches {
-		if err := db.DeleteObjectPublic(ctx, id); err != nil {
+		if err := db.DeleteCertificate(ctx, id); err != nil {
 			return 0, 0, fmt.Errorf("delete conflicting certificate %d: %w", id, err)
 		}
 	}
@@ -113,7 +113,9 @@ func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, nam
 
 // Import returns (cert id, public key id, private key id) on success. The
 // certificates subject key id will be added as CKA_ID to all three objects to
-// bind them together. Objects with the same CKA_ID will be replaced.
+// bind them together. All certificate and key objects with the same CKA_ID will
+// be replaced. Certificates with the same name and different subject key id
+// will not be replaced. Use DeleteCertificateByName for that.
 // The only supported key type is ECDSA with curve P-256.
 func (db *NSSDB) Import(ctx context.Context, name string, cert *x509.Certificate, privKey crypto.PrivateKey) (uint32, uint32, uint32, error) {
 	var privKeyID uint32
@@ -136,6 +138,57 @@ func (db *NSSDB) Import(ctx context.Context, name string, cert *x509.Certificate
 	}
 
 	return certID, pubKeyID, privKeyID, nil
+}
+
+// DeleteCertificatesByName deletes all certificates with the given nickname,
+// along with their keys.
+func (db *NSSDB) DeleteCertificatesByName(ctx context.Context, name string) error {
+	ids, err := db.findByAttr(ctx, CKO_CERTIFICATE, "CKA_LABEL", []byte(name))
+	if err != nil {
+		return fmt.Errorf("find certificates with matching name: %w", err)
+	}
+	for _, id := range ids {
+		if err := db.DeleteCertificate(ctx, id); err != nil {
+			return fmt.Errorf("delete certificate %d: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// DeleteCertificate deletes a certificate and its keys.
+func (db *NSSDB) DeleteCertificate(ctx context.Context, id uint32) error {
+	obj, err := db.GetObjectPublic(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := obj.ValidateULong("CKA_CLASS", CKO_CERTIFICATE); err != nil {
+		return err
+	}
+	ckaID := obj.Attributes["CKA_ID"]
+	if len(ckaID) > 0 {
+		pubKeyIDs, err := db.findByAttr(ctx, CKO_PUBLIC_KEY, "CKA_ID", ckaID)
+		if err != nil {
+			return fmt.Errorf("find public keys: %w", err)
+		}
+		for _, id := range pubKeyIDs {
+			if err := db.DeleteObjectPublic(ctx, id); err != nil {
+				return fmt.Errorf("delete public key %d: %w", id, err)
+			}
+		}
+		privKeyIDs, err := db.findByAttr(ctx, CKO_PRIVATE_KEY, "CKA_ID", ckaID)
+		if err != nil {
+			return fmt.Errorf("find private keys: %w", err)
+		}
+		for _, id := range privKeyIDs {
+			if err := db.DeleteObjectPrivate(ctx, id); err != nil {
+				return fmt.Errorf("delete private key %d: %w", id, err)
+			}
+		}
+	}
+	if err := db.DeleteObjectPublic(ctx, id); err != nil {
+		return fmt.Errorf("delete certificate object: %w", err)
+	}
+	return nil
 }
 
 // ListCertificateObjects returns all x509 certificate objects from the
