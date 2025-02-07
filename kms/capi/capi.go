@@ -39,6 +39,7 @@ const (
 	StoreLocationArg       = "store-location" // 'machine', 'user', etc
 	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
 	KeyIDArg               = "key-id"
+	SubjectCNArg             = "cn"
 	SerialNumberArg        = "serial"
 	IssuerNameArg          = "issuer"
 	KeySpec                = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
@@ -509,6 +510,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 	}
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
+	subjectCN := u.Get(SubjectCNArg)
 	serialNumber := u.Get(SerialNumberArg)
 
 	// default to the user store
@@ -598,26 +600,7 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 		}
 		defer windows.CertFreeCertificateContext(certHandle)
 		return certContextToX509(certHandle)
-	case issuerName != "" && serialNumber != "":
-		//TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
-		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
-		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
-		var serialBytes []byte
-		if strings.HasPrefix(serialNumber, "0x") {
-			serialNumber = strings.TrimPrefix(serialNumber, "0x")
-			serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
-			serialBytes, err = hex.DecodeString(serialNumber)
-			if err != nil {
-				return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
-			}
-		} else {
-			bi := new(big.Int)
-			bi, ok := bi.SetString(serialNumber, 10)
-			if !ok {
-				return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
-			}
-			serialBytes = bi.Bytes()
-		}
+	case issuerName != "" && (serialNumber != "" || subjectCN != ""):
 		var prevCert *windows.CertContext
 		for {
 			certHandle, err = findCertificateInStore(st,
@@ -640,9 +623,37 @@ func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Cert
 				return nil, fmt.Errorf("could not unmarshal certificate to DER: %w", err)
 			}
 
-			if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
-				windows.CertFreeCertificateContext(certHandle)
-				return x509Cert, nil
+			switch {
+			case len(serialNumber) > 0:
+				//TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
+				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
+				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
+				var serialBytes []byte
+				if strings.HasPrefix(serialNumber, "0x") {
+					serialNumber = strings.TrimPrefix(serialNumber, "0x")
+					serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
+					serialBytes, err = hex.DecodeString(serialNumber)
+					if err != nil {
+						return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
+					}
+				} else {
+					bi := new(big.Int)
+					bi, ok := bi.SetString(serialNumber, 10)
+					if !ok {
+						return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
+					}
+					serialBytes = bi.Bytes()
+				}
+
+				if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
+					windows.CertFreeCertificateContext(certHandle)
+					return x509Cert, nil
+				}
+			case len(subjectCN) > 0:
+				if x509Cert.Subject.CommonName == subjectCN {
+					windows.CertFreeCertificateContext(certHandle)
+					return x509Cert, nil
+				}
 			}
 
 			prevCert = certHandle
