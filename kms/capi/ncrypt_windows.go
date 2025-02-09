@@ -81,6 +81,8 @@ const (
 	CERT_ID_KEY_IDENTIFIER       = uint32(2)
 	CERT_ID_SHA1_HASH            = uint32(3)
 
+	CERT_KEY_PROV_INFO_PROP_ID = uint32(2)
+
 	CERT_NAME_STR_COMMA_FLAG = uint32(0x04000000)
 	CERT_SIMPLE_NAME_STR     = uint32(1)
 	CERT_X500_NAME_STR       = uint32(3)
@@ -90,6 +92,7 @@ const (
 
 	// Legacy CryptoAPI flags
 	bCryptPadPKCS1 = uint32(2)
+	bCryptPadPSS   = uint32(8)
 
 	// Magic numbers for public key blobs.
 	rsa1Magic = 0x31415352 // "RSA1" BCRYPT_RSAPUBLIC_MAGIC
@@ -143,10 +146,11 @@ var (
 	procNCryptSetProperty         = nCrypt.MustFindProc("NCryptSetProperty")
 	procNCryptSignHash            = nCrypt.MustFindProc("NCryptSignHash")
 
-	crypt32                             = windows.MustLoadDLL("crypt32.dll")
-	procCertFindCertificateInStore      = crypt32.MustFindProc("CertFindCertificateInStore")
-	procCryptFindCertificateKeyProvInfo = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
-	procCertStrToName                   = crypt32.MustFindProc("CertStrToNameW")
+	crypt32                               = windows.MustLoadDLL("crypt32.dll")
+	procCertFindCertificateInStore        = crypt32.MustFindProc("CertFindCertificateInStore")
+	procCryptFindCertificateKeyProvInfo   = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
+	procCertGetCertificateContextProperty = crypt32.MustFindProc("CertGetCertificateContextProperty")
+	procCertStrToName                     = crypt32.MustFindProc("CertStrToNameW")
 )
 
 type BCRYPT_PKCS1_PADDING_INFO struct {
@@ -175,6 +179,16 @@ type CERT_ID_KEYIDORHASH struct {
 type CERT_ID_SERIAL struct {
 	idChoice uint32
 	Serial   CERT_ISSUER_SERIAL_NUMBER
+}
+
+type CRYPT_KEY_PROV_INFO struct {
+	pwszContainerName int
+	pwszProvName      int
+	dwProvType        int
+	dwFlags           int
+	cProvParam        int
+	rgProvParam       int
+	dwKeySpec         int
 }
 
 func errNoToStr(e uint32) string {
@@ -512,6 +526,50 @@ func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 	}
 
 	return nil
+}
+
+func cryptFindCertificatePrivateKey(certContext *windows.CertContext) (uintptr, error) {
+	var (
+		kh      windows.Handle
+		keySpec uint32
+		free    bool
+	)
+
+	if err := windows.CryptAcquireCertificatePrivateKey(certContext, windows.CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, nil, &kh, &keySpec, &free); err != nil {
+		return uintptr(0), err
+	}
+
+	return uintptr(kh), nil
+}
+
+func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (string, error) {
+	var (
+		length   uint32
+		provInfo *CRYPT_KEY_PROV_INFO
+	)
+
+	r1, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(&length)),
+	)
+	if r1 == 0 {
+		return "", err
+	}
+
+	r2, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(provInfo)),
+	)
+
+	if r2 == 0 {
+		return "", err
+	}
+
+	return "", nil
 }
 
 func certStrToName(x500Str string) ([]byte, error) {
