@@ -89,11 +89,11 @@ func (db *NSSDB) AddCertificate(ctx context.Context, cert *x509.Certificate, nam
 
 	matches, err := db.findByAttr(ctx, CKO_CERTIFICATE, "CKA_ID", cert.SubjectKeyId)
 	if err != nil {
-		return 0, 0, fmt.Errorf("find cka id conflicts: %w", err)
+		return 0, 0, fmt.Errorf("failed to find by CKA_ID: %w", err)
 	}
 	for _, id := range matches {
 		if err := db.DeleteCertificate(ctx, id); err != nil {
-			return 0, 0, fmt.Errorf("delete conflicting certificate %d: %w", id, err)
+			return 0, 0, fmt.Errorf("failed to delete conflicting certificate %d: %w", id, err)
 		}
 	}
 

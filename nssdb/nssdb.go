@@ -505,16 +505,16 @@ func (db *NSSDB) findByAttr(ctx context.Context, ckaClass uint32, name string, v
 	switch ckaClass {
 	case CKO_PRIVATE_KEY:
 		//nolint:gosec // trusted column name
-		q := fmt.Sprintf("SELECT id FROM nssPrivate WHERE %s = ? AND a0 = X'00000003' AND id IS NOT NULL", col)
-		rows, err = db.Key.QueryContext(ctx, q, val)
+		q := fmt.Sprintf("SELECT id FROM nssPrivate WHERE %s = ? AND a0 = ? AND id IS NOT NULL", col)
+		rows, err = db.Key.QueryContext(ctx, q, val, encodeDBUlong(CKO_PRIVATE_KEY))
 	case CKO_PUBLIC_KEY:
 		//nolint:gosec // trusted column name
-		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 = X'00000002' AND id IS NOT NULL", col)
-		rows, err = db.Cert.QueryContext(ctx, q, val)
+		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 =  ? AND id IS NOT NULL", col)
+		rows, err = db.Cert.QueryContext(ctx, q, val, encodeDBUlong(CKO_PUBLIC_KEY))
 	case CKO_CERTIFICATE:
 		//nolint:gosec // trusted column name
-		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 = X'00000001' AND a80 = X'00000000' AND id IS NOT NULL", col)
-		rows, err = db.Cert.QueryContext(ctx, q, val)
+		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 = ? AND a80 = ? AND id IS NOT NULL", col)
+		rows, err = db.Cert.QueryContext(ctx, q, val, encodeDBUlong(CKO_CERTIFICATE), encodeDBUlong(CKC_X_509))
 	default:
 		return nil, fmt.Errorf("unsupported class %d", ckaClass)
 	}
