@@ -941,7 +941,7 @@ func newCAPISigner(kh uintptr, containerName, pin string) (crypto.Signer, error)
 func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	switch s.algorithmGroup {
 	case "ECDSA":
-		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, "")
+		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, "", 0)
 
 		if err != nil {
 			return nil, err
@@ -966,7 +966,17 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 		if !ok {
 			return nil, fmt.Errorf("unsupported RSA hash algorithm %v", hf)
 		}
-		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, hashAlg)
+
+		var saltLength int
+		if rsaOpts, ok := opts.(*rsa.PSSOptions); ok {
+			if rsaOpts.SaltLength == rsa.PSSSaltLengthEqualsHash {
+				rsaOpts.SaltLength = rsaOpts.Hash.Size()
+			}
+
+			saltLength = rsaOpts.SaltLength
+		}
+
+		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, hashAlg, saltLength)
 
 		if err != nil {
 			return nil, fmt.Errorf("NCryptSignHash failed: %w", err)

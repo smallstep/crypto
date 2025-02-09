@@ -157,6 +157,11 @@ type BCRYPT_PKCS1_PADDING_INFO struct {
 	pszAlgID *uint16
 }
 
+type BCRYPT_PSS_PADDING_INFO struct {
+	pszAlgID *uint16
+	cbSalt   uint32
+}
+
 // CRYPTOAPI_BLOB -- https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa381414(v=vs.85)
 type CRYPTOAPI_BLOB struct {
 	len  uint32
@@ -329,14 +334,20 @@ func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue int
 	return nil
 }
 
-func nCryptSignHash(kh uintptr, digest []byte, hashID string) ([]byte, error) {
+func nCryptSignHash(kh uintptr, digest []byte, hashID string, saltLength int) ([]byte, error) {
 	var size uint32
 	var padInfoPtr uintptr
 	var flags uint32
 	if hashID != "" {
-		padInfo := BCRYPT_PKCS1_PADDING_INFO{pszAlgID: wide(hashID)}
-		padInfoPtr = uintptr(unsafe.Pointer(&padInfo))
-		flags = bCryptPadPKCS1
+		if saltLength != 0 {
+			padInfo := BCRYPT_PSS_PADDING_INFO{pszAlgID: wide(hashID), cbSalt: uint32(saltLength)}
+			padInfoPtr = uintptr(unsafe.Pointer(&padInfo))
+			flags = bCryptPadPSS
+		} else {
+			padInfo := BCRYPT_PKCS1_PADDING_INFO{pszAlgID: wide(hashID)}
+			padInfoPtr = uintptr(unsafe.Pointer(&padInfo))
+			flags = bCryptPadPKCS1
+		}
 	} else {
 		padInfoPtr = 0
 		flags = 0
