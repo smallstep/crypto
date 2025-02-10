@@ -161,14 +161,27 @@ func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs .
 }
 
 // AddPrivateKey adds a private key to the nssPrivate database and returns its id.
+// The ckaID argument should come from the SubjectKeyID of the associated certificate.
+// Keys with the same ckaID will be replaced.
 // Only ecdsa keys with curve P-256 are supported.
-// TODO(areed) what if a key already has the cka id? Update?
-func (db *NSSDB) AddPrivateKey(ctx context.Context, privKey *ecdsa.PrivateKey, name string, id []byte, certCNs ...string) (uint32, error) {
+func (db *NSSDB) AddPrivateKey(ctx context.Context, privKey *ecdsa.PrivateKey, name string, ckaID []byte, certCNs ...string) (uint32, error) {
 	if privKey.Curve != elliptic.P256() {
 		return 0, errors.New("unsupported curve")
 	}
 
-	privKeyObj, err := ecPrivKeyToObject(privKey, name, id, certCNs...)
+	if len(ckaID) > 0 {
+		matches, err := db.findByAttr(ctx, CKO_PRIVATE_KEY, "CKA_ID", ckaID)
+		if err != nil {
+			return 0, fmt.Errorf("find cka id conflicts: %w", err)
+		}
+		for _, id := range matches {
+			if err := db.DeleteObjectPrivate(ctx, id); err != nil {
+				return 0, fmt.Errorf("delete conflicting private key %d: %w", id, err)
+			}
+		}
+	}
+
+	privKeyObj, err := ecPrivKeyToObject(privKey, name, ckaID, certCNs...)
 	if err != nil {
 		return 0, err
 	}
@@ -182,14 +195,27 @@ func (db *NSSDB) AddPrivateKey(ctx context.Context, privKey *ecdsa.PrivateKey, n
 }
 
 // AddPublicKey adds a public key to the nssPublic database and returns its id.
+// The ckaID argument should come from the SubjectKeyID of the associated certificate.
+// Keys with the same ckaID will be replaced.
 // Only ecdsa keys with curve P-256 are supported.
-// TODO(areed) what if a key already has the cka id? Update it?
-func (db *NSSDB) AddPublicKey(ctx context.Context, pubKey *ecdsa.PublicKey, id []byte) (uint32, error) {
+func (db *NSSDB) AddPublicKey(ctx context.Context, pubKey *ecdsa.PublicKey, ckaID []byte) (uint32, error) {
 	if pubKey.Curve != elliptic.P256() {
 		return 0, errors.New("unsupported curve")
 	}
 
-	pubKeyObj, err := ecPubKeyToObject(pubKey, id)
+	if len(ckaID) > 0 {
+		matches, err := db.findByAttr(ctx, CKO_PUBLIC_KEY, "CKA_ID", ckaID)
+		if err != nil {
+			return 0, fmt.Errorf("find cka id conflicts: %w", err)
+		}
+		for _, id := range matches {
+			if err := db.DeleteObjectPublic(ctx, id); err != nil {
+				return 0, fmt.Errorf("delete conflicting public key %d: %w", id, err)
+			}
+		}
+	}
+
+	pubKeyObj, err := ecPubKeyToObject(pubKey, ckaID)
 	if err != nil {
 		return 0, err
 	}

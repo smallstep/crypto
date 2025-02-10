@@ -492,3 +492,48 @@ func (db *NSSDB) getObjectID(ctx context.Context) (uint32, error) {
 
 	return 0, errors.New("no id available")
 }
+
+// findByAttr returns ids of objects having the specified attribute value.
+func (db *NSSDB) findByAttr(ctx context.Context, ckaClass uint32, name string, val []byte) ([]uint32, error) {
+	col := columns[name]
+	if !db.colTable[col] {
+		return nil, fmt.Errorf("this nss db does not have a column for the attribute %q", name)
+	}
+
+	var rows *sql.Rows
+	var err error
+	switch ckaClass {
+	case CKO_PRIVATE_KEY:
+		//nolint:gosec // trusted column name
+		q := fmt.Sprintf("SELECT id FROM nssPrivate WHERE %s = ? AND a0 = ? AND id IS NOT NULL", col)
+		rows, err = db.Key.QueryContext(ctx, q, val, encodeDBUlong(CKO_PRIVATE_KEY))
+	case CKO_PUBLIC_KEY:
+		//nolint:gosec // trusted column name
+		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 =  ? AND id IS NOT NULL", col)
+		rows, err = db.Cert.QueryContext(ctx, q, val, encodeDBUlong(CKO_PUBLIC_KEY))
+	case CKO_CERTIFICATE:
+		//nolint:gosec // trusted column name
+		q := fmt.Sprintf("SELECT id FROM nssPublic WHERE %s = ? AND a0 = ? AND a80 = ? AND id IS NOT NULL", col)
+		rows, err = db.Cert.QueryContext(ctx, q, val, encodeDBUlong(CKO_CERTIFICATE), encodeDBUlong(CKC_X_509))
+	default:
+		return nil, fmt.Errorf("unsupported class %d", ckaClass)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uint32
+	for rows.Next() {
+		var id uint32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}

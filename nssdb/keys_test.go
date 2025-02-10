@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"database/sql"
 	"encoding/hex"
 	"path/filepath"
 	"testing"
@@ -105,6 +106,51 @@ func TestNSSDB_AddPrivateKey(t *testing.T) {
 			oldKeyObj.Metadata = nil
 			privKeyObj.Metadata = nil
 			assert.Equal(t, oldKeyObj, privKeyObj)
+		})
+
+		t.Run(v.name("ok replace"), func(t *testing.T) {
+			db := v.connect(t)
+			privKeyID, err := db.AddPrivateKey(ctx, leafKey, "leaf", leafCrt.SubjectKeyId, "leaf")
+			require.NoError(t, err)
+			assert.NotEqual(t, v.privateKeyID, privKeyID)
+			_, err = db.GetObjectPrivate(ctx, v.privateKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
+	}
+}
+
+func TestNSSDB_AddPublicKey(t *testing.T) {
+	ctx := context.Background()
+	for _, v := range nssVersions {
+		t.Run(v.name("ok"), func(t *testing.T) {
+			db := v.connect(t)
+			oldKeyObj, err := db.GetObjectPublic(ctx, v.pubKeyID)
+			require.NoError(t, err)
+			require.NoError(t, db.Reset(ctx))
+
+			pubKeyID, err := db.AddPublicKey(ctx, &leafKey.PublicKey, leafCrt.SubjectKeyId)
+			require.NoError(t, err)
+			assert.NotEmpty(t, pubKeyID)
+
+			pubKeyObj, err := db.GetObjectPublic(ctx, pubKeyID)
+			require.NoError(t, err)
+			assert.EqualValues(t, CKO_PUBLIC_KEY, pubKeyObj.ULongAttributes["CKA_CLASS"])
+			assert.Len(t, pubKeyObj.Metadata, 0)
+
+			// verify the public key imported by this library matches the public key
+			// imported with pk12util in everything besides the id
+			oldKeyObj.ID = 0
+			pubKeyObj.ID = 0
+			assert.Equal(t, oldKeyObj, pubKeyObj)
+		})
+
+		t.Run(v.name("ok replace"), func(t *testing.T) {
+			db := v.connect(t)
+			pubKeyID, err := db.AddPublicKey(ctx, &leafKey.PublicKey, leafCrt.SubjectKeyId)
+			require.NoError(t, err)
+			assert.NotEqual(t, v.pubKeyID, pubKeyID)
+			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
 		})
 	}
 }
