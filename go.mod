@@ -1,7 +1,6 @@
 module go.step.sm/crypto
 
-go 1.22
-toolchain go1.22.12
+go 1.22.12
 
 require (
 	cloud.google.com/go/kms v1.20.5
