@@ -26,10 +26,11 @@ require (
 	go.uber.org/mock v0.5.0
 	golang.org/x/crypto v0.32.0
 	golang.org/x/net v0.34.0
-	golang.org/x/sys v0.29.0
+	golang.org/x/sys v0.30.0
 	google.golang.org/api v0.219.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
+	modernc.org/sqlite v1.34.5
 )
 
 require (
@@ -101,5 +102,4 @@ require (
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
-	modernc.org/sqlite v1.34.5 // indirect
 )
