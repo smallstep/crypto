@@ -3,8 +3,9 @@ package x509util
 import (
 	"bytes"
 	"crypto"
-	"crypto/rand"
-	"crypto/sha1" //nolint:gosec // SubjectKeyIdentifier by RFC 5280
+	"crypto/rand" //nolint:gosec // SubjectKeyIdentifier by RFC 5280
+	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -16,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/fipsutil"
 	"golang.org/x/net/idna"
 )
 
@@ -110,6 +112,9 @@ type subjectPublicKeyInfo struct {
 // The keyIdentifier is composed of the 160-bit SHA-1 hash of the value of the
 // BIT STRING subjectPublicKey (excluding the tag, length, and number of unused
 // bits).
+//
+// If FIPS 140-3 mode is enabled, instead of SHA-1, it will use the leftmost
+// 160-bits of the SHA-256 hash according to RFC 7093 section 2.
 func generateSubjectKeyID(pub crypto.PublicKey) ([]byte, error) {
 	b, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
@@ -119,9 +124,21 @@ func generateSubjectKeyID(pub crypto.PublicKey) ([]byte, error) {
 	if _, err = asn1.Unmarshal(b, &info); err != nil {
 		return nil, errors.Wrap(err, "error unmarshaling public key")
 	}
+	return marshalSubjectKeyID(info.SubjectPublicKey.Bytes), nil
+}
+
+// marshalSubjectKeyID marshals the key identifier data using SHA-1 according to
+// the RFC 5280 section 4.2.1.2. But if FIPS 140-3 mode is enabled it will use
+// the leftmost 160-bits of the SHA-256 hash according to RFC 7093 section 2.
+func marshalSubjectKeyID(data []byte) []byte {
+	if fipsutil.Enabled() {
+		hash := sha256.Sum256(data)
+		return hash[:20]
+	}
+
 	//nolint:gosec // SubjectKeyIdentifier by RFC 5280
-	hash := sha1.Sum(info.SubjectPublicKey.Bytes)
-	return hash[:], nil
+	hash := sha1.Sum(data)
+	return hash[:]
 }
 
 // subjectIsEmpty returns whether the given pkix.Name (aka Subject) is an empty sequence

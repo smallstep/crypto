@@ -9,6 +9,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"go.step.sm/crypto/fipsutil"
 )
 
 func decodeCertificateFile(t *testing.T, filename string) *x509.Certificate {
@@ -144,6 +146,10 @@ func TestCreateSANs(t *testing.T) {
 }
 
 func Test_generateSubjectKeyID(t *testing.T) {
+	if fipsutil.Enabled() {
+		t.Skip("FIPS 140-3 mode is enabled")
+	}
+
 	ecdsaCrt := decodeCertificateFile(t, "testdata/google.crt")
 	rsaCrt := decodeCertificateFile(t, "testdata/smallstep.crt")
 	ed25519Crt := decodeCertificateFile(t, "testdata/ed25519.crt")
@@ -160,6 +166,38 @@ func Test_generateSubjectKeyID(t *testing.T) {
 		{"ecdsa", args{ecdsaCrt.PublicKey}, ecdsaCrt.SubjectKeyId, false},
 		{"rsa", args{rsaCrt.PublicKey}, rsaCrt.SubjectKeyId, false},
 		{"ed25519", args{ed25519Crt.PublicKey}, ed25519Crt.SubjectKeyId, false},
+		{"fail", args{[]byte("fail")}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := generateSubjectKeyID(tt.args.pub)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("generateSubjectKeyID() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("generateSubjectKeyID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_generateSubjectKeyID_fips(t *testing.T) {
+	if !fipsutil.Enabled() {
+		t.Skip("FIPS 140-3 mode is not enabled")
+	}
+
+	sha256Cert := decodeCertificateFile(t, "testdata/letsencrypt.crt")
+	type args struct {
+		pub crypto.PublicKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []byte
+		wantErr bool
+	}{
+		{"ok", args{sha256Cert.PublicKey}, sha256Cert.SubjectKeyId, false},
 		{"fail", args{[]byte("fail")}, nil, true},
 	}
 	for _, tt := range tests {
