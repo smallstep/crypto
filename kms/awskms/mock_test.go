@@ -13,6 +13,7 @@ type MockClient struct {
 	createKey    func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error)
 	createAlias  func(ctx context.Context, input *kms.CreateAliasInput, opts ...func(*kms.Options)) (*kms.CreateAliasOutput, error)
 	sign         func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error)
+	decrypt      func(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error)
 }
 
 func (m *MockClient) GetPublicKey(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
@@ -29,6 +30,10 @@ func (m *MockClient) CreateAlias(ctx context.Context, input *kms.CreateAliasInpu
 
 func (m *MockClient) Sign(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
 	return m.sign(ctx, input, opts...)
+}
+
+func (m *MockClient) Decrypt(ctx context.Context, params *kms.DecryptInput, opts ...func(*kms.Options)) (*kms.DecryptOutput, error) {
+	return m.decrypt(ctx, params, opts...)
 }
 
 const (
@@ -66,6 +71,11 @@ func getOKClient() *MockClient {
 		sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
 			return &kms.SignOutput{
 				Signature: signature,
+			}, nil
+		},
+		decrypt: func(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error) {
+			return &kms.DecryptOutput{
+				Plaintext: nil,
 			}, nil
 		},
 	}
