@@ -105,7 +105,12 @@ var algs = map[Algorithm]string{
 type Algorithm uint16
 
 func (a Algorithm) String() string {
-	return algs[Algorithm(int(a))]
+	v, ok := algs[a]
+	if !ok {
+		return "UNKNOWN_ALGORITHM"
+	}
+
+	return v
 }
 
 func (a Algorithm) MarshalJSON() ([]byte, error) {

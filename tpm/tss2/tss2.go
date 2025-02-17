@@ -139,7 +139,7 @@ func MarshalPrivateKey(key *TPMKey) ([]byte, error) {
 	return asn1.Marshal(*key)
 }
 
-func readOptionalTag(input *cryptobyte.String, tag int) (cryptobyte.String, bool) {
+func readOptionalTag(input *cryptobyte.String, tag uint8) (cryptobyte.String, bool) {
 	var isPresent bool
 	var output cryptobyte.String
 	if !input.ReadOptionalASN1(&output, &isPresent, cryptobyte_asn1.Tag(tag).Constructed().ContextSpecific()) {

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 
-	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/cryptobyte"
 	asn1tag "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/pbkdf2"
+
+	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/randutil"
 )
 
 var (
@@ -302,14 +304,18 @@ func newAES256CBC() (*aes256CBCParams, error) {
 func (p *aes256CBCParams) encrypt(key, plaintext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed creating new AES cipher: %w", err)
 	}
 
-	enc := cipher.NewCBCEncrypter(block, p.InitializationVector)
+	paddedPlaintext, err := cbcPad(plaintext)
+	if err != nil {
+		return nil, fmt.Errorf("failed padding plaintext: %w", err)
+	}
 
-	plaintext = cbcPad(plaintext)
-	ciphertext := make([]byte, len(plaintext))
-	enc.CryptBlocks(ciphertext, plaintext)
+	ciphertext := make([]byte, len(paddedPlaintext))
+
+	enc := cipher.NewCBCEncrypter(block, p.InitializationVector)
+	enc.CryptBlocks(ciphertext, paddedPlaintext)
 
 	return ciphertext, nil
 }
@@ -343,17 +349,21 @@ func (p *aes256CBCParams) unmarshal(s cryptobyte.String) error {
 }
 
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/softoken/padbuf.c#L17
-func cbcPad(plaintext []byte) []byte {
+func cbcPad(plaintext []byte) ([]byte, error) {
 	inLen := len(plaintext)
 
 	desLen := (inLen + aes.BlockSize) & ^(aes.BlockSize - 1)
-	desPadLen := uint8(desLen - inLen)
+
+	desPadLen, err := utils.SafeUint8(desLen - inLen)
+	if err != nil {
+		return nil, fmt.Errorf("conversion to uint8 failed: %w", err)
+	}
 
 	for i := inLen; i < desLen; i++ {
 		plaintext = append(plaintext, desPadLen)
 	}
 
-	return plaintext
+	return plaintext, nil
 }
 
 func cbcUnpad(plaintext []byte) []byte {

@@ -20,10 +20,12 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
+
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
-	"golang.org/x/crypto/ssh"
 )
 
 type keyType int
@@ -160,21 +162,21 @@ func TestRead(t *testing.T) {
 
 			switch td.typ {
 			case ecdsaPublicKey:
-				assert.Type(t, &ecdsa.PublicKey{}, key)
+				assert.IsType(t, &ecdsa.PublicKey{}, key)
 			case ecdsaPrivateKey:
-				assert.Type(t, &ecdsa.PrivateKey{}, key)
+				assert.IsType(t, &ecdsa.PrivateKey{}, key)
 			case ed25519PublicKey:
-				assert.Type(t, ed25519.PublicKey{}, key)
+				assert.IsType(t, ed25519.PublicKey{}, key)
 			case ed25519PrivateKey:
-				assert.Type(t, ed25519.PrivateKey{}, key)
+				assert.IsType(t, ed25519.PrivateKey{}, key)
 			case rsaPublicKey:
-				assert.Type(t, &rsa.PublicKey{}, key)
+				assert.IsType(t, &rsa.PublicKey{}, key)
 			case rsaPrivateKey:
-				assert.Type(t, &rsa.PrivateKey{}, key)
+				assert.IsType(t, &rsa.PrivateKey{}, key)
 			case x25519PublicKey:
-				assert.Type(t, x25519.PublicKey{}, key)
+				assert.IsType(t, x25519.PublicKey{}, key)
 			case x25519PrivateKey:
-				assert.Type(t, x25519.PrivateKey{}, key)
+				assert.IsType(t, x25519.PrivateKey{}, key)
 			default:
 				t.Errorf("type %T not supported", key)
 			}
@@ -183,7 +185,7 @@ func TestRead(t *testing.T) {
 			if td.encrypted {
 				k, err := Read(strings.Replace(fn, ".enc", "", 1))
 				assert.NoError(t, err)
-				assert.Equals(t, k, key)
+				assert.Equal(t, k, key)
 			}
 
 			// Check against public
@@ -196,7 +198,7 @@ func TestRead(t *testing.T) {
 				assert.NoError(t, err)
 
 				if pk, ok := key.(crypto.Signer); ok {
-					assert.Equals(t, k, pk.Public())
+					assert.Equal(t, k, pk.Public())
 
 					var signature, digest []byte
 					message := []byte("message")
@@ -256,11 +258,11 @@ func TestParseCertificate(t *testing.T) {
 			crt, err := ParseCertificate(b)
 			if tc.err != nil {
 				if assert.Error(t, err) {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Type(t, &x509.Certificate{}, crt)
+				assert.IsType(t, &x509.Certificate{}, crt)
 			}
 		})
 	}
@@ -290,11 +292,11 @@ func TestReadCertificate(t *testing.T) {
 			crt, err := ReadCertificate(tc.fn, tc.opts...)
 			if tc.err != nil {
 				if assert.Error(t, err) {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Type(t, &x509.Certificate{}, crt)
+				assert.IsType(t, &x509.Certificate{}, crt)
 			}
 		})
 	}
@@ -323,13 +325,13 @@ func TestReadCertificateBundle(t *testing.T) {
 			certs, err := ReadCertificateBundle(tc.fn)
 			if tc.err != nil {
 				if assert.Error(t, err, tc.fn, "- expected error but got nil") {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, tc.len, certs, tc.fn)
+				assert.Len(t, certs, tc.len, tc.fn)
 				for i := range certs {
-					assert.Type(t, &x509.Certificate{}, certs[i])
+					assert.IsType(t, &x509.Certificate{}, certs[i])
 				}
 			}
 		})
@@ -364,13 +366,13 @@ func TestParseCertificateBundle(t *testing.T) {
 			certs, err := ParseCertificateBundle(b)
 			if tc.err != nil {
 				if assert.Error(t, err, tc.fn, "- expected error but got nil") {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, tc.len, certs, tc.fn)
+				assert.Len(t, certs, tc.len, tc.fn)
 				for i := range certs {
-					assert.Type(t, &x509.Certificate{}, certs[i])
+					assert.IsType(t, &x509.Certificate{}, certs[i])
 				}
 			}
 		})
@@ -387,7 +389,7 @@ func TestParse(t *testing.T) {
 	tests := map[string]func(t *testing.T) *ParseTest{
 		"success-ecdsa-public-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.p256.pub.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -396,7 +398,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-rsa-public-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.rsa1024.pub.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -405,7 +407,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-rsa-private-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.rsa1024.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -414,7 +416,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-ecdsa-private-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.p256.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -423,7 +425,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-ed25519-private-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -432,7 +434,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-ed25519-enc-private-key": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    []Options{WithPassword([]byte("mypassword"))},
@@ -441,7 +443,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-x509-crt": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/ca.crt")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    nil,
@@ -450,7 +452,7 @@ func TestParse(t *testing.T) {
 		},
 		"success-x509-crt-trim-spaces": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/ca.crt")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			b = append(b, []byte(" \n \n ")...)
 			return &ParseTest{
 				in:      b,
@@ -460,7 +462,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-options": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/ca.crt")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			err = errors.New("an error")
 			return &ParseTest{
 				in:      b,
@@ -471,7 +473,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-password": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.p256.enc.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    []Options{WithPassword([]byte("badpassword"))},
@@ -481,7 +483,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-pkcs8-password": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.enc.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    []Options{WithPassword([]byte("badpassword"))},
@@ -491,7 +493,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-type": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/openssl.p256.pub.pem")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			b = bytes.ReplaceAll(b, []byte("PUBLIC KEY"), []byte("EC PUBLIC KEY"))
 			return &ParseTest{
 				in:      b,
@@ -502,7 +504,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-nebula-pub-size": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/badnebula.pub")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    []Options{},
@@ -512,7 +514,7 @@ func TestParse(t *testing.T) {
 		},
 		"fail-nebula-key-size": func(t *testing.T) *ParseTest {
 			b, err := os.ReadFile("testdata/badnebula.key")
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return &ParseTest{
 				in:      b,
 				opts:    []Options{},
@@ -528,11 +530,11 @@ func TestParse(t *testing.T) {
 			i, err := Parse(tc.in, tc.opts...)
 			if err != nil {
 				if assert.NotNil(t, tc.err) {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				if assert.Nil(t, tc.err) {
-					assert.Type(t, i, tc.cmpType)
+					assert.IsType(t, i, tc.cmpType)
 				}
 			}
 		})
@@ -634,12 +636,12 @@ func TestSerialize(t *testing.T) {
 
 	for name, test := range tests {
 		if _, err := os.Stat("./test.key"); err == nil {
-			assert.FatalError(t, os.Remove("./test.key"))
+			require.NoError(t, os.Remove("./test.key"))
 		}
 		t.Logf("Running test case: %s", name)
 
 		in, err := test.in()
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 
 		var p *pem.Block
 		switch {
@@ -659,7 +661,7 @@ func TestSerialize(t *testing.T) {
 
 		if err != nil {
 			if assert.NotNil(t, test.err) {
-				assert.HasPrefix(t, err.Error(), test.err.Error())
+				assert.Contains(t, err.Error(), test.err.Error())
 			}
 		} else {
 			if assert.Nil(t, test.err) {
@@ -668,43 +670,43 @@ func TestSerialize(t *testing.T) {
 				case *rsa.PrivateKey:
 					if test.pass == "" {
 						assert.False(t, x509.IsEncryptedPEMBlock(p))
-						assert.Equals(t, p.Type, "RSA PRIVATE KEY")
-						assert.Equals(t, p.Bytes, x509.MarshalPKCS1PrivateKey(k))
+						assert.Equal(t, p.Type, "RSA PRIVATE KEY")
+						assert.Equal(t, p.Bytes, x509.MarshalPKCS1PrivateKey(k))
 					} else {
 						assert.True(t, x509.IsEncryptedPEMBlock(p))
-						assert.Equals(t, p.Type, "RSA PRIVATE KEY")
-						assert.Equals(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
+						assert.Equal(t, p.Type, "RSA PRIVATE KEY")
+						assert.Equal(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
 
 						var der []byte
 						der, err = x509.DecryptPEMBlock(p, []byte(test.pass))
-						assert.FatalError(t, err)
-						assert.Equals(t, der, x509.MarshalPKCS1PrivateKey(k))
+						require.NoError(t, err)
+						assert.Equal(t, der, x509.MarshalPKCS1PrivateKey(k))
 					}
 				case *rsa.PublicKey, *ecdsa.PublicKey:
 					assert.False(t, x509.IsEncryptedPEMBlock(p))
-					assert.Equals(t, p.Type, "PUBLIC KEY")
+					assert.Equal(t, p.Type, "PUBLIC KEY")
 
 					var b []byte
 					b, err = x509.MarshalPKIXPublicKey(k)
-					assert.FatalError(t, err)
-					assert.Equals(t, p.Bytes, b)
+					require.NoError(t, err)
+					assert.Equal(t, p.Bytes, b)
 				case *ecdsa.PrivateKey:
 					var actualBytes []byte
 					switch {
 					case test.pass == "":
-						assert.Equals(t, p.Type, "EC PRIVATE KEY")
+						assert.Equal(t, p.Type, "EC PRIVATE KEY")
 						assert.False(t, x509.IsEncryptedPEMBlock(p))
 						actualBytes = p.Bytes
 					case test.pkcs8:
-						assert.Equals(t, p.Type, "ENCRYPTED PRIVATE KEY")
+						assert.Equal(t, p.Type, "ENCRYPTED PRIVATE KEY")
 						actualBytes, err = DecryptPKCS8PrivateKey(p.Bytes, []byte(test.pass))
-						assert.FatalError(t, err)
+						require.NoError(t, err)
 					default:
-						assert.Equals(t, p.Type, "EC PRIVATE KEY")
+						assert.Equal(t, p.Type, "EC PRIVATE KEY")
 						assert.True(t, x509.IsEncryptedPEMBlock(p))
-						assert.Equals(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
+						assert.Equal(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
 						actualBytes, err = x509.DecryptPEMBlock(p, []byte(test.pass))
-						assert.FatalError(t, err)
+						require.NoError(t, err)
 					}
 					var expectedBytes []byte
 					if test.pkcs8 {
@@ -712,66 +714,66 @@ func TestSerialize(t *testing.T) {
 					} else {
 						expectedBytes, err = x509.MarshalECPrivateKey(k)
 					}
-					assert.FatalError(t, err)
-					assert.Equals(t, actualBytes, expectedBytes)
+					require.NoError(t, err)
+					assert.Equal(t, actualBytes, expectedBytes)
 
 					if test.file != "" {
 						// Check key permissions
 						var fileInfo os.FileInfo
 						fileInfo, err = os.Stat(test.file)
-						assert.FatalError(t, err)
-						assert.Equals(t, fileInfo.Mode(), os.FileMode(0600))
+						require.NoError(t, err)
+						assert.Equal(t, fileInfo.Mode(), os.FileMode(0600))
 						// Verify that key written to file is correct
 						var keyFileBytes []byte
 						keyFileBytes, err = os.ReadFile(test.file)
-						assert.FatalError(t, err)
+						require.NoError(t, err)
 						pemKey, _ := pem.Decode(keyFileBytes)
-						assert.Equals(t, pemKey.Type, "EC PRIVATE KEY")
+						assert.Equal(t, pemKey.Type, "EC PRIVATE KEY")
 						if x509.IsEncryptedPEMBlock(pemKey) {
-							assert.Equals(t, pemKey.Headers["Proc-Type"], "4,ENCRYPTED")
+							assert.Equal(t, pemKey.Headers["Proc-Type"], "4,ENCRYPTED")
 							actualBytes, err = x509.DecryptPEMBlock(pemKey, []byte(test.pass))
-							assert.FatalError(t, err)
+							require.NoError(t, err)
 						} else {
 							actualBytes = pemKey.Bytes
 						}
-						assert.Equals(t, actualBytes, expectedBytes)
+						assert.Equal(t, actualBytes, expectedBytes)
 					}
 				case ed25519.PrivateKey:
-					assert.Equals(t, p.Type, "PRIVATE KEY")
+					assert.Equal(t, p.Type, "PRIVATE KEY")
 					var actualBytes []byte
 					if test.pass == "" {
 						assert.False(t, x509.IsEncryptedPEMBlock(p))
 						actualBytes = p.Bytes
 					} else {
 						assert.True(t, x509.IsEncryptedPEMBlock(p))
-						assert.Equals(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
+						assert.Equal(t, p.Headers["Proc-Type"], "4,ENCRYPTED")
 
 						actualBytes, err = x509.DecryptPEMBlock(p, []byte(test.pass))
-						assert.FatalError(t, err)
+						require.NoError(t, err)
 					}
 
 					var priv pkcs8
 					_, err = asn1.Unmarshal(actualBytes, &priv)
-					assert.FatalError(t, err)
-					assert.Equals(t, priv.Version, 0)
-					assert.Equals(t, priv.Algo, pkix.AlgorithmIdentifier{
+					require.NoError(t, err)
+					assert.Equal(t, priv.Version, 0)
+					assert.Equal(t, priv.Algo, pkix.AlgorithmIdentifier{
 						Algorithm:  asn1.ObjectIdentifier{1, 3, 101, 112},
 						Parameters: asn1.RawValue{},
 					})
-					assert.Equals(t, priv.PrivateKey[:2], []byte{4, 32})
-					assert.Equals(t, priv.PrivateKey[2:ed25519.SeedSize+2], k.Seed())
+					assert.Equal(t, priv.PrivateKey[:2], []byte{4, 32})
+					assert.Equal(t, priv.PrivateKey[2:ed25519.SeedSize+2], k.Seed())
 				case ed25519.PublicKey:
-					assert.Equals(t, p.Type, "PUBLIC KEY")
+					assert.Equal(t, p.Type, "PUBLIC KEY")
 					assert.False(t, x509.IsEncryptedPEMBlock(p))
 
 					var pub publicKeyInfo
 					_, err = asn1.Unmarshal(p.Bytes, &pub)
-					assert.FatalError(t, err)
-					assert.Equals(t, pub.Algo, pkix.AlgorithmIdentifier{
+					require.NoError(t, err)
+					assert.Equal(t, pub.Algo, pkix.AlgorithmIdentifier{
 						Algorithm:  asn1.ObjectIdentifier{1, 3, 101, 112},
 						Parameters: asn1.RawValue{},
 					})
-					assert.Equals(t, pub.PublicKey, asn1.BitString{
+					assert.Equal(t, pub.PublicKey, asn1.BitString{
 						Bytes:     k,
 						BitLength: ed25519.PublicKeySize * 8,
 					})
@@ -781,38 +783,38 @@ func TestSerialize(t *testing.T) {
 			}
 		}
 		if _, err := os.Stat("./test.key"); err == nil {
-			assert.FatalError(t, os.Remove("./test.key"))
+			require.NoError(t, os.Remove("./test.key"))
 		}
 	}
 }
 
 func TestParseDER(t *testing.T) {
 	k1, err := Read("testdata/openssl.rsa2048.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	k2, err := Read("testdata/openssl.p256.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	k3, err := Read("testdata/pkcs8/openssl.ed25519.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	rsaKey := k1.(*rsa.PrivateKey)
 	ecdsaKey := k2.(*ecdsa.PrivateKey)
 	edKey := k3.(ed25519.PrivateKey)
 	// Ed25519 der files
 	edPubDer, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.pub.der")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	edPrivDer, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.der")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	toDER := func(k interface{}) []byte {
 		switch k := k.(type) {
 		case *rsa.PublicKey, *ecdsa.PublicKey:
 			b, err := x509.MarshalPKIXPublicKey(k)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return b
 		case *rsa.PrivateKey:
 			return x509.MarshalPKCS1PrivateKey(k)
 		case *ecdsa.PrivateKey:
 			b, err := x509.MarshalECPrivateKey(k)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			return b
 		default:
 			t.Fatalf("unsupported key type %T", k)
@@ -861,7 +863,7 @@ func TestParseKey(t *testing.T) {
 		}
 		t.Run(fn, func(t *testing.T) {
 			data, err := os.ReadFile(fn)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			if td.encrypted {
 				key, err = ParseKey(data, WithPassword([]byte("mypassword")))
 			} else {
@@ -872,21 +874,21 @@ func TestParseKey(t *testing.T) {
 
 			switch td.typ {
 			case ecdsaPublicKey:
-				assert.Type(t, &ecdsa.PublicKey{}, key)
+				assert.IsType(t, &ecdsa.PublicKey{}, key)
 			case ecdsaPrivateKey:
-				assert.Type(t, &ecdsa.PrivateKey{}, key)
+				assert.IsType(t, &ecdsa.PrivateKey{}, key)
 			case ed25519PublicKey:
-				assert.Type(t, ed25519.PublicKey{}, key)
+				assert.IsType(t, ed25519.PublicKey{}, key)
 			case ed25519PrivateKey:
-				assert.Type(t, ed25519.PrivateKey{}, key)
+				assert.IsType(t, ed25519.PrivateKey{}, key)
 			case rsaPublicKey:
-				assert.Type(t, &rsa.PublicKey{}, key)
+				assert.IsType(t, &rsa.PublicKey{}, key)
 			case rsaPrivateKey:
-				assert.Type(t, &rsa.PrivateKey{}, key)
+				assert.IsType(t, &rsa.PrivateKey{}, key)
 			case x25519PublicKey:
-				assert.Type(t, x25519.PublicKey{}, key)
+				assert.IsType(t, x25519.PublicKey{}, key)
 			case x25519PrivateKey:
-				assert.Type(t, x25519.PrivateKey{}, key)
+				assert.IsType(t, x25519.PrivateKey{}, key)
 			default:
 				t.Errorf("type %T not supported", key)
 			}
@@ -897,24 +899,24 @@ func TestParseKey(t *testing.T) {
 func TestParseKey_x509(t *testing.T) {
 	b, _ := pem.Decode([]byte(testCRT))
 	cert, err := x509.ParseCertificate(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err := ParseKey([]byte(testCRT))
-	assert.FatalError(t, err)
-	assert.Equals(t, cert.PublicKey, key)
+	require.NoError(t, err)
+	assert.Equal(t, cert.PublicKey, key)
 
 	b, _ = pem.Decode([]byte(testCSR))
 	csr, err := x509.ParseCertificateRequest(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err = ParseKey([]byte(testCSR))
-	assert.FatalError(t, err)
-	assert.Equals(t, csr.PublicKey, key)
+	require.NoError(t, err)
+	assert.Equal(t, csr.PublicKey, key)
 
 	b, _ = pem.Decode([]byte(testCSRKeytool))
 	csr, err = x509.ParseCertificateRequest(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err = ParseKey([]byte(testCSRKeytool))
-	assert.FatalError(t, err)
-	assert.Equals(t, csr.PublicKey, key)
+	require.NoError(t, err)
+	assert.Equal(t, csr.PublicKey, key)
 }
 
 func TestParseSSH(t *testing.T) {
@@ -925,18 +927,18 @@ func TestParseSSH(t *testing.T) {
 		}
 		t.Run(fn, func(t *testing.T) {
 			data, err := os.ReadFile(fn)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			key, err = ParseSSH(data)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, key)
 
 			switch td.typ {
 			case ecdsaPublicKey:
-				assert.Type(t, &ecdsa.PublicKey{}, key)
+				assert.IsType(t, &ecdsa.PublicKey{}, key)
 			case ed25519PublicKey:
-				assert.Type(t, ed25519.PublicKey{}, key)
+				assert.IsType(t, ed25519.PublicKey{}, key)
 			case rsaPublicKey:
-				assert.Type(t, &rsa.PublicKey{}, key)
+				assert.IsType(t, &rsa.PublicKey{}, key)
 			default:
 				t.Errorf("type %T not supported", key)
 			}
@@ -954,9 +956,7 @@ func TestOpenSSH(t *testing.T) {
 		if td.typ == x25519PublicKey || td.typ == x25519PrivateKey {
 			continue
 		}
-		// To be able to run this in parallel we need to declare local
-		// variables.
-		fn, td := fn, td
+
 		t.Run(fn, func(t *testing.T) {
 			t.Parallel()
 			opts := []Options{
@@ -968,26 +968,26 @@ func TestOpenSSH(t *testing.T) {
 			}
 
 			key, err := Read(fn, opts...)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 
 			// using their own methods
 			block, err := SerializeOpenSSHPrivateKey(key, opts...)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 
 			key2, err := ParseOpenSSHPrivateKey(pem.EncodeToMemory(block), opts...)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 
-			assert.Equals(t, key, key2)
+			assert.Equal(t, key, key2)
 
 			// using main methods
 			block2, err := Serialize(key2, opts...)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 			// salt must be different
-			assert.NotEquals(t, block, block2)
+			assert.NotEqual(t, block, block2)
 
 			key3, err := Parse(pem.EncodeToMemory(block2), opts...)
-			assert.FatalError(t, err)
-			assert.Equals(t, key2, key3)
+			require.NoError(t, err)
+			assert.Equal(t, key2, key3)
 		})
 	}
 }
@@ -995,9 +995,9 @@ func TestOpenSSH(t *testing.T) {
 func TestRead_options(t *testing.T) {
 	mustKey := func(filename string) interface{} {
 		b, err := os.ReadFile(filename)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return key
 	}
 
@@ -1042,9 +1042,9 @@ func TestRead_options(t *testing.T) {
 func TestRead_promptPassword(t *testing.T) {
 	mustKey := func(filename string) interface{} {
 		b, err := os.ReadFile(filename)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return key
 	}
 
@@ -1267,15 +1267,15 @@ func TestBundleCertificate(t *testing.T) {
 			got, added, err := BundleCertificate(bundlePEM, certsPEM...)
 			if tc.err != nil {
 				if assert.Error(t, err) {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Equals(t, tc.added, added)
+				assert.Equal(t, tc.added, added)
 				if added {
-					assert.NotEquals(t, bundlePEM, got)
+					assert.NotEqual(t, bundlePEM, got)
 				} else {
-					assert.Equals(t, bundlePEM, got)
+					assert.Equal(t, bundlePEM, got)
 				}
 			}
 		})
@@ -1317,11 +1317,11 @@ func TestUnbundleCertificate(t *testing.T) {
 			got, modified, err := UnbundleCertificate(bundlePEM, certsPEM...)
 			if tc.err != nil {
 				if assert.Error(t, err) {
-					assert.HasPrefix(t, err.Error(), tc.err.Error())
+					assert.Contains(t, err.Error(), tc.err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Equals(t, tc.modified, modified)
+				assert.Equal(t, tc.modified, modified)
 				if tc.wantBundle == "" {
 					assert.Nil(t, got)
 				} else {
@@ -1329,7 +1329,7 @@ func TestUnbundleCertificate(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					assert.Equals(t, strings.TrimSpace(string(want)), strings.TrimSpace(string(got)))
+					assert.Equal(t, strings.TrimSpace(string(want)), strings.TrimSpace(string(got)))
 				}
 			}
 		})

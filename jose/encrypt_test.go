@@ -14,7 +14,9 @@ import (
 
 	jose "github.com/go-jose/go-jose/v3"
 	"github.com/pkg/errors"
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/randutil"
 )
 
@@ -348,7 +350,7 @@ func TestDecrypt(t *testing.T) {
 	data := []byte("the-plain-data")
 	jwe := mustEncryptData(t, data, testPassword)
 	s, err := jwe.CompactSerialize()
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	encryptedData := []byte(s)
 
 	// Create wrong encrypted data

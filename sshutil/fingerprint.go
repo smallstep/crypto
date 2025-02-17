@@ -1,14 +1,15 @@
 package sshutil
 
 import (
-	"crypto/dsa" // support for DSA fingerprints
+	"crypto/dsa" //nolint:staticcheck // support for DSA fingerprints
 	"crypto/rsa"
 	"crypto/sha256"
 	"fmt"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/fingerprint"
 	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/fingerprint"
 )
 
 // FingerprintEncoding defines the supported encodings for SSH key and

@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/randutil"
 	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/randutil"
 )
 
 // Certificate is the json representation of ssh.Certificate.
@@ -130,5 +132,6 @@ func toValidity(t time.Time) uint64 {
 	if t.IsZero() {
 		return 0
 	}
-	return uint64(t.Unix())
+
+	return utils.MustUint64(t.Unix())
 }
