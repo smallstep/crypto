@@ -3,8 +3,8 @@ package x509util
 import (
 	"bytes"
 	"crypto"
-	"crypto/rand" //nolint:gosec // SubjectKeyIdentifier by RFC 5280
-	"crypto/sha1"
+	"crypto/rand"
+	"crypto/sha1" //nolint:gosec // SubjectKeyIdentifier by RFC 5280
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -17,8 +17,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
-	"go.step.sm/crypto/fipsutil"
 	"golang.org/x/net/idna"
+
+	"go.step.sm/crypto/fipsutil"
 )
 
 var emptyASN1Subject = []byte{0x30, 0}
@@ -128,8 +129,9 @@ func generateSubjectKeyID(pub crypto.PublicKey) ([]byte, error) {
 }
 
 // marshalSubjectKeyID marshals the key identifier data using SHA-1 according to
-// the RFC 5280 section 4.2.1.2. But if FIPS 140-3 mode is enabled it will use
-// the leftmost 160-bits of the SHA-256 hash according to RFC 7093 section 2.
+// the RFC 5280 section 4.2.1.2. If FIPS 140-3 mode is enabled it will use the
+// leftmost 160-bits of the SHA-256 hash according to RFC 7093 section 2
+// instead.
 func marshalSubjectKeyID(data []byte) []byte {
 	if fipsutil.Enabled() {
 		hash := sha256.Sum256(data)

@@ -27,8 +27,8 @@ func Enabled() bool {
 }
 
 // Only reports whether the cryptography libraries are operating in FIPS 140-3
-// "only" mode, when non-approved cryptography functions will additionally
-// return errors or panic.
+// "only" mode. When in this mode, using non-approved cryptography functions
+// will return errors or panic.
 func Only() bool {
 	once.Do(func() {
 		if !fips140.Enabled() {

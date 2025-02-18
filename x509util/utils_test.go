@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"go.step.sm/crypto/fipsutil"
 )
 
@@ -192,24 +194,19 @@ func Test_generateSubjectKeyID_fips(t *testing.T) {
 		pub crypto.PublicKey
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    []byte
-		wantErr bool
+		name      string
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok", args{sha256Cert.PublicKey}, sha256Cert.SubjectKeyId, false},
-		{"fail", args{[]byte("fail")}, nil, true},
+		{"ok", args{sha256Cert.PublicKey}, sha256Cert.SubjectKeyId, assert.NoError},
+		{"fail", args{[]byte("fail")}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := generateSubjectKeyID(tt.args.pub)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("generateSubjectKeyID() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("generateSubjectKeyID() = %v, want %v", got, tt.want)
-			}
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
