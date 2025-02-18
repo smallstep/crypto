@@ -28,7 +28,7 @@ require (
 	golang.org/x/sys v0.30.0
 	google.golang.org/api v0.220.0
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.4
+	google.golang.org/protobuf v1.36.5
 	modernc.org/sqlite v1.35.0
 )
 
