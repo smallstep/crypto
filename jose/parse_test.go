@@ -20,8 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -117,25 +118,24 @@ func validateReadKey(t *testing.T, fn, pass string, td testdata) {
 	} else {
 		jwk, err = ReadKey(fn)
 	}
-	assert.NoError(t, err)
-
-	assert.NoError(t, ValidateJWK(jwk))
+	require.NoError(t, err)
+	require.NoError(t, ValidateJWK(jwk))
 
 	switch td.typ {
 	case ecdsaPublicKey:
-		assert.Type(t, &ecdsa.PublicKey{}, jwk.Key)
+		assert.IsType(t, &ecdsa.PublicKey{}, jwk.Key)
 	case ecdsaPrivateKey:
-		assert.Type(t, &ecdsa.PrivateKey{}, jwk.Key)
+		assert.IsType(t, &ecdsa.PrivateKey{}, jwk.Key)
 	case ed25519PublicKey:
-		assert.Type(t, ed25519.PublicKey{}, jwk.Key)
+		assert.IsType(t, ed25519.PublicKey{}, jwk.Key)
 	case ed25519PrivateKey:
-		assert.Type(t, ed25519.PrivateKey{}, jwk.Key)
+		assert.IsType(t, ed25519.PrivateKey{}, jwk.Key)
 	case rsaPublicKey:
-		assert.Type(t, &rsa.PublicKey{}, jwk.Key)
+		assert.IsType(t, &rsa.PublicKey{}, jwk.Key)
 	case rsaPrivateKey:
-		assert.Type(t, &rsa.PrivateKey{}, jwk.Key)
+		assert.IsType(t, &rsa.PrivateKey{}, jwk.Key)
 	case octKey:
-		assert.Type(t, []byte{}, jwk.Key)
+		assert.IsType(t, []byte{}, jwk.Key)
 	default:
 		t.Errorf("type %T not supported", jwk.Key)
 	}
@@ -143,26 +143,24 @@ func validateReadKey(t *testing.T, fn, pass string, td testdata) {
 	if jwk.IsPublic() == false && jwk.KeyID != "" {
 		hash, err := jwk.Thumbprint(crypto.SHA256)
 		assert.NoError(t, err)
-		assert.Equals(t, base64.RawURLEncoding.EncodeToString(hash), jwk.KeyID)
+		assert.Equal(t, base64.RawURLEncoding.EncodeToString(hash), jwk.KeyID)
 	}
 
 	if td.encrypted {
 		jwkPriv, err := ReadKey(strings.Replace(fn, ".enc", "", 1))
 		assert.NoError(t, err)
-		assert.Equals(t, jwkPriv, jwk)
+		assert.Equal(t, jwkPriv, jwk)
 	}
 }
 
 func TestReadKey(t *testing.T) {
 	for fn, td := range files {
-		fn, td := fn, td
 		t.Run(fn, func(t *testing.T) {
 			validateReadKey(t, fn, "password", td)
 		})
 	}
 
 	for fn, td := range pemFiles {
-		fn, td := fn, td
 		t.Run(fn, func(t *testing.T) {
 			validateReadKey(t, fn, "mypassword", td)
 		})
@@ -175,9 +173,9 @@ func TestReadKey(t *testing.T) {
 
 func TestReadKey_https(t *testing.T) {
 	ok, err := os.ReadFile("testdata/okp.pub.json")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.RequestURI {
@@ -242,11 +240,11 @@ func TestReadKey_https(t *testing.T) {
 
 func TestReadKeyPasswordFile(t *testing.T) {
 	jwk, err := ReadKey("testdata/oct.txt", WithAlg("HS256"), WithUse("sig"), WithKid("the-kid"))
-	assert.FatalError(t, err)
-	assert.Equals(t, []byte("a true random password"), jwk.Key)
-	assert.Equals(t, HS256, jwk.Algorithm)
-	assert.Equals(t, "sig", jwk.Use)
-	assert.Equals(t, "the-kid", jwk.KeyID)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("a true random password"), jwk.Key)
+	assert.Equal(t, HS256, jwk.Algorithm)
+	assert.Equal(t, "sig", jwk.Use)
+	assert.Equal(t, "the-kid", jwk.KeyID)
 }
 
 func TestParseKey(t *testing.T) {
@@ -273,15 +271,15 @@ func TestParseKey(t *testing.T) {
 	octKey := fixJWK(mustGenerateJWK(t, "oct", "", "HS256", "sig", "", 64))
 
 	encKey, err := EncryptJWK(edKey, testPassword)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	encKeyCompact, err := encKey.CompactSerialize()
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	pemKey, err := pemutil.Read("../pemutil/testdata/pkcs8/openssl.ed25519.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	ecKey.KeyID, err = Thumbprint(ecKey)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	type args struct {
 		b    []byte
@@ -365,7 +363,6 @@ func TestParseKey(t *testing.T) {
 		{"failOCTMissingOptions", args{testPassword, nil}, nil, true},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := ParseKey(tt.args.b, tt.args.opts...)
@@ -394,10 +391,10 @@ func TestParseKey(t *testing.T) {
 
 func TestParseKeyPemutilPromptPassword(t *testing.T) {
 	pemKey, err := pemutil.Read("../pemutil/testdata/pkcs8/openssl.ed25519.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	pemBytes, err := os.ReadFile("../pemutil/testdata/pkcs8/openssl.ed25519.enc.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	tmp0 := pemutil.PromptPassword
 	tmp1 := PromptPassword
@@ -443,35 +440,35 @@ func TestParseKeyPemutilPromptPassword(t *testing.T) {
 func TestReadKeySet(t *testing.T) {
 	jwk, err := ReadKeySet("testdata/jwks.json", WithKid("qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM"))
 	assert.NoError(t, err)
-	assert.Type(t, ed25519.PublicKey{}, jwk.Key)
-	assert.Equals(t, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", jwk.KeyID)
+	assert.IsType(t, ed25519.PublicKey{}, jwk.Key)
+	assert.Equal(t, "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM", jwk.KeyID)
 
 	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co"))
 	assert.NoError(t, err)
-	assert.Type(t, &ecdsa.PublicKey{}, jwk.Key)
-	assert.Equals(t, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", jwk.KeyID)
+	assert.IsType(t, &ecdsa.PublicKey{}, jwk.Key)
+	assert.Equal(t, "V93A-Yh7Bhw1W2E0igFciviJzX4PXPswoVgriehm9Co", jwk.KeyID)
 
 	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("duplicated"))
 	assert.Error(t, err)
-	assert.Equals(t, "multiple keys with kid duplicated have been found on testdata/jwks.json", err.Error())
+	assert.Equal(t, "multiple keys with kid duplicated have been found on testdata/jwks.json", err.Error())
 	assert.Nil(t, jwk)
 
 	jwk, err = ReadKeySet("testdata/jwks.json", WithKid("missing"))
 	assert.Error(t, err)
-	assert.Equals(t, "cannot find key with kid missing on testdata/jwks.json", err.Error())
+	assert.Equal(t, "cannot find key with kid missing on testdata/jwks.json", err.Error())
 	assert.Nil(t, jwk)
 
 	jwk, err = ReadKeySet("testdata/empty.json", WithKid("missing"))
 	assert.Error(t, err)
-	assert.Equals(t, "cannot find key with kid missing on testdata/empty.json", err.Error())
+	assert.Equal(t, "cannot find key with kid missing on testdata/empty.json", err.Error())
 	assert.Nil(t, jwk)
 }
 
 func TestReadKeySet_https(t *testing.T) {
 	ok, err := os.ReadFile("testdata/jwks.json")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.RequestURI {
@@ -536,17 +533,17 @@ func TestReadKeySet_https(t *testing.T) {
 
 func TestGuessJWKAlgorithm(t *testing.T) {
 	p256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	p521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	rsa2k, err := rsa.GenerateKey(rand.Reader, 2048)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	xPub, xPriv, err := x25519.GenerateKey(rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	tests := []struct {
 		jwk      *JSONWebKey
@@ -582,14 +579,14 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	assert.NoError(t, err)
 	jwk := &JSONWebKey{Key: []byte("password")}
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, HS256, jwk.Algorithm)
+	assert.Equal(t, HS256, jwk.Algorithm)
 
 	// With algorithm set
 	ctx, err = new(context).apply(WithAlg(HS256))
 	assert.NoError(t, err)
 	jwk = &JSONWebKey{Key: []byte("password"), Algorithm: HS384}
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, HS384, jwk.Algorithm)
+	assert.Equal(t, HS384, jwk.Algorithm)
 
 	// With no defaults
 	ctx, err = new(context).apply(WithNoDefaults(true))
@@ -597,48 +594,48 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	jwk = mustGenerateJWK(t, "EC", "P-256", "ES256", "sig", "", 0)
 	jwk.Algorithm = ""
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, ES256, jwk.Algorithm)
+	assert.Equal(t, ES256, jwk.Algorithm)
 
 	pub := jwk.Public()
 	pub.Algorithm = ""
 	guessJWKAlgorithm(ctx, &pub)
-	assert.Equals(t, ES256, pub.Algorithm)
+	assert.Equal(t, ES256, pub.Algorithm)
 
 	jwk = mustGenerateJWK(t, "OKP", "Ed25519", "EdDSA", "sig", "", 0)
 	jwk.Algorithm = ""
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, EdDSA, jwk.Algorithm)
+	assert.Equal(t, EdDSA, jwk.Algorithm)
 
 	pub = jwk.Public()
 	pub.Algorithm = ""
 	guessJWKAlgorithm(ctx, &pub)
-	assert.Equals(t, EdDSA, pub.Algorithm)
+	assert.Equal(t, EdDSA, pub.Algorithm)
 
 	jwk = &JSONWebKey{Key: xPriv, Algorithm: "", Use: "sig"}
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, XEdDSA, jwk.Algorithm)
+	assert.Equal(t, XEdDSA, jwk.Algorithm)
 
 	jwk = &JSONWebKey{Key: xPub, Algorithm: "", Use: "sig"}
 	guessJWKAlgorithm(ctx, jwk)
-	assert.Equals(t, XEdDSA, jwk.Algorithm)
+	assert.Equal(t, XEdDSA, jwk.Algorithm)
 
 	// Defaults
 	for _, tc := range tests {
 		guessJWKAlgorithm(new(context), tc.jwk)
-		assert.Equals(t, tc.expected, tc.jwk.Algorithm)
+		assert.Equal(t, tc.expected, tc.jwk.Algorithm)
 	}
 }
 
 func TestParseKeySet(t *testing.T) {
 	b, err := os.ReadFile("testdata/jwks.json")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	jwe := mustEncryptData(t, b, testPassword)
 	encryptedJSON := []byte(jwe.FullSerialize())
 	encryptedCompact, err := jwe.CompactSerialize()
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	type args struct {
 		b    []byte
@@ -725,7 +722,7 @@ func Test_guessKeyType(t *testing.T) {
 	octHS384 := mustGenerateJWK(t, "oct", "", "HS384", "sig", "", 64)
 
 	rsaPEM, err := os.ReadFile("../pemutil/testdata/openssl.p256.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	type args struct {
 		ctx  *context

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestErrors(t *testing.T) {
@@ -17,33 +17,33 @@ func TestErrors(t *testing.T) {
 
 	str, err := UUIDv4()
 	assert.Error(t, err)
-	assert.Len(t, 0, str)
+	assert.Len(t, str, 0)
 
 	sizes := []int{4, 8, 16, 32}
 	for _, size := range sizes {
 		b, err := Salt(size)
 		assert.Error(t, err)
-		assert.Len(t, 0, b)
+		assert.Len(t, b, 0)
 
 		str, err = String(size, "0123456789")
 		assert.Error(t, err)
-		assert.Len(t, 0, str)
+		assert.Len(t, str, 0)
 
 		str, err = Hex(size)
 		assert.Error(t, err)
-		assert.Len(t, 0, str)
+		assert.Len(t, str, 0)
 
 		str, err = Alphanumeric(size)
 		assert.Error(t, err)
-		assert.Len(t, 0, str)
+		assert.Len(t, str, 0)
 
 		str, err = ASCII(size)
 		assert.Error(t, err)
-		assert.Len(t, 0, str)
+		assert.Len(t, str, 0)
 
 		str, err = Alphabet(size)
 		assert.Error(t, err)
-		assert.Len(t, 0, str)
+		assert.Len(t, str, 0)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestSalt(t *testing.T) {
 		b, err := Salt(size)
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestBytes(t *testing.T) {
 		b, err := Bytes(size)
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestString(t *testing.T) {
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestHex(t *testing.T) {
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestAlphanumeric(t *testing.T) {
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestASCII(t *testing.T) {
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -143,7 +143,7 @@ func TestAlphabet(t *testing.T) {
 		assert.True(t, re.MatchString(b))
 		assert.NoError(t, err)
 		// Most of the time
-		assert.NotEquals(t, a, b)
+		assert.NotEqual(t, a, b)
 	}
 }
 
@@ -151,7 +151,7 @@ func TestUUIDv4(t *testing.T) {
 	re := regexp.MustCompilePOSIX(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	uuid, err := UUIDv4()
 	assert.NoError(t, err)
-	assert.Len(t, 36, uuid)
+	assert.Len(t, uuid, 36)
 	assert.True(t, re.MatchString(uuid))
 
 	b := make([]byte, 32)

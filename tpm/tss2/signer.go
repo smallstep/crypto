@@ -30,6 +30,8 @@ import (
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+
+	"go.step.sm/crypto/internal/utils"
 )
 
 var (
@@ -162,7 +164,12 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign implements the [crypto.Signer] interface.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	parentHandle := tpmutil.Handle(s.tpmKey.Parent)
+	parent, err := utils.SafeUint32(s.tpmKey.Parent)
+	if err != nil {
+		return nil, fmt.Errorf("failed converting parent handle: %w", err)
+	}
+
+	parentHandle := tpmutil.Handle(parent)
 	if !handleIsPersistent(s.tpmKey.Parent) {
 		parentHandle, _, err = tpm2.CreatePrimary(s.rw, parentHandle, tpm2.PCRSelection{}, "", "", s.srkTemplate)
 		if err != nil {

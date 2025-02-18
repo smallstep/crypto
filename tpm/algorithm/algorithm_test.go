@@ -2,6 +2,7 @@ package algorithm
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -16,6 +17,7 @@ func Test_AlgorithmString(t *testing.T) {
 	}{
 		{"ok/RSA", tpm2.AlgRSA, "RSA"},
 		{"ok/3DES", 0x0003, "3DES"},
+		{"ok/UNKNOWN", math.MaxUint16, "UNKNOWN_ALGORITHM"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

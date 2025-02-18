@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/internal/utils"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x509util"
-	"golang.org/x/crypto/ssh"
 )
 
 type badSigner struct{}
@@ -379,8 +381,8 @@ func TestCA_SignSSH(t *testing.T) {
 			CertType:        ssh.UserCert,
 			KeyId:           "jane@test.com",
 			ValidPrincipals: []string{"jane"},
-			ValidAfter:      uint64(time.Now().Unix()),
-			ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),
+			ValidAfter:      utils.MustUint64(time.Now().Unix()),
+			ValidBefore:     utils.MustUint64(time.Now().Add(time.Hour).Unix()),
 		}}, ssh.UserCert, "jane", false},
 		{"ok infinity", mustCA(t), args{&ssh.Certificate{
 			Key:             publicKey,

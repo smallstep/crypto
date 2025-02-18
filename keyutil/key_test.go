@@ -13,9 +13,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/smallstep/assert"
-	"go.step.sm/crypto/x25519"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/x25519"
 )
 
 const (
@@ -145,7 +146,7 @@ func TestPublicKey(t *testing.T) {
 	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	x25519Pub, x25519Priv, err := x25519.GenerateKey(rand.Reader)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	type args struct {
 		priv interface{}
@@ -565,21 +566,21 @@ func TestExtractKey(t *testing.T) {
 
 	b, _ := pem.Decode([]byte(testCRT))
 	cert, err := x509.ParseCertificate(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	b, _ = pem.Decode([]byte(testCSR))
 	csr, err := x509.ParseCertificateRequest(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	b, _ = pem.Decode([]byte(testSSHPubPEM))
 	sshKey, err := x509.ParsePKIXPublicKey(b.Bytes)
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	sshPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(testSSHPub))
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	sshCert, _, _, _, err := ssh.ParseAuthorizedKey([]byte(testSSHCert))
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	type args struct {
 		in interface{}

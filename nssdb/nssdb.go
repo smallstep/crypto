@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	// enable sql driver
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // enable sql driver
+
+	"go.step.sm/crypto/internal/utils"
 )
 
 var columnNames = make(map[string]string, len(columns))
@@ -456,7 +457,13 @@ func (db *NSSDB) scan(ctx context.Context, rows *sql.Rows, private bool) (*Objec
 			}
 		}
 	}
-	row.ID = uint32(id.Int64)
+
+	u32ID, err := utils.SafeUint32(id.Int64)
+	if err != nil {
+		return nil, fmt.Errorf("failed converting %d to uint32: %w", id.Int64, err)
+	}
+
+	row.ID = u32ID
 	if _, ok := row.EncryptedAttributes["CKA_VALUE"]; ok {
 		ckaValSignatureID := keySignatureID(row.ID)
 		md, err := db.GetMetadata(ctx, ckaValSignatureID)
@@ -473,7 +480,10 @@ func (db *NSSDB) scan(ctx context.Context, rows *sql.Rows, private bool) (*Objec
 
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/softoken/sdb.c#L1260
 func (db *NSSDB) getObjectID(ctx context.Context) (uint32, error) {
-	id := uint32(time.Now().Unix() & 0x3fffffff)
+	id, err := utils.SafeUint32(time.Now().Unix() & 0x3fffffff)
+	if err != nil {
+		return 0, fmt.Errorf("failed converting timestamp to uint32: %w", err)
+	}
 
 	for i := 0; i < 0x40000000; i++ {
 		id &= 0x3fffffff
