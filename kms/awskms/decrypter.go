@@ -98,8 +98,6 @@ func (d *Decrypter) Decrypt(_ io.Reader, ciphertext []byte, opts crypto.Decrypte
 		return nil, fmt.Errorf("awskms Decrypt failed: %w", err)
 	}
 
-	// TODO: additional validation?
-
 	return response.Plaintext, nil
 }
 
