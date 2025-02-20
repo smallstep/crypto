@@ -241,7 +241,7 @@ func (db *NSSDB) AddPublicKey(ctx context.Context, pubKey *ecdsa.PublicKey, ckaI
 	return pubKeyID, nil
 }
 
-var printableRx = regexp.MustCompile(`^[a-zA-Z0-9 '()+,-.\\:=?]*$`)
+var printableRx = regexp.MustCompile(`^[a-zA-Z0-9 '()+,\-.\\:=?]*$`)
 
 func isPrintable(s string) bool {
 	return printableRx.MatchString(s)
