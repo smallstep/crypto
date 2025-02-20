@@ -13,6 +13,7 @@ type MockClient struct {
 	createKey    func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error)
 	createAlias  func(ctx context.Context, input *kms.CreateAliasInput, opts ...func(*kms.Options)) (*kms.CreateAliasOutput, error)
 	sign         func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error)
+	decrypt      func(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error)
 }
 
 func (m *MockClient) GetPublicKey(ctx context.Context, input *kms.GetPublicKeyInput, opts ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
@@ -31,12 +32,25 @@ func (m *MockClient) Sign(ctx context.Context, input *kms.SignInput, opts ...fun
 	return m.sign(ctx, input, opts...)
 }
 
+func (m *MockClient) Decrypt(ctx context.Context, params *kms.DecryptInput, opts ...func(*kms.Options)) (*kms.DecryptOutput, error) {
+	return m.decrypt(ctx, params, opts...)
+}
+
 const (
 	publicKey = `-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8XWlIWkOThxNjGbZLYUgRHmsvCrW
 KF+HLktPfPTIK3lGd1k4849WQs59XIN+LXZQ6b2eRBEBKAHEyQus8UU7gw==
 -----END PUBLIC KEY-----`
-	keyID = "be468355-ca7a-40d9-a28b-8ae1c4c7f936"
+	keyID        = "be468355-ca7a-40d9-a28b-8ae1c4c7f936"
+	rsaPublicKey = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwS6jiuGNxw/rrDFO7JSD
+6T4sqfvpMmwBimRf3Er4cHSk+vB9+9Rc3GUmm//s6AdLwEIJQTfyOzs9E9vSg9CH
+wDvZN5bHoVww0QBGXdmsbrfwOyKoqptnrm6gQTsy1r7nP8jOfGsYcPZnvj8bw6Mz
+ZZR6SOfL41v2dft8O//W3gV66jR3isr/p7zNEOEQSFapmD2V3vXIP61YoaooBcOz
++KLPRlDEoW+EjZgbrR9GZKVZV2+0q53cPBal/MoXgQHMfhz3nFcpNTuFHPYhftFo
+3sEibMdPKEcVVj3uMv2tP7JNjL17Pd6Rq29nUYxOEDnGlyet/AFVGim2C4R1uRDA
+iQIDAQAB
+-----END PUBLIC KEY-----`
 )
 
 var signature = []byte{
@@ -66,6 +80,11 @@ func getOKClient() *MockClient {
 		sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
 			return &kms.SignOutput{
 				Signature: signature,
+			}, nil
+		},
+		decrypt: func(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error) {
+			return &kms.DecryptOutput{
+				Plaintext: nil,
 			}, nil
 		},
 	}
