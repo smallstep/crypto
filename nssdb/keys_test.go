@@ -67,12 +67,19 @@ func TestEcPrivKeyToObject(t *testing.T) {
 	ecdsaPrivKey, ok := privKey.(*ecdsa.PrivateKey)
 	require.True(t, ok)
 
-	obj, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "leaf")
-	require.NoError(t, err)
-	assert.NoError(t, obj.ValidateULong("CKA_CLASS", CKO_PRIVATE_KEY))
-	sub, err := hex.DecodeString("300f310d300b060355040313046c656166")
-	require.NoError(t, err)
-	assert.NoError(t, obj.Validate("CKA_SUBJECT", sub))
+	t.Run("printable subject", func(t *testing.T) {
+		obj, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "leaf")
+		require.NoError(t, err)
+		assert.NoError(t, obj.ValidateULong("CKA_CLASS", CKO_PRIVATE_KEY))
+		sub, err := hex.DecodeString("300f310d300b060355040313046c656166")
+		require.NoError(t, err)
+		assert.NoError(t, obj.Validate("CKA_SUBJECT", sub))
+	})
+
+	t.Run("utf8 subject", func(t *testing.T) {
+		_, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "andrew@smallstep.com")
+		require.NoError(t, err)
+	})
 }
 
 func TestNSSDB_AddPrivateKey(t *testing.T) {
@@ -151,6 +158,24 @@ func TestNSSDB_AddPublicKey(t *testing.T) {
 			assert.NotEqual(t, v.pubKeyID, pubKeyID)
 			_, err = db.GetObjectPublic(ctx, v.pubKeyID)
 			assert.ErrorIs(t, err, sql.ErrNoRows)
+		})
+	}
+}
+
+func TestIsPrintable(t *testing.T) {
+	tests := map[string]bool{
+		"":                     true,
+		"a":                    true,
+		"My Leaf":              true,
+		`(Hi+,-.\):=?`:         true,
+		"andrew@smallstep.com": false,
+		"some&":                false,
+		"*":                    false,
+	}
+	for s, want := range tests {
+		t.Run(s, func(t *testing.T) {
+			got := isPrintable(s)
+			assert.Equal(t, want, got)
 		})
 	}
 }
