@@ -161,21 +161,3 @@ func TestNSSDB_AddPublicKey(t *testing.T) {
 		})
 	}
 }
-
-func TestIsPrintable(t *testing.T) {
-	tests := map[string]bool{
-		"":                     true,
-		"a":                    true,
-		"My Leaf":              true,
-		`(Hi+,-.\):=?`:         true,
-		"andrew@smallstep.com": false,
-		"some&":                false,
-		"*":                    false,
-	}
-	for s, want := range tests {
-		t.Run(s, func(t *testing.T) {
-			got := isPrintable(s)
-			assert.Equal(t, want, got)
-		})
-	}
-}

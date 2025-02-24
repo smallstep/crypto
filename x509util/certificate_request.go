@@ -176,7 +176,7 @@ func (c *CertificateRequest) addChallengePassword(asn1Data []byte) ([]byte, erro
 		child.AddASN1ObjectIdentifier(oidChallengePassword)
 		child.AddASN1(cryptobyte_asn1.SET, func(value *cryptobyte.Builder) {
 			switch {
-			case isPrintableString(c.ChallengePassword, true, true):
+			case IsPrintableString(c.ChallengePassword, true, true):
 				value.AddASN1(cryptobyte_asn1.PrintableString, func(s *cryptobyte.Builder) {
 					s.AddBytes([]byte(c.ChallengePassword))
 				})
