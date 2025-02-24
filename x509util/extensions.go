@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/internal/utils"
 )
 
 func convertName(s string) string {
@@ -559,7 +560,7 @@ func marshalValue(value, params string) ([]byte, error) {
 		}
 		return asn1.MarshalWithParams(value, p.Params)
 	case "printable":
-		if !isPrintableString(value, true, true) {
+		if !utils.IsPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
 		return asn1.MarshalWithParams(value, p.Params)
@@ -581,7 +582,7 @@ func marshalValue(value, params string) ([]byte, error) {
 		}
 		return asn1.MarshalWithParams(b, p.Params)
 	default: // if it's an unknown type, default to printable
-		if !isPrintableString(value, true, true) {
+		if !utils.IsPrintableString(value, true, true) {
 			return nil, fmt.Errorf("invalid printable value")
 		}
 		return asn1.MarshalWithParams(value, p.Params)
