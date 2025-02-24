@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"go.step.sm/crypto/x509util"
+	"go.step.sm/crypto/internal/utils"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -147,7 +147,7 @@ func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs .
 	if len(certCNs) > 0 {
 		sub := privateKeySubject{}
 		for _, cn := range certCNs {
-			if x509util.IsPrintableString(cn, false, false) {
+			if utils.IsPrintableString(cn, false, false) {
 				sub.List = append(sub.List, certCN{
 					OID:        asn1.ObjectIdentifier{2, 5, 4, 3},
 					CommonName: cn,
