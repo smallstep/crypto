@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/internal/utils"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -648,7 +649,7 @@ func TestSerialize(t *testing.T) {
 		case test.pass == "" && test.file == "":
 			p, err = Serialize(in)
 		case test.pass != "" && test.file != "":
-			p, err = Serialize(in, WithPassword([]byte(test.pass)), ToFile(test.file, 0600))
+			p, err = Serialize(in, WithPassword([]byte(test.pass)), ToFile(test.file, 0o600))
 		case test.pass != "" && test.pkcs8:
 			p, err = Serialize(in, WithPKCS8(true), WithPasswordPrompt("Please enter the password to encrypt the key", func(prompt string) ([]byte, error) {
 				return []byte(test.pass), nil
@@ -656,7 +657,7 @@ func TestSerialize(t *testing.T) {
 		case test.pass != "":
 			p, err = Serialize(in, WithPassword([]byte(test.pass)))
 		default:
-			p, err = Serialize(in, ToFile(test.file, 0600))
+			p, err = Serialize(in, ToFile(test.file, 0o600))
 		}
 
 		if err != nil {
@@ -722,7 +723,7 @@ func TestSerialize(t *testing.T) {
 						var fileInfo os.FileInfo
 						fileInfo, err = os.Stat(test.file)
 						require.NoError(t, err)
-						assert.Equal(t, fileInfo.Mode(), os.FileMode(0600))
+						assert.Equal(t, fileInfo.Mode(), os.FileMode(0o600))
 						// Verify that key written to file is correct
 						var keyFileBytes []byte
 						keyFileBytes, err = os.ReadFile(test.file)
@@ -1024,6 +1025,7 @@ func TestRead_options(t *testing.T) {
 		{"withPasswordPromptError", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordPrompt("Enter the password", func(s string) ([]byte, error) {
 			return nil, errors.New("an error")
 		})}}, nil, true},
+		{"withPasswordFile", args{"testdata/openssl.p256.enc.pem", []Options{WithPasswordFile("testdata/password.txt")}}, p256Key, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1034,6 +1036,80 @@ func TestRead_options(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Read() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWithMinLenPasswordFile(t *testing.T) {
+	password2, err := utils.ReadPasswordFromFile("testdata/password2.txt")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		length  int
+		file    string
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:    "negative",
+			length:  -5,
+			file:    "testdata/password.txt",
+			wantErr: false,
+			want:    []byte("mypassword"),
+		},
+		{
+			name:    "zero",
+			length:  0,
+			file:    "testdata/password.txt",
+			wantErr: false,
+			want:    []byte("mypassword"),
+		},
+		{
+			name:    "greater-than-min-length",
+			length:  9,
+			file:    "testdata/password.txt",
+			wantErr: false,
+			want:    []byte("mypassword"),
+		},
+		{
+			name:    "equal-min-length",
+			length:  10,
+			file:    "testdata/password.txt",
+			wantErr: false,
+			want:    []byte("mypassword"),
+		},
+		{
+			name:    "less-than-min-length",
+			length:  11,
+			file:    "testdata/password.txt",
+			wantErr: true,
+		},
+		{
+			name:    "ignore-whitespace-characters",
+			length:  11,
+			file:    "testdata/password2.txt",
+			wantErr: true,
+		},
+		{
+			name:    "ignore-whitespace-characters-ok",
+			length:  8,
+			file:    "testdata/password2.txt",
+			wantErr: false,
+			want:    password2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := newContext(tt.name)
+			gotErr := WithMinLenPasswordFile(tt.file, tt.length)(ctx) != nil
+			if gotErr != tt.wantErr {
+				t.Errorf("WithMinLenPasswordFile(%v, %v) = %v, want %v", tt.file, tt.length, gotErr, tt.wantErr)
+				return
+			}
+			if !bytes.Equal(ctx.password, tt.want) {
+				t.Errorf("Expected %v, but got %v", tt.want, ctx.password)
 			}
 		})
 	}

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -68,7 +69,7 @@ type context struct {
 func newContext(name string) *context {
 	return &context{
 		filename: name,
-		perm:     0600,
+		perm:     0o600,
 	}
 }
 
@@ -128,7 +129,7 @@ func WithFilename(name string) Options {
 		ctx.filename = name
 		// Default perm mode if not set
 		if ctx.perm == 0 {
-			ctx.perm = 0600
+			ctx.perm = 0o600
 		}
 		return nil
 	}
@@ -159,6 +160,30 @@ func WithPasswordFile(filename string) Options {
 		if err != nil {
 			return err
 		}
+		ctx.password = b
+		return nil
+	}
+}
+
+// WithMinLenPasswordFile is a method that adds the password in a file to the context.
+// If the password does not meet the minimum length requirement an error is returned.
+// If minimum length input is <=0 then the requirement is ignored.
+func WithMinLenPasswordFile(filename string, minlen int) Options {
+	return func(ctx *context) error {
+		b, err := utils.ReadPasswordFromFile(filename)
+		if err != nil {
+			return err
+		}
+
+		if minlen > 0 {
+			re := regexp.MustCompile(`\s+`)
+			trimmed := re.ReplaceAllString(string(b), "")
+
+			if len(trimmed) < minlen {
+				return fmt.Errorf("password does not meet minimum length requirement; must be at least %v characters", minlen)
+			}
+		}
+
 		ctx.password = b
 		return nil
 	}
