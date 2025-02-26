@@ -12,7 +12,7 @@ require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.6
 	github.com/aws/aws-sdk-go-v2/service/kms v1.37.18
-	github.com/go-jose/go-jose/v3 v3.0.3
+	github.com/go-jose/go-jose/v3 v3.0.4
 	github.com/go-piv/piv-go/v2 v2.3.0
 	github.com/google/go-tpm v0.9.3
 	github.com/google/go-tpm-tools v0.4.4
