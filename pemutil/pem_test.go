@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
-	"go.step.sm/crypto/internal/utils"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -1041,10 +1040,7 @@ func TestRead_options(t *testing.T) {
 	}
 }
 
-func TestWithMinLenPasswordFile(t *testing.T) {
-	password2, err := utils.ReadPasswordFromFile("testdata/password2.txt")
-	require.NoError(t, err)
-
+func TestWithMinLengthPasswordFile(t *testing.T) {
 	tests := []struct {
 		name    string
 		length  int
@@ -1087,25 +1083,28 @@ func TestWithMinLenPasswordFile(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "ignore-whitespace-characters",
-			length:  11,
+			name:    "ignore-pre-post-whitespace-characters",
+			length:  7,
 			file:    "testdata/password2.txt",
 			wantErr: true,
 		},
 		{
-			name:    "ignore-whitespace-characters-ok",
-			length:  8,
+			name:    "ignore-pre-post-whitespace-characters-ok",
+			length:  6,
 			file:    "testdata/password2.txt",
 			wantErr: false,
-			want:    password2,
+			want:    []byte("  pass"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := newContext(tt.name)
-			gotErr := WithMinLenPasswordFile(tt.file, tt.length)(ctx) != nil
+			gotErr := WithMinLengthPasswordFile(tt.file, tt.length)(ctx) != nil
 			if gotErr != tt.wantErr {
-				t.Errorf("WithMinLenPasswordFile(%v, %v) = %v, want %v", tt.file, tt.length, gotErr, tt.wantErr)
+				t.Errorf("WithMinLengthPasswordFile(%v, %v) = %v, want %v", tt.file, tt.length, gotErr, tt.wantErr)
+				return
+			}
+			if gotErr {
 				return
 			}
 			if !bytes.Equal(ctx.password, tt.want) {

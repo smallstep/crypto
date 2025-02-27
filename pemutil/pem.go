@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -168,23 +167,17 @@ func WithPasswordFile(filename string) Options {
 // WithMinLenPasswordFile is a method that adds the password in a file to the context.
 // If the password does not meet the minimum length requirement an error is returned.
 // If minimum length input is <=0 then the requirement is ignored.
-func WithMinLenPasswordFile(filename string, minlen int) Options {
+func WithMinLengthPasswordFile(filename string, minLength int) Options {
 	return func(ctx *context) error {
-		b, err := utils.ReadPasswordFromFile(filename)
-		if err != nil {
+		if err := WithPasswordFile(filename)(ctx); err != nil {
 			return err
 		}
 
-		if minlen > 0 {
-			re := regexp.MustCompile(`\s+`)
-			trimmed := re.ReplaceAllString(string(b), "")
-
-			if len(trimmed) < minlen {
-				return fmt.Errorf("password does not meet minimum length requirement; must be at least %v characters", minlen)
+		if minLength > 0 {
+			if len(ctx.password) < minLength {
+				return fmt.Errorf("password does not meet minimum length requirement; must be at least %v characters", minLength)
 			}
 		}
-
-		ctx.password = b
 		return nil
 	}
 }
