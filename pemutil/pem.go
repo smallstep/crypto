@@ -173,10 +173,8 @@ func WithMinLengthPasswordFile(filename string, minLength int) Options {
 			return err
 		}
 
-		if minLength > 0 {
-			if len(ctx.password) < minLength {
-				return fmt.Errorf("password does not meet minimum length requirement; must be at least %v characters", minLength)
-			}
+		if minLength > 0 && len(ctx.password) < minLength {
+			return fmt.Errorf("password does not meet minimum length requirement; must be at least %v characters", minLength)
 		}
 		return nil
 	}
