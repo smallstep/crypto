@@ -67,12 +67,19 @@ func TestEcPrivKeyToObject(t *testing.T) {
 	ecdsaPrivKey, ok := privKey.(*ecdsa.PrivateKey)
 	require.True(t, ok)
 
-	obj, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "leaf")
-	require.NoError(t, err)
-	assert.NoError(t, obj.ValidateULong("CKA_CLASS", CKO_PRIVATE_KEY))
-	sub, err := hex.DecodeString("300f310d300b060355040313046c656166")
-	require.NoError(t, err)
-	assert.NoError(t, obj.Validate("CKA_SUBJECT", sub))
+	t.Run("printable subject", func(t *testing.T) {
+		obj, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "leaf")
+		require.NoError(t, err)
+		assert.NoError(t, obj.ValidateULong("CKA_CLASS", CKO_PRIVATE_KEY))
+		sub, err := hex.DecodeString("300f310d300b060355040313046c656166")
+		require.NoError(t, err)
+		assert.NoError(t, obj.Validate("CKA_SUBJECT", sub))
+	})
+
+	t.Run("utf8 subject", func(t *testing.T) {
+		_, err := ecPrivKeyToObject(ecdsaPrivKey, "leafkey", []byte{7}, "andrew@smallstep.com")
+		require.NoError(t, err)
+	})
 }
 
 func TestNSSDB_AddPrivateKey(t *testing.T) {

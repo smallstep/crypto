@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"go.step.sm/crypto/internal/utils"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -99,8 +100,13 @@ type certCN struct {
 	CommonName string `asn1:"printable"`
 }
 
+type certCNUTF8 struct {
+	OID        asn1.ObjectIdentifier
+	CommonName string `asn1:"utf8"`
+}
+
 type privateKeySubject struct {
-	List []certCN `asn1:"set"`
+	List []any `asn1:"set"`
 }
 
 func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs ...string) (*Object, error) {
@@ -141,10 +147,17 @@ func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs .
 	if len(certCNs) > 0 {
 		sub := privateKeySubject{}
 		for _, cn := range certCNs {
-			sub.List = append(sub.List, certCN{
-				OID:        asn1.ObjectIdentifier{2, 5, 4, 3},
-				CommonName: cn,
-			})
+			if utils.IsPrintableString(cn, false, false) {
+				sub.List = append(sub.List, certCN{
+					OID:        asn1.ObjectIdentifier{2, 5, 4, 3},
+					CommonName: cn,
+				})
+			} else {
+				sub.List = append(sub.List, certCNUTF8{
+					OID:        asn1.ObjectIdentifier{2, 5, 4, 3},
+					CommonName: cn,
+				})
+			}
 		}
 		subASN1, err := asn1.Marshal(sub)
 		if err != nil {
