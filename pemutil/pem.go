@@ -164,9 +164,10 @@ func WithPasswordFile(filename string) Options {
 	}
 }
 
-// WithMinLenPasswordFile is a method that adds the password in a file to the context.
-// If the password does not meet the minimum length requirement an error is returned.
-// If minimum length input is <=0 then the requirement is ignored.
+// WithMinLengthPasswordFile is a method that adds the password in a file to the
+// context. If the password does not meet the minimum length requirement an
+// error is returned. If minimum length input is <=0 then the requirement is
+// ignored.
 func WithMinLengthPasswordFile(filename string, minLength int) Options {
 	return func(ctx *context) error {
 		if err := WithPasswordFile(filename)(ctx); err != nil {
