@@ -9,7 +9,7 @@ import (
 
 func TestMustUint64ConvertsValues(t *testing.T) {
 	require.Equal(t, uint64(0), MustUint64(0))
-	require.Equal(t, uint64(math.MaxInt64), MustUint64(math.MaxInt64))
+	require.Equal(t, uint64(math.MaxInt64), MustUint64(int64(math.MaxInt64)))
 	require.Equal(t, uint64(42), MustUint64(42))
 }
 
@@ -19,7 +19,7 @@ func TestMustUint64PanicsOnNegativeValue(t *testing.T) {
 
 func TestMustUint32ConvertsValues(t *testing.T) {
 	require.Equal(t, uint32(0), MustUint32(0))
-	require.Equal(t, uint32(math.MaxUint32), MustUint32(math.MaxUint32))
+	require.Equal(t, uint32(math.MaxUint32), MustUint32(int64(math.MaxUint32)))
 	require.Equal(t, uint32(42), MustUint32(42))
 }
 
@@ -28,7 +28,7 @@ func TestMustUint32PanicsOnNegativeValue(t *testing.T) {
 }
 
 func TestMustUint32PanicsOnLargeValue(t *testing.T) {
-	require.Panics(t, func() { MustUint32(math.MaxUint32 + 1) })
+	require.Panics(t, func() { MustUint32(int64(math.MaxUint32 + 1)) })
 }
 
 func TestMustUint16ConvertsValues(t *testing.T) {
