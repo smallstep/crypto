@@ -1,11 +1,13 @@
 package cloudkms
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/pem"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,11 +69,21 @@ func mustKeyOperationAttestation(t *testing.T, typ string) *kmspb.KeyOperationAt
 
 func mustAttestationClient(t *testing.T, typ string) KeyManagementClient {
 	t.Helper()
+	var alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm
+	switch typ {
+	case "ec":
+		alg = kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256
+	case "rsa":
+		alg = kmspb.CryptoKeyVersion_RSA_SIGN_PSS_2048_SHA256
+	case "aes":
+		alg = kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION
+	}
 
 	return &MockClient{
 		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 			return &kmspb.CryptoKeyVersion{
 				Name:        req.Name,
+				Algorithm:   alg,
 				Attestation: mustKeyOperationAttestation(t, typ),
 			}, nil
 		},
@@ -112,6 +124,7 @@ func TestCloudKMS_VerifyAttestation(t *testing.T) {
 			Generated:   true,
 			Extractable: false,
 			KeyType:     "EC",
+			Algorithm:   "EC_SIGN_P256_SHA256",
 			Format:      "CAVIUM_V2_COMPRESSED",
 			Content:     ecContent,
 			CertChain: &AttestationCertChain{
@@ -130,6 +143,7 @@ func TestCloudKMS_VerifyAttestation(t *testing.T) {
 			Generated:   true,
 			Extractable: false,
 			KeyType:     "RSA 2048",
+			Algorithm:   "RSA_SIGN_PSS_2048_SHA256",
 			Format:      "CAVIUM_V2_COMPRESSED",
 			Content:     rsaContent,
 			CertChain: &AttestationCertChain{
@@ -148,6 +162,7 @@ func TestCloudKMS_VerifyAttestation(t *testing.T) {
 			Generated:   true,
 			Extractable: false,
 			KeyType:     "AES",
+			Algorithm:   "GOOGLE_SYMMETRIC_ENCRYPTION",
 			Format:      "CAVIUM_V2_COMPRESSED",
 			Content:     aesContent,
 			CertChain: &AttestationCertChain{
@@ -254,6 +269,7 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 			Generated:   true,
 			Extractable: false,
 			KeyType:     "EC",
+			Algorithm:   "EC_SIGN_P256_SHA256",
 			Format:      "CAVIUM_V2_COMPRESSED",
 			Content:     content,
 			CertChain: &AttestationCertChain{
@@ -373,6 +389,98 @@ func Test_getKeyType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, getKeyType(tt.v))
+		})
+	}
+}
+
+func TestValidateCaviumRoot(t *testing.T) {
+	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
+	require.NoError(t, err)
+
+	resp, err := http.Get("https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquid_security_certificate.zip")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, resp.Body.Close())
+	})
+
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	r, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	require.NoError(t, err)
+
+	for _, f := range r.File {
+		if f.Name == "liquid_security_certificate.crt" {
+			rc, err := f.Open()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, rc.Close())
+			})
+			b, err = io.ReadAll(rc)
+			require.NoError(t, err)
+
+			cert, err := pemutil.ParseCertificate(b)
+			require.NoError(t, err)
+
+			assert.Equal(t, root, cert)
+			return
+		}
+	}
+
+	t.Error("certificate not found")
+}
+
+func Test_isSymmetric(t *testing.T) {
+	type args struct {
+		alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{"CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED", args{kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED}, false},
+		{"GOOGLE_SYMMETRIC_ENCRYPTION", args{kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION}, true},
+		{"AES_128_GCM", args{kmspb.CryptoKeyVersion_AES_128_GCM}, true},
+		{"AES_256_GCM", args{kmspb.CryptoKeyVersion_AES_256_GCM}, true},
+		{"AES_128_CBC", args{kmspb.CryptoKeyVersion_AES_128_CBC}, true},
+		{"AES_256_CBC", args{kmspb.CryptoKeyVersion_AES_256_CBC}, true},
+		{"AES_128_CTR", args{kmspb.CryptoKeyVersion_AES_128_CTR}, true},
+		{"AES_256_CTR", args{kmspb.CryptoKeyVersion_AES_256_CTR}, true},
+		{"RSA_SIGN_PSS_2048_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PSS_2048_SHA256}, false},
+		{"RSA_SIGN_PSS_3072_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PSS_3072_SHA256}, false},
+		{"RSA_SIGN_PSS_4096_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PSS_4096_SHA256}, false},
+		{"RSA_SIGN_PSS_4096_SHA512", args{kmspb.CryptoKeyVersion_RSA_SIGN_PSS_4096_SHA512}, false},
+		{"RSA_SIGN_PKCS1_2048_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_2048_SHA256}, false},
+		{"RSA_SIGN_PKCS1_3072_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_3072_SHA256}, false},
+		{"RSA_SIGN_PKCS1_4096_SHA256", args{kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_4096_SHA256}, false},
+		{"RSA_SIGN_PKCS1_4096_SHA512", args{kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_4096_SHA512}, false},
+		{"RSA_SIGN_RAW_PKCS1_2048", args{kmspb.CryptoKeyVersion_RSA_SIGN_RAW_PKCS1_2048}, false},
+		{"RSA_SIGN_RAW_PKCS1_3072", args{kmspb.CryptoKeyVersion_RSA_SIGN_RAW_PKCS1_3072}, false},
+		{"RSA_SIGN_RAW_PKCS1_4096", args{kmspb.CryptoKeyVersion_RSA_SIGN_RAW_PKCS1_4096}, false},
+		{"RSA_DECRYPT_OAEP_2048_SHA256", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA256}, false},
+		{"RSA_DECRYPT_OAEP_3072_SHA256", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA256}, false},
+		{"RSA_DECRYPT_OAEP_4096_SHA256", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA256}, false},
+		{"RSA_DECRYPT_OAEP_4096_SHA512", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA512}, false},
+		{"RSA_DECRYPT_OAEP_2048_SHA1", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA1}, false},
+		{"RSA_DECRYPT_OAEP_3072_SHA1", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA1}, false},
+		{"RSA_DECRYPT_OAEP_4096_SHA1", args{kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1}, false},
+		{"EC_SIGN_P256_SHA256", args{kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256}, false},
+		{"EC_SIGN_P384_SHA384", args{kmspb.CryptoKeyVersion_EC_SIGN_P384_SHA384}, false},
+		{"EC_SIGN_SECP256K1_SHA256", args{kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256}, false},
+		{"EC_SIGN_ED25519", args{kmspb.CryptoKeyVersion_EC_SIGN_ED25519}, false},
+		{"HMAC_SHA256", args{kmspb.CryptoKeyVersion_HMAC_SHA256}, true},
+		{"HMAC_SHA1", args{kmspb.CryptoKeyVersion_HMAC_SHA1}, true},
+		{"HMAC_SHA384", args{kmspb.CryptoKeyVersion_HMAC_SHA384}, true},
+		{"HMAC_SHA512", args{kmspb.CryptoKeyVersion_HMAC_SHA512}, true},
+		{"HMAC_SHA224", args{kmspb.CryptoKeyVersion_HMAC_SHA224}, true},
+		{"EXTERNAL_SYMMETRIC_ENCRYPTION", args{kmspb.CryptoKeyVersion_EXTERNAL_SYMMETRIC_ENCRYPTION}, true},
+		{"PQ_SIGN_ML_DSA_65", args{kmspb.CryptoKeyVersion_PQ_SIGN_ML_DSA_65}, false},
+		{"PQ_SIGN_SLH_DSA_SHA2_128S", args{kmspb.CryptoKeyVersion_PQ_SIGN_SLH_DSA_SHA2_128S}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isSymmetric(tt.args.alg))
 		})
 	}
 }

@@ -78,6 +78,7 @@ type Attestation struct {
 	Generated              bool
 	Extractable            bool
 	KeyType                string
+	Algorithm              string
 	Format                 string
 	Content                []byte
 	CertChain              *AttestationCertChain
@@ -106,6 +107,13 @@ func (v AttestationAttribute) String() string {
 
 var cryptoKeyVersionRx = regexp.MustCompile("^projects/([^/]+)/locations/([a-zA-Z0-9_-]{1,63})/keyRings/([a-zA-Z0-9_-]{1,63})/cryptoKeys/([a-zA-Z0-9_-]{1,63})/cryptoKeyVersions/([a-zA-Z0-9_-]{1,63})$")
 
+// VerifyAttestation obtains and validates the attestation from an object in
+// CloudHSM.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func (k *CloudKMS) VerifyAttestation(ctx context.Context, name string) (*Attestation, error) {
 	name = resourceName(name)
 	if !cryptoKeyVersionRx.MatchString(name) {
@@ -235,9 +243,11 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 
 	attributes := priv
 	if len(attributes) == 0 {
-		sym = pub
-		attributes = sym
-		pub = nil
+		attributes = pub
+		if isSymmetric(kv.Algorithm) {
+			sym = attributes
+			pub = nil
+		}
 	}
 
 	var keyType string
@@ -265,6 +275,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 		Extractable: extractable,
 		Generated:   generated,
 		KeyType:     keyType,
+		Algorithm:   kv.Algorithm.String(),
 		Format:      att.Format.String(),
 		Content:     att.Content,
 		CertChain: &AttestationCertChain{
@@ -340,6 +351,9 @@ func serializeCertificate(crt *x509.Certificate) string {
 	}))
 }
 
+// parseAttestation parses attestation data using the Version 2 format. This
+// code is based on the code of parse_v2.py from
+// https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/software-key-attestation.html
 func parseAttestation(data []byte) ([]AttestationAttribute, []AttestationAttribute, error) {
 	// Parse response header
 	responseHeader := [4]uint32{}
@@ -412,6 +426,12 @@ func parse(data []byte) ([]AttestationAttribute, error) {
 	return attributes, nil
 }
 
+// parseAttestationV1 parses attestation data using the Version 1 format. This
+// code is based on the code of parse_v1.py from
+// https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/software-key-attestation.html
+//
+// Note that this format has not been tested, we don't have access to any
+// attestation that uses this format.
 func parseAttestationV1(data []byte, isSymmetricKey bool) ([]AttestationAttribute, []AttestationAttribute, error) {
 	// Asymmetric key attestation objects start after 984 bytes.
 	const CaviumAttestationAsymOffset = 984
@@ -500,6 +520,8 @@ func decodeUint32(data []byte, defValue uint32) uint32 {
 	}
 }
 
+// getKeyType returns string version for a given CKK_* key type documented in
+// the PCKS #11 standard. Not all of them are supported by CloudHSM,
 func getKeyType(v uint32) string {
 	switch v {
 	case 0x0000:
@@ -588,5 +610,29 @@ func getKeyType(v uint32) string {
 		return "VENDOR_DEFINED"
 	default:
 		return "UNKNOWN"
+	}
+}
+
+func isSymmetric(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) bool {
+	switch alg {
+	case kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION:
+		return true
+	case kmspb.CryptoKeyVersion_AES_128_GCM,
+		kmspb.CryptoKeyVersion_AES_256_GCM,
+		kmspb.CryptoKeyVersion_AES_128_CBC,
+		kmspb.CryptoKeyVersion_AES_256_CBC,
+		kmspb.CryptoKeyVersion_AES_128_CTR,
+		kmspb.CryptoKeyVersion_AES_256_CTR:
+		return true
+	case kmspb.CryptoKeyVersion_HMAC_SHA256,
+		kmspb.CryptoKeyVersion_HMAC_SHA1,
+		kmspb.CryptoKeyVersion_HMAC_SHA384,
+		kmspb.CryptoKeyVersion_HMAC_SHA512,
+		kmspb.CryptoKeyVersion_HMAC_SHA224:
+		return true
+	case kmspb.CryptoKeyVersion_EXTERNAL_SYMMETRIC_ENCRYPTION:
+		return true
+	default:
+		return false
 	}
 }

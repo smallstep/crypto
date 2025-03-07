@@ -60,19 +60,21 @@ func main() {
 	}
 
 	if attributes {
-		if len(att.PrivateKeyAttributes) == 0 {
-			fmt.Println("Symmetric Key Attestation")
-			for _, v := range att.PublicKeyAttributes {
-				fmt.Println(v.String())
-			}
-		} else {
+		if len(att.PublicKeyAttributes) > 0 {
 			fmt.Println("Public Key Attestation")
 			for _, v := range att.PublicKeyAttributes {
 				fmt.Println(v.String())
 			}
-
+		}
+		if len(att.PrivateKeyAttributes) > 0 {
 			fmt.Println("Private Key Attestation")
 			for _, v := range att.PrivateKeyAttributes {
+				fmt.Println(v.String())
+			}
+		}
+		if len(att.SymmetricKeyAttributes) > 0 {
+			fmt.Println("Symmetric Key Attestation")
+			for _, v := range att.SymmetricKeyAttributes {
 				fmt.Println(v.String())
 			}
 		}
@@ -84,8 +86,9 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Attested: %v\n", att.Valid)
-	fmt.Printf("Generated: %v\n", att.Generated)
-	fmt.Printf("Extractable: %v\n", att.Extractable)
-	fmt.Printf("KeyType: %s\n", att.KeyType)
+	fmt.Println("Attested:", att.Valid)
+	fmt.Println("Generated:", att.Generated)
+	fmt.Println("Extractable:", att.Extractable)
+	fmt.Println("KeyType:", att.KeyType)
+	fmt.Println("Algorithm:", att.Algorithm)
 }
