@@ -436,24 +436,24 @@ func parse(data []byte) ([]AttestationAttribute, error) {
 // attestation file.
 func parseAttestationV1(data []byte, isSymmetricKey bool) ([]AttestationAttribute, []AttestationAttribute, error) {
 	// Asymmetric key attestation objects start after 984 bytes.
-	const CaviumAttestationAsymOffset = 984
+	const caviumAttestationAsymOffset = 984
 	// Symmetric key attestation objects start after 24 bytes.
-	const CaviumAttestationSymOffset = 24
+	const caviumAttestationSymOffset = 24
 
 	if isSymmetricKey {
-		attributes, _, err := parseV1(data[CaviumAttestationSymOffset:])
+		attributes, _, err := parseV1(data[caviumAttestationSymOffset:])
 		if err != nil {
 			return nil, nil, err
 		}
 		return attributes, nil, nil
 	}
 
-	pubAttributes, offset, err := parseV1(data[CaviumAttestationAsymOffset:])
+	pubAttributes, offset, err := parseV1(data[caviumAttestationAsymOffset:])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	privAttributes, _, err := parseV1(data[CaviumAttestationAsymOffset+offset:])
+	privAttributes, _, err := parseV1(data[caviumAttestationAsymOffset+offset:])
 	if err != nil {
 		return nil, nil, err
 	}

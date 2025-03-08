@@ -137,7 +137,7 @@ func mustSymmetricContentV1(t *testing.T, attr []AttestationAttribute, key *rsa.
 	return w.Bytes()
 }
 
-func mustAssymetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key *rsa.PrivateKey) []byte {
+func mustAsymmetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key *rsa.PrivateKey) []byte {
 	t.Helper()
 
 	// Public key attributes
@@ -490,7 +490,7 @@ func TestCloudKMS_verifyAttestation_V1(t *testing.T) {
 	}
 
 	_, ecPub, ecPriv := mustContent(t, "testdata/ec.dat")
-	ecContent := mustAssymetricContentV1(t, ecPub, ecPriv, key)
+	ecContent := mustAsymmetricContentV1(t, ecPub, ecPriv, key)
 	ecClient := &MockClient{
 		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 			return &kmspb.CryptoKeyVersion{
@@ -510,7 +510,7 @@ func TestCloudKMS_verifyAttestation_V1(t *testing.T) {
 	}
 
 	_, rsaPub, rsaPriv := mustContent(t, "testdata/rsa.dat")
-	rsaContent := mustAssymetricContentV1(t, rsaPub, rsaPriv, key)
+	rsaContent := mustAsymmetricContentV1(t, rsaPub, rsaPriv, key)
 	rsaClient := &MockClient{
 		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 			return &kmspb.CryptoKeyVersion{
@@ -722,21 +722,22 @@ func TestValidateCaviumRoot(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, f := range r.File {
-		if f.Name == "liquid_security_certificate.crt" {
-			rc, err := f.Open()
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				assert.NoError(t, rc.Close())
-			})
-			b, err = io.ReadAll(rc)
-			require.NoError(t, err)
-
-			cert, err := pemutil.ParseCertificate(b)
-			require.NoError(t, err)
-
-			assert.Equal(t, root, cert)
-			return
+		if f.Name != "liquid_security_certificate.crt" {
+			continue
 		}
+		rc, err := f.Open()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			assert.NoError(t, rc.Close())
+		})
+		b, err = io.ReadAll(rc)
+		require.NoError(t, err)
+
+		cert, err := pemutil.ParseCertificate(b)
+		require.NoError(t, err)
+
+		assert.Equal(t, root, cert)
+		return
 	}
 
 	t.Error("certificate not found")
