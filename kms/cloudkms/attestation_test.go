@@ -722,21 +722,22 @@ func TestValidateCaviumRoot(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, f := range r.File {
-		if f.Name == "liquid_security_certificate.crt" {
-			rc, err := f.Open()
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				assert.NoError(t, rc.Close())
-			})
-			b, err = io.ReadAll(rc)
-			require.NoError(t, err)
-
-			cert, err := pemutil.ParseCertificate(b)
-			require.NoError(t, err)
-
-			assert.Equal(t, root, cert)
-			return
+		if f.Name != "liquid_security_certificate.crt" {
+			continue
 		}
+		rc, err := f.Open()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			assert.NoError(t, rc.Close())
+		})
+		b, err = io.ReadAll(rc)
+		require.NoError(t, err)
+
+		cert, err := pemutil.ParseCertificate(b)
+		require.NoError(t, err)
+
+		assert.Equal(t, root, cert)
+		return
 	}
 
 	t.Error("certificate not found")
