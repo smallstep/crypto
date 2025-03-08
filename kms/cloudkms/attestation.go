@@ -230,7 +230,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	// Parse attestation attributes
 	var pub, priv, sym []AttestationAttribute
 	if att.Format == kmspb.KeyOperationAttestation_CAVIUM_V1_COMPRESSED {
-		pub, priv, err = parseAttestationV1(data, false)
+		pub, priv, err = parseAttestationV1(data, isSymmetric(kv.Algorithm))
 		if err != nil {
 			return nil, fmt.Errorf("error parsing attestation data: %w", err)
 		}
@@ -279,10 +279,10 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 		Format:      att.Format.String(),
 		Content:     att.Content,
 		CertChain: &AttestationCertChain{
-			ManufacturerRoot:          caviumRoot,
+			ManufacturerRoot:          mfrRootPEM,
 			ManufacturerCardCert:      serializeCertificate(mfrCardCert),
 			ManufacturerPartitionCert: serializeCertificate(mfrPartitionCert),
-			OwnerRoot:                 googleHawksbillRoot,
+			OwnerRoot:                 ownerRootPEM,
 			OwnerCardCert:             serializeCertificate(ownerCardCert),
 			OwnerPartitionCert:        serializeCertificate(ownerPartitionCert),
 		},
@@ -427,11 +427,13 @@ func parse(data []byte) ([]AttestationAttribute, error) {
 }
 
 // parseAttestationV1 parses attestation data using the Version 1 format. This
-// code is based on the code of parse_v1.py from
+// code is based on the code of parse_v1.py and verify_attest.py from
 // https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/software-key-attestation.html
 //
-// Note that this format has not been tested, we don't have access to any
-// attestation that uses this format.
+// Note that this format has not been tested with real attestation, only
+// generated ones using the tests and then verified using Marvell's parse_v1.py
+// and verify_attest.py. Before using verify_attest.py we need to uncompress the
+// attestation file.
 func parseAttestationV1(data []byte, isSymmetricKey bool) ([]AttestationAttribute, []AttestationAttribute, error) {
 	// Asymmetric key attestation objects start after 984 bytes.
 	const CaviumAttestationAsymOffset = 984
@@ -439,19 +441,19 @@ func parseAttestationV1(data []byte, isSymmetricKey bool) ([]AttestationAttribut
 	const CaviumAttestationSymOffset = 24
 
 	if isSymmetricKey {
-		attributes, _, err := parseV1(data[CaviumAttestationAsymOffset:])
+		attributes, _, err := parseV1(data[CaviumAttestationSymOffset:])
 		if err != nil {
 			return nil, nil, err
 		}
 		return attributes, nil, nil
 	}
 
-	pubAttributes, offset, err := parseV1(data[CaviumAttestationSymOffset:])
+	pubAttributes, offset, err := parseV1(data[CaviumAttestationAsymOffset:])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	privAttributes, _, err := parseV1(data[CaviumAttestationSymOffset+offset:])
+	privAttributes, _, err := parseV1(data[CaviumAttestationAsymOffset+offset:])
 	if err != nil {
 		return nil, nil, err
 	}

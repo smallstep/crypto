@@ -5,8 +5,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/pem"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -88,6 +96,103 @@ func mustAttestationClient(t *testing.T, typ string) KeyManagementClient {
 			}, nil
 		},
 	}
+}
+
+func mustSymmetricContentV1(t *testing.T, attr []AttestationAttribute, key *rsa.PrivateKey) []byte {
+	t.Helper()
+
+	attributes := make([]byte, 0, 1024)
+	for _, v := range attr {
+		// TLV
+		attributes = binary.BigEndian.AppendUint32(attributes, v.Type)
+		attributes = binary.BigEndian.AppendUint32(attributes, uint32(len(v.Data)))
+		// data
+		attributes = append(attributes, v.Data...)
+	}
+
+	// Header
+	header := make([]byte, 0, 3)
+	header = binary.BigEndian.AppendUint32(header, 2422)
+	header = binary.BigEndian.AppendUint32(header, uint32(len(attr)))
+	header = binary.BigEndian.AppendUint32(header, uint32(len(attributes)))
+
+	// Prefix
+	content, err := randutil.Salt(24)
+	require.NoError(t, err)
+
+	content = append(content, header...)
+	content = append(content, attributes...)
+
+	sum := sha256.Sum256(content)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+	require.NoError(t, err)
+
+	content = append(content, sig...)
+
+	var w bytes.Buffer
+	gw := gzip.NewWriter(&w)
+	_, err = gw.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+	return w.Bytes()
+}
+
+func mustAssymetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key *rsa.PrivateKey) []byte {
+	t.Helper()
+
+	// Public key attributes
+	pubAttrs := make([]byte, 0, 1024)
+	for _, v := range pub {
+		// TLV
+		pubAttrs = binary.BigEndian.AppendUint32(pubAttrs, v.Type)
+		pubAttrs = binary.BigEndian.AppendUint32(pubAttrs, uint32(len(v.Data)))
+		// data
+		pubAttrs = append(pubAttrs, v.Data...)
+	}
+
+	// Header
+	pubHeader := make([]byte, 0, 3)
+	pubHeader = binary.BigEndian.AppendUint32(pubHeader, 2588)
+	pubHeader = binary.BigEndian.AppendUint32(pubHeader, uint32(len(pub)))
+	pubHeader = binary.BigEndian.AppendUint32(pubHeader, uint32(len(pubAttrs)))
+
+	// Private key attributes
+	privAttrs := make([]byte, 0, 1024)
+	for _, v := range priv {
+		// TLV
+		privAttrs = binary.BigEndian.AppendUint32(privAttrs, v.Type)
+		privAttrs = binary.BigEndian.AppendUint32(privAttrs, uint32(len(v.Data)))
+		// data
+		privAttrs = append(privAttrs, v.Data...)
+	}
+
+	// Header
+	privHeader := make([]byte, 0, 3)
+	privHeader = binary.BigEndian.AppendUint32(privHeader, 2589)
+	privHeader = binary.BigEndian.AppendUint32(privHeader, uint32(len(priv)))
+	privHeader = binary.BigEndian.AppendUint32(privHeader, uint32(len(privAttrs)))
+
+	// Prefix
+	content, err := randutil.Salt(984)
+	require.NoError(t, err)
+
+	content = append(content, pubHeader...)
+	content = append(content, pubAttrs...)
+	content = append(content, privHeader...)
+	content = append(content, privAttrs...)
+
+	sum := sha256.Sum256(content)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+	require.NoError(t, err)
+
+	content = append(content, sig...)
+
+	var w bytes.Buffer
+	gw := gzip.NewWriter(&w)
+	_, err = gw.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+	return w.Bytes()
 }
 
 func TestCloudKMS_VerifyAttestation(t *testing.T) {
@@ -229,6 +334,7 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 			att.Format = kmspb.KeyOperationAttestation_ATTESTATION_FORMAT_UNSPECIFIED
 			return &kmspb.CryptoKeyVersion{
 				Name:        req.Name,
+				Algorithm:   kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
 				Attestation: att,
 			}, nil
 		},
@@ -242,6 +348,7 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 				att.Content = content
 				return &kmspb.CryptoKeyVersion{
 					Name:        req.Name,
+					Algorithm:   kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
 					Attestation: att,
 				}, nil
 			},
@@ -301,6 +408,211 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCloudKMS_verifyAttestation_V1(t *testing.T) {
+	// Signing Key
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	// Manufacture CA
+	mfrCA, err := minica.New(minica.WithGetSignerFunc(func() (crypto.Signer, error) {
+		return rsa.GenerateKey(rand.Reader, 2048)
+	}))
+	require.NoError(t, err)
+	mfrRootPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: mfrCA.Root.Raw,
+	}))
+	mfrCardPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: mfrCA.Intermediate.Raw,
+	}))
+	cert, err := mfrCA.Sign(&x509.Certificate{
+		Subject:      pkix.Name{CommonName: "Partition Cert"},
+		PublicKey:    key.Public(),
+		SerialNumber: big.NewInt(1),
+	})
+	require.NoError(t, err)
+	mfrPartitionPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: cert.Raw,
+	}))
+
+	// Owner CA
+	ownerCA, err := minica.New(minica.WithGetSignerFunc(func() (crypto.Signer, error) {
+		return rsa.GenerateKey(rand.Reader, 2048)
+	}))
+	require.NoError(t, err)
+	ownerRootPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: ownerCA.Root.Raw,
+	}))
+	// Force to sign with root
+	ownerCA.Intermediate = ownerCA.Root
+	ownerCA.Signer = ownerCA.RootSigner
+
+	// card cert with same key as the manufacturer card cert
+	cert, err = ownerCA.Sign(&x509.Certificate{
+		Subject:      pkix.Name{CommonName: "Card Cert"},
+		PublicKey:    mfrCA.Signer.Public(),
+		SerialNumber: big.NewInt(2),
+	})
+	require.NoError(t, err)
+	ownerCardPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: cert.Raw,
+	}))
+	// partition cert with the same key as the manufacturer partition cert
+	cert, err = ownerCA.Sign(&x509.Certificate{
+		Subject:      pkix.Name{CommonName: "Partition Cert"},
+		PublicKey:    key.Public(),
+		SerialNumber: big.NewInt(3),
+	})
+	require.NoError(t, err)
+	ownerPartitionPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: cert.Raw,
+	}))
+
+	_, sym, _ := mustContent(t, "testdata/aes.dat")
+	symContent := mustSymmetricContentV1(t, sym, key)
+	symClient := &MockClient{
+		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+			return &kmspb.CryptoKeyVersion{
+				Name:      req.Name,
+				Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
+				Attestation: &kmspb.KeyOperationAttestation{
+					Format:  kmspb.KeyOperationAttestation_CAVIUM_V1_COMPRESSED,
+					Content: symContent,
+					CertChains: &kmspb.KeyOperationAttestation_CertificateChains{
+						CaviumCerts:          []string{mfrPartitionPEM, mfrCardPEM},
+						GoogleCardCerts:      []string{ownerCardPEM},
+						GooglePartitionCerts: []string{ownerPartitionPEM},
+					},
+				},
+			}, nil
+		},
+	}
+
+	_, ecPub, ecPriv := mustContent(t, "testdata/ec.dat")
+	ecContent := mustAssymetricContentV1(t, ecPub, ecPriv, key)
+	ecClient := &MockClient{
+		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+			return &kmspb.CryptoKeyVersion{
+				Name:      req.Name,
+				Algorithm: kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
+				Attestation: &kmspb.KeyOperationAttestation{
+					Format:  kmspb.KeyOperationAttestation_CAVIUM_V1_COMPRESSED,
+					Content: ecContent,
+					CertChains: &kmspb.KeyOperationAttestation_CertificateChains{
+						CaviumCerts:          []string{mfrPartitionPEM, mfrCardPEM},
+						GoogleCardCerts:      []string{ownerCardPEM},
+						GooglePartitionCerts: []string{ownerPartitionPEM},
+					},
+				},
+			}, nil
+		},
+	}
+
+	_, rsaPub, rsaPriv := mustContent(t, "testdata/rsa.dat")
+	rsaContent := mustAssymetricContentV1(t, rsaPub, rsaPriv, key)
+	rsaClient := &MockClient{
+		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+			return &kmspb.CryptoKeyVersion{
+				Name:      req.Name,
+				Algorithm: kmspb.CryptoKeyVersion_RSA_SIGN_PSS_2048_SHA256,
+				Attestation: &kmspb.KeyOperationAttestation{
+					Format:  kmspb.KeyOperationAttestation_CAVIUM_V1_COMPRESSED,
+					Content: rsaContent,
+					CertChains: &kmspb.KeyOperationAttestation_CertificateChains{
+						CaviumCerts:          []string{mfrPartitionPEM, mfrCardPEM},
+						GoogleCardCerts:      []string{ownerCardPEM},
+						GooglePartitionCerts: []string{ownerPartitionPEM},
+					},
+				},
+			}, nil
+		},
+	}
+
+	type fields struct {
+		client KeyManagementClient
+	}
+	type args struct {
+		ctx          context.Context
+		name         string
+		mfrRootPEM   string
+		ownerRootPEM string
+	}
+	tests := []struct {
+		name      string
+		fields    fields
+		args      args
+		want      *Attestation
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"symmetric", fields{symClient}, args{context.Background(), "test", mfrRootPEM, ownerRootPEM}, &Attestation{
+			Valid:       true,
+			Generated:   true,
+			Extractable: false,
+			KeyType:     "AES",
+			Algorithm:   "GOOGLE_SYMMETRIC_ENCRYPTION",
+			Format:      "CAVIUM_V1_COMPRESSED",
+			Content:     symContent,
+			CertChain: &AttestationCertChain{
+				ManufacturerRoot:          mfrRootPEM,
+				ManufacturerCardCert:      mfrCardPEM,
+				ManufacturerPartitionCert: mfrPartitionPEM,
+				OwnerRoot:                 ownerRootPEM,
+				OwnerCardCert:             ownerCardPEM,
+				OwnerPartitionCert:        ownerPartitionPEM,
+			},
+			SymmetricKeyAttributes: sym,
+		}, assert.NoError},
+		{"ec", fields{ecClient}, args{context.Background(), "test", mfrRootPEM, ownerRootPEM}, &Attestation{
+			Valid:       true,
+			Generated:   true,
+			Extractable: false,
+			KeyType:     "EC",
+			Algorithm:   "EC_SIGN_P256_SHA256",
+			Format:      "CAVIUM_V1_COMPRESSED",
+			Content:     ecContent,
+			CertChain: &AttestationCertChain{
+				ManufacturerRoot:          mfrRootPEM,
+				ManufacturerCardCert:      mfrCardPEM,
+				ManufacturerPartitionCert: mfrPartitionPEM,
+				OwnerRoot:                 ownerRootPEM,
+				OwnerCardCert:             ownerCardPEM,
+				OwnerPartitionCert:        ownerPartitionPEM,
+			},
+			PublicKeyAttributes:  ecPub,
+			PrivateKeyAttributes: ecPriv,
+		}, assert.NoError},
+		{"rsa", fields{rsaClient}, args{context.Background(), "test", mfrRootPEM, ownerRootPEM}, &Attestation{
+			Valid:       true,
+			Generated:   true,
+			Extractable: false,
+			KeyType:     "RSA 2048",
+			Algorithm:   "RSA_SIGN_PSS_2048_SHA256",
+			Format:      "CAVIUM_V1_COMPRESSED",
+			Content:     rsaContent,
+			CertChain: &AttestationCertChain{
+				ManufacturerRoot:          mfrRootPEM,
+				ManufacturerCardCert:      mfrCardPEM,
+				ManufacturerPartitionCert: mfrPartitionPEM,
+				OwnerRoot:                 ownerRootPEM,
+				OwnerCardCert:             ownerCardPEM,
+				OwnerPartitionCert:        ownerPartitionPEM,
+			},
+			PublicKeyAttributes:  rsaPub,
+			PrivateKeyAttributes: rsaPriv,
+		}, assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &CloudKMS{
+				client: tt.fields.client,
+			}
+			got, err := k.verifyAttestation(tt.args.ctx, tt.args.name, tt.args.mfrRootPEM, tt.args.ownerRootPEM)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
 }
 
 func Test_decode(t *testing.T) {
