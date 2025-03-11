@@ -16,6 +16,7 @@ type MockClient struct {
 	getKeyRing             func(context.Context, *kmspb.GetKeyRingRequest, ...gax.CallOption) (*kmspb.KeyRing, error)
 	createKeyRing          func(context.Context, *kmspb.CreateKeyRingRequest, ...gax.CallOption) (*kmspb.KeyRing, error)
 	createCryptoKeyVersion func(context.Context, *kmspb.CreateCryptoKeyVersionRequest, ...gax.CallOption) (*kmspb.CryptoKeyVersion, error)
+	getCryptoKeyVersion    func(context.Context, *kmspb.GetCryptoKeyVersionRequest, ...gax.CallOption) (*kmspb.CryptoKeyVersion, error)
 }
 
 func (m *MockClient) Close() error {
@@ -48,4 +49,8 @@ func (m *MockClient) CreateKeyRing(ctx context.Context, req *kmspb.CreateKeyRing
 
 func (m *MockClient) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCryptoKeyVersionRequest, opts ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 	return m.createCryptoKeyVersion(ctx, req, opts...)
+}
+
+func (m *MockClient) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKeyVersionRequest, opts ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+	return m.getCryptoKeyVersion(ctx, req, opts...)
 }
