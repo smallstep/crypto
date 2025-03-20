@@ -48,7 +48,7 @@ x2JBsjEjmWpHuBDAXPCesD5cu9UzzDgcpdwmi7Xidl74kj3f/HgrOeimRdOb8lG5
 /A==
 -----END CERTIFICATE-----`
 
-// Marvell cavium certificate, expires on Nov 16 13:55:25 2025 UTC
+// Marvell (Cavium) certificate, expires on Nov 16 13:55:25 2025 UTC
 // https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquid_security_certificate.zip
 const caviumRoot = `-----BEGIN CERTIFICATE-----
 MIIDoDCCAogCCQDA6q30NN7cFzANBgkqhkiG9w0BAQsFADCBkTELMAkGA1UEBhMC
@@ -108,7 +108,7 @@ func (v AttestationAttribute) String() string {
 var cryptoKeyVersionRx = regexp.MustCompile("^projects/([^/]+)/locations/([a-zA-Z0-9_-]{1,63})/keyRings/([a-zA-Z0-9_-]{1,63})/cryptoKeys/([a-zA-Z0-9_-]{1,63})/cryptoKeyVersions/([a-zA-Z0-9_-]{1,63})$")
 
 // VerifyAttestation obtains and validates the attestation from an object in
-// CloudHSM.
+// Cloud HSM.
 //
 // # Experimental
 //
@@ -146,7 +146,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	}
 	attestation, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read gzip reader: %w", err)
+		return nil, fmt.Errorf("failed to read attestation contents: %w", err)
 	}
 
 	// Validate and obtain manufacturer certificate
@@ -523,7 +523,7 @@ func decodeUint32(data []byte, defValue uint32) uint32 {
 }
 
 // getKeyType returns string version for a given CKK_* key type documented in
-// the PCKS #11 standard. Not all of them are supported by CloudHSM,
+// the PCKS #11 standard. Not all of them are supported by Cloud HSM,
 func getKeyType(v uint32) string {
 	switch v {
 	case 0x0000:
