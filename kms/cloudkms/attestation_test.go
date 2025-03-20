@@ -19,17 +19,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+func mustTime(t *testing.T) {
+	t.Helper()
+
+	currentTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	t.Cleanup(func() {
+		currentTime = time.Time{}
+	})
+}
 
 func mustContent(t *testing.T, filename string) ([]byte, []AttestationAttribute, []AttestationAttribute) {
 	content, err := os.ReadFile(filename)
@@ -196,6 +208,8 @@ func mustAsymmetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key
 }
 
 func TestCloudKMS_VerifyAttestation(t *testing.T) {
+	mustTime(t)
+
 	ecContent, ecPub, ecPriv := mustContent(t, "testdata/ec.dat")
 	rsaContent, rsaPub, rsaPriv := mustContent(t, "testdata/rsa.dat")
 	aesContent, aesSym, _ := mustContent(t, "testdata/aes.dat")
@@ -297,6 +311,8 @@ func TestCloudKMS_VerifyAttestation(t *testing.T) {
 }
 
 func TestCloudKMS_verifyAttestation(t *testing.T) {
+	mustTime(t)
+
 	ca, err := minica.New()
 	require.NoError(t, err)
 	caRoot := string(pem.EncodeToMemory(&pem.Block{
@@ -325,6 +341,23 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
 			return &kmspb.CryptoKeyVersion{
 				Name: req.Name,
+			}, nil
+		},
+	}
+	failClientTooShort := &MockClient{
+		getCryptoKeyVersion: func(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+			var buf bytes.Buffer
+			w := gzip.NewWriter(&buf)
+			_, err := w.Write(make([]byte, 255))
+			require.NoError(t, w.Close())
+			require.NoError(t, err)
+
+			att := mustKeyOperationAttestation(t, "ec")
+			att.Content = buf.Bytes()
+			return &kmspb.CryptoKeyVersion{
+				Name:        req.Name,
+				Algorithm:   kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
+				Attestation: att,
 			}, nil
 		},
 	}
@@ -392,6 +425,7 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 		}, assert.NoError},
 		{"fail client response", fields{failClient}, args{context.Background(), "the-name", caviumRoot, googleHawksbillRoot}, nil, assert.Error},
 		{"fail attestation empty", fields{failClientEmpty}, args{context.Background(), "the-name", caviumRoot, googleHawksbillRoot}, nil, assert.Error},
+		{"fail attestation empty", fields{failClientTooShort}, args{context.Background(), "the-name", caviumRoot, googleHawksbillRoot}, nil, assert.Error},
 		{"fail attestation format", fields{failClientFormat}, args{context.Background(), "the-name", caviumRoot, googleHawksbillRoot}, nil, assert.Error},
 		{"fail manufacturer validation", fields{client}, args{context.Background(), "the-name", caRoot, googleHawksbillRoot}, nil, assert.Error},
 		{"fail owner validation", fields{client}, args{context.Background(), "the-name", caviumRoot, caRoot}, nil, assert.Error},

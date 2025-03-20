@@ -5,8 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -18,9 +16,12 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
+
 	"github.com/pkg/errors"
+
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -105,7 +106,15 @@ func (v AttestationAttribute) String() string {
 	return fmt.Sprintf("0x%04x: b'%x'", v.Type, v.Data)
 }
 
+// Cloud HSM attestations uses only SHA256
+const attestationSignatureSize = 256
+
+// cryptoKeyVersionRx is the regular used to validate the key names.
 var cryptoKeyVersionRx = regexp.MustCompile("^projects/([^/]+)/locations/([a-zA-Z0-9_-]{1,63})/keyRings/([a-zA-Z0-9_-]{1,63})/cryptoKeys/([a-zA-Z0-9_-]{1,63})/cryptoKeyVersions/([a-zA-Z0-9_-]{1,63})$")
+
+// currentTime is the time used to validate certificates. The zero value will
+// use the current time, but we can it for testing purposes.
+var currentTime time.Time
 
 // VerifyAttestation obtains and validates the attestation from an object in
 // Cloud HSM.
@@ -148,6 +157,11 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	if err != nil {
 		return nil, fmt.Errorf("failed to read attestation contents: %w", err)
 	}
+	// The attestation should be larger than 256, but this guarantees a not nil
+	// data and a signature of the proper size.
+	if len(attestation) < attestationSignatureSize {
+		return nil, fmt.Errorf("attestation content is too short")
+	}
 
 	// Validate and obtain manufacturer certificate
 	mfrRoot, err := pemutil.ParseCertificate([]byte(mfrRootPEM))
@@ -175,7 +189,8 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	if err != nil {
 		return nil, err
 	}
-	// Validate and obtain owner card cert
+	// Validate and obtain owner card cert. The owner and manufacturer card
+	// certificate uses the same key.
 	ownerCardCerts := make([]*x509.Certificate, len(att.CertChains.GoogleCardCerts))
 	for i, s := range att.CertChains.GoogleCardCerts {
 		ownerCardCerts[i], err = pemutil.ParseCertificate([]byte(s))
@@ -193,7 +208,8 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	if err != nil {
 		return nil, err
 	}
-	// Validate and obtain owner partition certificate
+	// Validate and obtain owner partition certificate. The owner and
+	// manufacturer partition certificate uses the same key.
 	ownerPartitionCerts := make([]*x509.Certificate, len(att.CertChains.GooglePartitionCerts))
 	for i, s := range att.CertChains.GooglePartitionCerts {
 		ownerPartitionCerts[i], err = pemutil.ParseCertificate([]byte(s))
@@ -213,7 +229,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	}
 
 	// Get attestation data and signature
-	offset := len(attestation) - 256
+	offset := len(attestation) - attestationSignatureSize
 	data := attestation[:offset]
 	signature := attestation[offset:]
 
@@ -222,7 +238,8 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 		return nil, fmt.Errorf("error verifying certificate: %w", err)
 	}
 
-	// Validate with google certificate
+	// Validate with google certificate. This certificate and the manufacturer
+	// certificate uses the same key.
 	if err := verifySignature(ownerPartitionCert, data, signature); err != nil {
 		return nil, fmt.Errorf("error verifying certificate: %w", err)
 	}
@@ -301,8 +318,9 @@ func getIssuedCertificate(issuer *x509.Certificate, certs []*x509.Certificate, v
 			continue
 		}
 		if _, err := crt.Verify(x509.VerifyOptions{
-			Roots:     roots,
-			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+			Roots:       roots,
+			KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+			CurrentTime: currentTime,
 		}); err == nil {
 			for _, fn := range validators {
 				if !fn(crt) {
@@ -316,30 +334,13 @@ func getIssuedCertificate(issuer *x509.Certificate, certs []*x509.Certificate, v
 	return nil, errors.New("cannot find issued certificate")
 }
 
+// verifySignature verifies the signature of the given data. Cloud HSM uses
+// always RSA PKCS #1 v1.5 with SHA-256.
 func verifySignature(crt *x509.Certificate, data, signature []byte) error {
 	switch key := crt.PublicKey.(type) {
 	case *rsa.PublicKey:
 		hashed := sha256.Sum256(data)
 		return rsa.VerifyPKCS1v15(key, crypto.SHA256, hashed[:], signature)
-	case *ecdsa.PublicKey:
-		var h crypto.Hash
-		switch key.Curve {
-		case elliptic.P256():
-			h = crypto.SHA256
-		case elliptic.P384():
-			h = crypto.SHA384
-		case elliptic.P521():
-			h = crypto.SHA512
-		default:
-			return fmt.Errorf("unsupported elliptic curve")
-		}
-		hash := h.New()
-		hash.Write(data)
-		sum := hash.Sum(nil)
-		if !ecdsa.VerifyASN1(key, sum, signature) {
-			return fmt.Errorf("ecdsa verification error")
-		}
-		return nil
 	default:
 		return fmt.Errorf("unsupported key type %T", key)
 	}
