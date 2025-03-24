@@ -122,7 +122,7 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 		config.Pin = opts.Pin
 	}
 	// If no pin is set, assume that the token does not support login.
-	if config.Pin == "" {
+	if config.Pin == "" && !u.Has("pin-value") && !u.Has("pin-source") {
 		config.LoginNotSupported = true
 	}
 
