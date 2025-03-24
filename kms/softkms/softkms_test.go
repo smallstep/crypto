@@ -12,8 +12,11 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
@@ -247,6 +250,12 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	fullPath := filepath.Join(t.TempDir(), "pub.pem")
+	if err := os.WriteFile(fullPath, b, 0o0600); err != nil {
+		t.Fatal(err)
+	}
+
 	block, _ := pem.Decode(b)
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
@@ -270,8 +279,11 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 		wantErr bool
 	}{
 		{"key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/pub.pem"}}, pub, false},
+		{"key full path", args{&apiv1.GetPublicKeyRequest{Name: fullPath}}, pub, false},
 		{"key uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/pub.pem"}}, pub, false},
 		{"key path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/pub.pem"}}, pub, false},
+		{"key full path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:" + fullPath}}, pub, false},
+		{"key full path value", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=" + fullPath}}, pub, false},
 		{"cert", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.crt"}}, pub, false},
 		{"cert uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/cert.crt"}}, pub, false},
 		{"cert path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/cert.crt"}}, pub, false},
@@ -402,6 +414,28 @@ func TestSoftKMS_CreateDecrypter(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("SoftKMS.CreateDecrypter() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func Test_filename(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"ok name", args{"testdata/pub.pem"}, "testdata/pub.pem"},
+		{"ok uri value", args{"softkms:path=testdata/pub.pem"}, "testdata/pub.pem"},
+		{"ok uri value full", args{"softkms:path=/testdata/pub.pem"}, "/testdata/pub.pem"},
+		{"ok uri opaque", args{"softkms:testdata/pub.pem"}, "testdata/pub.pem"},
+		{"ok uri path", args{"softkms:/testdata/pub.pem"}, "/testdata/pub.pem"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, filename(tt.args.s))
 		})
 	}
 }
