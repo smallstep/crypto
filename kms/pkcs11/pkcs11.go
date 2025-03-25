@@ -121,6 +121,10 @@ func New(_ context.Context, opts apiv1.Options) (*PKCS11, error) {
 	if config.Pin == "" && opts.Pin != "" {
 		config.Pin = opts.Pin
 	}
+	// If no pin is set, assume that the token does not support login.
+	if config.Pin == "" && !u.Has("pin-value") && !u.Has("pin-source") {
+		config.LoginNotSupported = true
+	}
 
 	switch {
 	case config.TokenLabel == "" && config.TokenSerial == "" && config.SlotNumber == nil:

@@ -13,12 +13,16 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"math/big"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/ThalesIgnite/crypto11"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
@@ -76,6 +80,10 @@ func TestNew(t *testing.T) {
 		{"ok no pin", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
 			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test",
+		}}, k, false},
+		{"ok empty pin", args{context.Background(), apiv1.Options{
+			Type: "pkcs11",
+			URI:  "pkcs11:module-path=/usr/local/lib/softhsm/libsofthsm2.so;token=pkcs11-test;pin-value=",
 		}}, k, false},
 		{"ok with missing module", args{context.Background(), apiv1.Options{
 			Type: "pkcs11",
@@ -141,6 +149,71 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNew_config(t *testing.T) {
+	tmp0 := p11Configure
+	t.Cleanup(func() {
+		p11Configure = tmp0
+	})
+
+	k := mustPKCS11(t)
+	t.Cleanup(func() {
+		k.Close()
+	})
+
+	path := filepath.Join(t.TempDir(), "pin.txt")
+	require.NoError(t, os.WriteFile(path, []byte("123456\n"), 0o0600))
+
+	var zero int
+
+	ctx := context.Background()
+	type args struct {
+		ctx  context.Context
+		opts apiv1.Options
+	}
+	tests := []struct {
+		name       string
+		args       args
+		wantConfig *crypto11.Config
+	}{
+		{"ok", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;token=token?pin-value=password"}}, &crypto11.Config{
+			Path: "module.so", TokenLabel: "token", Pin: "password",
+		}},
+		{"ok default module", args{ctx, apiv1.Options{URI: "pkcs11:token=token?pin-value=password"}}, &crypto11.Config{
+			Path: defaultModule, TokenLabel: "token", Pin: "password",
+		}},
+		{"ok serial", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;serial=1234567890?pin-value=password"}}, &crypto11.Config{
+			Path: "module.so", TokenSerial: "1234567890", Pin: "password",
+		}},
+		{"ok slot-id", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;slot-id=0?pin-value=password"}}, &crypto11.Config{
+			Path: "module.so", SlotNumber: &zero, Pin: "password",
+		}},
+		{"ok max-sessions", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;slot-id=0;max-sessions=100?pin-value=password"}}, &crypto11.Config{
+			Path: "module.so", SlotNumber: &zero, Pin: "password", MaxSessions: 100,
+		}},
+		{"ok pin-source", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;token=token?pin-source=" + path}}, &crypto11.Config{
+			Path: "module.so", TokenLabel: "token", Pin: "123456",
+		}},
+		{"ok login not supported", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;token=token"}}, &crypto11.Config{
+			Path: "module.so", TokenLabel: "token", LoginNotSupported: true,
+		}},
+		{"ok empty pin", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;token=token?pin-value="}}, &crypto11.Config{
+			Path: "module.so", TokenLabel: "token", Pin: "",
+		}},
+		{"ok pin option", args{ctx, apiv1.Options{URI: "pkcs11:module-path=module.so;token=token?pin-value=", Pin: "password"}}, &crypto11.Config{
+			Path: "module.so", TokenLabel: "token", Pin: "password",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p11Configure = func(config *crypto11.Config) (P11, error) {
+				assert.Equal(t, tt.wantConfig, config)
+				return k.p11, nil
+			}
+			_, err := New(tt.args.ctx, tt.args.opts)
+			assert.NoError(t, err)
+		})
+	}
+}
 func TestPKCS11_GetPublicKey(t *testing.T) {
 	k := setupPKCS11(t)
 	type args struct {
