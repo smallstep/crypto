@@ -44,7 +44,7 @@ func mustTime(t *testing.T) {
 }
 
 func mustContent(t *testing.T, filename string) ([]byte, []AttestationAttribute, []AttestationAttribute) {
-        t.Helper()
+	t.Helper()
 
 	content, err := os.ReadFile(filename)
 	require.NoError(t, err)
@@ -741,6 +741,10 @@ func Test_getKeyType(t *testing.T) {
 	}
 }
 
+// TestValidateCaviumRoot validates that the current root certificate for the
+// hard-coded root for Marvell's LiquidSecurity HSM adapters matches the one in
+// this package. The current certificate expires on November 16, 2025. We will
+// need to change it once Marvell changes it.
 func TestValidateCaviumRoot(t *testing.T) {
 	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
 	require.NoError(t, err)
@@ -773,6 +777,7 @@ func TestValidateCaviumRoot(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, root, cert)
+		assert.True(t, time.Now().Before(cert.NotAfter))
 		return
 	}
 

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -19,8 +20,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
-
-	"github.com/pkg/errors"
 
 	"go.step.sm/crypto/pemutil"
 )
