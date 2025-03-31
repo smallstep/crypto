@@ -190,7 +190,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 		return nil, err
 	}
 	// Validate and obtain owner card cert. The owner and manufacturer card
-	// certificate uses the same key.
+	// certificate use the same key.
 	ownerCardCerts := make([]*x509.Certificate, len(att.CertChains.GoogleCardCerts))
 	for i, s := range att.CertChains.GoogleCardCerts {
 		ownerCardCerts[i], err = pemutil.ParseCertificate([]byte(s))
@@ -209,7 +209,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 		return nil, err
 	}
 	// Validate and obtain owner partition certificate. The owner and
-	// manufacturer partition certificate uses the same key.
+	// manufacturer partition certificate use the same key.
 	ownerPartitionCerts := make([]*x509.Certificate, len(att.CertChains.GooglePartitionCerts))
 	for i, s := range att.CertChains.GooglePartitionCerts {
 		ownerPartitionCerts[i], err = pemutil.ParseCertificate([]byte(s))
@@ -239,7 +239,7 @@ func (k *CloudKMS) verifyAttestation(ctx context.Context, name, mfrRootPEM, owne
 	}
 
 	// Validate with google certificate. This certificate and the manufacturer
-	// certificate uses the same key.
+	// certificate use the same key.
 	if err := verifySignature(ownerPartitionCert, data, signature); err != nil {
 		return nil, fmt.Errorf("error verifying certificate: %w", err)
 	}
@@ -334,8 +334,8 @@ func getIssuedCertificate(issuer *x509.Certificate, certs []*x509.Certificate, v
 	return nil, errors.New("cannot find issued certificate")
 }
 
-// verifySignature verifies the signature of the given data. Cloud HSM uses
-// always RSA PKCS #1 v1.5 with SHA-256.
+// verifySignature verifies the signature of the given data. Cloud HSM always
+// uses RSA PKCS #1 v1.5 with SHA-256.
 func verifySignature(crt *x509.Certificate, data, signature []byte) error {
 	switch key := crt.PublicKey.(type) {
 	case *rsa.PublicKey:

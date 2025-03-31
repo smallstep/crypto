@@ -44,6 +44,8 @@ func mustTime(t *testing.T) {
 }
 
 func mustContent(t *testing.T, filename string) ([]byte, []AttestationAttribute, []AttestationAttribute) {
+        t.Helper()
+
 	content, err := os.ReadFile(filename)
 	require.NoError(t, err)
 
@@ -449,7 +451,7 @@ func TestCloudKMS_verifyAttestation_V1(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	// Manufacture CA
+	// Manufacturer CA
 	mfrCA, err := minica.New(minica.WithGetSignerFunc(func() (crypto.Signer, error) {
 		return rsa.GenerateKey(rand.Reader, 2048)
 	}))
