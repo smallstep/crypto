@@ -967,9 +967,7 @@ func TestCRLDistributionPoints_Set(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.o.Set(tt.args.c)
-			if !reflect.DeepEqual(tt.args.c, tt.want) {
-				t.Errorf("CRLDistributionPoints.Set() = %v, want %v", tt.args.c, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.args.c)
 		})
 	}
 }
@@ -981,8 +979,8 @@ func TestPolicyIdentifiers_MarshalJSON(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-		{"ok", []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, []byte(`["1.2.3.4","5.6.7.8.9.0"]`), false},
-		{"empty", []asn1.ObjectIdentifier{}, []byte(`[]`), false},
+		{"ok", []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, []byte(`["1.2.3.4","1.3.5.7"]`), false},
+		{"empty", []x509.OID{}, []byte(`[]`), false},
 		{"nil", nil, []byte(`null`), false},
 	}
 	for _, tt := range tests {
@@ -1009,9 +1007,9 @@ func TestPolicyIdentifiers_UnmarshalJSON(t *testing.T) {
 		want    PolicyIdentifiers
 		wantErr bool
 	}{
-		{"string", args{[]byte(`"1.2.3.4"`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}}, false},
-		{"array", args{[]byte(`["1.2.3.4", "5.6.7.8.9.0"]`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, false},
-		{"empty", args{[]byte(`[]`)}, []asn1.ObjectIdentifier{}, false},
+		{"string", args{[]byte(`"1.2.3.4"`)}, []x509.OID{mustOID(t, "1.2.3.4")}, false},
+		{"array", args{[]byte(`["1.2.3.4", "1.3.5.7"]`)}, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, false},
+		{"empty", args{[]byte(`[]`)}, []x509.OID{}, false},
 		{"null", args{[]byte(`null`)}, nil, false},
 		{"fail", args{[]byte(`":foo:bar"`)}, nil, true},
 		{"failJSON", args{[]byte(`["https://iss#sub"`)}, nil, true},
@@ -1024,29 +1022,6 @@ func TestPolicyIdentifiers_UnmarshalJSON(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("PolicyIdentifiers.UnmarshalJSON() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPolicyIdentifiers_Set(t *testing.T) {
-	type args struct {
-		c *x509.Certificate
-	}
-	tests := []struct {
-		name string
-		o    PolicyIdentifiers
-		args args
-		want *x509.Certificate
-	}{
-		{"ok", []asn1.ObjectIdentifier{{1, 2, 3, 4}}, args{&x509.Certificate{}}, &x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}},
-		{"overwrite", []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}, args{&x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}}, &x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.o.Set(tt.args.c)
-			if !reflect.DeepEqual(tt.args.c, tt.want) {
-				t.Errorf("PolicyIdentifiers.Set() = %v, want %v", tt.args.c, tt.want)
 			}
 		})
 	}
@@ -1489,4 +1464,33 @@ func TestParseSubjectAlternativeNames(t *testing.T) {
 			assert.Equal(t, tt.wantSans, gotSans)
 		})
 	}
+}
+
+func TestPolicyIdentifiers(t *testing.T) {
+	tpl := `{
+		"subject": {{ toJson .Subject }},
+		"sans": {{ toJson .SANs }},
+	{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+		"keyUsage": ["keyEncipherment", "digitalSignature"],
+	{{- else }}
+		"keyUsage": ["digitalSignature"],
+	{{- end }}
+		"extKeyUsage": ["serverAuth", "clientAuth"],
+		"policyIdentifiers": ["1.2.3.4", "1.3.5.7"]
+	}`
+
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	csr, csrSigner := createCertificateRequest(t, "", []string{})
+
+	cert, err := NewCertificate(csr, WithTemplate(tpl, CreateTemplateData("commonName", []string{"test.example.com"})))
+	require.NoError(t, err)
+
+	template := cert.GetCertificate()
+	crt, err := CreateCertificate(template, iss, csrSigner.Public(), issPriv)
+	require.NoError(t, err)
+
+	assert.Equal(t, "commonName", crt.Subject.CommonName)
+	assert.Equal(t, []string{"test.example.com"}, crt.DNSNames)
+	assert.Equal(t, []asn1.ObjectIdentifier{{1, 2, 3, 4}, {1, 3, 5, 7}}, crt.PolicyIdentifiers)
+	assert.Equal(t, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, crt.Policies)
 }
