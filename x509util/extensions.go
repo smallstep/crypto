@@ -890,16 +890,16 @@ func (u CRLDistributionPoints) Set(c *x509.Certificate) {
 
 // PolicyIdentifiers represents the list of OIDs to set in the certificate
 // policies extension.
-type PolicyIdentifiers MultiObjectIdentifier
+type PolicyIdentifiers MultiOID
 
 // MarshalJSON implements the json.Marshaler interface in PolicyIdentifiers.
 func (p PolicyIdentifiers) MarshalJSON() ([]byte, error) {
-	return MultiObjectIdentifier(p).MarshalJSON()
+	return MultiOID(p).MarshalJSON()
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface in PolicyIdentifiers.
 func (p *PolicyIdentifiers) UnmarshalJSON(data []byte) error {
-	var v MultiObjectIdentifier
+	var v MultiOID
 	if err := json.Unmarshal(data, &v); err != nil {
 		return errors.Wrap(err, "error unmarshaling json")
 	}
@@ -907,9 +907,20 @@ func (p *PolicyIdentifiers) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Set sets the policy identifiers to the given certificate.
+// Set sets the policy identifiers to the given certificate. To ensure
+// compatibility between different versions of Go, set will set
+// PolicyIdentifiers and Policies with the same data.
+//
+// Programs using go.mod 1.24+ will only marshal the Policies field, older
+// versions will only marshal PolicyIdentifiers. This can be changed with the
+// GODEBUG setting "x509usepolicies".
 func (p PolicyIdentifiers) Set(c *x509.Certificate) {
-	c.PolicyIdentifiers = p
+	c.Policies = p
+	for _, pp := range p {
+		if oid, err := parseObjectIdentifier(pp.String()); err == nil {
+			c.PolicyIdentifiers = append(c.PolicyIdentifiers, oid)
+		}
+	}
 }
 
 // BasicConstraints represents the X509 basic constraints extension and defines
