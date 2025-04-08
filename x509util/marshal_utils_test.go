@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMultiString_MarshalJSON(t *testing.T) {
@@ -295,6 +297,62 @@ func TestMultiObjectIdentifier_UnmarshalJSON(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("MultiObjectIdentifier.UnmarshalJSON() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestMultiOID_MarshalJSON(t *testing.T) {
+	oid1 := mustOID(t, "1.2.3.4")
+	oid2 := mustOID(t, "1.4.3.2")
+	oid3 := mustOID(t, "1.3.5.7")
+
+	tests := []struct {
+		name      string
+		m         MultiOID
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"null", MultiOID(nil), []byte(`null`), assert.NoError},
+		{"empty", MultiOID{}, []byte(`[]`), assert.NoError},
+		{"one", MultiOID{oid1}, []byte(`["1.2.3.4"]`), assert.NoError},
+		{"multiple", MultiOID{oid1, oid2, oid3}, []byte(`["1.2.3.4","1.4.3.2","1.3.5.7"]`), assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.m.MarshalJSON()
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMultiOID_UnmarshalJSON(t *testing.T) {
+	oid1 := mustOID(t, "1.2.3.4")
+	oid2 := mustOID(t, "1.4.3.2")
+	oid3 := mustOID(t, "1.3.5.7")
+
+	type args struct {
+		data []byte
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      MultiOID
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"null", args{[]byte(`null`)}, MultiOID(nil), assert.NoError},
+		{"empty", args{[]byte(`[]`)}, MultiOID{}, assert.NoError},
+		{"one", args{[]byte(`["1.2.3.4"]`)}, MultiOID{oid1}, assert.NoError},
+		{"one string", args{[]byte(`"1.2.3.4"`)}, MultiOID{oid1}, assert.NoError},
+		{"multiple", args{[]byte(`["1.2.3.4", "1.4.3.2","1.3.5.7"]`)}, MultiOID{oid1, oid2, oid3}, assert.NoError},
+		{"fail json", args{[]byte(`["1.2.3.4",`)}, MultiOID(nil), assert.Error},
+		{"fail oid", args{[]byte(`["5.4.3.2.1"]`)}, MultiOID(nil), assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var m MultiOID
+			tt.assertion(t, m.UnmarshalJSON(tt.args.data))
+			assert.Equal(t, tt.want, m)
 		})
 	}
 }
