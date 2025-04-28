@@ -22,7 +22,7 @@ require (
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/go-attestation v0.4.4-0.20240109183208-413678f90935
 	github.com/stretchr/testify v1.10.0
-	go.uber.org/mock v0.5.1
+	go.uber.org/mock v0.5.2
 	golang.org/x/crypto v0.37.0
 	golang.org/x/net v0.39.0
 	golang.org/x/sys v0.32.0
