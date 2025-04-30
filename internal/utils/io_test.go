@@ -40,7 +40,7 @@ func TestReadFile(t *testing.T) {
 
 // Set content to be read from mock STDIN
 func setStdinContent(t *testing.T, content string) (cleanup func()) {
-	f, err := os.CreateTemp("" /* dir */, "utils-read-test")
+	f, err := os.CreateTemp(t.TempDir(), "utils-read-test")
 	require.NoError(t, err)
 	_, err = f.WriteString(content)
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestReadFromStdin(t *testing.T) {
 // Sets STDIN to a file that is already closed, and thus fails
 // to be read from.
 func setFailingStdin(t *testing.T) (cleanup func()) {
-	f, err := os.CreateTemp("" /* dir */, "utils-read-test")
+	f, err := os.CreateTemp(t.TempDir(), "utils-read-test")
 	require.NoError(t, err)
 	err = f.Close()
 	require.NoError(t, err)
@@ -134,11 +134,7 @@ func TestReadPasswordFromStdin(t *testing.T) {
 }
 
 func TestWriteFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp(os.TempDir(), "go-tests")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tmpDir)
-	})
+	tmpDir := t.TempDir()
 
 	type args struct {
 		filename string

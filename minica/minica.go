@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/internal/utils"
 	"go.step.sm/crypto/sshutil"
 	"go.step.sm/crypto/x509util"
-	"golang.org/x/crypto/ssh"
 )
 
 // CA is the implementation of a simple X.509 and SSH CA.
@@ -162,7 +164,11 @@ func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Ce
 func (c *CA) SignSSH(template *ssh.Certificate) (*ssh.Certificate, error) {
 	mut := *template
 	if mut.ValidAfter == 0 && mut.ValidBefore != ssh.CertTimeInfinity {
-		mut.ValidAfter = uint64(time.Now().Unix())
+		validAfter, err := utils.SafeUint64(time.Now().Unix())
+		if err != nil {
+			return nil, fmt.Errorf("failed converting timestamp to uint64: %w", err)
+		}
+		mut.ValidAfter = validAfter
 	}
 	if mut.ValidBefore == 0 {
 		mut.ValidBefore = mut.ValidAfter + 24*60*60

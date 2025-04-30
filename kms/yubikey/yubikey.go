@@ -4,6 +4,7 @@
 package yubikey
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/go-piv/piv-go/v2/piv"
 	"github.com/pkg/errors"
@@ -42,6 +44,7 @@ type pivKey interface {
 	Certificate(slot piv.Slot) (*x509.Certificate, error)
 	SetCertificate(key []byte, slot piv.Slot, cert *x509.Certificate) error
 	GenerateKey(key []byte, slot piv.Slot, opts piv.Key) (crypto.PublicKey, error)
+	KeyInfo(slot piv.Slot) (piv.KeyInfo, error)
 	PrivateKey(slot piv.Slot, public crypto.PublicKey, auth piv.KeyAuth) (crypto.PrivateKey, error)
 	Attest(slot piv.Slot) (*x509.Certificate, error)
 	Serial() (uint32, error)
@@ -84,6 +87,7 @@ func openCard(card string) (pivKey, error) {
 // support multiple cards at the same time.
 //
 //	yubikey:management-key=001122334455667788990011223344556677889900112233?pin-value=123456
+//	yubikey:management-key-source=/var/run/management.key?pin-source=/var/run/yubikey.pin
 //	yubikey:serial=112233?pin-source=/var/run/yubikey.pin
 //
 // You can also define a slot id, this will be ignored in this method but can be
@@ -91,7 +95,7 @@ func openCard(card string) (pivKey, error) {
 //
 //	yubikey:slot-id=9a?pin-value=123456
 //
-// If the pin or the management-key are not provided, we will use the default
+// If the pin or the management key are not provided, we will use the default
 // ones.
 func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
@@ -108,6 +112,14 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		}
 		if v := u.Get("management-key"); v != "" {
 			opts.ManagementKey = v
+		} else if u.Has("management-key-source") {
+			b, err := u.Read("management-key-source")
+			if err != nil {
+				return nil, err
+			}
+			if b = bytes.TrimFunc(b, unicode.IsSpace); len(b) > 0 {
+				opts.ManagementKey = string(b)
+			}
 		}
 		if v := u.Get("serial"); v != "" {
 			serial = v
@@ -118,7 +130,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	if opts.ManagementKey != "" {
 		b, err := hex.DecodeString(opts.ManagementKey)
 		if err != nil {
-			return nil, errors.Wrap(err, "error decoding managementKey")
+			return nil, errors.Wrap(err, "error decoding management key")
 		}
 		if len(b) != 24 {
 			return nil, errors.New("invalid managementKey: length is not 24 bytes")
@@ -381,17 +393,33 @@ func (k *YubiKey) Close() error {
 	return nil
 }
 
-// getPublicKey returns the public key on a slot. First it attempts to do
-// attestation to get a certificate with the public key in it, if this succeeds
-// means that the key was generated in the device. If not we'll try to get the
-// key from a stored certificate in the same slot.
+// getPublicKey returns the public key on a slot. First it attempts to use
+// KeyInfo to get the public key, then tries to do attestation to get a
+// certificate with the public key in it, if this succeeds means that the key
+// was generated in the device. If not we'll try to get the key from a stored
+// certificate in the same slot.
 func (k *YubiKey) getPublicKey(slot piv.Slot) (crypto.PublicKey, error) {
-	cert, err := k.yk.Attest(slot)
-	if err != nil {
-		if cert, err = k.yk.Certificate(slot); err != nil {
-			return nil, errors.Wrap(err, "error retrieving public key")
-		}
+	// YubiKey >= 5.3.0 (generated and imported keys)
+	if ki, err := k.yk.KeyInfo(slot); err == nil && ki.PublicKey != nil {
+		return ki.PublicKey, nil
 	}
+
+	// YubiKey >= 4.3.0 (generated keys)
+	if cert, err := k.yk.Attest(slot); err == nil {
+		return cert.PublicKey, nil
+	}
+
+	// Fallback to certificate in slot (generated and imported)
+	cert, err := k.yk.Certificate(slot)
+	if err != nil {
+		if errors.Is(err, piv.ErrNotFound) {
+			return nil, apiv1.NotFoundError{
+				Message: err.Error(),
+			}
+		}
+		return nil, fmt.Errorf("error retrieving public key: %w", err)
+	}
+
 	return cert.PublicKey, nil
 }
 

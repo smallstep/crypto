@@ -1,4 +1,4 @@
-//go:generate mockgen -package mock -mock_names=KeyVaultClient=KeyVaultClient -destination internal/mock/key_vault_client.go go.step.sm/crypto/kms/azurekms KeyVaultClient
+//go:generate go run go.uber.org/mock/mockgen -package mock -mock_names=KeyVaultClient=KeyVaultClient -destination internal/mock/key_vault_client.go go.step.sm/crypto/kms/azurekms KeyVaultClient
 package azurekms
 
 import (
@@ -15,10 +15,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	"github.com/go-jose/go-jose/v3"
-	"github.com/golang/mock/gomock"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/azurekms/internal/mock"
+	"go.uber.org/mock/gomock"
 )
 
 var errTest = fmt.Errorf("test error")

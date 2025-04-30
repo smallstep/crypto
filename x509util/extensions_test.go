@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net"
 	"net/url"
@@ -967,9 +968,7 @@ func TestCRLDistributionPoints_Set(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.o.Set(tt.args.c)
-			if !reflect.DeepEqual(tt.args.c, tt.want) {
-				t.Errorf("CRLDistributionPoints.Set() = %v, want %v", tt.args.c, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.args.c)
 		})
 	}
 }
@@ -981,8 +980,8 @@ func TestPolicyIdentifiers_MarshalJSON(t *testing.T) {
 		want    []byte
 		wantErr bool
 	}{
-		{"ok", []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, []byte(`["1.2.3.4","5.6.7.8.9.0"]`), false},
-		{"empty", []asn1.ObjectIdentifier{}, []byte(`[]`), false},
+		{"ok", []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, []byte(`["1.2.3.4","1.3.5.7"]`), false},
+		{"empty", []x509.OID{}, []byte(`[]`), false},
 		{"nil", nil, []byte(`null`), false},
 	}
 	for _, tt := range tests {
@@ -1009,9 +1008,9 @@ func TestPolicyIdentifiers_UnmarshalJSON(t *testing.T) {
 		want    PolicyIdentifiers
 		wantErr bool
 	}{
-		{"string", args{[]byte(`"1.2.3.4"`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}}, false},
-		{"array", args{[]byte(`["1.2.3.4", "5.6.7.8.9.0"]`)}, []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}, []int{5, 6, 7, 8, 9, 0}}, false},
-		{"empty", args{[]byte(`[]`)}, []asn1.ObjectIdentifier{}, false},
+		{"string", args{[]byte(`"1.2.3.4"`)}, []x509.OID{mustOID(t, "1.2.3.4")}, false},
+		{"array", args{[]byte(`["1.2.3.4", "1.3.5.7"]`)}, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, false},
+		{"empty", args{[]byte(`[]`)}, []x509.OID{}, false},
 		{"null", args{[]byte(`null`)}, nil, false},
 		{"fail", args{[]byte(`":foo:bar"`)}, nil, true},
 		{"failJSON", args{[]byte(`["https://iss#sub"`)}, nil, true},
@@ -1024,29 +1023,6 @@ func TestPolicyIdentifiers_UnmarshalJSON(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("PolicyIdentifiers.UnmarshalJSON() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPolicyIdentifiers_Set(t *testing.T) {
-	type args struct {
-		c *x509.Certificate
-	}
-	tests := []struct {
-		name string
-		o    PolicyIdentifiers
-		args args
-		want *x509.Certificate
-	}{
-		{"ok", []asn1.ObjectIdentifier{{1, 2, 3, 4}}, args{&x509.Certificate{}}, &x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}},
-		{"overwrite", []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}, args{&x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}}}}, &x509.Certificate{PolicyIdentifiers: []asn1.ObjectIdentifier{{1, 2, 3, 4}, {4, 3, 2, 1}}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.o.Set(tt.args.c)
-			if !reflect.DeepEqual(tt.args.c, tt.want) {
-				t.Errorf("PolicyIdentifiers.Set() = %v, want %v", tt.args.c, tt.want)
 			}
 		})
 	}
@@ -1487,6 +1463,205 @@ func TestParseSubjectAlternativeNames(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tt.wantSans, gotSans)
+		})
+	}
+}
+
+func TestPolicyIdentifiers(t *testing.T) {
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	csr, _ := createCertificateRequest(t, "", []string{})
+
+	buildWithExtension := func(s string) string {
+		return fmt.Sprintf(`{
+			"subject": {{ toJson .Subject }},
+			"sans": {{ toJson .SANs }},
+		{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+			"keyUsage": ["keyEncipherment", "digitalSignature"],
+		{{- else }}
+			"keyUsage": ["digitalSignature"],
+		{{- end }}
+			"extKeyUsage": ["serverAuth", "clientAuth"],
+			"extensions": [%s]
+		}`, s)
+	}
+
+	assertValue := func(t *testing.T, want []byte, crt *x509.Certificate) {
+		t.Helper()
+		for _, ext := range crt.Extensions {
+			if ext.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 32}) {
+				assert.Equal(t, want, ext.Value)
+				return
+			}
+		}
+		t.Error("extension not found")
+	}
+
+	var (
+		policyIdentifiersTemplate = `{
+			"subject": {{ toJson .Subject }},
+			"sans": {{ toJson .SANs }},
+			{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+			"keyUsage": ["keyEncipherment", "digitalSignature"],
+			{{- else }}
+			"keyUsage": ["digitalSignature"],
+			{{- end }}
+			"extKeyUsage": ["serverAuth", "clientAuth"],
+			"policyIdentifiers": ["1.2.3.4", "1.3.5.7"]
+		}`
+		data = CreateTemplateData("commonName", []string{"test.example.com"})
+	)
+
+	tests := []struct {
+		name    string
+		csr     *x509.CertificateRequest
+		options []Option
+		assert  func(t *testing.T, crt *x509.Certificate)
+	}{
+		{"no policies", csr, []Option{WithTemplate(DefaultLeafTemplate, data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, "commonName", crt.Subject.CommonName)
+			assert.Equal(t, []string{"test.example.com"}, crt.DNSNames)
+			assert.Empty(t, crt.PolicyIdentifiers)
+			assert.Empty(t, crt.Policies)
+		}},
+		{"policyIdentifiers", csr, []Option{WithTemplate(policyIdentifiersTemplate, data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, []asn1.ObjectIdentifier{{1, 2, 3, 4}, {1, 3, 5, 7}}, crt.PolicyIdentifiers)
+			assert.Equal(t, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, crt.Policies)
+			assertValue(t, []byte{
+				0x30, 0x0E, 0x30, 0x05, 0x06, 0x03, 0x2A, 0x03,
+				0x04, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x05, 0x07,
+			}, crt)
+		}},
+		{"extension", csr, []Option{WithTemplate(buildWithExtension(`{
+			"id": "2.5.29.32",
+			"value": {{ asn1Seq (asn1Seq (asn1Enc "oid:1.2.3.4")) (asn1Seq (asn1Enc "oid:1.3.5.7")) | toJson }}
+		}`), data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, []asn1.ObjectIdentifier{{1, 2, 3, 4}, {1, 3, 5, 7}}, crt.PolicyIdentifiers)
+			assert.Equal(t, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7")}, crt.Policies)
+			assertValue(t, []byte{
+				0x30, 0x0E, 0x30, 0x05, 0x06, 0x03, 0x2A, 0x03,
+				0x04, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x05, 0x07,
+			}, crt)
+		}},
+		{"withCPS", csr, []Option{WithTemplate(buildWithExtension(`{
+			"id": "2.5.29.32",
+			"value": {{
+				asn1Seq
+					(asn1Seq
+						(asn1Enc "oid:1.3.5.7")
+						(asn1Seq (asn1Seq (asn1Enc "oid:1.3.6.1.5.5.7.2.1") (asn1Enc "ia5:http://example.com/cps")))
+					)
+				| toJson
+			}}
+		}`), data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, []asn1.ObjectIdentifier{{1, 3, 5, 7}}, crt.PolicyIdentifiers)
+			assert.Equal(t, []x509.OID{mustOID(t, "1.3.5.7")}, crt.Policies)
+			assertValue(t, []byte{
+				0x30, 0x2D, 0x30, 0x2B, 0x06, 0x03, 0x2B, 0x05,
+				0x07, 0x30, 0x24, 0x30, 0x22, 0x06, 0x08, 0x2B,
+				0x06, 0x01, 0x05, 0x05, 0x07, 0x02, 0x01, 0x16,
+				0x16, 0x68, 0x74, 0x74, 0x70, 0x3A, 0x2F, 0x2F,
+				0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E,
+				0x63, 0x6F, 0x6D, 0x2F, 0x63, 0x70, 0x73,
+			}, crt)
+		}},
+		{"withUserNotice", csr, []Option{WithTemplate(buildWithExtension(`{
+			"id": "2.5.29.32",
+			"value": {{
+				asn1Seq
+					(asn1Seq
+						(asn1Enc "oid:1.3.5.7")
+						(asn1Seq
+							(asn1Seq
+								(asn1Enc "oid:1.3.6.1.5.5.7.2.2")
+								(asn1Seq
+									(asn1Seq
+										(asn1Enc "ia5:ACME Inc.")
+										(asn1Seq (asn1Enc "int:1") (asn1Enc "int:2") (asn1Enc "int:3") (asn1Enc "int:4"))
+									)
+									(asn1Enc "ia5:The explicit text.")
+								)
+							)
+						)
+					)
+				| toJson
+			}}
+		}`), data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, []asn1.ObjectIdentifier{{1, 3, 5, 7}}, crt.PolicyIdentifiers)
+			assert.Equal(t, []x509.OID{mustOID(t, "1.3.5.7")}, crt.Policies)
+			assertValue(t, []byte{
+				0x30, 0x46, 0x30, 0x44, 0x06, 0x03, 0x2B, 0x05,
+				0x07, 0x30, 0x3D, 0x30, 0x3B, 0x06, 0x08, 0x2B,
+				0x06, 0x01, 0x05, 0x05, 0x07, 0x02, 0x02, 0x30,
+				0x2F, 0x30, 0x19, 0x16, 0x09, 0x41, 0x43, 0x4D,
+				0x45, 0x20, 0x49, 0x6E, 0x63, 0x2E, 0x30, 0x0C,
+				0x02, 0x01, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01,
+				0x03, 0x02, 0x01, 0x04, 0x16, 0x12, 0x54, 0x68,
+				0x65, 0x20, 0x65, 0x78, 0x70, 0x6C, 0x69, 0x63,
+				0x69, 0x74, 0x20, 0x74, 0x65, 0x78, 0x74, 0x2E,
+			}, crt)
+		}},
+		{"complex", csr, []Option{WithTemplate(buildWithExtension(`{
+			"id": "2.5.29.32",
+			"value": {{
+				asn1Seq
+					(asn1Seq (asn1Enc "oid:1.2.3.4"))
+					(asn1Seq (asn1Enc "oid:1.3.5.7"))
+					(asn1Seq
+						(asn1Enc "oid:1.3.5.8")
+						(asn1Seq
+							(asn1Seq (asn1Enc "oid:1.3.6.1.5.5.7.2.1") (asn1Enc "ia5:http://example.com/cps"))
+							(asn1Seq (asn1Enc "oid:1.3.6.1.5.5.7.2.1") (asn1Enc "ia5:http://example.org/1.0/CPS"))
+							(asn1Seq
+								(asn1Enc "oid:1.3.6.1.5.5.7.2.2")
+								(asn1Seq
+									(asn1Seq
+										(asn1Enc "ia5:Organization Name")
+										(asn1Seq (asn1Enc "int:1") (asn1Enc "int:2") (asn1Enc "int:3") (asn1Enc "int:4"))
+									)
+									(asn1Enc "ia5:Explicit Text")
+								)
+							)
+						)
+					)
+				| toJson
+			}}
+		}`), data)}, func(t *testing.T, crt *x509.Certificate) {
+			assert.Equal(t, []asn1.ObjectIdentifier{{1, 2, 3, 4}, {1, 3, 5, 7}, {1, 3, 5, 8}}, crt.PolicyIdentifiers)
+			assert.Equal(t, []x509.OID{mustOID(t, "1.2.3.4"), mustOID(t, "1.3.5.7"), mustOID(t, "1.3.5.8")}, crt.Policies)
+			assertValue(t, []byte{
+				0x30, 0x81, 0xA5, 0x30, 0x05, 0x06, 0x03, 0x2A,
+				0x03, 0x04, 0x30, 0x05, 0x06, 0x03, 0x2B, 0x05,
+				0x07, 0x30, 0x81, 0x94, 0x06, 0x03, 0x2B, 0x05,
+				0x08, 0x30, 0x81, 0x8C, 0x30, 0x22, 0x06, 0x08,
+				0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x02, 0x01,
+				0x16, 0x16, 0x68, 0x74, 0x74, 0x70, 0x3A, 0x2F,
+				0x2F, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65,
+				0x2E, 0x63, 0x6F, 0x6D, 0x2F, 0x63, 0x70, 0x73,
+				0x30, 0x26, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05,
+				0x05, 0x07, 0x02, 0x01, 0x16, 0x1A, 0x68, 0x74,
+				0x74, 0x70, 0x3A, 0x2F, 0x2F, 0x65, 0x78, 0x61,
+				0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x6F, 0x72, 0x67,
+				0x2F, 0x31, 0x2E, 0x30, 0x2F, 0x43, 0x50, 0x53,
+				0x30, 0x3E, 0x06, 0x08, 0x2B, 0x06, 0x01, 0x05,
+				0x05, 0x07, 0x02, 0x02, 0x30, 0x32, 0x30, 0x21,
+				0x16, 0x11, 0x4F, 0x72, 0x67, 0x61, 0x6E, 0x69,
+				0x7A, 0x61, 0x74, 0x69, 0x6F, 0x6E, 0x20, 0x4E,
+				0x61, 0x6D, 0x65, 0x30, 0x0C, 0x02, 0x01, 0x01,
+				0x02, 0x01, 0x02, 0x02, 0x01, 0x03, 0x02, 0x01,
+				0x04, 0x16, 0x0D, 0x45, 0x78, 0x70, 0x6C, 0x69,
+				0x63, 0x69, 0x74, 0x20, 0x54, 0x65, 0x78, 0x74,
+			}, crt)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert, err := NewCertificate(tt.csr, tt.options...)
+			require.NoError(t, err)
+
+			template := cert.GetCertificate()
+			crt, err := CreateCertificate(template, iss, csr.PublicKey, issPriv)
+			require.NoError(t, err)
+			tt.assert(t, crt)
 		})
 	}
 }

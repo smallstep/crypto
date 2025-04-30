@@ -22,8 +22,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/pemutil"
 )
+
+func mustOID(t *testing.T, s string) x509.OID {
+	t.Helper()
+
+	oid, err := x509.ParseOID(s)
+	require.NoError(t, err)
+	return oid
+}
 
 func createCertificateRequest(t *testing.T, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
 	dnsNames, ips, emails, uris := SplitSANs(sans)
@@ -257,7 +266,7 @@ func TestNewCertificate(t *testing.T) {
 			OCSPServer:            []string{"https://ocsp.server"},
 			IssuingCertificateURL: []string{"https://ca.com"},
 			CRLDistributionPoints: []string{"https://ca.com/ca.crl"},
-			PolicyIdentifiers:     PolicyIdentifiers{[]int{1, 2, 3, 4, 5, 6}},
+			PolicyIdentifiers:     PolicyIdentifiers{mustOID(t, "1.2.3.4.5.6")},
 			BasicConstraints: &BasicConstraints{
 				IsCA:       false,
 				MaxPathLen: 0,
@@ -568,6 +577,7 @@ func TestNewCertificateFromX509(t *testing.T) {
 			TokenKey: map[string]interface{}{
 				"iss": "https://iss",
 				"sub": "sub",
+				"nbf": now.Unix(),
 			},
 			WebhooksKey: map[string]interface{}{
 				"Test": map[string]interface{}{
@@ -610,7 +620,7 @@ func TestNewCertificateFromX509(t *testing.T) {
 			OCSPServer:            []string{"https://ocsp.server"},
 			IssuingCertificateURL: []string{"https://ca.com"},
 			CRLDistributionPoints: []string{"https://ca.com/ca.crl"},
-			PolicyIdentifiers:     PolicyIdentifiers{[]int{1, 2, 3, 4, 5, 6}},
+			PolicyIdentifiers:     PolicyIdentifiers{mustOID(t, "1.2.3.4.5.6")},
 			BasicConstraints: &BasicConstraints{
 				IsCA:       false,
 				MaxPathLen: 0,
@@ -713,7 +723,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			OCSPServer:            []string{"https://oscp.server"},
 			IssuingCertificateURL: []string{"https://ca.com"},
 			CRLDistributionPoints: []string{"https://ca.com/crl"},
-			PolicyIdentifiers:     []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}},
+			PolicyIdentifiers:     PolicyIdentifiers{mustOID(t, "1.2.3.4")},
 			BasicConstraints:      &BasicConstraints{IsCA: true, MaxPathLen: 0},
 			NameConstraints:       &NameConstraints{PermittedDNSDomains: []string{"foo.bar"}},
 			SignatureAlgorithm:    SignatureAlgorithm(x509.PureEd25519),
@@ -742,7 +752,8 @@ func TestCertificate_GetCertificate(t *testing.T) {
 			OCSPServer:            []string{"https://oscp.server"},
 			IssuingCertificateURL: []string{"https://ca.com"},
 			CRLDistributionPoints: []string{"https://ca.com/crl"},
-			PolicyIdentifiers:     []asn1.ObjectIdentifier{[]int{1, 2, 3, 4}},
+			PolicyIdentifiers:     []asn1.ObjectIdentifier{{1, 2, 3, 4}},
+			Policies:              []x509.OID{mustOID(t, "1.2.3.4")},
 			IsCA:                  true,
 			MaxPathLen:            0,
 			MaxPathLenZero:        true,
@@ -783,9 +794,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 				PublicKeyAlgorithm:    tt.fields.PublicKeyAlgorithm,
 				PublicKey:             tt.fields.PublicKey,
 			}
-			if got := c.GetCertificate(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Certificate.GetCertificate() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, c.GetCertificate())
 		})
 	}
 }

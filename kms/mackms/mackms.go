@@ -527,7 +527,7 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 			if err != nil {
 				return fmt.Errorf("mackms DeleteKey failed: %w", err)
 			}
-			defer cfTag.Release()
+			defer cfTag.Release() //nolint:gocritic // only two iterations
 			dict[security.KSecAttrApplicationTag] = cfTag
 		}
 		// Extract logic to deleteItem to avoid defer on loops
@@ -617,11 +617,20 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 	results := make([]apiv1.SearchKeyResult, len(keys))
 	for i, key := range keys {
 		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
-		defer d.Release()
+		var (
+			hash    = security.GetSecAttrApplicationLabel(d)
+			label   = security.GetSecAttrLabel(d)
+			tag     = security.GetSecAttrApplicationTag(d)
+			tokenID = security.GetSecAttrTokenID(d)
+		)
+		d.Release()
 
 		name := uri.New(Scheme, url.Values{})
-		tokenID := security.GetSecAttrTokenID(d)
-		keyInSecureEnclave := tokenID == "com.apple.setoken"
+		name.Values.Set("hash", hex.EncodeToString(hash))
+		name.Values.Set("label", label)
+		name.Values.Set("tag", tag)
+
+		keyInSecureEnclave := tokenID == "com.apple.setoken" //nolint:gosec // this is not a credential
 		switch {
 		case !u.secureEnclaveSet && keyInSecureEnclave:
 			name.Values.Set("se", "true")
@@ -635,10 +644,6 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 			// skip in case the query doesn't match the actual property
 			continue
 		}
-
-		name.Values.Set("hash", hex.EncodeToString(security.GetSecAttrApplicationLabel(d)))
-		name.Values.Set("label", security.GetSecAttrLabel(d))
-		name.Values.Set("tag", security.GetSecAttrApplicationTag(d))
 
 		// obtain the public key by requesting it, as the current
 		// representation of the key includes just the attributes.
@@ -821,29 +826,30 @@ func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, 
 	if publicKey, err := security.SecKeyCopyPublicKey(secKeyRef); err == nil {
 		defer publicKey.Release()
 
-		data, err := security.SecKeyCopyExternalRepresentation(publicKey)
-		if err != nil {
-			return nil, nil, fmt.Errorf("macOS SecKeyCopyExternalRepresentation failed: %w", err)
-		}
-		defer data.Release()
+		// For an unknown reason this sometimes fails with the error -25293
+		// (errSecAuthFailed). If this happens attempt to extract the key from
+		// the private key.
+		if data, err := security.SecKeyCopyExternalRepresentation(publicKey); err == nil {
+			defer data.Release()
 
-		derBytes := data.Bytes()
-		// ECDSA public keys are formatted as "04 || X || Y"
-		if derBytes[0] == 0x04 {
-			pub, err := parseECDSAPublicKey(derBytes)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error parsing ECDSA key: %w", err)
+			derBytes := data.Bytes()
+			// ECDSA public keys are formatted as "04 || X || Y"
+			if derBytes[0] == 0x04 {
+				pub, err := parseECDSAPublicKey(derBytes)
+				if err != nil {
+					return nil, nil, fmt.Errorf("error parsing ECDSA key: %w", err)
+				}
+				return pub, hash, nil
 			}
+
+			// RSA public keys are formatted using PKCS #1
+			pub, err := x509.ParsePKCS1PublicKey(derBytes)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error parsing RSA key: %w", err)
+			}
+
 			return pub, hash, nil
 		}
-
-		// RSA public keys are formatted using PKCS #1
-		pub, err := x509.ParsePKCS1PublicKey(derBytes)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error parsing RSA key: %w", err)
-		}
-
-		return pub, hash, nil
 	}
 
 	// At this point we only have the private key.

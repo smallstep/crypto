@@ -13,7 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEncryptDecryptPKCS8(t *testing.T) {
@@ -29,14 +30,11 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 			continue
 		}
 
-		// To be able to run this in parallel we need to declare local
-		// variables.
-		fn := fn
 		t.Run(fn, func(t *testing.T) {
 			t.Parallel()
 
 			data, err := os.ReadFile(fn)
-			assert.FatalError(t, err)
+			require.NoError(t, err)
 
 			key1, err := Parse(data)
 			if err != nil {
@@ -56,7 +54,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 					t.Errorf("failed to decrypt %s with %s: %v", fn, alg.name, err)
 					continue
 				}
-				assert.Equals(t, "ENCRYPTED PRIVATE KEY", encBlock.Type)
+				assert.Equal(t, "ENCRYPTED PRIVATE KEY", encBlock.Type)
 				assert.NotNil(t, encBlock.Bytes)
 				assert.Nil(t, encBlock.Headers)
 
@@ -72,7 +70,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 					continue
 				}
 
-				assert.Equals(t, key1, key2)
+				assert.Equal(t, key1, key2)
 			}
 		})
 	}
@@ -81,7 +79,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 func TestSerialize_PKCS8(t *testing.T) {
 	mustPKIX := func(pub interface{}) *pem.Block {
 		b, err := x509.MarshalPKIXPublicKey(pub)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return &pem.Block{
 			Type:  "PUBLIC KEY",
 			Bytes: b,
@@ -89,7 +87,7 @@ func TestSerialize_PKCS8(t *testing.T) {
 	}
 	mustPKCS8 := func(priv interface{}) *pem.Block {
 		b, err := x509.MarshalPKCS8PrivateKey(priv)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return &pem.Block{
 			Type:  "PRIVATE KEY",
 			Bytes: b,
@@ -97,11 +95,11 @@ func TestSerialize_PKCS8(t *testing.T) {
 	}
 
 	rsaKey, err := Read("testdata/openssl.rsa2048.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	ecdsaKey, err := Read("testdata/openssl.p256.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 	edKey, err := Read("testdata/pkcs8/openssl.ed25519.pem")
-	assert.FatalError(t, err)
+	require.NoError(t, err)
 
 	rsaKeyPub := rsaKey.(*rsa.PrivateKey).Public()
 	ecdsaKeyPub := ecdsaKey.(*ecdsa.PrivateKey).Public()

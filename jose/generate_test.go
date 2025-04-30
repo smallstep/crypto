@@ -17,7 +17,9 @@ import (
 	"testing"
 
 	jose "github.com/go-jose/go-jose/v3"
-	"github.com/smallstep/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -138,29 +140,29 @@ func TestGenerateJWK(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			if tc.kid != "" {
-				assert.Equals(t, tc.kid, jwk.KeyID)
+				assert.Equal(t, tc.kid, jwk.KeyID)
 			}
-			assert.Equals(t, tc.expectedAlg, jwk.Algorithm)
-			assert.Type(t, tc.expectedType, jwk.Key)
+			assert.Equal(t, tc.expectedAlg, jwk.Algorithm)
+			assert.IsType(t, tc.expectedType, jwk.Key)
 
 			switch key := jwk.Key.(type) {
 			case *ecdsa.PrivateKey:
 				switch tc.expectedSize {
 				case 256:
-					assert.Equals(t, elliptic.P256(), key.Curve)
+					assert.Equal(t, elliptic.P256(), key.Curve)
 				case 384:
-					assert.Equals(t, elliptic.P384(), key.Curve)
+					assert.Equal(t, elliptic.P384(), key.Curve)
 				case 521:
-					assert.Equals(t, elliptic.P521(), key.Curve)
+					assert.Equal(t, elliptic.P521(), key.Curve)
 				default:
 					t.Errorf("unexpected size %d", tc.expectedSize)
 				}
 			case *rsa.PrivateKey:
-				assert.Equals(t, tc.expectedSize, key.N.BitLen())
+				assert.Equal(t, tc.expectedSize, key.N.BitLen())
 			case ed25519.PrivateKey:
-				assert.Equals(t, tc.expectedSize, len(key))
+				assert.Equal(t, tc.expectedSize, len(key))
 			case []byte:
-				assert.Equals(t, tc.expectedSize, len(key))
+				assert.Equal(t, tc.expectedSize, len(key))
 			default:
 				t.Errorf("unexpected key type %T", key)
 			}
@@ -213,9 +215,9 @@ func TestKeyUsageForCert(t *testing.T) {
 	for _, tt := range tests {
 		use, err := keyUsageForCert(tt.Cert)
 		if tt.ExpectErr != nil {
-			assert.Equals(t, tt.ExpectErr, err)
+			assert.Equal(t, tt.ExpectErr, err)
 		} else {
-			assert.Equals(t, tt.ExpectUse, use)
+			assert.Equal(t, tt.ExpectUse, use)
 		}
 	}
 }
@@ -224,12 +226,12 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 	t.Parallel()
 	mustKey := func(filename string) interface{} {
 		key, err := pemutil.Read(filename)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return key
 	}
 	mustCert := func(filename string) *x509.Certificate {
 		cert, err := pemutil.ReadCertificate(filename)
-		assert.FatalError(t, err)
+		require.NoError(t, err)
 		return cert
 	}
 	type args struct {
@@ -299,7 +301,6 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 		{"fail no subtle", args{"testdata/rsa2048.crt", false}, nil, true},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := GenerateJWKFromPEM(tt.args.filename, tt.args.subtle)
@@ -357,13 +358,13 @@ func TestGenerateJWKFromPEMSubtle(t *testing.T) {
 
 			jwk, err := GenerateJWKFromPEM(f.Name(), tt.Subtle)
 			if tt.ExpectErr != nil {
-				assert.Equals(t, tt.ExpectErr, err)
+				assert.Equal(t, tt.ExpectErr, err)
 				return
 			}
 			assert.NoError(t, err)
-			assert.Equals(t, tt.ExpectSig, jwk.Use)
-			assert.Equals(t, ES256, jwk.Algorithm)
-			assert.Equals(t, 1, len(jwk.Certificates))
+			assert.Equal(t, tt.ExpectSig, jwk.Use)
+			assert.Equal(t, ES256, jwk.Algorithm)
+			assert.Equal(t, 1, len(jwk.Certificates))
 		})
 	}
 }
@@ -382,7 +383,7 @@ func newCert(t *testing.T, keyUsage x509.KeyUsage) []byte {
 }
 
 func tempFile(t *testing.T) (*os.File, func()) {
-	f, err := os.CreateTemp("", "jose-generate-test")
+	f, err := os.CreateTemp(t.TempDir(), "jose-generate-test")
 	assert.NoError(t, err)
 	return f, func() {
 		f.Close()

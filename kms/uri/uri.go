@@ -194,10 +194,25 @@ func (u *URI) Pin() string {
 	return ""
 }
 
+// Read returns the raw content of the file in the given attribute key. This
+// method will return nil if the key is missing.
+func (u *URI) Read(key string) ([]byte, error) {
+	path := u.Get(key)
+	if path == "" {
+		return nil, nil
+	}
+	return readFile(path)
+}
+
 func readFile(path string) ([]byte, error) {
 	u, err := url.Parse(path)
-	if err == nil && (u.Scheme == "" || u.Scheme == "file") && u.Path != "" {
-		path = u.Path
+	if err == nil && (u.Scheme == "" || u.Scheme == "file") {
+		switch {
+		case u.Path != "":
+			path = u.Path
+		case u.Opaque != "":
+			path = u.Opaque
+		}
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
