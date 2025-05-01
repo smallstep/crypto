@@ -397,7 +397,6 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				0,
 				findIssuerStr,
 				uintptr(unsafe.Pointer(wide(issuerName))), prevCert)
-
 			if err != nil {
 				return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 			}
