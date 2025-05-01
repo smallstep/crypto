@@ -413,24 +413,23 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
-				var serialBytes []byte
+				var bi *big.Int
 				if strings.HasPrefix(serialNumber, "0x") {
-					serialNumber = strings.TrimPrefix(serialNumber, "0x")
-					serialNumber = strings.TrimPrefix(serialNumber, "00") // Comparison fails if leading 00 is not removed
-					serialBytes, err = hex.DecodeString(serialNumber)
+					serialBytes, err := hex.DecodeString(strings.TrimPrefix(serialNumber, "0x"))
 					if err != nil {
 						return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
 					}
+
+					bi = new(big.Int).SetBytes(serialBytes)
 				} else {
 					bi := new(big.Int)
 					bi, ok := bi.SetString(serialNumber, 10)
 					if !ok {
 						return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
 					}
-					serialBytes = bi.Bytes()
 				}
 
-				if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
+				if x509Cert.SerialNumber.Cmp(bi) == 0 {
 					return handle, nil
 				}
 			case len(subjectCN) > 0:
