@@ -565,8 +565,11 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 		uintptr(0),
 		uintptr(unsafe.Pointer(&length)),
 	)
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
 	if r1 == 0 {
-		return "", err
+		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r1)))
 	}
 
 	r2, _, err := procCertGetCertificateContextProperty.Call(
@@ -576,8 +579,12 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 		uintptr(unsafe.Pointer(provInfo)),
 	)
 
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
+
 	if r2 == 0 {
-		return "", err
+		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r2)))
 	}
 
 	return "", nil
