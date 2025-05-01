@@ -965,15 +965,21 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 
 		var saltLength int
 		if rsaOpts, ok := opts.(*rsa.PSSOptions); ok {
-			if rsaOpts.SaltLength == rsa.PSSSaltLengthEqualsHash {
-				rsaOpts.SaltLength = rsaOpts.Hash.Size()
+			switch rsaOpts.SaltLength {
+			case rsa.PSSSaltLengthAuto:
+				if k, ok := s.PublicKey.(*rsa.PublicKey); ok {
+					saltLength = (k.N.BitLen()-1+7)/8 - 2 - rsaOpts.Hash.Size()
+				} else {
+					return nil, fmt.Errorf("unexpected RSA key type %T", s.PublicKey)
+				}
+			case rsa.PSSSaltLengthEqualsHash:
+				saltLength = rsaOpts.Hash.Size()
+			default:
+				saltLength = rsaOpts.SaltLength
 			}
-
-			saltLength = rsaOpts.SaltLength
 		}
 
 		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, hashAlg, saltLength)
-
 		if err != nil {
 			return nil, fmt.Errorf("NCryptSignHash failed: %w", err)
 		}
