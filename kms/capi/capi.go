@@ -441,7 +441,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			prevCert = handle
 		}
 	default:
-		return nil, fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
+		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
 	}
 
 	return handle, err
@@ -461,6 +461,9 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	)
 	if containerName = u.Get(ContainerNameArg); containerName != "" {
 		kh, err = nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+		if err != nil {
+			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, containerName, err)
+		}
 	} else {
 		// check if a certificate can be located using the URI
 		certHandle, err = k.getCertContext(&apiv1.LoadCertificateRequest{
@@ -471,10 +474,9 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 
 		kh, err = cryptFindCertificatePrivateKey(certHandle)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("unable to open key: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("unable to open key: %w", err)
+		}
 	}
 
 	pinOrPass := u.Pin()
