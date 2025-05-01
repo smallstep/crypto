@@ -301,6 +301,10 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	if err != nil {
 		return nil, fmt.Errorf("failed getting %s from URI %q: %w", HashArg, req.Name, err)
 	}
+	if len(sha1Hash) > 0 && len(sha1Hash) != 20 {
+		return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
+	}
+
 	keyID := u.Get(KeyIDArg)
 	issuerName := u.Get(IssuerNameArg)
 	subjectCN := u.Get(SubjectCNArg)
@@ -343,9 +347,6 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 
 	switch {
 	case len(sha1Hash) > 0:
-		if len(sha1Hash) != 20 {
-			return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
-		}
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_SHA1_HASH,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
