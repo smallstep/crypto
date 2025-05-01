@@ -406,7 +406,6 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			}
 
 			x509Cert, err := certContextToX509(handle)
-
 			if err != nil {
 				return nil, fmt.Errorf("could not unmarshal certificate to DER: %w", err)
 			}
