@@ -298,14 +298,17 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	}
 
 	sha1Hash, err := u.GetHexEncoded(HashArg)
-	if err != nil {
+	switch {
+	case err != nil:
 		return nil, fmt.Errorf("failed getting %s from URI %q: %w", HashArg, req.Name, err)
-	}
-	if len(sha1Hash) > 0 && len(sha1Hash) != 20 {
+	case len(sha1Hash) > 0 && len(sha1Hash) != 20:
 		return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
 	}
 
-	keyID := u.Get(KeyIDArg)
+	keyID, err := u.GetHexEncoded(KeyIDArg)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting %s from URI %q: %w", KeyIDArg, req.Name, err)
+	}
 	issuerName := u.Get(IssuerNameArg)
 	subjectCN := u.Get(SubjectCNArg)
 	serialNumber := u.Get(SerialNumberArg)
@@ -363,20 +366,14 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if handle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, keyID)}
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, u.Get(HashArg))}
 		}
-	case keyID != "":
-		keyID = strings.TrimPrefix(keyID, "0x") // Support specifying the hash as 0x like with serial
-
-		keyIDBytes, err := hex.DecodeString(keyID)
-		if err != nil {
-			return nil, fmt.Errorf("%s must be in hex format: %w", KeyIDArg, err)
-		}
+	case len(keyID) > 0:
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(keyIDBytes)),
-				data: uintptr(unsafe.Pointer(&keyIDBytes[0])),
+				len:  uint32(len(keyID)),
+				data: uintptr(unsafe.Pointer(&keyID[0])),
 			},
 		}
 		handle, err = findCertificateInStore(st,
