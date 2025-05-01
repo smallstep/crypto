@@ -469,7 +469,6 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		certHandle, err = k.getCertContext(&apiv1.LoadCertificateRequest{
 			Name: req.SigningKey,
 		})
-
 		if err != nil {
 			return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 		}
