@@ -24,7 +24,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.2
 	golang.org/x/crypto v0.38.0
-	golang.org/x/net v0.39.0
+	golang.org/x/net v0.40.0
 	golang.org/x/sys v0.33.0
 	google.golang.org/api v0.231.0
 	google.golang.org/grpc v1.72.0
