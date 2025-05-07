@@ -2,6 +2,8 @@ package x509util
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -1662,6 +1664,165 @@ func TestPolicyIdentifiers(t *testing.T) {
 			crt, err := CreateCertificate(template, iss, csr.PublicKey, issPriv)
 			require.NoError(t, err)
 			tt.assert(t, crt)
+		})
+	}
+}
+
+func TestKeyUsage_Extension(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	mustExtension := func(ku x509.KeyUsage) Extension {
+		crt, err := CreateCertificate(&x509.Certificate{
+			Subject:   pkix.Name{CommonName: "leaf"},
+			PublicKey: pub,
+			KeyUsage:  ku,
+		}, iss, pub, issPriv)
+		require.NoError(t, err)
+
+		for _, ext := range crt.Extensions {
+			if ext.Id.Equal(oidExtensionKeyUsage) {
+				return newExtension(ext)
+			}
+		}
+		return Extension{}
+	}
+
+	all := x509.KeyUsageDigitalSignature |
+		x509.KeyUsageContentCommitment |
+		x509.KeyUsageKeyEncipherment |
+		x509.KeyUsageDataEncipherment |
+		x509.KeyUsageKeyAgreement |
+		x509.KeyUsageCertSign |
+		x509.KeyUsageCRLSign |
+		x509.KeyUsageEncipherOnly |
+		x509.KeyUsageDecipherOnly
+
+	tests := []struct {
+		name      string
+		k         KeyUsage
+		want      Extension
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ca", KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign), mustExtension(x509.KeyUsageCertSign | x509.KeyUsageCRLSign), assert.NoError},
+		{"leaf", KeyUsage(x509.KeyUsageDigitalSignature), mustExtension(x509.KeyUsageDigitalSignature), assert.NoError},
+		{"all", KeyUsage(all), mustExtension(all), assert.NoError},
+		{"empty", KeyUsage(0), Extension{}, assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.k.Extension()
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestExtKeyUsage_Extension(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	mustExtension := func(eku []x509.ExtKeyUsage, unhandledEKUs ...asn1.ObjectIdentifier) Extension {
+		crt, err := CreateCertificate(&x509.Certificate{
+			Subject:            pkix.Name{CommonName: "leaf"},
+			PublicKey:          pub,
+			KeyUsage:           x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:        eku,
+			UnknownExtKeyUsage: unhandledEKUs,
+		}, iss, pub, issPriv)
+		require.NoError(t, err)
+
+		for _, ext := range crt.Extensions {
+			if ext.Id.Equal(oidExtensionExtendedKeyUsage) {
+				return newExtension(ext)
+			}
+		}
+		return Extension{}
+	}
+
+	type args struct {
+		unknownUsages UnknownExtKeyUsage
+	}
+	tests := []struct {
+		name      string
+		k         ExtKeyUsage
+		args      args
+		want      Extension
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, args{nil}, mustExtension([]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}), assert.NoError},
+		{"ok unhandled", ExtKeyUsage{x509.ExtKeyUsageClientAuth}, args{[]asn1.ObjectIdentifier{
+			{1, 2, 3, 4}, {1, 5, 6, 7},
+		}}, mustExtension([]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, asn1.ObjectIdentifier{1, 2, 3, 4}, asn1.ObjectIdentifier{1, 5, 6, 7}), assert.NoError},
+		{"ok unhandled only", ExtKeyUsage{}, args{[]asn1.ObjectIdentifier{
+			{1, 2, 3, 4}, {1, 5, 6, 7},
+		}}, mustExtension([]x509.ExtKeyUsage{}, asn1.ObjectIdentifier{1, 2, 3, 4}, asn1.ObjectIdentifier{1, 5, 6, 7}), assert.NoError},
+		{"empty", ExtKeyUsage{}, args{UnknownExtKeyUsage{}}, Extension{}, assert.NoError},
+		{"empty nil", ExtKeyUsage{}, args{nil}, Extension{}, assert.NoError},
+		{"fail extKeyUsage", ExtKeyUsage{x509.ExtKeyUsage(100)}, args{nil}, Extension{}, assert.Error},
+		{"fail unhandled", ExtKeyUsage{x509.ExtKeyUsageCodeSigning}, args{[]asn1.ObjectIdentifier{{1, 2, 3, 4}, {5, 6, 7, 8}}}, Extension{}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.k.Extension(tt.args.unknownUsages)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestBasicConstraints_Extension(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	mustExtension := func(isCA bool, maxPathLen int, maxPathLenZero bool) Extension {
+		crt, err := CreateCertificate(&x509.Certificate{
+			Subject:               pkix.Name{CommonName: "ca"},
+			PublicKey:             pub,
+			KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+			IsCA:                  isCA,
+			MaxPathLen:            maxPathLen,
+			MaxPathLenZero:        maxPathLenZero,
+			BasicConstraintsValid: true,
+		}, iss, pub, issPriv)
+		require.NoError(t, err)
+
+		for _, ext := range crt.Extensions {
+			if ext.Id.Equal(oidExtensionBasicConstraints) {
+				return newExtension(ext)
+			}
+		}
+		return Extension{}
+	}
+
+	type fields struct {
+		IsCA       bool
+		MaxPathLen int
+	}
+	tests := []struct {
+		name      string
+		fields    fields
+		want      Extension
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ca 1", fields{true, 1}, mustExtension(true, 1, false), assert.NoError},
+		{"ca 0", fields{true, 0}, mustExtension(true, 0, true), assert.NoError},
+		{"ca -1", fields{true, -1}, mustExtension(true, -1, false), assert.NoError},
+		{"ca -2", fields{true, -2}, mustExtension(true, -1, false), assert.NoError},
+		{"no ca", fields{false, 0}, mustExtension(false, 0, false), assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := BasicConstraints{
+				IsCA:       tt.fields.IsCA,
+				MaxPathLen: tt.fields.MaxPathLen,
+			}
+			got, err := b.Extension()
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
