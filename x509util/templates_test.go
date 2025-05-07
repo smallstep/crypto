@@ -2,8 +2,12 @@ package x509util
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTemplateError_Error(t *testing.T) {
@@ -349,11 +353,28 @@ func TestTemplateData_SetAuthorizationCertificateChain(t *testing.T) {
 }
 
 func TestTemplateData_SetCertificateRequest(t *testing.T) {
+	ku, err := KeyUsage(x509.KeyUsageDigitalSignature).Extension()
+	require.NoError(t, err)
+	eku, err := ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning}.Extension(nil)
+	require.NoError(t, err)
+
 	cr := &x509.CertificateRequest{
 		DNSNames: []string{"foo", "bar"},
+		Extensions: []pkix.Extension{{
+			Id:       asn1.ObjectIdentifier(eku.ID),
+			Critical: eku.Critical,
+			Value:    eku.Value,
+		}, {
+			Id:       asn1.ObjectIdentifier(ku.ID),
+			Critical: ku.Critical,
+			Value:    ku.Value,
+		}},
 	}
 	cr1 := &CertificateRequest{
-		DNSNames: []string{"foo", "bar"},
+		DNSNames:    []string{"foo", "bar"},
+		KeyUsage:    KeyUsage(x509.KeyUsageDigitalSignature),
+		ExtKeyUsage: ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning},
+		Extensions:  []Extension{eku, ku},
 	}
 	cr2 := &CertificateRequest{
 		EmailAddresses: []string{"foo@bar.com"},

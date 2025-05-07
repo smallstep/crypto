@@ -19,13 +19,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/cryptobyte"
+	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 func TestNewCertificateRequest(t *testing.T) {
 	_, signer, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// ok extended sans
 	sans := []SubjectAlternativeName{
@@ -38,9 +38,7 @@ func TestNewCertificateRequest(t *testing.T) {
 	extendedSANs := CreateTemplateData("123456789", nil)
 	extendedSANs.SetSubjectAlternativeNames(sans...)
 	extendedSANsExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, sans, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// ok extended sans and extension
 	extendedSANsAndExtensionsTemplate := fmt.Sprintf(`{
@@ -62,9 +60,34 @@ func TestNewCertificateRequest(t *testing.T) {
 	permanentIdentifierTemplateExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{
 		{Type: PermanentIdentifierType, Value: "123456789"},
 	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
+	// ok with key usage and basic constraints
+	caTemplate := `{ 
+		"subject": {{ toJson .Subject }},
+		"keyUsage": ["certSign", "crlSign"],
+		"basicConstraints": {
+			"isCA": true,
+			"maxPathLen": 0
+		}
+	}`
+
+	// ok with key usage and extended key usage
+	leafTemplate := `{ 
+		"subject": {{ toJson .Subject }},
+		"sans": {{ toJson .SANs }},
+		"keyUsage": ["digitalSignature"],
+		"extKeyUsage": ["serverAuth", "clientAuth"]
+	}`
+
+	caKeyUsageExtension, err := KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign).Extension()
+	require.NoError(t, err)
+	leafKeyUsageExtension, err := KeyUsage(x509.KeyUsageDigitalSignature).Extension()
+	require.NoError(t, err)
+	basicConstraintsExtension, err := BasicConstraints{IsCA: true, MaxPathLen: 0}.Extension()
+	require.NoError(t, err)
+	extKeyUsageExtension, err := ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}.Extension(nil)
+	require.NoError(t, err)
 
 	// fail extended sans
 	failExtendedSANs := CreateTemplateData("123456789", nil)
@@ -138,6 +161,40 @@ func TestNewCertificateRequest(t *testing.T) {
 			PublicKey:  signer.Public(),
 			Signer:     signer,
 		}, false},
+		{"ok with key usage and basic constraints", args{signer, []Option{
+			WithTemplate(caTemplate, extendedSANs),
+		}}, &CertificateRequest{
+			Subject:          Subject{CommonName: "123456789"},
+			KeyUsage:         KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign),
+			BasicConstraints: &BasicConstraints{IsCA: true, MaxPathLen: 0},
+			Extensions: []Extension{
+				basicConstraintsExtension,
+				caKeyUsageExtension,
+			},
+			PublicKey: signer.Public(),
+			Signer:    signer,
+		}, false},
+		{"ok with key usage and extended key usage", args{signer, []Option{
+			WithTemplate(leafTemplate, extendedSANs),
+		}}, &CertificateRequest{
+			Subject: Subject{CommonName: "123456789"},
+			SANs: []SubjectAlternativeName{
+				{Type: "dns", Value: "foo.com"},
+				{Type: "email", Value: "root@foo.com"},
+				{Type: "ip", Value: "3.14.15.92"},
+				{Type: "uri", Value: "mailto:root@foo.com"},
+				{Type: "permanentIdentifier", Value: "123456789"},
+			},
+			KeyUsage:    KeyUsage(x509.KeyUsageDigitalSignature),
+			ExtKeyUsage: ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+			Extensions: []Extension{
+				extKeyUsageExtension,
+				leafKeyUsageExtension,
+				extendedSANsExtension,
+			},
+			PublicKey: signer.Public(),
+			Signer:    signer,
+		}, false},
 		{"fail apply", args{signer, []Option{WithTemplateFile("testdata/missing.tpl", NewTemplateData())}}, nil, true},
 		{"fail unmarshal", args{signer, []Option{WithTemplate("{badjson", NewTemplateData())}}, nil, true},
 		{"fail extended sans", args{signer, []Option{WithTemplate(DefaultCertificateRequestTemplate, failExtendedSANs)}}, nil, true},
@@ -157,6 +214,15 @@ func TestNewCertificateRequest(t *testing.T) {
 }
 
 func Test_newCertificateRequest(t *testing.T) {
+	ku, err := KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign).Extension()
+	require.NoError(t, err)
+	eku, err := ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning}.Extension(
+		UnknownExtKeyUsage{{1, 2, 4, 8}, {1, 3, 5, 9}},
+	)
+	require.NoError(t, err)
+	bc, err := BasicConstraints{IsCA: true, MaxPathLen: 0}.Extension()
+	require.NoError(t, err)
+
 	type args struct {
 		cr *x509.CertificateRequest
 	}
@@ -174,6 +240,54 @@ func Test_newCertificateRequest(t *testing.T) {
 			SignatureAlgorithm: x509.PureEd25519,
 		}}, &CertificateRequest{
 			Extensions:         []Extension{{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}}},
+			Subject:            Subject{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
+		}},
+		{"with known extensions", args{&x509.CertificateRequest{
+			Extensions: []pkix.Extension{
+				{Id: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}},
+				{Id: asn1.ObjectIdentifier(ku.ID), Critical: ku.Critical, Value: ku.Value},
+				{Id: asn1.ObjectIdentifier(eku.ID), Critical: eku.Critical, Value: eku.Value},
+				{Id: asn1.ObjectIdentifier(bc.ID), Critical: bc.Critical, Value: bc.Value},
+			},
+			Subject:            pkix.Name{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: x509.PureEd25519,
+		}}, &CertificateRequest{
+			Extensions: []Extension{
+				{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}},
+				ku, eku, bc,
+			},
+			Subject:            Subject{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			KeyUsage:           KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign),
+			ExtKeyUsage:        ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning},
+			UnknownExtKeyUsage: UnknownExtKeyUsage{{1, 2, 4, 8}, {1, 3, 5, 9}},
+			BasicConstraints:   &BasicConstraints{IsCA: true, MaxPathLen: 0},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: SignatureAlgorithm(x509.UnknownSignatureAlgorithm),
+		}},
+		{"with ignored errors", args{&x509.CertificateRequest{
+			Extensions: []pkix.Extension{
+				{Id: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}},
+				{Id: asn1.ObjectIdentifier(ku.ID), Critical: ku.Critical, Value: []byte("garbage")},
+				{Id: asn1.ObjectIdentifier(eku.ID), Critical: eku.Critical, Value: []byte("garbage")},
+				{Id: asn1.ObjectIdentifier(bc.ID), Critical: bc.Critical, Value: []byte("garbage")},
+			},
+			Subject:            pkix.Name{Province: []string{"CA"}, CommonName: "commonName"},
+			DNSNames:           []string{"foo"},
+			PublicKey:          []byte("publicKey"),
+			SignatureAlgorithm: x509.PureEd25519,
+		}}, &CertificateRequest{
+			Extensions: []Extension{
+				{ID: []int{1, 2, 3}, Critical: true, Value: []byte{3, 2, 1}},
+				{ID: ku.ID, Critical: ku.Critical, Value: []byte("garbage")},
+				{ID: eku.ID, Critical: eku.Critical, Value: []byte("garbage")},
+				{ID: bc.ID, Critical: bc.Critical, Value: []byte("garbage")},
+			},
 			Subject:            Subject{Province: []string{"CA"}, CommonName: "commonName"},
 			DNSNames:           []string{"foo"},
 			PublicKey:          []byte("publicKey"),
@@ -751,6 +865,215 @@ func TestCreateCertificateRequest(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateCertificateRequest() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestSignCertificateRequestTemplates(t *testing.T) {
+	iss, issPriv := createIssuerCertificate(t, "issuer")
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	t.Run("sign ca certificate maxPathLen 1", func(t *testing.T) {
+		template := `{ 
+			"subject": {{ toJson .Subject }},
+			"keyUsage": ["certSign", "crlSign"],
+			"basicConstraints": {
+				"isCA": true,
+				"maxPathLen": 1
+			}
+		}`
+		csr, err := NewCertificateRequest(priv, WithTemplate(template, TemplateData{SubjectKey: Subject{
+			CommonName: "CA Intermediate MaxPathLen 1",
+		}}))
+		require.NoError(t, err)
+
+		crt, err := CreateCertificate(csr.GetCertificate().GetCertificate(), iss, pub, issPriv)
+		require.NoError(t, err)
+		assert.Equal(t, "CA Intermediate MaxPathLen 1", crt.Subject.CommonName)
+		assert.Equal(t, "issuer", crt.Issuer.CommonName)
+		assert.Equal(t, x509.KeyUsageCertSign|x509.KeyUsageCRLSign, crt.KeyUsage)
+		assert.True(t, crt.BasicConstraintsValid)
+		assert.True(t, crt.IsCA)
+		assert.False(t, false, crt.MaxPathLenZero)
+		assert.Equal(t, 1, crt.MaxPathLen)
+	})
+
+	t.Run("sign ca certificate maxPathLen 0", func(t *testing.T) {
+		template := `{ 
+			"subject": {{ toJson .Subject }},
+			"keyUsage": ["certSign", "crlSign"],
+			"basicConstraints": {
+				"isCA": true,
+				"maxPathLen": 0
+			}
+		}`
+		csr, err := NewCertificateRequest(priv, WithTemplate(template, TemplateData{SubjectKey: Subject{
+			CommonName: "CA Intermediate MaxPathLen 0",
+		}}))
+		require.NoError(t, err)
+
+		crt, err := CreateCertificate(csr.GetCertificate().GetCertificate(), iss, pub, issPriv)
+		require.NoError(t, err)
+		assert.Equal(t, "CA Intermediate MaxPathLen 0", crt.Subject.CommonName)
+		assert.Equal(t, "issuer", crt.Issuer.CommonName)
+		assert.Equal(t, x509.KeyUsageCertSign|x509.KeyUsageCRLSign, crt.KeyUsage)
+		assert.True(t, crt.BasicConstraintsValid)
+		assert.True(t, crt.IsCA)
+		assert.True(t, crt.MaxPathLenZero)
+		assert.Equal(t, 0, crt.MaxPathLen)
+	})
+
+	t.Run("sign leaf certificate", func(t *testing.T) {
+		template := `{ 
+			"subject": {{ toJson .Subject }},
+			"sans": {{ toJson .SANs }},
+			{{- if typeIs "*rsa.PublicKey" .Insecure.CR.PublicKey }}
+			"keyUsage": ["keyEncipherment", "digitalSignature"],
+			{{- else }}
+			"keyUsage": ["digitalSignature"],
+			{{- end }}
+			"extKeyUsage": ["serverAuth", "clientAuth"]
+		}`
+
+		csr, err := NewCertificateRequest(priv, WithTemplate(template, CreateTemplateData("leaf", []string{"leaf.example.com"})))
+		require.NoError(t, err)
+
+		crt, err := CreateCertificate(csr.GetCertificate().GetCertificate(), iss, pub, issPriv)
+		require.NoError(t, err)
+		assert.Equal(t, "leaf", crt.Subject.CommonName)
+		assert.Equal(t, "issuer", crt.Issuer.CommonName)
+		assert.Equal(t, []string{"leaf.example.com"}, crt.DNSNames)
+		assert.Equal(t, x509.KeyUsageDigitalSignature, crt.KeyUsage)
+		assert.Equal(t, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}, crt.ExtKeyUsage)
+	})
+
+}
+
+func Test_parseKeyUsageExtension(t *testing.T) {
+	mustValue := func(ku KeyUsage) cryptobyte.String {
+		ext, err := ku.Extension()
+		require.NoError(t, err)
+		return ext.Value
+	}
+
+	type args struct {
+		der cryptobyte.String
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      KeyUsage
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{mustValue(KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign))}, KeyUsage(x509.KeyUsageCertSign | x509.KeyUsageCRLSign), assert.NoError},
+		{"ok", args{mustValue(KeyUsage(x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature))}, KeyUsage(x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature), assert.NoError},
+		{"fail", args{cryptobyte.String("garbage")}, KeyUsage(0), assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseKeyUsageExtension(tt.args.der)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_parseExtKeyUsageExtension(t *testing.T) {
+	mustValue := func(eku ExtKeyUsage, ueku UnknownExtKeyUsage) cryptobyte.String {
+		ext, err := eku.Extension(ueku)
+		require.NoError(t, err)
+		return ext.Value
+	}
+
+	b64OID, err := asn1Encode("oid:1.2.3.4")
+	require.NoError(t, err)
+
+	b64Int, err := asn1Encode("int:10")
+	require.NoError(t, err)
+
+	b64Seq, err := asn1Sequence(b64OID, b64Int)
+	require.NoError(t, err)
+
+	badParse, err := base64.StdEncoding.DecodeString(b64Seq)
+	require.NoError(t, err)
+
+	type args struct {
+		der cryptobyte.String
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      ExtKeyUsage
+		want1     UnknownExtKeyUsage
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"fail parse", args{cryptobyte.String(badParse)}, nil, nil, assert.Error},
+		{"ok", args{mustValue(ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, nil)},
+			ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, nil, assert.NoError},
+		{"ok unhandled", args{mustValue(ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, UnknownExtKeyUsage{{1, 2, 3, 4}, {1, 4, 6, 8}})},
+			ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, UnknownExtKeyUsage{{1, 2, 3, 4}, {1, 4, 6, 8}}, assert.NoError},
+		{"ok unhandled only", args{mustValue(ExtKeyUsage{}, UnknownExtKeyUsage{{1, 2, 3, 4}, {1, 4, 6, 8}})},
+			nil, UnknownExtKeyUsage{{1, 2, 3, 4}, {1, 4, 6, 8}}, assert.NoError},
+		{"fail", args{cryptobyte.String("garbage")}, nil, nil, assert.Error},
+		{"fail parse", args{cryptobyte.String(badParse)}, nil, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1, err := parseExtKeyUsageExtension(tt.args.der)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want1, got1)
+		})
+	}
+}
+
+func Test_parseBasicConstraintsExtension(t *testing.T) {
+	mustValue := func(bc BasicConstraints) cryptobyte.String {
+		ext, err := bc.Extension()
+		require.NoError(t, err)
+		return ext.Value
+	}
+
+	var b1 cryptobyte.Builder
+	b1.AddASN1(cbasn1.SEQUENCE, func(child *cryptobyte.Builder) {
+		// Tag 1 boolean and garbage
+		child.AddBytes([]byte{1, 2, 3})
+	})
+	failParseBool, err := b1.Bytes()
+	require.NoError(t, err)
+
+	var b2 cryptobyte.Builder
+	b2.AddASN1(cbasn1.SEQUENCE, func(child *cryptobyte.Builder) {
+		child.AddASN1Boolean(true)
+		// Tag 2 integer and nothing
+		child.AddBytes([]byte{2})
+	})
+	failParseInt, err := b2.Bytes()
+	require.NoError(t, err)
+
+	type args struct {
+		der cryptobyte.String
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *BasicConstraints
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok 0", args{mustValue(BasicConstraints{IsCA: true, MaxPathLen: 0})}, &BasicConstraints{IsCA: true, MaxPathLen: 0}, assert.NoError},
+		{"ok 1", args{mustValue(BasicConstraints{IsCA: true, MaxPathLen: 1})}, &BasicConstraints{IsCA: true, MaxPathLen: 1}, assert.NoError},
+		{"ok -1", args{mustValue(BasicConstraints{IsCA: true, MaxPathLen: -1})}, &BasicConstraints{IsCA: true, MaxPathLen: -1}, assert.NoError},
+		{"ok no ca", args{mustValue(BasicConstraints{IsCA: false, MaxPathLen: 0})}, &BasicConstraints{IsCA: false, MaxPathLen: -1}, assert.NoError},
+		{"fail", args{cryptobyte.String("garbage")}, nil, assert.Error},
+		{"fail parse bool", args{failParseBool}, nil, assert.Error},
+		{"fail parse int", args{failParseInt}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBasicConstraintsExtension(tt.args.der)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
