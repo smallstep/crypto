@@ -34,6 +34,7 @@ const (
 
 	// Key Storage Flags
 	NCRYPT_MACHINE_KEY_FLAG = 0x00000001
+	NCRYPT_SILENT_FLAG      = 0x00000040
 
 	// Errors
 	NTE_NOT_SUPPORTED         = uint32(0x80090029)
@@ -141,6 +142,7 @@ var (
 	procNCryptFinalizeKey         = nCrypt.MustFindProc("NCryptFinalizeKey")
 	procNCryptFreeObject          = nCrypt.MustFindProc("NCryptFreeObject")
 	procNCryptOpenKey             = nCrypt.MustFindProc("NCryptOpenKey")
+	procNCryptDeleteKey           = nCrypt.MustFindProc("NCryptDeleteKey")
 	procNCryptOpenStorageProvider = nCrypt.MustFindProc("NCryptOpenStorageProvider")
 	procNCryptGetProperty         = nCrypt.MustFindProc("NCryptGetProperty")
 	procNCryptSetProperty         = nCrypt.MustFindProc("NCryptSetProperty")
@@ -287,6 +289,18 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 	}
 
 	return kh, nil
+}
+
+func nCryptDeleteKey(keyHandle uintptr) error {
+	r, _, _ := procNCryptDeleteKey.Call(
+		keyHandle,
+		0,
+	)
+	if r != 0 {
+		return fmt.Errorf("NCryptDeleteKey returned %v", errNoToStr(uint32(r)))
+	}
+
+	return nil
 }
 
 func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {

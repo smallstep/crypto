@@ -643,6 +643,28 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}, nil
 }
 
+// DeleteKey deletes the key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
+func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
+	u, err := uri.ParseWithScheme(Scheme, req.Name)
+	if err != nil {
+		return fmt.Errorf("failed to parse URI: %w", err)
+	}
+
+	var containerName string
+	if containerName = u.Get(ContainerNameArg); containerName == "" {
+		return fmt.Errorf("%v not specified", ContainerNameArg)
+	}
+
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+	if err != nil {
+		return fmt.Errorf("unable to open key: %w", err)
+	}
+
+	defer nCryptFreeObject(kh)
+
+	return nCryptDeleteKey(kh)
+}
+
 // GetPublicKey returns the public key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
 func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
 	u, err := uri.ParseWithScheme(Scheme, req.Name)
