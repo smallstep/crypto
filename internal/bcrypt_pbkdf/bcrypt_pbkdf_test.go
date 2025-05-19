@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 //
-//nolint:revive,stylecheck // ignore underscore in package
+//nolint:revive,staticcheck // ignore underscore in package
 package bcrypt_pbkdf
 
 import (

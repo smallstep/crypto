@@ -292,10 +292,13 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 }
 
 func nCryptDeleteKey(keyHandle uintptr) error {
-	r, _, _ := procNCryptDeleteKey.Call(
+	r, _, err := procNCryptDeleteKey.Call(
 		keyHandle,
 		0,
 	)
+	if !errors.Is(err, windows.Errno(0)) {
+		return fmt.Errorf("NCryptDeleteKey returned %w", err)
+	}
 	if r != 0 {
 		return fmt.Errorf("NCryptDeleteKey returned %v", errNoToStr(uint32(r)))
 	}

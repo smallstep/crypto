@@ -320,7 +320,7 @@ func (c *CertificateRequest) GetLeafCertificate() *Certificate {
 // See also https://datatracker.ietf.org/doc/html/rfc5280.html#section-4.2.1.6
 func (c *CertificateRequest) hasExtendedSANs() bool {
 	for _, san := range c.SANs {
-		if !(san.Type == DNSType || san.Type == EmailType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == "") {
+		if !(san.Type == DNSType || san.Type == EmailType || san.Type == IPType || san.Type == URIType || san.Type == AutoType || san.Type == "") { //nolint:staticcheck // QF1001, this version is more semantically readable
 			return true
 		}
 	}
