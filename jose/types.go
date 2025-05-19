@@ -133,7 +133,7 @@ var ErrIssuedInTheFuture = jwt.ErrIssuedInTheFuture
 
 // Key management algorithms
 //
-//nolint:stylecheck,revive // use standard names in upper-case
+//nolint:staticcheck,revive // use standard names in upper-case
 const (
 	RSA1_5             = KeyAlgorithm("RSA1_5")             // RSA-PKCS1v1.5
 	RSA_OAEP           = KeyAlgorithm("RSA-OAEP")           // RSA-OAEP-SHA1
@@ -174,7 +174,7 @@ const (
 
 // Content encryption algorithms
 //
-//nolint:revive,stylecheck // use standard names in upper-case
+//nolint:revive,staticcheck // use standard names in upper-case
 const (
 	A128CBC_HS256 = ContentEncryption("A128CBC-HS256") // AES-CBC + HMAC-SHA256 (128)
 	A192CBC_HS384 = ContentEncryption("A192CBC-HS384") // AES-CBC + HMAC-SHA384 (192)
