@@ -52,7 +52,7 @@ func TestCreateDecrypter(t *testing.T) {
 }
 
 func TestDecrypterDecrypts(t *testing.T) {
-	kms, pub := createTestKMS(t, 2048)
+	km, pub := createTestKMS(t, 2048)
 	fail1024KMS, _ := createTestKMS(t, 1024)
 
 	// prepare encrypted contents
@@ -62,7 +62,7 @@ func TestDecrypterDecrypts(t *testing.T) {
 	require.NoError(t, err)
 
 	// create a decrypter, identified by "test-sha256", and check the public key
-	d256, err := kms.CreateDecrypter(&apiv1.CreateDecrypterRequest{
+	d256, err := km.CreateDecrypter(&apiv1.CreateDecrypterRequest{
 		DecryptionKey: "test-sha256",
 	})
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestDecrypterDecrypts(t *testing.T) {
 	require.True(t, pub.Equal(d256.Public()))
 
 	// create a decrypter, identified by "test-sha1", and check the public key
-	d1, err := kms.CreateDecrypter(&apiv1.CreateDecrypterRequest{
+	d1, err := km.CreateDecrypter(&apiv1.CreateDecrypterRequest{
 		DecryptionKey: "test-sha1",
 	})
 	require.NoError(t, err)
