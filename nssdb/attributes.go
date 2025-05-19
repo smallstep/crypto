@@ -5,32 +5,32 @@ import "encoding/binary"
 // CKA_CLASS values
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/util/pkcs11t.h#L320-L334
 const (
-	CKO_DATA              = iota //nolint:stylecheck,revive // name matches source
-	CKO_CERTIFICATE              //nolint:stylecheck,revive // name matches source
-	CKO_PUBLIC_KEY               //nolint:stylecheck,revive // name matches source
-	CKO_PRIVATE_KEY              //nolint:stylecheck,revive // name matches source
-	CKO_SECRET_KEY               //nolint:stylecheck,revive // name matches source
-	CKO_HW_FEATURE               //nolint:stylecheck,revive // name matches source
-	CKO_DOMAIN_PARAMETERS        //nolint:stylecheck,revive // name matches source
-	CKO_MECHANISM                //nolint:stylecheck,revive // name matches source
-	CKO_PROFILE                  //nolint:stylecheck,revive // name matches source
+	CKO_DATA              = iota //nolint:staticcheck,revive // name matches source
+	CKO_CERTIFICATE              //nolint:staticcheck,revive // name matches source
+	CKO_PUBLIC_KEY               //nolint:staticcheck,revive // name matches source
+	CKO_PRIVATE_KEY              //nolint:staticcheck,revive // name matches source
+	CKO_SECRET_KEY               //nolint:staticcheck,revive // name matches source
+	CKO_HW_FEATURE               //nolint:staticcheck,revive // name matches source
+	CKO_DOMAIN_PARAMETERS        //nolint:staticcheck,revive // name matches source
+	CKO_MECHANISM                //nolint:staticcheck,revive // name matches source
+	CKO_PROFILE                  //nolint:staticcheck,revive // name matches source
 )
 
 // CKA_KEY_TYPE values
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/util/pkcs11t.h#L366
 const (
-	CKK_RSA = iota //nolint:stylecheck,revive // name matches source
-	CKK_DSA        //nolint:stylecheck,revive // name matches source
-	CKK_DH         //nolint:stylecheck,revive // name matches source
-	CKK_EC         //nolint:stylecheck,revive // name matches source
+	CKK_RSA = iota //nolint:staticcheck,revive // name matches source
+	CKK_DSA        //nolint:staticcheck,revive // name matches source
+	CKK_DH         //nolint:staticcheck,revive // name matches source
+	CKK_EC         //nolint:staticcheck,revive // name matches source
 )
 
 // CKA_CERTIFICATE_TYPE values
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/util/pkcs11t.h#L453-L458
 const (
-	CKC_X_509           = iota //nolint:stylecheck,revive // name matches source
-	CKC_X_509_ATTR_CERT        //nolint:stylecheck,revive // name matches source
-	CKC_WTLS                   //nolint:stylecheck,revive // name matches source
+	CKC_X_509           = iota //nolint:staticcheck,revive // name matches source
+	CKC_X_509_ATTR_CERT        //nolint:staticcheck,revive // name matches source
+	CKC_WTLS                   //nolint:staticcheck,revive // name matches source
 )
 
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/softoken/sftkdb.c#L47
