@@ -26,7 +26,7 @@ require (
 	golang.org/x/crypto v0.38.0
 	golang.org/x/net v0.40.0
 	golang.org/x/sys v0.33.0
-	google.golang.org/api v0.232.0
+	google.golang.org/api v0.233.0
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 	modernc.org/sqlite v1.37.0
