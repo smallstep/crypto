@@ -146,8 +146,10 @@ func NewCertificateRequest(signer crypto.Signer, opts ...Option) (*CertificateRe
 func NewCertificateRequestFromX509(cr *x509.CertificateRequest) *CertificateRequest {
 	// Set SubjectAltName extension as critical if Subject is empty.
 	fixSubjectAltName(cr)
-	// Extract key usage, extended key usage and basic constraints from
-	// extensions. The errors will be ignored.
+	// Extracts key usage, extended key usage, and basic constraints from the
+	// certificate extensions. For backward compatibility, this method does not
+	// return an error if an extension is improperly encoded or cannot be
+	// decoded. In such cases, the extension is simply ignored.
 	parsed, _ := parseCertificateRequestExtensions(cr.Extensions)
 
 	return &CertificateRequest{
