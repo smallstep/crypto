@@ -680,7 +680,7 @@ func (k KeyUsage) Set(c *x509.Certificate) {
 	c.KeyUsage = x509.KeyUsage(k)
 }
 
-// Extension marshal the key usage to an [Extension].  It will return an empty
+// Extension marshals the key usage to an [Extension].  It will return an empty
 // extension if key usages is empty.
 func (k KeyUsage) Extension() (Extension, error) {
 	if k == 0 {
@@ -800,7 +800,7 @@ func (k ExtKeyUsage) Set(c *x509.Certificate) {
 	c.ExtKeyUsage = []x509.ExtKeyUsage(k)
 }
 
-// Extension marshal the extended key usages to an [Extension]. It will return
+// Extension marshals the extended key usages to an [Extension]. It will return
 // an empty extension if there are no extended key usages.
 func (k ExtKeyUsage) Extension(unknownUsages UnknownExtKeyUsage) (Extension, error) {
 	size := len(k) + len(unknownUsages)
@@ -1093,7 +1093,7 @@ func (b BasicConstraints) Set(c *x509.Certificate) {
 	}
 }
 
-// Extension marshal the basic constraints to an [Extension].
+// Extension marshals the basic constraints to an [Extension].
 func (b BasicConstraints) Extension() (Extension, error) {
 	// When IsCA is false the MaxPathLen must be the default -1.
 	if !b.IsCA || b.MaxPathLen < 0 {
