@@ -122,7 +122,7 @@ func startTestOpenSSHAgent(t *testing.T, keysToAdd ...agent.AddedKey) (sshagent 
 	}
 	t.Cleanup(cleanup)
 
-	//testAgentInterface(t, sshagent, key, cert, lifetimeSecs)
+	// testAgentInterface(t, sshagent, key, cert, lifetimeSecs)
 	return sshagent
 }
 
@@ -136,7 +136,7 @@ func startTestKeyringAgent(t *testing.T, keysToAdd ...agent.AddedKey) (sshagent 
 	}
 	t.Cleanup(cleanup)
 
-	//testAgentInterface(t, agent, key, cert, lifetimeSecs)
+	// testAgentInterface(t, agent, key, cert, lifetimeSecs)
 	return sshagent
 }
 
@@ -294,7 +294,7 @@ func TestSSHAgentKMS_CreateSigner(t *testing.T) {
 		t.Fatal(err)
 	}
 	block, _ := pem.Decode(b)
-	block.Bytes, err = x509.DecryptPEMBlock(block, []byte("pass")) //nolint
+	block.Bytes, err = x509.DecryptPEMBlock(block, []byte("pass")) // nolint
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,10 +517,7 @@ func TestWrappedSSHSigner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := randutil.Salt(128)
-	if err != nil {
-		t.Fatal(err)
-	}
+	message := randutil.Salt(128)
 
 	ws := NewWrappedSignerFromSSHSigner(sshSigner)
 	if !reflect.DeepEqual(ws.Public(), sshSigner.PublicKey()) {
@@ -549,10 +546,7 @@ func TestWrappedSSHSigner_agent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := randutil.Salt(128)
-	if err != nil {
-		t.Fatal(err)
-	}
+	message := randutil.Salt(128)
 
 	sshAgent, err := NewFromAgent(context.Background(), apiv1.Options{}, startTestKeyringAgent(t, agent.AddedKey{PrivateKey: priv, Comment: "go-test-key"}))
 	if err != nil {

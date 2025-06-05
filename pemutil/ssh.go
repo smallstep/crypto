@@ -254,10 +254,7 @@ func SerializeOpenSSHPrivateKey(key crypto.PrivateKey, opts ...Options) (*pem.Bl
 
 	if password != nil {
 		// Create encryption key derivation the password.
-		salt, err := randutil.Salt(sshDefaultSaltLength)
-		if err != nil {
-			return nil, err
-		}
+		salt := randutil.Salt(sshDefaultSaltLength)
 		kdfOpts := struct {
 			Salt   []byte
 			Rounds uint32

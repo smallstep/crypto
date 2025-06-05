@@ -43,17 +43,12 @@ func Encrypt(data []byte, opts ...Option) (*JSONWebEncryption, error) {
 		return nil, errors.New("failed to encrypt the data: missing password")
 	}
 
-	salt, err := randutil.Salt(PBKDF2SaltSize)
-	if err != nil {
-		return nil, err
-	}
-
 	// Encrypt private key using PBES2
 	recipient := Recipient{
 		Algorithm:  PBES2_HS256_A128KW,
 		Key:        passphrase,
 		PBES2Count: PBKDF2Iterations,
-		PBES2Salt:  salt,
+		PBES2Salt:  randutil.Salt(PBKDF2SaltSize),
 	}
 
 	encrypterOptions := new(EncrypterOptions)

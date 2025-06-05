@@ -166,9 +166,7 @@ func TestMacKMS(t *testing.T) {
 			assert.Equal(t, resp.PublicKey, pub)
 
 			// CreateSigner
-			message, err := randutil.Bytes(256)
-			require.NoError(t, err)
-
+			message := randutil.Bytes(256)
 			var opts crypto.SignerOpts
 			switch req.SignatureAlgorithm {
 			case apiv1.UnspecifiedSignAlgorithm, apiv1.ECDSAWithSHA256, apiv1.SHA256WithRSA:
@@ -441,9 +439,7 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 		require.IsType(tt, &Signer{}, i1)
 		signer := i1.(crypto.Signer)
 		require.Equal(tt, resp.PublicKey, signer.Public())
-		b, err := randutil.Bytes(256)
-		require.NoError(t, err)
-		digest := sha256.Sum256(b)
+		digest := sha256.Sum256(randutil.Bytes(256))
 		signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
 		require.NoError(tt, err)
 		switch k := signer.Public().(type) {
@@ -577,11 +573,6 @@ func Test_parseECDSAPublicKey(t *testing.T) {
 		k.Y.FillBytes(ret[1+byteLen : 1+2*byteLen])
 		return ret
 	}
-	mustRand := func(size int) []byte {
-		b, err := randutil.Bytes(size)
-		require.NoError(t, err)
-		return b
-	}
 
 	type args struct {
 		raw []byte
@@ -596,9 +587,9 @@ func Test_parseECDSAPublicKey(t *testing.T) {
 		{"ok P-384", args{marshal(p384)}, p384.Public(), assert.NoError},
 		{"ok P-521", args{marshal(p521)}, p521.Public(), assert.NoError},
 		{"fail P-224", args{marshal(p224)}, nil, assert.Error},
-		{"fail P-256", args{mustRand(65)}, nil, assert.Error},
-		{"fail P-384", args{mustRand(97)}, nil, assert.Error},
-		{"fail P-521", args{mustRand(133)}, nil, assert.Error},
+		{"fail P-256", args{randutil.Bytes(65)}, nil, assert.Error},
+		{"fail P-384", args{randutil.Bytes(97)}, nil, assert.Error},
+		{"fail P-521", args{randutil.Bytes(133)}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -781,8 +772,7 @@ func TestMacKMS_LoadCertificate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	suffix, err := randutil.Alphanumeric(8)
-	require.NoError(t, err)
+	suffix := randutil.Alphanumeric(8)
 	label := "test-" + suffix
 
 	kms := &MacKMS{}
@@ -871,15 +861,10 @@ func TestMacKMS_StoreCertificate(t *testing.T) {
 	serial := func(cert *x509.Certificate) string {
 		return hex.EncodeToString(cert.SerialNumber.Bytes())
 	}
-	randLabel := func(n int) string {
-		s, err := randutil.Alphanumeric(n)
-		require.NoError(t, err)
-		return s
-	}
 
-	rootLabel := "test-" + randLabel(8)
-	intermediateLabel := "test-" + randLabel(8)
-	certLabel := "test-" + randLabel(8)
+	rootLabel := "test-" + randutil.Alphanumeric(8)
+	intermediateLabel := "test-" + randutil.Alphanumeric(8)
+	certLabel := "test-" + randutil.Alphanumeric(8)
 
 	type args struct {
 		req *apiv1.StoreCertificateRequest
@@ -938,8 +923,7 @@ func TestMacKMS_StoreCertificate_duplicated(t *testing.T) {
 	ca, err := minica.New(minica.WithName(t.Name()))
 	require.NoError(t, err)
 
-	suffix, err := randutil.Alphanumeric(8)
-	require.NoError(t, err)
+	suffix := randutil.Alphanumeric(8)
 	label := "test-" + suffix
 
 	type args struct {
@@ -1074,8 +1058,7 @@ func TestMacKMS_StoreCertificateChain(t *testing.T) {
 		}
 	}
 
-	suffix, err := randutil.Alphanumeric(8)
-	require.NoError(t, err)
+	suffix := randutil.Alphanumeric(8)
 	label := "test-" + suffix
 
 	type args struct {
@@ -1160,8 +1143,7 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	suffix, err := randutil.Alphanumeric(8)
-	require.NoError(t, err)
+	suffix := randutil.Alphanumeric(8)
 
 	notExistsCheck := func(cert *x509.Certificate) {
 		kms := &MacKMS{}
@@ -1258,8 +1240,7 @@ func Test_apiv1Error(t *testing.T) {
 }
 
 func TestMacKMS_SearchKeys(t *testing.T) {
-	name, err := randutil.Hex(10)
-	require.NoError(t, err)
+	name := randutil.Hex(10)
 	tag := fmt.Sprintf("com.smallstep.crypto.test.%s", name) // unique tag per test execution
 
 	// initialize MacKMS

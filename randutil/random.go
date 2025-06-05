@@ -4,10 +4,7 @@ package randutil
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"io"
 	"math/big"
-
-	"github.com/pkg/errors"
 )
 
 var ascii string
@@ -22,51 +19,45 @@ func init() {
 }
 
 // Salt generates a new random salt of the given size.
-func Salt(size int) ([]byte, error) {
+func Salt(size int) []byte {
 	salt := make([]byte, size)
-	_, err := io.ReadFull(rand.Reader, salt)
-	if err != nil {
-		return nil, errors.Wrap(err, "error generating salt")
-	}
-	return salt, nil
+	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
+	_, _ = rand.Read(salt)
+	return salt
 }
 
 // Bytes generates a new byte slice of the given size.
-func Bytes(size int) ([]byte, error) {
+func Bytes(size int) []byte {
 	bytes := make([]byte, size)
-	_, err := io.ReadFull(rand.Reader, bytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "error generating bytes")
-	}
-	return bytes, nil
+	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
+	_, _ = rand.Read(bytes)
+	return bytes
 }
 
 // String returns a random string of a given length using the characters in
 // the given string. It splits the string on runes to support UTF-8
 // characters.
-func String(length int, chars string) (string, error) {
+func String(length int, chars string) string {
 	result := make([]rune, length)
 	runes := []rune(chars)
 	x := int64(len(runes))
 	for i := range result {
-		num, err := rand.Int(rand.Reader, big.NewInt(x))
-		if err != nil {
-			return "", errors.Wrap(err, "error creating random number")
-		}
+		// crypto/rand.Reader is guaranteed to never return an error
+		num, _ := rand.Int(rand.Reader, big.NewInt(x))
 		result[i] = runes[num.Int64()]
 	}
-	return string(result), nil
+	return string(result)
 }
 
 // Hex returns a random string of the given length using the hexadecimal
 // characters in lower case (0-9+a-f).
-func Hex(length int) (string, error) {
+func Hex(length int) string {
 	return String(length, "0123456789abcdef")
 }
 
 // Alphanumeric returns a random string of the given length using the 62
 // alphanumeric characters in the POSIX/C locale (a-z+A-Z+0-9).
-func Alphanumeric(length int) (string, error) {
+func Alphanumeric(length int) string {
 	return String(length, "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 }
 
@@ -74,28 +65,26 @@ func Alphanumeric(length int) (string, error) {
 // numbers from crypto/rand and searches for printable characters. It will
 // return an error if the system's secure random number generator fails to
 // function correctly, in which case the caller must not continue.
-func ASCII(length int) (string, error) {
+func ASCII(length int) string {
 	return String(length, ascii)
 }
 
 // Alphabet returns a random string of the given length using the 52
 // alphabetic characters in the POSIX/C locale (a-z+A-Z).
-func Alphabet(length int) (string, error) {
+func Alphabet(length int) string {
 	return String(length, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 }
 
 // UUIDv4 returns the string representation of a UUID version 4. Because 6 bits
 // are used to indicate the version 4 and the variant 10, the randomly generated
 // part has 122 bits.
-func UUIDv4() (string, error) {
+func UUIDv4() string {
 	var uuid [16]byte
-	_, err := io.ReadFull(rand.Reader, uuid[:])
-	if err != nil {
-		return "", errors.Wrap(err, "error generating uuid")
-	}
+	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
+	_, _ = rand.Read(uuid[:])
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant is 10
-	return encodeUUID(uuid), nil
+	return encodeUUID(uuid)
 }
 
 func encodeUUID(uuid [16]byte) string {
