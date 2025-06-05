@@ -21,16 +21,24 @@ func init() {
 // Salt generates a new random salt of the given size.
 func Salt(size int) []byte {
 	salt := make([]byte, size)
-	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
-	_, _ = rand.Read(salt)
+	// crypto/rand.Reader always fill the entire slices.
+	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
+	// This error check can be removed once we drop support for Go 1.23.
+	if _, err := rand.Read(salt); err != nil {
+		panic("rand.Reader returned an error")
+	}
 	return salt
 }
 
 // Bytes generates a new byte slice of the given size.
 func Bytes(size int) []byte {
 	bytes := make([]byte, size)
-	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
-	_, _ = rand.Read(bytes)
+	// crypto/rand.Reader always fill the entire slices.
+	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
+	// This error check can be removed once we drop support for Go 1.23.
+	if _, err := rand.Read(bytes); err != nil {
+		panic("rand.Reader returned an error")
+	}
 	return bytes
 }
 
@@ -42,8 +50,12 @@ func String(length int, chars string) string {
 	runes := []rune(chars)
 	x := int64(len(runes))
 	for i := range result {
-		// crypto/rand.Reader is guaranteed to never return an error
-		num, _ := rand.Int(rand.Reader, big.NewInt(x))
+		// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
+		// This error check can be removed once we drop support for Go 1.23.
+		num, err := rand.Int(rand.Reader, big.NewInt(x))
+		if err != nil {
+			panic("rand.Reader returned an error")
+		}
 		result[i] = runes[num.Int64()]
 	}
 	return string(result)
@@ -81,7 +93,12 @@ func Alphabet(length int) string {
 func UUIDv4() string {
 	var uuid [16]byte
 	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
-	_, _ = rand.Read(uuid[:])
+	// crypto/rand.Reader always fill the entire slices.
+	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
+	// This error check can be removed once we drop support for Go 1.23.
+	if _, err := rand.Read(uuid[:]); err != nil {
+		panic("rand.Reader returned an error")
+	}
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant is 10
 	return encodeUUID(uuid)
