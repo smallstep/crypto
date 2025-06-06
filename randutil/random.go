@@ -21,7 +21,7 @@ func init() {
 // Salt generates a new random salt of the given size.
 func Salt(size int) []byte {
 	salt := make([]byte, size)
-	// crypto/rand.Reader always fill the entire slices.
+	// crypto/rand.Reader always fills the entire slice.
 	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
 	// This error check can be removed once we drop support for Go 1.23.
 	if _, err := rand.Read(salt); err != nil {
@@ -33,7 +33,7 @@ func Salt(size int) []byte {
 // Bytes generates a new byte slice of the given size.
 func Bytes(size int) []byte {
 	bytes := make([]byte, size)
-	// crypto/rand.Reader always fill the entire slices.
+	// crypto/rand.Reader always fills the entire slice.
 	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
 	// This error check can be removed once we drop support for Go 1.23.
 	if _, err := rand.Read(bytes); err != nil {
@@ -93,7 +93,7 @@ func Alphabet(length int) string {
 func UUIDv4() string {
 	var uuid [16]byte
 	// crypto/rand.Reader is guaranteed to never return an error, and always fill the entire slices
-	// crypto/rand.Reader always fill the entire slices.
+	// crypto/rand.Reader always fills the entire slice.
 	// Since Go 1.24, it is guaranteed to never return an error, see https://github.com/golang/go/issues/66821.
 	// This error check can be removed once we drop support for Go 1.23.
 	if _, err := rand.Read(uuid[:]); err != nil {
