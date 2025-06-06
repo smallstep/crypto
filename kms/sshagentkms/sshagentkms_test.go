@@ -294,7 +294,7 @@ func TestSSHAgentKMS_CreateSigner(t *testing.T) {
 		t.Fatal(err)
 	}
 	block, _ := pem.Decode(b)
-	block.Bytes, err = x509.DecryptPEMBlock(block, []byte("pass")) // nolint
+	block.Bytes, err = x509.DecryptPEMBlock(block, []byte("pass")) //nolint
 	if err != nil {
 		t.Fatal(err)
 	}
