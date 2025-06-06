@@ -83,11 +83,7 @@ func (c *Certificate) GetCertificate() *ssh.Certificate {
 // supported since OpenSSH 7.2 (2016).
 func CreateCertificate(cert *ssh.Certificate, signer ssh.Signer) (*ssh.Certificate, error) {
 	if len(cert.Nonce) == 0 {
-		nonce, err := randutil.ASCII(32)
-		if err != nil {
-			return nil, err
-		}
-		cert.Nonce = []byte(nonce)
+		cert.Nonce = []byte(randutil.ASCII(32))
 	}
 
 	if cert.Serial == 0 {

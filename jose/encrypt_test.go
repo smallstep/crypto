@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v3"
+	"github.com/go-jose/go-jose/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,16 +59,11 @@ func mustEncryptJWK(t *testing.T, jwk *JSONWebKey, passphrase []byte) *JSONWebEn
 func mustEncryptData(t *testing.T, data, passphrase []byte) *JSONWebEncryption {
 	t.Helper()
 
-	salt, err := randutil.Salt(PBKDF2SaltSize)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	recipient := Recipient{
 		Algorithm:  PBES2_HS256_A128KW,
 		Key:        passphrase,
 		PBES2Count: PBKDF2Iterations,
-		PBES2Salt:  salt,
+		PBES2Salt:  randutil.Salt(PBKDF2SaltSize),
 	}
 
 	opts := new(EncrypterOptions)
@@ -195,14 +190,7 @@ func TestEncrypt(t *testing.T) {
 		{"fail encrypt", args{data, []Option{WithPassword([]byte("password"))}},
 			func(t *testing.T) *JSONWebEncryption {
 				reader := mustTeeReader(t)
-				_, _ = randutil.Salt(PBKDF2SaltSize)
-				rand.Reader = reader
-				jose.RandReader = reader
-				return nil
-			}, true},
-		{"fail salt", args{data, []Option{WithPassword([]byte("password"))}},
-			func(t *testing.T) *JSONWebEncryption {
-				reader := mustTeeReader(t)
+				randutil.Salt(PBKDF2SaltSize)
 				rand.Reader = reader
 				jose.RandReader = reader
 				return nil
@@ -248,13 +236,7 @@ func TestEncryptJWK(t *testing.T) {
 		}, true},
 		{"fail encrypt", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
 			reader := mustTeeReader(t)
-			_, _ = randutil.Salt(PBKDF2SaltSize)
-			rand.Reader = reader
-			jose.RandReader = reader
-			return nil
-		}, true},
-		{"fail salt", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
-			reader := mustTeeReader(t)
+			randutil.Salt(PBKDF2SaltSize)
 			rand.Reader = reader
 			jose.RandReader = reader
 			return nil

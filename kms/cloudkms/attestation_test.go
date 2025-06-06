@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
-	gax "github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -131,9 +131,7 @@ func mustSymmetricContentV1(t *testing.T, attr []AttestationAttribute, key *rsa.
 	header = binary.BigEndian.AppendUint32(header, uint32(len(attributes)))
 
 	// Prefix
-	content, err := randutil.Salt(24)
-	require.NoError(t, err)
-
+	content := randutil.Salt(24)
 	content = append(content, header...)
 	content = append(content, attributes...)
 
@@ -187,9 +185,7 @@ func mustAsymmetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key
 	privHeader = binary.BigEndian.AppendUint32(privHeader, uint32(len(privAttrs)))
 
 	// Prefix
-	content, err := randutil.Salt(984)
-	require.NoError(t, err)
-
+	content := randutil.Salt(984)
 	content = append(content, pubHeader...)
 	content = append(content, pubAttrs...)
 	content = append(content, privHeader...)
@@ -326,9 +322,7 @@ func TestCloudKMS_verifyAttestation(t *testing.T) {
 
 	var buf bytes.Buffer
 	w := gzip.NewWriter(&buf)
-	data, err := randutil.Salt(1000)
-	require.NoError(t, err)
-	_, err = w.Write(data)
+	_, err = w.Write(randutil.Salt(1000))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 	contentGarbage := buf.Bytes()

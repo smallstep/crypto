@@ -149,9 +149,7 @@ func TestPbkdf2Params_unmarshal(t *testing.T) {
 }
 
 func TestNewAES256CBC(t *testing.T) {
-	aes, err := newAES256CBC()
-	require.NoError(t, err)
-	assert.Len(t, aes.InitializationVector, 16)
+	assert.Len(t, newAES256CBC().InitializationVector, 16)
 }
 
 func TestAes256CBCParams_encrypt(t *testing.T) {

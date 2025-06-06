@@ -302,8 +302,7 @@ func TestNew(t *testing.T) {
 		pivCards = pCards
 	})
 
-	managementKey, err := randutil.Salt(24)
-	require.NoError(t, err)
+	managementKey := randutil.Salt(24)
 	managementKeyFile := filepath.Join(t.TempDir(), "management.key")
 	require.NoError(t, os.WriteFile(managementKeyFile, []byte(hex.EncodeToString(managementKey)), 0600))
 
