@@ -83,8 +83,9 @@ type keySearchAttributes struct {
 }
 
 type certAttributes struct {
-	label        string
-	serialNumber *big.Int
+	label            string
+	useSecureEnclave bool
+	serialNumber     *big.Int
 }
 
 type algorithmAttributes struct {
@@ -368,7 +369,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
 	}
 
-	cert, err := loadCertificate(u.label, u.serialNumber, nil)
+	cert, err := loadCertificate(u, u.serialNumber, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", apiv1Error(err))
 	}
@@ -401,7 +402,7 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	}
 
 	// Store the certificate and update the label if required
-	if err := storeCertificate(u.label, req.Certificate); err != nil {
+	if err := storeCertificate(u, req.Certificate); err != nil {
 		return fmt.Errorf("mackms StoreCertificate failed: %w", apiv1Error(err))
 	}
 
@@ -427,7 +428,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", err)
 	}
 
-	cert, err := loadCertificate(u.label, u.serialNumber, nil)
+	cert, err := loadCertificate(u, u.serialNumber, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", apiv1Error(err))
 	}
@@ -443,7 +444,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 		// the values in uppercase. We cannot use the cert.RawIssuer to restrict
 		// more the search with KSecAttrSubjectKeyID and kSecAttrSubject. To do
 		// it we will need to "normalize" the subject it in the same way.
-		parent, err := loadCertificate("", nil, cert.AuthorityKeyId)
+		parent, err := loadCertificate(&certAttributes{label: "", useSecureEnclave: u.useSecureEnclave}, nil, cert.AuthorityKeyId)
 		if err != nil || isSelfSigned(parent) || cert.CheckSignatureFrom(parent) != nil {
 			break
 		}
@@ -480,13 +481,13 @@ func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 	}
 
 	// Store the certificate and update the label if required
-	if err := storeCertificate(u.label, req.CertificateChain[0]); err != nil {
+	if err := storeCertificate(u, req.CertificateChain[0]); err != nil {
 		return fmt.Errorf("mackms StoreCertificateChain failed: %w", apiv1Error(err))
 	}
 
 	// Store the rest of the chain but do not fail if already exists
 	for _, cert := range req.CertificateChain[1:] {
-		if err := storeCertificate("", cert); err != nil && !errors.Is(err, security.ErrAlreadyExists) {
+		if err := storeCertificate(&certAttributes{label: "", useSecureEnclave: u.useSecureEnclave}, cert); err != nil && !errors.Is(err, security.ErrAlreadyExists) {
 			return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
 		}
 	}
@@ -896,12 +897,12 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return false
 }
 
-func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (*x509.Certificate, error) {
+func loadCertificate(u *certAttributes, serialNumber *big.Int, subjectKeyID []byte) (*x509.Certificate, error) {
 	query := cf.Dictionary{
 		security.KSecClass: security.KSecClassCertificate,
 	}
-	if label != "" {
-		cfLabel, err := cf.NewString(label)
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
 			return nil, err
 		}
@@ -923,6 +924,9 @@ func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (
 		}
 		defer cfSubjectKeyID.Release()
 		query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
+	}
+	if u.useSecureEnclave {
+		query[security.KSecUseDataProtectionKeychain] = cf.True
 	}
 
 	cfQuery, err := cf.NewDictionary(query)
@@ -951,7 +955,7 @@ func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (
 	return cert, nil
 }
 
-func storeCertificate(label string, cert *x509.Certificate) error {
+func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
 	cfData, err := cf.NewData(cert.Raw)
 	if err != nil {
 		return err
@@ -964,25 +968,41 @@ func storeCertificate(label string, cert *x509.Certificate) error {
 	}
 	defer certRef.Release()
 
+	access, err := security.SecAccessControlCreateWithFlags(
+		security.KSecAttrAccessibleAfterFirstUnlock,
+		0,
+	)
+
+	query := cf.Dictionary{
+		security.KSecClass:             security.KSecClassCertificate,
+		security.KSecValueRef:          certRef,
+		security.KSecAttrAccessControl: access,
+	}
+
+	// FIXME(josh): 'SecureEnclave' is the wrong terminology here,
+	// we should change this to something indicating that the data
+	// protection keychain should be used
+	if u.useSecureEnclave {
+		query[security.KSecUseDataProtectionKeychain] = cf.True
+	}
+
 	// Adding the label here doesn't have any effect. Apple Keychain always uses
 	// the commonName.
-	attributes, err := cf.NewDictionary(cf.Dictionary{
-		security.KSecClass:    security.KSecClassCertificate,
-		security.KSecValueRef: certRef,
-	})
+	attributes, err := cf.NewDictionary(query)
 	if err != nil {
 		return err
 	}
 	defer attributes.Release()
 
+	var result cf.TypeRef
 	// Store the certificate
-	if err := security.SecItemAdd(attributes, nil); err != nil {
+	if err := security.SecItemAdd(attributes, &result); err != nil {
 		return err
 	}
 
 	// Update the label if necessary
-	if label != "" && label != cert.Subject.CommonName {
-		cfLabel, err := cf.NewString(label)
+	if u.label != "" && u.label != cert.Subject.CommonName {
+		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
 			return err
 		}
@@ -1100,8 +1120,9 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	}
 
 	return &certAttributes{
-		label:        label,
-		serialNumber: serialNumber,
+		label:            label,
+		useSecureEnclave: u.GetBool("se"),
+		serialNumber:     serialNumber,
 	}, nil
 }
 
@@ -1160,6 +1181,12 @@ func encodeSerialNumber(s *big.Int) []byte {
 		return append([]byte{0x00}, b...)
 	}
 	return b
+}
+
+func decodeSerialNumber(b []byte) *big.Int {
+	s := &big.Int{}
+	s.SetBytes(b)
+	return s
 }
 
 func parseECDSAPublicKey(raw []byte) (crypto.PublicKey, error) {
