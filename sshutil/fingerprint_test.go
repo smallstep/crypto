@@ -268,9 +268,9 @@ func Test_publicKeyTypeAndSize_errors(t *testing.T) {
 		wantErr bool
 	}{
 		{"fail RSA", args{&fakeKey{ssh.KeyAlgoRSA, nil}}, "", 0, true},
-		{"fail DSA", args{&fakeKey{ssh.KeyAlgoDSA, nil}}, "", 0, true},
+		{"fail DSA", args{&fakeKey{ssh.InsecureKeyAlgoDSA, nil}}, "", 0, true}, //nolint:staticcheck // just using the constant; no dependent logic
 		{"fail RSA cast", args{&fakeCryptoPublicKey{ssh.KeyAlgoRSA, ecKey, nil}}, "", 0, true},
-		{"fail DSA cast", args{&fakeCryptoPublicKey{ssh.KeyAlgoDSA, ecKey, nil}}, "", 0, true},
+		{"fail DSA cast", args{&fakeCryptoPublicKey{ssh.InsecureKeyAlgoDSA, ecKey, nil}}, "", 0, true}, //nolint:staticcheck // just using the constant; no dependent logic
 		{"fail type", args{&fakeKey{"unknown-type", nil}}, "", 0, true},
 	}
 	for _, tt := range tests {
