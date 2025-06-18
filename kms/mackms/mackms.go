@@ -369,7 +369,7 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 //   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
 //
 // On code-signed applications, it is possible to use the Data Protection
-// Keychain by default if [UseDataProtectionKeychain] is set to true, you can
+// Keychain by default if [UseDataProtectionKeychain] is set to true. You can
 // also select the keychain using the "keychain" attribute:
 //   - "mackms:label=my-label;keychain=dataProtection"
 //   - "mackms:label=my-label;keychain=login"
@@ -406,7 +406,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 //   - "mackms:my-label" will use the "my-label"
 //
 // On code-signed applications, it is possible to use the Data Protection
-// Keychain by default if [UseDataProtectionKeychain] is set to true, you can
+// Keychain by default if [UseDataProtectionKeychain] is set to true. You can
 // also select the keychain using the "keychain" attribute:
 //   - "mackms:label=my-label;keychain=dataProtection"
 //   - "mackms:label=my-label;keychain=login"
@@ -466,7 +466,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 
 	cert, err := loadCertificate(u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mackms LoadCertificateChain failed1: %w", apiv1Error(err))
+		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", apiv1Error(err))
 	}
 
 	chain := []*x509.Certificate{cert}
@@ -530,14 +530,14 @@ func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 
 	// Store the certificate and update the label if required
 	if err := storeCertificate(u, req.CertificateChain[0]); err != nil {
-		return fmt.Errorf("mackms StoreCertificateChain failed1: %w", apiv1Error(err))
+		return fmt.Errorf("mackms StoreCertificateChain failed: %w", apiv1Error(err))
 	}
 
 	// Store the rest of the chain but do not fail if already exists
 	chainURI := &certAttributes{useDataProtectionKeychain: u.useDataProtectionKeychain}
 	for _, cert := range req.CertificateChain[1:] {
 		if err := storeCertificate(chainURI, cert); err != nil && !errors.Is(err, security.ErrAlreadyExists) {
-			return fmt.Errorf("mackms StoreCertificateChain failed2: %w", err)
+			return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
 		}
 	}
 
@@ -1026,7 +1026,7 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 		defer cfSubjectKeyID.Release()
 		query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
 	}
-	// Apple recommends to set this parameters always to true for all keychains
+	// Apple recommends to set this parameters always to true for all keychain
 	// operations. This requires a code-signed application.
 	if u.useDataProtectionKeychain {
 		query[security.KSecUseDataProtectionKeychain] = cf.True
@@ -1080,7 +1080,7 @@ func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
 		security.KSecValueRef: certRef,
 	}
 	// Apple recommends to set KSecUseDataProtectionKeychain parameters always
-	// to true for all keychains operations. This option requires to use a
+	// to true for all keychain operations. This option requires to use a
 	// code-signed application.
 	if u.useDataProtectionKeychain {
 		dict[security.KSecUseDataProtectionKeychain] = cf.True
