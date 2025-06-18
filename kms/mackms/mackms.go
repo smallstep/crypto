@@ -625,7 +625,8 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	}
 
 	query := cf.Dictionary{
-		security.KSecClass: security.KSecClassCertificate,
+		security.KSecClass:      security.KSecClassCertificate,
+		security.KSecMatchLimit: security.KSecMatchLimitOne,
 	}
 	if u.label != "" {
 		cfLabel, err := cf.NewString(u.label)
