@@ -151,6 +151,15 @@ func TestNew(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", args{context.Background(), apiv1.Options{}}, &MacKMS{}, assert.NoError},
+		{"ok with keychain dataProtection", args{context.Background(), apiv1.Options{
+			URI: "mackms:keychain=dataprotection",
+		}}, &MacKMS{useDataProtectionKeychain: true}, assert.NoError},
+		{"ok with keychain login", args{context.Background(), apiv1.Options{
+			URI: "mackms:keychain=login",
+		}}, &MacKMS{}, assert.NoError},
+		{"fail uri", args{context.Background(), apiv1.Options{
+			URI: "pkcs11:keychain=login",
+		}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1488,33 +1497,24 @@ func Test_keyAttributes_retryAttributes(t *testing.T) {
 }
 
 func Test_isDataProtectionKeychain(t *testing.T) {
-	v := UseDataProtectionKeychain
-	t.Cleanup(func() {
-		UseDataProtectionKeychain = v
-	})
-
-	type fields struct {
-		useDataProtectionKeychain bool
-	}
 	type args struct {
-		s string
+		s            string
+		defaultValue bool
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   bool
+		name string
+		args args
+		want bool
 	}{
-		{"dataProtection", fields{false}, args{"dataProtection"}, true},
-		{"login", fields{false}, args{"login"}, false},
-		{"system", fields{false}, args{"system"}, false},
-		{"default", fields{false}, args{""}, false},
-		{"default dataProtection", fields{true}, args{""}, true},
+		{"dataProtection", args{"dataProtection", false}, true},
+		{"login", args{"login", true}, false},
+		{"system", args{"system", true}, false},
+		{"default", args{"", false}, false},
+		{"default dataProtection", args{"", true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			UseDataProtectionKeychain = tt.fields.useDataProtectionKeychain
-			assert.Equal(t, tt.want, isDataProtectionKeychain(tt.args.s))
+			assert.Equal(t, tt.want, isDataProtectionKeychain(tt.args.s, tt.args.defaultValue))
 		})
 	}
 }

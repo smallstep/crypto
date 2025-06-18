@@ -394,7 +394,6 @@ func goOSStatus(status C.OSStatus) error {
 		message = goString(C.CFStringRef(ref.Value))
 		defer ref.Release()
 	}
-	fmt.Println(message, int(status))
 	return osStatusError{
 		code:    int(status),
 		message: message,

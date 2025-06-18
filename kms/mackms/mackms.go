@@ -50,11 +50,6 @@ const Scheme = string(apiv1.MacKMS)
 // the keys.
 var DefaultTag = "com.smallstep.crypto"
 
-// UseDataProtectionKeychain defines if mackms will use the Data Protection
-// keychain by default. This option requires the application to be code-signed
-// with the appropriate entitlements.
-var UseDataProtectionKeychain = false
-
 type keyAttributes struct {
 	label            string
 	tag              string
@@ -146,11 +141,29 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //     DER representation of an RSA public key using the PKCS #1 format or the
 //     SHA-1 of the uncompressed ECDSA point according to SEC 1, Version 2.0,
 //     Section 2.3.4.
-type MacKMS struct{}
+type MacKMS struct {
+	useDataProtectionKeychain bool
+}
 
-// New returns a new SoftKMS.
-func New(context.Context, apiv1.Options) (*MacKMS, error) {
-	return &MacKMS{}, nil
+// New returns a new [MacKMS] instance. In code-signed applications, it is
+// possible to initialize [MacKMS] with a URI that specifies whether to use the
+// Data Protection Keychain for loading and storing certificates by default.
+//
+// The [New] function accepts the following URI format:
+//   - mackms:keychain=dataProtection
+func New(_ context.Context, opts apiv1.Options) (*MacKMS, error) {
+	var useDataProtectionKeychain bool
+	if opts.URI != "" {
+		u, err := uri.ParseWithScheme(Scheme, opts.URI)
+		if err != nil {
+			return nil, err
+		}
+		useDataProtectionKeychain = isDataProtectionKeychain(u.Get("keychain"), false)
+	}
+
+	return &MacKMS{
+		useDataProtectionKeychain: useDataProtectionKeychain,
+	}, nil
 }
 
 func init() {
@@ -381,7 +394,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 	}
 
 	// Require label or serial
-	u, err := parseCertURI(req.Name, true)
+	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, true)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
 	}
@@ -421,7 +434,7 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	// Do not require any parameter. Using mackms: is allowed as macOS will set
 	// the commonName as label.
-	u, err := parseCertURI(req.Name, false)
+	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, false)
 	if err != nil {
 		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
 	}
@@ -459,7 +472,7 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	}
 
 	// Require label or serial
-	u, err := parseCertURI(req.Name, true)
+	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, true)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", err)
 	}
@@ -512,7 +525,7 @@ func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 
 	// Do not require any parameter. Using mackms: is allowed as macOS will set
 	// the commonName as label.
-	u, err := parseCertURI(req.Name, false)
+	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, false)
 	if err != nil {
 		return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
 	}
@@ -601,12 +614,12 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
-func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
+func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	if req.Name == "" {
 		return fmt.Errorf("deleteCertificateRequest 'name' cannot be empty")
 	}
 
-	u, err := parseCertURI(req.Name, true)
+	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, true)
 	if err != nil {
 		return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
 	}
@@ -1189,7 +1202,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	}, nil
 }
 
-func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
+func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (*certAttributes, error) {
 	// When rawuri is just the label
 	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
 		return &certAttributes{
@@ -1231,7 +1244,7 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	return &certAttributes{
 		label:                     label,
 		serialNumber:              serialNumber,
-		useDataProtectionKeychain: isDataProtectionKeychain(keychain),
+		useDataProtectionKeychain: isDataProtectionKeychain(keychain, useDataProtectionKeychain),
 		keychain:                  keychain,
 	}, nil
 }
@@ -1279,14 +1292,14 @@ func parseSearchURI(rawuri string) (*keySearchAttributes, error) {
 	}, nil
 }
 
-func isDataProtectionKeychain(s string) bool {
+func isDataProtectionKeychain(s string, defaultValue bool) bool {
 	switch strings.ToLower(s) {
 	case "dataprotection":
 		return true
 	case "login":
 		return false
 	case "":
-		return UseDataProtectionKeychain
+		return defaultValue
 	default:
 		return false
 	}
