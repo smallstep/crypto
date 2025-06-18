@@ -22,6 +22,7 @@ import (
 	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -29,6 +30,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -44,6 +46,28 @@ import (
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/randutil"
 )
+
+func mustCreateKey(t *testing.T, name string, signatureAlgorithm apiv1.SignatureAlgorithm) *apiv1.CreateKeyResponse {
+	t.Helper()
+
+	kms := &MacKMS{}
+	resp, err := kms.CreateKey(&apiv1.CreateKeyRequest{
+		Name:               "mackms:label=" + name,
+		SignatureAlgorithm: signatureAlgorithm,
+	})
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := kms.DeleteKey(&apiv1.DeleteKeyRequest{
+			Name: resp.Name,
+		})
+		if err != nil && !errors.Is(err, apiv1.NotFoundError{}) {
+			require.NoError(t, err)
+		}
+	})
+
+	return resp
+}
 
 func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.SignatureAlgorithm) *apiv1.CreateKeyResponse {
 	t.Helper()
@@ -487,26 +511,9 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 }
 
 func TestMacKMS_DeleteKey(t *testing.T) {
-	kms := &MacKMS{}
-	r1, err := kms.CreateKey(&apiv1.CreateKeyRequest{
-		Name:               "mackms:label=test-p256",
-		SignatureAlgorithm: apiv1.SHA256WithRSA,
-	})
-	require.NoError(t, err)
-	r2, err := kms.CreateKey(&apiv1.CreateKeyRequest{
-		Name:               "mackms:label=test-rsa",
-		SignatureAlgorithm: apiv1.SHA256WithRSA,
-	})
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		assert.Error(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{
-			Name: r1.Name,
-		}))
-		assert.Error(t, kms.DeleteKey(&apiv1.DeleteKeyRequest{
-			Name: r2.Name,
-		}))
-	})
+	r1 := mustCreateKey(t, "test-p256", apiv1.ECDSAWithSHA256)
+	_ = mustCreateKey(t, "test-rsa", apiv1.SHA256WithRSA)
+	_ = mustCreateKey(t, "test-p384", apiv1.ECDSAWithSHA384)
 
 	type args struct {
 		req *apiv1.DeleteKeyRequest
@@ -522,6 +529,7 @@ func TestMacKMS_DeleteKey(t *testing.T) {
 		{"fail name", &MacKMS{}, args{&apiv1.DeleteKeyRequest{}}, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.DeleteKeyRequest{Name: "mackms:hash=foo"}}, assert.Error},
 		{"fail missing", &MacKMS{}, args{&apiv1.DeleteKeyRequest{Name: r1.Name}}, assert.Error},
+		{"fail secureEnclave", &MacKMS{}, args{&apiv1.DeleteKeyRequest{Name: "mackms:label=test-p384;se=true"}}, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -812,6 +820,9 @@ func TestMacKMS_LoadCertificate(t *testing.T) {
 		{"ok commonName short uri", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
 			Name: "mackms:" + cert1.Subject.CommonName,
 		}}, cert1, assert.NoError},
+		{"ok commonName with keychain", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:keychain=login;label=" + cert1.Subject.CommonName,
+		}}, cert1, assert.NoError},
 		{"ok commonName no uri", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
 			Name: cert1.Subject.CommonName,
 		}}, cert1, assert.NoError},
@@ -821,10 +832,16 @@ func TestMacKMS_LoadCertificate(t *testing.T) {
 		{"ok serial number", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
 			Name: "mackms:serial=" + hex.EncodeToString(cert1.SerialNumber.Bytes()),
 		}}, cert1, assert.NoError},
+		{"ok custom label with keychain", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:keychain=login;label=" + label,
+		}}, cert2, assert.NoError},
 		{"fail name", &MacKMS{}, args{&apiv1.LoadCertificateRequest{}}, nil, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:"}}, nil, assert.Error},
 		{"fail missing label", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:label=missing-" + suffix}}, nil, assert.Error},
 		{"fail missing serial", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:serial=010a020b030c"}}, nil, assert.Error},
+		{"fail with keychain", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:keychain=dataProtection;label=" + label,
+		}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -915,6 +932,10 @@ func TestMacKMS_StoreCertificate(t *testing.T) {
 			Name:        "mackms:" + certLabel,
 			Certificate: cert,
 		}}, verifyCertificate("mackms:label="+certLabel+";serial="+serial(cert), certLabel, cert), assert.NoError},
+		{"ok cert with keychain", &MacKMS{}, args{&apiv1.StoreCertificateRequest{
+			Name:        "mackms:keychain=login;label=" + certLabel,
+			Certificate: cert,
+		}}, verifyCertificate("mackms:label="+certLabel+";serial="+serial(cert), certLabel, cert), assert.NoError},
 		{"ok cert no name", &MacKMS{}, args{&apiv1.StoreCertificateRequest{
 			Certificate: cert,
 		}}, verifyCertificate("mackms:serial="+serial(cert), "", cert), assert.NoError},
@@ -923,6 +944,10 @@ func TestMacKMS_StoreCertificate(t *testing.T) {
 		}}, func(t *testing.T) {}, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.StoreCertificateRequest{
 			Name: "mackms",
+		}}, func(t *testing.T) {}, assert.Error},
+		{"fail with dataPrectction", &MacKMS{}, args{&apiv1.StoreCertificateRequest{
+			Name:        "mackms:keychain=dataProtection;label=" + certLabel,
+			Certificate: cert,
 		}}, func(t *testing.T) {}, assert.Error},
 	}
 	for _, tt := range tests {
@@ -962,6 +987,47 @@ func TestMacKMS_StoreCertificate_duplicated(t *testing.T) {
 			Certificate: ca.Intermediate,
 		}}, func(t *testing.T) {
 			deleteCertificate(t, label, ca.Intermediate)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Cleanup(func() { tt.cleanup(t) })
+			k := &MacKMS{}
+			if assert.NoError(t, k.StoreCertificate(tt.args.req)) {
+				assert.Error(t, k.StoreCertificate(tt.args.req))
+			}
+		})
+	}
+}
+
+func TestMacKMS_StoreCertificate_privatekey(t *testing.T) {
+	testName := t.Name()
+
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	resp := createKey(t, testName, apiv1.SHA256WithRSA)
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "@example.com"},
+		EmailAddresses: []string{testName + "@example.com"},
+		PublicKey:      resp.PublicKey,
+	})
+	require.NoError(t, err)
+
+	type args struct {
+		req *apiv1.StoreCertificateRequest
+	}
+	tests := []struct {
+		name    string
+		k       *MacKMS
+		args    args
+		cleanup func(t *testing.T)
+	}{
+		{"ok", &MacKMS{}, args{&apiv1.StoreCertificateRequest{
+			Name:        "mackms:" + testName,
+			Certificate: cert,
+		}}, func(t *testing.T) {
+			deleteCertificate(t, testName, cert)
 		}},
 	}
 	for _, tt := range tests {
@@ -1138,6 +1204,48 @@ func TestMacKMS_StoreCertificateChain(t *testing.T) {
 	}
 }
 
+func TestMacKMS_StoreCertificateChain_privatekey(t *testing.T) {
+	testName := t.Name()
+
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	resp := createKey(t, testName, apiv1.SHA256WithRSA)
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "@example.com"},
+		EmailAddresses: []string{testName + "@example.com"},
+		PublicKey:      resp.PublicKey,
+	})
+	require.NoError(t, err)
+
+	type args struct {
+		req *apiv1.StoreCertificateChainRequest
+	}
+	tests := []struct {
+		name    string
+		k       *MacKMS
+		args    args
+		cleanup func(t *testing.T)
+	}{
+		{"ok", &MacKMS{}, args{&apiv1.StoreCertificateChainRequest{
+			Name:             "mackms:" + testName,
+			CertificateChain: []*x509.Certificate{cert, ca.Intermediate},
+		}}, func(t *testing.T) {
+			deleteCertificate(t, testName, cert)
+			deleteCertificate(t, ca.Intermediate.Subject.CommonName, ca.Intermediate)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Cleanup(func() { tt.cleanup(t) })
+			k := &MacKMS{}
+			if assert.NoError(t, k.StoreCertificateChain(tt.args.req)) {
+				assert.Error(t, k.StoreCertificateChain(tt.args.req))
+			}
+		})
+	}
+}
+
 func TestMacKMS_DeleteCertificate(t *testing.T) {
 	testName := t.Name()
 	ca, err := minica.New(minica.WithName(testName))
@@ -1156,6 +1264,13 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 	cert2, err := ca.Sign(&x509.Certificate{
 		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
 		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+	})
+	require.NoError(t, err)
+
+	cert3, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "3@example.com"},
+		EmailAddresses: []string{testName + "3@example.com"},
 		PublicKey:      key.Public(),
 	})
 	require.NoError(t, err)
@@ -1188,6 +1303,13 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 		Name: "mackms:label=test-leaf-" + suffix, Certificate: cert2,
 	}))
 	t.Cleanup(func() { notExistsCheck(cert2) })
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: "mackms:", Certificate: cert3,
+	}))
+	t.Cleanup(func() {
+		deleteCertificate(t, "", cert3)
+		notExistsCheck(cert3)
+	})
 
 	type args struct {
 		req *apiv1.DeleteCertificateRequest
@@ -1213,6 +1335,7 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 		{"fail name", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{}}, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{Name: "mackms"}}, assert.Error},
 		{"fail missing", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{Name: "mackms:label=" + testName}}, assert.Error},
+		{"fail keychain", &MacKMS{}, args{&apiv1.DeleteCertificateRequest{Name: "mackms:keychain=dataProtection;label=" + cert3.Subject.CommonName}}, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1360,6 +1483,79 @@ func Test_keyAttributes_retryAttributes(t *testing.T) {
 				t.Log("foo")
 			}
 			assert.Equal(t, tt.want, k.retryAttributes())
+		})
+	}
+}
+
+func Test_isDataProtectionKeychain(t *testing.T) {
+	v := UseDataProtectionKeychain
+	t.Cleanup(func() {
+		UseDataProtectionKeychain = v
+	})
+
+	type fields struct {
+		useDataProtectionKeychain bool
+	}
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   bool
+	}{
+		{"dataProtection", fields{false}, args{"dataProtection"}, true},
+		{"login", fields{false}, args{"login"}, false},
+		{"system", fields{false}, args{"system"}, false},
+		{"default", fields{false}, args{""}, false},
+		{"default dataProtection", fields{true}, args{""}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			UseDataProtectionKeychain = tt.fields.useDataProtectionKeychain
+			assert.Equal(t, tt.want, isDataProtectionKeychain(tt.args.s))
+		})
+	}
+}
+
+func Test_createHash(t *testing.T) {
+	testName := t.Name()
+
+	ecKey := mustCreateKey(t, testName+"-ec", apiv1.ECDSAWithSHA256)
+	rsaKey := mustCreateKey(t, testName+"-rsa", apiv1.SHA256WithRSA)
+
+	edKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	ec224, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	require.NoError(t, err)
+
+	getHash := func(r *apiv1.CreateKeyResponse) []byte {
+		t.Helper()
+		u, err := parseURI(r.Name)
+		require.NoError(t, err)
+		return u.hash
+	}
+
+	type args struct {
+		key crypto.PublicKey
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      []byte
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok ec", args{ecKey.PublicKey}, getHash(ecKey), assert.NoError},
+		{"ok rsa", args{rsaKey.PublicKey}, getHash(rsaKey), assert.NoError},
+		{"fail ed25519", args{edKey}, nil, assert.Error},
+		{"fail ec224", args{ec224}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := createHash(tt.args.key)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

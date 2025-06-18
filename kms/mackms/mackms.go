@@ -27,6 +27,8 @@ import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // required to calculate hash
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
@@ -48,6 +50,11 @@ const Scheme = string(apiv1.MacKMS)
 // the keys.
 var DefaultTag = "com.smallstep.crypto"
 
+// UseDataProtectionKeychain defines if mackms will use the Data Protection
+// keychain by default. This option requires the application to be code-signed
+// with the appropriate entitlements.
+var UseDataProtectionKeychain = false
+
 type keyAttributes struct {
 	label            string
 	tag              string
@@ -68,9 +75,10 @@ func (k *keyAttributes) retryAttributes() *keyAttributes {
 		return nil
 	}
 	return &keyAttributes{
-		label: k.label,
-		hash:  k.hash,
-		retry: false,
+		label:            k.label,
+		hash:             k.hash,
+		useSecureEnclave: k.useSecureEnclave,
+		retry:            false,
 	}
 }
 
@@ -83,8 +91,10 @@ type keySearchAttributes struct {
 }
 
 type certAttributes struct {
-	label        string
-	serialNumber *big.Int
+	label                     string
+	serialNumber              *big.Int
+	keychain                  string
+	useDataProtectionKeychain bool
 }
 
 type algorithmAttributes struct {
@@ -357,6 +367,14 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 //   - mackms:label=test@example.com
 //   - mackms:serial=2c273934eda8454d2595a94497e2395a
 //   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+//
+// On code-signed applications, it is possible to use the Data Protection
+// Keychain by default if [UseDataProtectionKeychain] is set to true, you can
+// also select the keychain using the "keychain" attribute:
+//   - "mackms:label=my-label;keychain=dataProtection"
+//   - "mackms:label=my-label;keychain=login"
+//
+// Currently, only the keychains dataProtection and login are supported.
 func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("loadCertificateRequest 'name' cannot be empty")
@@ -368,7 +386,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
 	}
 
-	cert, err := loadCertificate(u.label, u.serialNumber, nil)
+	cert, err := loadCertificate(u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", apiv1Error(err))
 	}
@@ -386,6 +404,14 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 //   - "mackms:" will use the common name
 //   - "mackms:label=my-label" will use "my-label"
 //   - "mackms:my-label" will use the "my-label"
+//
+// On code-signed applications, it is possible to use the Data Protection
+// Keychain by default if [UseDataProtectionKeychain] is set to true, you can
+// also select the keychain using the "keychain" attribute:
+//   - "mackms:label=my-label;keychain=dataProtection"
+//   - "mackms:label=my-label;keychain=login"
+//
+// Currently, only the keychains dataProtection and login are supported.
 func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	// There's not really need to require the name as macOS will use the common
 	// name as default.
@@ -400,8 +426,19 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return fmt.Errorf("mackms StoreCertificate failed: %w", err)
 	}
 
+	// Write the certificate in the Data Protection Keychain if the key is in
+	// the secure enclave.
+	if u.keychain == "" && !u.useDataProtectionKeychain {
+		if attrs, err := getKeyAttributes(req.Certificate.PublicKey); err == nil {
+			defer attrs.Release()
+			if security.GetSecAttrTokenID(attrs) == "com.apple.setoken" {
+				u.useDataProtectionKeychain = true
+			}
+		}
+	}
+
 	// Store the certificate and update the label if required
-	if err := storeCertificate(u.label, req.Certificate); err != nil {
+	if err := storeCertificate(u, req.Certificate); err != nil {
 		return fmt.Errorf("mackms StoreCertificate failed: %w", apiv1Error(err))
 	}
 
@@ -427,9 +464,9 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", err)
 	}
 
-	cert, err := loadCertificate(u.label, u.serialNumber, nil)
+	cert, err := loadCertificate(u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", apiv1Error(err))
+		return nil, fmt.Errorf("mackms LoadCertificateChain failed1: %w", apiv1Error(err))
 	}
 
 	chain := []*x509.Certificate{cert}
@@ -438,12 +475,13 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	}
 
 	// Look for the rest of intermediates skipping the root.
+	chainURI := &certAttributes{useDataProtectionKeychain: u.useDataProtectionKeychain}
 	for {
 		// The Keychain stores the subject as an attribute, but it saves some of
 		// the values in uppercase. We cannot use the cert.RawIssuer to restrict
 		// more the search with KSecAttrSubjectKeyID and kSecAttrSubject. To do
 		// it we will need to "normalize" the subject it in the same way.
-		parent, err := loadCertificate("", nil, cert.AuthorityKeyId)
+		parent, err := loadCertificate(chainURI, cert.AuthorityKeyId)
 		if err != nil || isSelfSigned(parent) || cert.CheckSignatureFrom(parent) != nil {
 			break
 		}
@@ -479,15 +517,27 @@ func (k *MacKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) 
 		return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
 	}
 
+	// Write the certificate in the Data Protection Keychain if the key is in
+	// the secure enclave.
+	if u.keychain == "" && !u.useDataProtectionKeychain {
+		if attrs, err := getKeyAttributes(req.CertificateChain[0].PublicKey); err == nil {
+			defer attrs.Release()
+			if security.GetSecAttrTokenID(attrs) == "com.apple.setoken" {
+				u.useDataProtectionKeychain = true
+			}
+		}
+	}
+
 	// Store the certificate and update the label if required
-	if err := storeCertificate(u.label, req.CertificateChain[0]); err != nil {
-		return fmt.Errorf("mackms StoreCertificateChain failed: %w", apiv1Error(err))
+	if err := storeCertificate(u, req.CertificateChain[0]); err != nil {
+		return fmt.Errorf("mackms StoreCertificateChain failed1: %w", apiv1Error(err))
 	}
 
 	// Store the rest of the chain but do not fail if already exists
+	chainURI := &certAttributes{useDataProtectionKeychain: u.useDataProtectionKeychain}
 	for _, cert := range req.CertificateChain[1:] {
-		if err := storeCertificate("", cert); err != nil && !errors.Is(err, security.ErrAlreadyExists) {
-			return fmt.Errorf("mackms StoreCertificateChain failed: %w", err)
+		if err := storeCertificate(chainURI, cert); err != nil && !errors.Is(err, security.ErrAlreadyExists) {
+			return fmt.Errorf("mackms StoreCertificateChain failed2: %w", err)
 		}
 	}
 
@@ -529,6 +579,11 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 			}
 			defer cfTag.Release() //nolint:gocritic // only two iterations
 			dict[security.KSecAttrApplicationTag] = cfTag
+		}
+		if u.useSecureEnclave {
+			dict[security.KSecUseDataProtectionKeychain] = cf.True
+		} else {
+			dict[security.KSecUseDataProtectionKeychain] = cf.False
 		}
 		// Extract logic to deleteItem to avoid defer on loops
 		if err := deleteItem(dict, u.hash); err != nil {
@@ -574,6 +629,11 @@ func (*MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		}
 		defer cfSerial.Release()
 		query[security.KSecAttrSerialNumber] = cfSerial
+	}
+	if u.useDataProtectionKeychain {
+		query[security.KSecUseDataProtectionKeychain] = cf.True
+	} else {
+		query[security.KSecUseDataProtectionKeychain] = cf.False
 	}
 
 	if err := deleteItem(query, nil); err != nil {
@@ -672,12 +732,12 @@ var _ apiv1.SearchableKeyManager = (*MacKMS)(nil)
 
 func deleteItem(dict cf.Dictionary, hash []byte) error {
 	if len(hash) > 0 {
-		d, err := cf.NewData(hash)
+		cfHash, err := cf.NewData(hash)
 		if err != nil {
 			return err
 		}
-		defer d.Release()
-		dict[security.KSecAttrApplicationLabel] = d
+		defer cfHash.Release()
+		dict[security.KSecAttrApplicationLabel] = cfHash
 	}
 
 	query, err := cf.NewDictionary(dict)
@@ -697,18 +757,19 @@ func deleteItem(dict cf.Dictionary, hash []byte) error {
 }
 
 func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
-	cfLabel, err := cf.NewString(u.label)
-	if err != nil {
-		return nil, err
-	}
-	defer cfLabel.Release()
-
 	dict := cf.Dictionary{
 		security.KSecClass:        security.KSecClassKey,
-		security.KSecAttrLabel:    cfLabel,
 		security.KSecAttrKeyClass: security.KSecAttrKeyClassPrivate,
 		security.KSecReturnRef:    cf.True,
 		security.KSecMatchLimit:   security.KSecMatchLimitOne,
+	}
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
+		if err != nil {
+			return nil, err
+		}
+		defer cfLabel.Release()
+		dict[security.KSecAttrLabel] = cfLabel
 	}
 	if u.tag != "" {
 		cfTag, err := cf.NewData([]byte(u.tag))
@@ -725,6 +786,11 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 		}
 		defer d.Release()
 		dict[security.KSecAttrApplicationLabel] = d
+	}
+	if u.useSecureEnclave {
+		dict[security.KSecUseDataProtectionKeychain] = cf.True
+	} else {
+		dict[security.KSecUseDataProtectionKeychain] = cf.False
 	}
 
 	// Get the query from the keychain
@@ -809,6 +875,40 @@ func getPrivateKeys(u *keySearchAttributes) ([]*security.SecKeychainItemRef, err
 	}
 
 	return keys, nil
+}
+
+func getKeyAttributes(pub crypto.PublicKey) (*cf.DictionaryRef, error) {
+	hash, err := createHash(pub)
+	if err != nil {
+		return nil, err
+	}
+
+	cfHash, err := cf.NewData(hash)
+	if err != nil {
+		return nil, err
+	}
+	defer cfHash.Release()
+
+	query, err := cf.NewDictionary(cf.Dictionary{
+		security.KSecClass:                security.KSecClassKey,
+		security.KSecAttrKeyClass:         security.KSecAttrKeyClassPrivate,
+		security.KSecReturnRef:            cf.True,
+		security.KSecMatchLimit:           security.KSecMatchLimitOne,
+		security.KSecAttrApplicationLabel: cfHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer query.Release()
+
+	var ref cf.TypeRef
+	err = security.SecItemCopyMatching(query, &ref)
+	if err != nil {
+		return nil, err
+	}
+	defer ref.Release()
+
+	return security.SecKeyCopyAttributes(security.NewSecKeyRef(ref)), nil
 }
 
 func extractPublicKey(secKeyRef *security.SecKeyRef) (crypto.PublicKey, []byte, error) {
@@ -896,20 +996,22 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return false
 }
 
-func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (*x509.Certificate, error) {
+func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate, error) {
 	query := cf.Dictionary{
-		security.KSecClass: security.KSecClassCertificate,
+		security.KSecClass:      security.KSecClassCertificate,
+		security.KSecMatchLimit: security.KSecMatchLimitOne,
+		security.KSecReturnRef:  cf.True,
 	}
-	if label != "" {
-		cfLabel, err := cf.NewString(label)
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
 			return nil, err
 		}
 		defer cfLabel.Release()
 		query[security.KSecAttrLabel] = cfLabel
 	}
-	if serialNumber != nil {
-		cfSerial, err := cf.NewData(encodeSerialNumber(serialNumber))
+	if u.serialNumber != nil {
+		cfSerial, err := cf.NewData(encodeSerialNumber(u.serialNumber))
 		if err != nil {
 			return nil, err
 		}
@@ -923,6 +1025,13 @@ func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (
 		}
 		defer cfSubjectKeyID.Release()
 		query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
+	}
+	// Apple recommends to set this parameters always to true for all keychains
+	// operations. This requires a code-signed application.
+	if u.useDataProtectionKeychain {
+		query[security.KSecUseDataProtectionKeychain] = cf.True
+	} else {
+		query[security.KSecUseDataProtectionKeychain] = cf.False
 	}
 
 	cfQuery, err := cf.NewDictionary(query)
@@ -951,7 +1060,7 @@ func loadCertificate(label string, serialNumber *big.Int, subjectKeyID []byte) (
 	return cert, nil
 }
 
-func storeCertificate(label string, cert *x509.Certificate) error {
+func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
 	cfData, err := cf.NewData(cert.Raw)
 	if err != nil {
 		return err
@@ -966,10 +1075,29 @@ func storeCertificate(label string, cert *x509.Certificate) error {
 
 	// Adding the label here doesn't have any effect. Apple Keychain always uses
 	// the commonName.
-	attributes, err := cf.NewDictionary(cf.Dictionary{
+	dict := cf.Dictionary{
 		security.KSecClass:    security.KSecClassCertificate,
 		security.KSecValueRef: certRef,
-	})
+	}
+	// Apple recommends to set KSecUseDataProtectionKeychain parameters always
+	// to true for all keychains operations. This option requires to use a
+	// code-signed application.
+	if u.useDataProtectionKeychain {
+		dict[security.KSecUseDataProtectionKeychain] = cf.True
+		// The data in the keychain item cannot be accessed after a restart
+		// until the device has been unlocked once by the user.
+		access, err := security.SecAccessControlCreateWithFlags(
+			security.KSecAttrAccessibleAfterFirstUnlock,
+			0,
+		)
+		if err != nil {
+			return err
+		}
+		defer access.Release()
+		dict[security.KSecAttrAccessControl] = access
+	}
+
+	attributes, err := cf.NewDictionary(dict)
 	if err != nil {
 		return err
 	}
@@ -981,8 +1109,8 @@ func storeCertificate(label string, cert *x509.Certificate) error {
 	}
 
 	// Update the label if necessary
-	if label != "" && label != cert.Subject.CommonName {
-		cfLabel, err := cf.NewString(label)
+	if u.label != "" && u.label != cert.Subject.CommonName {
+		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
 			return err
 		}
@@ -1089,6 +1217,7 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	// With regular values, uris look like this:
 	// mackms:label=my-cert;serial=01020A0B...
 	label := u.Get("label")
+	keychain := u.Get("keychain")
 	serial := u.GetEncoded("serial")
 	if requireValue && label == "" && len(serial) == 0 {
 		return nil, fmt.Errorf("error parsing %q: label or serial are required", rawuri)
@@ -1100,8 +1229,10 @@ func parseCertURI(rawuri string, requireValue bool) (*certAttributes, error) {
 	}
 
 	return &certAttributes{
-		label:        label,
-		serialNumber: serialNumber,
+		label:                     label,
+		serialNumber:              serialNumber,
+		useDataProtectionKeychain: isDataProtectionKeychain(keychain),
+		keychain:                  keychain,
 	}, nil
 }
 
@@ -1146,6 +1277,19 @@ func parseSearchURI(rawuri string) (*keySearchAttributes, error) {
 		secureEnclaveSet: u.Values.Has("se"),
 		useSecureEnclave: u.GetBool("se"),
 	}, nil
+}
+
+func isDataProtectionKeychain(s string) bool {
+	switch strings.ToLower(s) {
+	case "dataprotection":
+		return true
+	case "login":
+		return false
+	case "":
+		return UseDataProtectionKeychain
+	default:
+		return false
+	}
 }
 
 // encodeSerialNumber encodes the serial number of a certificate in ASN.1.
@@ -1236,6 +1380,32 @@ func ecdhToECDSAPublicKey(key *ecdh.PublicKey) (*ecdsa.PublicKey, error) {
 	default:
 		return nil, errors.New("failed to convert *ecdh.PublicKey to *ecdsa.PublicKey")
 	}
+}
+
+// createHash creates the SHA-1 of the DER representation of an RSA public key
+// using the PKCS #1 format or the SHA-1 of the uncompressed ECDSA point
+// according to SEC 1, Version 2.0, Section 2.3.4. It corresponds to the
+// kSecAttrApplicationLabel attribute
+func createHash(key crypto.PublicKey) ([]byte, error) {
+	switch k := key.(type) {
+	case *ecdsa.PublicKey:
+		pub, err := k.ECDH()
+		if err != nil {
+			return nil, err
+		}
+		return sha1Sum(pub.Bytes()), nil
+	case *rsa.PublicKey:
+		return sha1Sum(x509.MarshalPKCS1PublicKey(k)), nil
+	default:
+		return nil, fmt.Errorf("usupported public key type %T", key)
+	}
+}
+
+//nolint:gosec // required to calculate hash
+func sha1Sum(b []byte) []byte {
+	h := sha1.New()
+	h.Write(b)
+	return h.Sum(nil)
 }
 
 func apiv1Error(err error) error {
