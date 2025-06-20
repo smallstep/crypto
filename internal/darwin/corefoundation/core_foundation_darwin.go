@@ -43,7 +43,9 @@ type TypeReferer interface {
 }
 
 func Release(ref TypeReferer) {
-	C.CFRelease(ref.TypeRef())
+	if tr := ref.TypeRef(); tr != nilCFType {
+		C.CFRelease(tr)
+	}
 }
 
 func Retain(ref TypeReferer) {
