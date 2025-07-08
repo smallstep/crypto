@@ -13,7 +13,7 @@ import (
 
 	_ "modernc.org/sqlite" // enable sql driver
 
-	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/internal/utils/convert"
 )
 
 var columnNames = make(map[string]string, len(columns))
@@ -458,7 +458,7 @@ func (db *NSSDB) scan(ctx context.Context, rows *sql.Rows, private bool) (*Objec
 		}
 	}
 
-	u32ID, err := utils.SafeUint32(id.Int64)
+	u32ID, err := convert.SafeUint32(id.Int64)
 	if err != nil {
 		return nil, fmt.Errorf("failed converting %d to uint32: %w", id.Int64, err)
 	}
@@ -480,7 +480,7 @@ func (db *NSSDB) scan(ctx context.Context, rows *sql.Rows, private bool) (*Objec
 
 // https://github.com/nss-dev/nss/blob/NSS_3_107_RTM/lib/softoken/sdb.c#L1260
 func (db *NSSDB) getObjectID(ctx context.Context) (uint32, error) {
-	id, err := utils.SafeUint32(time.Now().Unix() & 0x3fffffff)
+	id, err := convert.SafeUint32(time.Now().Unix() & 0x3fffffff)
 	if err != nil {
 		return 0, fmt.Errorf("failed converting timestamp to uint32: %w", err)
 	}

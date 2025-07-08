@@ -1,4 +1,4 @@
-package utils
+package asn1utils
 
 import (
 	"testing"

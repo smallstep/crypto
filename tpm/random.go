@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-tpm/legacy/tpm2"
 
-	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/internal/utils/convert"
 )
 
 type ShortRandomReadError struct {
@@ -72,7 +72,7 @@ func (g *generator) Read(p []byte) (n int, err error) {
 
 	var result []byte
 	requestedLength := len(p)
-	singleRequestLength := utils.MustUint16(requestedLength)
+	singleRequestLength := convert.MustUint16(requestedLength)
 	for len(result) < requestedLength {
 		if r, err := g.t.generateRandom(ctx, singleRequestLength); err == nil {
 			result = append(result, r...)
@@ -80,7 +80,7 @@ func (g *generator) Read(p []byte) (n int, err error) {
 			var s ShortRandomReadError
 			if errors.As(err, &s) && s.Generated > 0 {
 				// adjust number of bytes to request if at least some data was read and continue loop
-				singleRequestLength = utils.MustUint16(s.Generated)
+				singleRequestLength = convert.MustUint16(s.Generated)
 				result = append(result, r...)
 			} else {
 				g.readError = err // store the error to be returned for future calls to Read

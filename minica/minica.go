@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/internal/utils/convert"
 	"go.step.sm/crypto/sshutil"
 	"go.step.sm/crypto/x509util"
 )
@@ -164,7 +164,7 @@ func (c *CA) SignCSR(csr *x509.CertificateRequest, opts ...SignOption) (*x509.Ce
 func (c *CA) SignSSH(template *ssh.Certificate) (*ssh.Certificate, error) {
 	mut := *template
 	if mut.ValidAfter == 0 && mut.ValidBefore != ssh.CertTimeInfinity {
-		validAfter, err := utils.SafeUint64(time.Now().Unix())
+		validAfter, err := convert.SafeUint64(time.Now().Unix())
 		if err != nil {
 			return nil, fmt.Errorf("failed converting timestamp to uint64: %w", err)
 		}

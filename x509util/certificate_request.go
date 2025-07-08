@@ -11,9 +11,10 @@ import (
 	"errors"
 	"fmt"
 
-	"go.step.sm/crypto/internal/utils"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	asn1utils "go.step.sm/crypto/internal/utils/asn1"
 )
 
 var (
@@ -219,7 +220,7 @@ func (c *CertificateRequest) addChallengePassword(asn1Data []byte) ([]byte, erro
 		child.AddASN1ObjectIdentifier(oidChallengePassword)
 		child.AddASN1(cryptobyte_asn1.SET, func(value *cryptobyte.Builder) {
 			switch {
-			case utils.IsPrintableString(c.ChallengePassword, true, true):
+			case asn1utils.IsPrintableString(c.ChallengePassword, true, true):
 				value.AddASN1(cryptobyte_asn1.PrintableString, func(s *cryptobyte.Builder) {
 					s.AddBytes([]byte(c.ChallengePassword))
 				})
