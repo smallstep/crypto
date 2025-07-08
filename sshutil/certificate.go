@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
-	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/internal/utils/convert"
 	"go.step.sm/crypto/randutil"
 )
 
@@ -133,5 +133,5 @@ func toValidity(t time.Time) uint64 {
 		return 0
 	}
 
-	return utils.MustUint64(t.Unix())
+	return convert.MustUint64(t.Unix())
 }

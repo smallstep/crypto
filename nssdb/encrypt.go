@@ -12,7 +12,7 @@ import (
 	asn1tag "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/pbkdf2"
 
-	"go.step.sm/crypto/internal/utils"
+	"go.step.sm/crypto/internal/utils/convert"
 	"go.step.sm/crypto/randutil"
 )
 
@@ -354,7 +354,7 @@ func cbcPad(plaintext []byte) ([]byte, error) {
 
 	desLen := (inLen + aes.BlockSize) & ^(aes.BlockSize - 1)
 
-	desPadLen, err := utils.SafeUint8(desLen - inLen)
+	desPadLen, err := convert.SafeUint8(desLen - inLen)
 	if err != nil {
 		return nil, fmt.Errorf("conversion to uint8 failed: %w", err)
 	}

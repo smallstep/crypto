@@ -1,4 +1,4 @@
-package utils
+package asn1utils
 
 // IsPrintableString reports whether the given s is a valid ASN.1 PrintableString.
 // If asterisk is allowAsterisk then '*' is also allowed, reflecting existing
