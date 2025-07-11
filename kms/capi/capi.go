@@ -46,6 +46,17 @@ const (
 	SkipFindCertificateKey = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
 )
 
+const (
+	SoftwareProvider  = "Microsoft Software Key Storage Provider"
+	SmartCardProvider = "Microsoft Smart Card Key Storage Provider"
+	PlatformProvider  = "Microsoft Platform Crypto Provider"
+)
+
+const (
+	MachineStore = "machine"
+	UserStore    = "user"
+)
+
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 	apiv1.UnspecifiedSignAlgorithm: ALG_ECDSA_P256,
 	apiv1.SHA256WithRSA:            ALG_RSA,
@@ -242,20 +253,6 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 	return pub, nil
 }
 
-func getKeyFlags(u *uri.URI) (uint32, error) {
-	keyFlags := uint32(0)
-
-	switch u.Get(StoreLocationArg) {
-	case "machine":
-		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
-	case "user", "":
-	default:
-		return 0, fmt.Errorf("invalid storeLocation %v", u.Get(StoreLocationArg))
-	}
-
-	return keyFlags, nil
-}
-
 // New returns a new CAPIKMS.
 func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
 	providerName := "Microsoft Software Key Storage Provider"
@@ -328,14 +325,14 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	// default to the user store
 	var storeLocation string
 	if storeLocation = u.Get(StoreLocationArg); storeLocation == "" {
-		storeLocation = "user"
+		storeLocation = UserStore
 	}
 
 	var certStoreLocation uint32
 	switch storeLocation {
-	case "user":
+	case UserStore:
 		certStoreLocation = certStoreCurrentUser
-	case "machine":
+	case MachineStore:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return nil, fmt.Errorf("invalid cert store location %q", storeLocation)
@@ -472,7 +469,7 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		containerName string
 	)
 	if containerName = u.Get(ContainerNameArg); containerName != "" {
-		keyFlags, err := getKeyFlags(u)
+		keyFlags, err := k.getKeyFlags(u)
 		if err != nil {
 			return nil, err
 		}
@@ -576,7 +573,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("failed determining KeySpec to use: %w", err)
 	}
 
-	keyFlags, err := getKeyFlags(u)
+	keyFlags, err := k.getKeyFlags(u)
 	if err != nil {
 		return nil, err
 	}
@@ -659,7 +656,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	keyFlags, err := getKeyFlags(u)
+	keyFlags, err := k.getKeyFlags(u)
 	if err != nil {
 		return err
 	}
@@ -686,7 +683,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	keyFlags, err := getKeyFlags(u)
+	keyFlags, err := k.getKeyFlags(u)
 	if err != nil {
 		return nil, err
 	}
@@ -721,14 +718,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	var storeLocation string
 	if storeLocation = u.Get(StoreLocationArg); storeLocation == "" {
-		storeLocation = "user"
+		storeLocation = UserStore
 	}
 
 	var certStoreLocation uint32
 	switch storeLocation {
-	case "user":
+	case UserStore:
 		certStoreLocation = certStoreCurrentUser
-	case "machine":
+	case MachineStore:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return fmt.Errorf("invalid cert store location %q", storeLocation)
@@ -799,14 +796,14 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 
 	var storeLocation string
 	if storeLocation = u.Get(StoreLocationArg); storeLocation == "" {
-		storeLocation = "user"
+		storeLocation = UserStore
 	}
 
 	var certStoreLocation uint32
 	switch storeLocation {
-	case "user":
+	case UserStore:
 		certStoreLocation = certStoreCurrentUser
-	case "machine":
+	case MachineStore:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return fmt.Errorf("invalid cert store location %q", storeLocation)
@@ -939,6 +936,31 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
+}
+
+func (k *CAPIKMS) getKeyFlags(u *uri.URI) (uint32, error) {
+	keyFlags := uint32(0)
+
+	switch u.Get(StoreLocationArg) {
+	case MachineStore:
+		if k.providerName == SmartCardProvider {
+			return 0, fmt.Errorf("machine store cannot be used with the %s", SmartCardProvider)
+		}
+
+		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
+
+	case UserStore:
+		if k.providerName == PlatformProvider {
+			return 0, fmt.Errorf("user store cannot be used with the %s", PlatformProvider)
+		}
+
+	case "":
+
+	default:
+		return 0, fmt.Errorf("invalid storeLocation %v", u.Get(StoreLocationArg))
+	}
+
+	return keyFlags, nil
 }
 
 type CAPISigner struct {
