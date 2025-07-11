@@ -125,7 +125,6 @@ func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
 	// the exponent is in BigEndian format, so read the data into the right place in the buffer
 	exp := make([]byte, 8)
 	n, err := r.Read(exp[8-header.PublicExpSize:])
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to read public exponent %w", err)
 	}
@@ -136,7 +135,6 @@ func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
 
 	mod := make([]byte, header.ModulusSize)
 	n, err = r.Read(mod)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to read modulus %w", err)
 	}
@@ -242,6 +240,20 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 	}
 
 	return pub, nil
+}
+
+func getKeyFlags(u *uri.URI) (uint32, error) {
+	keyFlags := uint32(0)
+
+	switch u.Get(StoreLocationArg) {
+	case "machine":
+		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
+	case "user", "":
+	default:
+		return 0, fmt.Errorf("invalid storeLocation %v", u.Get(StoreLocationArg))
+	}
+
+	return keyFlags, nil
 }
 
 // New returns a new CAPIKMS.
@@ -460,7 +472,12 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		containerName string
 	)
 	if containerName = u.Get(ContainerNameArg); containerName != "" {
-		kh, err = nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+		keyFlags, err := getKeyFlags(u)
+		if err != nil {
+			return nil, err
+		}
+
+		kh, err = nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
 		if err != nil {
 			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, containerName, err)
 		}
@@ -486,7 +503,6 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 
 	if pinOrPass != "" && k.providerName == ProviderMSSC {
 		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pinOrPass, 0)
-
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
@@ -497,7 +513,6 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 
 		err = nCryptSetProperty(kh, NCRYPT_PCP_USAGE_AUTH_PROPERTY, passHash, 0)
-
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PCP_USAGE_AUTH_PROPERTY: %w", err)
 		}
@@ -561,8 +576,13 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("failed determining KeySpec to use: %w", err)
 	}
 
-	//TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
-	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, keySpec, 0)
+	keyFlags, err := getKeyFlags(u)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, keySpec, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create persisted key: %w", err)
 	}
@@ -571,30 +591,15 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 	if alg == "RSA" {
 		err = nCryptSetProperty(kh, NCRYPT_LENGTH_PROPERTY, uint32(req.Bits), 0)
-
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_LENGTH_PROPERTY: %w", err)
 		}
 	}
 
-	// users can store the key as a machine key by passing in storelocation = machine
-	// 'machine' is the only valid location, otherwise the key is stored as a 'user' key
-	storeLocation := u.Get(StoreLocationArg)
-
-	if storeLocation == "machine" {
-		err = nCryptSetProperty(kh, NCRYPT_KEY_TYPE_PROPERTY, NCRYPT_MACHINE_KEY_FLAG, 0)
-
-		if err != nil {
-			return nil, fmt.Errorf("unable to set key NCRYPT_KEY_TYPE_PROPERTY: %w", err)
-		}
-	} else if storeLocation != "" && storeLocation != "user" {
-		return nil, fmt.Errorf("invalid storeLocation %v", storeLocation)
-	}
-
 	// if supplied, set the smart card pin/or PCP pass
 	pinOrPass := u.Pin()
 
-	//failover to pin set in kms instantiation
+	// failover to pin set in kms instantiation
 	if pinOrPass == "" {
 		pinOrPass = k.pin
 	}
@@ -607,7 +612,6 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		}
 	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
 		pwHash, err := hashPasswordUTF16(pinOrPass) // we have to SHA1 hash over the utf16 string
-
 		if err != nil {
 			return nil, fmt.Errorf("unable to hash pin: %w", err)
 		}
@@ -655,7 +659,12 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+	keyFlags, err := getKeyFlags(u)
+	if err != nil {
+		return err
+	}
+
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
 	if err != nil {
 		return fmt.Errorf("unable to open key: %w", err)
 	}
@@ -677,7 +686,12 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, 0)
+	keyFlags, err := getKeyFlags(u)
+	if err != nil {
+		return nil, err
+	}
+
+	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -874,7 +888,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		}
 		return nil
 	case issuerName != "" && serialNumber != "":
-		//TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
+		// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
 		var serialBytes []byte
@@ -900,7 +914,6 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 				0,
 				findIssuerStr,
 				uintptr(unsafe.Pointer(wide(issuerName))), prevCert)
-
 			if err != nil {
 				return fmt.Errorf("findCertificateInStore failed: %w", err)
 			}
@@ -935,7 +948,7 @@ type CAPISigner struct {
 	PublicKey      crypto.PublicKey
 }
 
-func newCAPISigner(kh uintptr, containerName, pin string) (crypto.Signer, error) {
+func newCAPISigner(kh uintptr, containerName, _ string) (crypto.Signer, error) {
 	pub, err := getPublicKey(kh)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get public key: %w", err)
@@ -960,7 +973,6 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 	switch s.algorithmGroup {
 	case "ECDSA":
 		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, "", 0)
-
 		if err != nil {
 			return nil, err
 		}
