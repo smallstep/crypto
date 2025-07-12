@@ -965,19 +965,17 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 			return nil, err
 		}
 
-		if len(signatureBytes) >= len(digest)*2 {
-			sigR := signatureBytes[:len(digest)]
-			sigS := signatureBytes[len(digest):]
+		half := len(signatureBytes) >> 1
+		sigR := signatureBytes[:half]
+		sigS := signatureBytes[half:]
 
-			var b cryptobyte.Builder
-			b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-				b.AddASN1BigInt(new(big.Int).SetBytes(sigR))
-				b.AddASN1BigInt(new(big.Int).SetBytes(sigS))
-			})
-			return b.Bytes()
-		}
+		var b cryptobyte.Builder
+		b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+			b.AddASN1BigInt(new(big.Int).SetBytes(sigR))
+			b.AddASN1BigInt(new(big.Int).SetBytes(sigS))
+		})
+		return b.Bytes()
 
-		return nil, fmt.Errorf("signatureBytes not long enough to encode ASN signature")
 	case "RSA":
 		hf := opts.HashFunc()
 		hashAlg, ok := hashAlgorithms[hf]
