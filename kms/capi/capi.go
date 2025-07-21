@@ -47,12 +47,6 @@ const (
 )
 
 const (
-	SoftwareProvider  = "Microsoft Software Key Storage Provider"
-	SmartCardProvider = "Microsoft Smart Card Key Storage Provider"
-	PlatformProvider  = "Microsoft Platform Crypto Provider"
-)
-
-const (
 	MachineStore = "machine"
 	UserStore    = "user"
 )
@@ -255,7 +249,7 @@ func getPublicKey(kh uintptr) (crypto.PublicKey, error) {
 
 // New returns a new CAPIKMS.
 func New(ctx context.Context, opts apiv1.Options) (*CAPIKMS, error) {
-	providerName := "Microsoft Software Key Storage Provider"
+	providerName := ProviderMSKSP
 	pin := ""
 
 	if opts.URI != "" {
@@ -943,15 +937,15 @@ func (k *CAPIKMS) getKeyFlags(u *uri.URI) (uint32, error) {
 
 	switch u.Get(StoreLocationArg) {
 	case MachineStore:
-		if k.providerName == SmartCardProvider {
-			return 0, fmt.Errorf("machine store cannot be used with the %s", SmartCardProvider)
+		if k.providerName == ProviderMSSC {
+			return 0, fmt.Errorf("machine store cannot be used with the %s", ProviderMSSC)
 		}
 
 		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
 
 	case UserStore:
-		if k.providerName == PlatformProvider {
-			return 0, fmt.Errorf("user store cannot be used with the %s", PlatformProvider)
+		if k.providerName == ProviderMSPCP {
+			return 0, fmt.Errorf("user store cannot be used with the %s", ProviderMSPCP)
 		}
 
 	case "":
