@@ -300,10 +300,9 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		return nil, err
 	}
 
-	// Override protection level to HSM only if it's not specified, and is given
-	// in the uri.
+	// Override protection level to HSM only if is given in the uri.
 	protectionLevel := req.ProtectionLevel
-	if protectionLevel == apiv1.UnspecifiedProtectionLevel && hsm {
+	if hsm {
 		protectionLevel = apiv1.HSM
 	}
 
