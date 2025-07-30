@@ -11,7 +11,12 @@ import (
 	"unicode"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/internal/termutil"
 )
+
+// readPIN defines the method used to read a pin, it can be changed for testing
+// purposes.
+var readPIN = termutil.ReadPassword
 
 // URI implements a parser for a URI format based on the the PKCS #11 URI Scheme
 // defined in https://tools.ietf.org/html/rfc7512
@@ -188,6 +193,15 @@ func (u *URI) Pin() string {
 	}
 	if path := u.Get("pin-source"); path != "" {
 		if b, err := readFile(path); err == nil {
+			return string(bytes.TrimRightFunc(b, unicode.IsSpace))
+		}
+	}
+	if u.Has("pin-prompt") {
+		prompt := "Enter PIN:"
+		if s := u.Get("pin-prompt"); s != "" {
+			prompt = s
+		}
+		if b, err := readPIN(prompt); err == nil {
 			return string(bytes.TrimRightFunc(b, unicode.IsSpace))
 		}
 	}

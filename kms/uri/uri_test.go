@@ -1,6 +1,7 @@
 package uri
 
 import (
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -275,18 +276,45 @@ func TestURI_GetEncoded(t *testing.T) {
 }
 
 func TestURI_Pin(t *testing.T) {
+	tmp := readPIN
+	cleanup := func() {
+		readPIN = tmp
+	}
+
 	tests := []struct {
-		name string
-		uri  *URI
-		want string
+		name  string
+		setup func(*testing.T)
+		uri   *URI
+		want  string
 	}{
-		{"from value", mustParse(t, "pkcs11:id=%72%73?pin-value=0123456789"), "0123456789"},
-		{"from source", mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/pin.txt"), "trim-this-pin"},
-		{"from missing", mustParse(t, "pkcs11:id=%72%73"), ""},
-		{"from source missing", mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/foo.txt"), ""},
+		{"from value", nil, mustParse(t, "pkcs11:id=%72%73?pin-value=0123456789"), "0123456789"},
+		{"from source", nil, mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/pin.txt"), "trim-this-pin"},
+		{"from missing", nil, mustParse(t, "pkcs11:id=%72%73"), ""},
+		{"from source missing", nil, mustParse(t, "pkcs11:id=%72%73?pin-source=testdata/foo.txt"), ""},
+		{"from prompt", func(t *testing.T) {
+			t.Cleanup(cleanup)
+			readPIN = func(prompt string) (s []byte, err error) {
+				return []byte("password"), nil
+			}
+		}, mustParse(t, "pkcs11:id=%72%73?pin-prompt"), "password"},
+		{"from prompt with message", func(t *testing.T) {
+			t.Cleanup(cleanup)
+			readPIN = func(prompt string) (s []byte, err error) {
+				return []byte("password   \n"), nil
+			}
+		}, mustParse(t, "pkcs11:id=%72%73?pin-prompt=The+PIN+Please"), "password"},
+		{"from prompt error", func(t *testing.T) {
+			t.Cleanup(cleanup)
+			readPIN = func(prompt string) (s []byte, err error) {
+				return nil, errors.New("some error")
+			}
+		}, mustParse(t, "pkcs11:id=%72%73?pin-prompt"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
 			if got := tt.uri.Pin(); got != tt.want {
 				t.Errorf("URI.Pin() = %v, want %v", got, tt.want)
 			}
