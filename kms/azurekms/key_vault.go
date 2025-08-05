@@ -13,7 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -37,23 +37,23 @@ var (
 )
 
 type keyType struct {
-	Kty   azkeys.JSONWebKeyType
-	Curve azkeys.JSONWebKeyCurveName
+	Kty   azkeys.KeyType
+	Curve azkeys.CurveName
 }
 
-func (k keyType) KeyType(pl apiv1.ProtectionLevel) azkeys.JSONWebKeyType {
+func (k keyType) KeyType(pl apiv1.ProtectionLevel) azkeys.KeyType {
 	switch k.Kty {
-	case azkeys.JSONWebKeyTypeEC:
+	case azkeys.KeyTypeEC:
 		if pl == apiv1.HSM {
-			return azkeys.JSONWebKeyTypeECHSM
+			return azkeys.KeyTypeECHSM
 		}
 		return k.Kty
-	case azkeys.JSONWebKeyTypeRSA:
+	case azkeys.KeyTypeRSA:
 		if pl == apiv1.HSM {
-			k.Kty = azkeys.JSONWebKeyTypeRSAHSM
+			k.Kty = azkeys.KeyTypeRSAHSM
 		}
 		return k.Kty
-	case azkeys.JSONWebKeyTypeECHSM, azkeys.JSONWebKeyTypeRSAHSM:
+	case azkeys.KeyTypeECHSM, azkeys.KeyTypeRSAHSM:
 		return k.Kty
 	default:
 		return ""
@@ -62,38 +62,38 @@ func (k keyType) KeyType(pl apiv1.ProtectionLevel) azkeys.JSONWebKeyType {
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]keyType{
 	apiv1.UnspecifiedSignAlgorithm: {
-		Kty:   azkeys.JSONWebKeyTypeEC,
-		Curve: azkeys.JSONWebKeyCurveNameP256,
+		Kty:   azkeys.KeyTypeEC,
+		Curve: azkeys.CurveNameP256,
 	},
 	apiv1.SHA256WithRSA: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.SHA384WithRSA: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.SHA512WithRSA: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.SHA256WithRSAPSS: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.SHA384WithRSAPSS: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.SHA512WithRSAPSS: {
-		Kty: azkeys.JSONWebKeyTypeRSA,
+		Kty: azkeys.KeyTypeRSA,
 	},
 	apiv1.ECDSAWithSHA256: {
-		Kty:   azkeys.JSONWebKeyTypeEC,
-		Curve: azkeys.JSONWebKeyCurveNameP256,
+		Kty:   azkeys.KeyTypeEC,
+		Curve: azkeys.CurveNameP256,
 	},
 	apiv1.ECDSAWithSHA384: {
-		Kty:   azkeys.JSONWebKeyTypeEC,
-		Curve: azkeys.JSONWebKeyCurveNameP384,
+		Kty:   azkeys.KeyTypeEC,
+		Curve: azkeys.CurveNameP384,
 	},
 	apiv1.ECDSAWithSHA512: {
-		Kty:   azkeys.JSONWebKeyTypeEC,
-		Curve: azkeys.JSONWebKeyCurveNameP521,
+		Kty:   azkeys.KeyTypeEC,
+		Curve: azkeys.CurveNameP521,
 	},
 }
 
@@ -312,7 +312,7 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 	}
 
 	var keySize *int32
-	if kt.Kty == azkeys.JSONWebKeyTypeRSA || kt.Kty == azkeys.JSONWebKeyTypeRSAHSM {
+	if kt.Kty == azkeys.KeyTypeRSA || kt.Kty == azkeys.KeyTypeRSAHSM {
 		switch req.Bits {
 		case 2048:
 			keySize = &value2048
@@ -335,9 +335,9 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		Kty:     &keyType,
 		KeySize: keySize,
 		Curve:   &kt.Curve,
-		KeyOps: []*azkeys.JSONWebKeyOperation{
-			pointer(azkeys.JSONWebKeyOperationSign),
-			pointer(azkeys.JSONWebKeyOperationVerify),
+		KeyOps: []*azkeys.KeyOperation{
+			pointer(azkeys.KeyOperationSign),
+			pointer(azkeys.KeyOperationVerify),
 		},
 		KeyAttributes: &azkeys.KeyAttributes{
 			Enabled:   &valueTrue,

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
@@ -84,11 +84,11 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 
 	var octetSize int
 	switch alg {
-	case azkeys.JSONWebKeySignatureAlgorithmES256:
+	case azkeys.SignatureAlgorithmES256:
 		octetSize = 32 // 256-bit, concat(R,S) = 64 bytes
-	case azkeys.JSONWebKeySignatureAlgorithmES384:
+	case azkeys.SignatureAlgorithmES384:
 		octetSize = 48 // 384-bit, concat(R,S) = 96 bytes
-	case azkeys.JSONWebKeySignatureAlgorithmES512:
+	case azkeys.SignatureAlgorithmES512:
 		octetSize = 66 // 528-bit, concat(R,S) = 132 bytes
 	default:
 		return resp.Result, nil
@@ -106,7 +106,7 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 	return b.Bytes()
 }
 
-func (s *Signer) signWithRetry(alg azkeys.JSONWebKeySignatureAlgorithm, digest []byte, retryAttempts int) (azkeys.SignResponse, error) {
+func (s *Signer) signWithRetry(alg azkeys.SignatureAlgorithm, digest []byte, retryAttempts int) (azkeys.SignResponse, error) {
 retry:
 	ctx, cancel := defaultContext()
 	defer cancel()
@@ -128,7 +128,7 @@ retry:
 	return resp, err
 }
 
-func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (azkeys.JSONWebKeySignatureAlgorithm, error) {
+func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (azkeys.SignatureAlgorithm, error) {
 	switch key.(type) {
 	case *rsa.PublicKey:
 		hashFunc := opts.HashFunc()
@@ -144,30 +144,30 @@ func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (azkeys.J
 		switch h := hashFunc; h {
 		case crypto.SHA256:
 			if isPSS {
-				return azkeys.JSONWebKeySignatureAlgorithmPS256, nil
+				return azkeys.SignatureAlgorithmPS256, nil
 			}
-			return azkeys.JSONWebKeySignatureAlgorithmRS256, nil
+			return azkeys.SignatureAlgorithmRS256, nil
 		case crypto.SHA384:
 			if isPSS {
-				return azkeys.JSONWebKeySignatureAlgorithmPS384, nil
+				return azkeys.SignatureAlgorithmPS384, nil
 			}
-			return azkeys.JSONWebKeySignatureAlgorithmRS384, nil
+			return azkeys.SignatureAlgorithmRS384, nil
 		case crypto.SHA512:
 			if isPSS {
-				return azkeys.JSONWebKeySignatureAlgorithmPS512, nil
+				return azkeys.SignatureAlgorithmPS512, nil
 			}
-			return azkeys.JSONWebKeySignatureAlgorithmRS512, nil
+			return azkeys.SignatureAlgorithmRS512, nil
 		default:
 			return "", errors.Errorf("unsupported hash function %v", h)
 		}
 	case *ecdsa.PublicKey:
 		switch h := opts.HashFunc(); h {
 		case crypto.SHA256:
-			return azkeys.JSONWebKeySignatureAlgorithmES256, nil
+			return azkeys.SignatureAlgorithmES256, nil
 		case crypto.SHA384:
-			return azkeys.JSONWebKeySignatureAlgorithmES384, nil
+			return azkeys.SignatureAlgorithmES384, nil
 		case crypto.SHA512:
-			return azkeys.JSONWebKeySignatureAlgorithmES512, nil
+			return azkeys.SignatureAlgorithmES512, nil
 		default:
 			return "", errors.Errorf("unsupported hash function %v", h)
 		}

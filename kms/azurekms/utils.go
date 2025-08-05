@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/pkg/errors"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -109,18 +109,18 @@ func convertKey(key *azkeys.JSONWebKey) (crypto.PublicKey, error) {
 	}
 
 	switch *key.Kty {
-	case azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyTypeECHSM:
+	case azkeys.KeyTypeEC, azkeys.KeyTypeECHSM:
 		return ecPublicKey(key.Crv, key.X, key.Y)
-	case azkeys.JSONWebKeyTypeRSA, azkeys.JSONWebKeyTypeRSAHSM:
+	case azkeys.KeyTypeRSA, azkeys.KeyTypeRSAHSM:
 		return rsaPublicKey(key.N, key.E)
-	case azkeys.JSONWebKeyTypeOct, azkeys.JSONWebKeyTypeOctHSM:
+	case azkeys.KeyTypeOct, azkeys.KeyTypeOctHSM:
 		return octPublicKey(key.K)
 	default:
 		return nil, fmt.Errorf("invalid key: unsupported kty %q", *key.Kty)
 	}
 }
 
-func ecPublicKey(crv *azkeys.JSONWebKeyCurveName, x, y []byte) (crypto.PublicKey, error) {
+func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 	if crv == nil {
 		return nil, errors.New("invalid EC key: missing crv value")
 	}
@@ -131,16 +131,16 @@ func ecPublicKey(crv *azkeys.JSONWebKeyCurveName, x, y []byte) (crypto.PublicKey
 	var curve elliptic.Curve
 	var curveSize int
 	switch *crv {
-	case azkeys.JSONWebKeyCurveNameP256:
+	case azkeys.CurveNameP256:
 		curve = elliptic.P256()
 		curveSize = 32
-	case azkeys.JSONWebKeyCurveNameP384:
+	case azkeys.CurveNameP384:
 		curve = elliptic.P384()
 		curveSize = 48
-	case azkeys.JSONWebKeyCurveNameP521:
+	case azkeys.CurveNameP521:
 		curve = elliptic.P521()
 		curveSize = 66 // (521/8 + 1)
-	case azkeys.JSONWebKeyCurveNameP256K:
+	case azkeys.CurveNameP256K:
 		return nil, fmt.Errorf(`invalid EC key: crv %q is not supported`, *crv)
 	default:
 		return nil, fmt.Errorf("invalid EC key: crv %q is not supported", *crv)

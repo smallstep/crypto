@@ -13,7 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/go-jose/go-jose/v3"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
@@ -336,23 +336,23 @@ func TestKeyVault_CreateKey(t *testing.T) {
 
 	expects := []struct {
 		Name    string
-		Kty     azkeys.JSONWebKeyType
+		Kty     azkeys.KeyType
 		KeySize *int32
-		Curve   azkeys.JSONWebKeyCurveName
+		Curve   azkeys.CurveName
 		Key     *azkeys.JSONWebKey
 	}{
-		{"P-256", azkeys.JSONWebKeyTypeEC, nil, azkeys.JSONWebKeyCurveNameP256, ecJWK},
-		{"P-256 HSM", azkeys.JSONWebKeyTypeECHSM, nil, azkeys.JSONWebKeyCurveNameP256, ecJWK},
-		{"P-256 HSM (uri)", azkeys.JSONWebKeyTypeECHSM, nil, azkeys.JSONWebKeyCurveNameP256, ecJWK},
-		{"P-256 Default", azkeys.JSONWebKeyTypeEC, nil, azkeys.JSONWebKeyCurveNameP256, ecJWK},
-		{"P-384", azkeys.JSONWebKeyTypeEC, nil, azkeys.JSONWebKeyCurveNameP384, ecJWK},
-		{"P-521", azkeys.JSONWebKeyTypeEC, nil, azkeys.JSONWebKeyCurveNameP521, ecJWK},
-		{"RSA 0", azkeys.JSONWebKeyTypeRSA, &value3072, "", rsaJWK},
-		{"RSA 0 HSM", azkeys.JSONWebKeyTypeRSAHSM, &value3072, "", rsaJWK},
-		{"RSA 0 HSM (uri)", azkeys.JSONWebKeyTypeRSAHSM, &value3072, "", rsaJWK},
-		{"RSA 2048", azkeys.JSONWebKeyTypeRSA, &value2048, "", rsaJWK},
-		{"RSA 3072", azkeys.JSONWebKeyTypeRSA, &value3072, "", rsaJWK},
-		{"RSA 4096", azkeys.JSONWebKeyTypeRSA, &value4096, "", rsaJWK},
+		{"P-256", azkeys.KeyTypeEC, nil, azkeys.CurveNameP256, ecJWK},
+		{"P-256 HSM", azkeys.KeyTypeECHSM, nil, azkeys.CurveNameP256, ecJWK},
+		{"P-256 HSM (uri)", azkeys.KeyTypeECHSM, nil, azkeys.CurveNameP256, ecJWK},
+		{"P-256 Default", azkeys.KeyTypeEC, nil, azkeys.CurveNameP256, ecJWK},
+		{"P-384", azkeys.KeyTypeEC, nil, azkeys.CurveNameP384, ecJWK},
+		{"P-521", azkeys.KeyTypeEC, nil, azkeys.CurveNameP521, ecJWK},
+		{"RSA 0", azkeys.KeyTypeRSA, &value3072, "", rsaJWK},
+		{"RSA 0 HSM", azkeys.KeyTypeRSAHSM, &value3072, "", rsaJWK},
+		{"RSA 0 HSM (uri)", azkeys.KeyTypeRSAHSM, &value3072, "", rsaJWK},
+		{"RSA 2048", azkeys.KeyTypeRSA, &value2048, "", rsaJWK},
+		{"RSA 3072", azkeys.KeyTypeRSA, &value3072, "", rsaJWK},
+		{"RSA 4096", azkeys.KeyTypeRSA, &value4096, "", rsaJWK},
 	}
 
 	t0 := mockNow(t)
@@ -362,9 +362,9 @@ func TestKeyVault_CreateKey(t *testing.T) {
 			Kty:     pointer(e.Kty),
 			KeySize: e.KeySize,
 			Curve:   pointer(e.Curve),
-			KeyOps: []*azkeys.JSONWebKeyOperation{
-				pointer(azkeys.JSONWebKeyOperationSign),
-				pointer(azkeys.JSONWebKeyOperationVerify),
+			KeyOps: []*azkeys.KeyOperation{
+				pointer(azkeys.KeyOperationSign),
+				pointer(azkeys.KeyOperationVerify),
 			},
 			KeyAttributes: &azkeys.KeyAttributes{
 				Enabled:   &valueTrue,
@@ -684,8 +684,8 @@ func TestKeyVault_Close(t *testing.T) {
 
 func Test_keyType_KeyType(t *testing.T) {
 	type fields struct {
-		Kty   azkeys.JSONWebKeyType
-		Curve azkeys.JSONWebKeyCurveName
+		Kty   azkeys.KeyType
+		Curve azkeys.CurveName
 	}
 	type args struct {
 		pl apiv1.ProtectionLevel
@@ -694,16 +694,16 @@ func Test_keyType_KeyType(t *testing.T) {
 		name   string
 		fields fields
 		args   args
-		want   azkeys.JSONWebKeyType
+		want   azkeys.KeyType
 	}{
-		{"ec", fields{azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyCurveNameP256}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.JSONWebKeyTypeEC},
-		{"ec software", fields{azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyCurveNameP384}, args{apiv1.Software}, azkeys.JSONWebKeyTypeEC},
-		{"ec hsm", fields{azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyCurveNameP521}, args{apiv1.HSM}, azkeys.JSONWebKeyTypeECHSM},
-		{"ec hsm type", fields{azkeys.JSONWebKeyTypeECHSM, azkeys.JSONWebKeyCurveNameP521}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.JSONWebKeyTypeECHSM},
-		{"rsa", fields{azkeys.JSONWebKeyTypeRSA, azkeys.JSONWebKeyCurveNameP256}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.JSONWebKeyTypeRSA},
-		{"rsa software", fields{azkeys.JSONWebKeyTypeRSA, ""}, args{apiv1.Software}, azkeys.JSONWebKeyTypeRSA},
-		{"rsa hsm", fields{azkeys.JSONWebKeyTypeRSA, ""}, args{apiv1.HSM}, azkeys.JSONWebKeyTypeRSAHSM},
-		{"rsa hsm type", fields{azkeys.JSONWebKeyTypeRSAHSM, ""}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.JSONWebKeyTypeRSAHSM},
+		{"ec", fields{azkeys.KeyTypeEC, azkeys.CurveNameP256}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.KeyTypeEC},
+		{"ec software", fields{azkeys.KeyTypeEC, azkeys.CurveNameP384}, args{apiv1.Software}, azkeys.KeyTypeEC},
+		{"ec hsm", fields{azkeys.KeyTypeEC, azkeys.CurveNameP521}, args{apiv1.HSM}, azkeys.KeyTypeECHSM},
+		{"ec hsm type", fields{azkeys.KeyTypeECHSM, azkeys.CurveNameP521}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.KeyTypeECHSM},
+		{"rsa", fields{azkeys.KeyTypeRSA, azkeys.CurveNameP256}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.KeyTypeRSA},
+		{"rsa software", fields{azkeys.KeyTypeRSA, ""}, args{apiv1.Software}, azkeys.KeyTypeRSA},
+		{"rsa hsm", fields{azkeys.KeyTypeRSA, ""}, args{apiv1.HSM}, azkeys.KeyTypeRSAHSM},
+		{"rsa hsm type", fields{azkeys.KeyTypeRSAHSM, ""}, args{apiv1.UnspecifiedProtectionLevel}, azkeys.KeyTypeRSAHSM},
 		{"empty", fields{"FOO", ""}, args{apiv1.UnspecifiedProtectionLevel}, ""},
 	}
 	for _, tt := range tests {
