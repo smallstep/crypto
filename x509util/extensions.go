@@ -40,6 +40,8 @@ const (
 	KeyUsageCRLSign           = "crlSign"
 	KeyUsageEncipherOnly      = "encipherOnly"
 	KeyUsageDecipherOnly      = "decipherOnly"
+
+	keyUsageNonRepudiation = "nonRepudiation" // old name for contentCommitment
 )
 
 // Names used for extended key usages.
@@ -727,7 +729,9 @@ func (k *KeyUsage) UnmarshalJSON(data []byte) error {
 		switch convertName(s) {
 		case convertName(KeyUsageDigitalSignature):
 			ku = x509.KeyUsageDigitalSignature
-		case convertName(KeyUsageContentCommitment):
+		// support legacy name for better user experience for users coming from
+		// OpenSSL
+		case convertName(KeyUsageContentCommitment), convertName(keyUsageNonRepudiation):
 			ku = x509.KeyUsageContentCommitment
 		case convertName(KeyUsageKeyEncipherment):
 			ku = x509.KeyUsageKeyEncipherment

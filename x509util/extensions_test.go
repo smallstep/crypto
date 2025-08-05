@@ -519,6 +519,7 @@ func TestKeyUsage_UnmarshalJSON(t *testing.T) {
 		// Normalized
 		{"DigitalSignature", args{[]byte(`"DigitalSignature"`)}, KeyUsage(x509.KeyUsageDigitalSignature), false},
 		{"ContentCommitment", args{[]byte(`"ContentCommitment"`)}, KeyUsage(x509.KeyUsageContentCommitment), false},
+		{"NonRepudiation", args{[]byte(`"NonRepudiation"`)}, KeyUsage(x509.KeyUsageContentCommitment), false},
 		{"KeyEncipherment", args{[]byte(`"KeyEncipherment"`)}, KeyUsage(x509.KeyUsageKeyEncipherment), false},
 		{"DataEncipherment", args{[]byte(`"DataEncipherment"`)}, KeyUsage(x509.KeyUsageDataEncipherment), false},
 		{"KeyAgreement", args{[]byte(`"KeyAgreement"`)}, KeyUsage(x509.KeyUsageKeyAgreement), false},
@@ -529,6 +530,7 @@ func TestKeyUsage_UnmarshalJSON(t *testing.T) {
 		// Snake case
 		{"digital_signature", args{[]byte(`"digital_signature"`)}, KeyUsage(x509.KeyUsageDigitalSignature), false},
 		{"content_commitment", args{[]byte(`"content_commitment"`)}, KeyUsage(x509.KeyUsageContentCommitment), false},
+		{"non_repudiation", args{[]byte(`"non_repudiation"`)}, KeyUsage(x509.KeyUsageContentCommitment), false},
 		{"key_encipherment", args{[]byte(`"key_encipherment"`)}, KeyUsage(x509.KeyUsageKeyEncipherment), false},
 		{"data_encipherment", args{[]byte(`"data_encipherment"`)}, KeyUsage(x509.KeyUsageDataEncipherment), false},
 		{"key_agreement", args{[]byte(`"key_agreement"`)}, KeyUsage(x509.KeyUsageKeyAgreement), false},
