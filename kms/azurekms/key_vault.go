@@ -191,7 +191,7 @@ var createCredentials = func(_ context.Context, opts apiv1.Options) (azcore.Toke
 		//   - client-secret
 		//   - tenant-id
 		if clientID != "" && clientSecret != "" && tenantID != "" {
-			return azidentity.NewClientSecretCredential(tenantID, clientID, clientID, &azidentity.ClientSecretCredentialOptions{
+			return azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, &azidentity.ClientSecretCredentialOptions{
 				ClientOptions: clientOptions,
 			})
 		}
