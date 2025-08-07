@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.uber.org/mock/gomock"
@@ -218,44 +218,44 @@ func TestSigner_Sign(t *testing.T) {
 	expects := []struct {
 		name       string
 		keyVersion string
-		alg        azkeys.JSONWebKeySignatureAlgorithm
+		alg        azkeys.SignatureAlgorithm
 		digest     []byte
 		result     azkeys.SignResponse
 		err        error
 	}{
-		{"P-256", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+		{"P-256", "", azkeys.SignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: p256ResultSig},
 		}, nil},
-		{"P-384", "my-version", azkeys.JSONWebKeySignatureAlgorithmES384, p384Digest, azkeys.SignResponse{
+		{"P-384", "my-version", azkeys.SignatureAlgorithmES384, p384Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: p386ResultSig},
 		}, nil},
-		{"P-521", "my-version", azkeys.JSONWebKeySignatureAlgorithmES512, p521Digest, azkeys.SignResponse{
+		{"P-521", "my-version", azkeys.SignatureAlgorithmES512, p521Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: p521ResultSig},
 		}, nil},
-		{"RSA SHA256", "", azkeys.JSONWebKeySignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{
+		{"RSA SHA256", "", azkeys.SignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA256ResultSig},
 		}, nil},
-		{"RSA SHA384", "", azkeys.JSONWebKeySignatureAlgorithmRS384, rsaSHA384Digest, azkeys.SignResponse{
+		{"RSA SHA384", "", azkeys.SignatureAlgorithmRS384, rsaSHA384Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA384ResultSig},
 		}, nil},
-		{"RSA SHA512", "", azkeys.JSONWebKeySignatureAlgorithmRS512, rsaSHA512Digest, azkeys.SignResponse{
+		{"RSA SHA512", "", azkeys.SignatureAlgorithmRS512, rsaSHA512Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA512ResultSig},
 		}, nil},
-		{"RSA-PSS SHA256", "", azkeys.JSONWebKeySignatureAlgorithmPS256, rsaPSSSHA256Digest, azkeys.SignResponse{
+		{"RSA-PSS SHA256", "", azkeys.SignatureAlgorithmPS256, rsaPSSSHA256Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA256ResultSig},
 		}, nil},
-		{"RSA-PSS SHA384", "", azkeys.JSONWebKeySignatureAlgorithmPS384, rsaPSSSHA384Digest, azkeys.SignResponse{
+		{"RSA-PSS SHA384", "", azkeys.SignatureAlgorithmPS384, rsaPSSSHA384Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA384ResultSig},
 		}, nil},
-		{"RSA-PSS SHA512", "", azkeys.JSONWebKeySignatureAlgorithmPS512, rsaPSSSHA512Digest, azkeys.SignResponse{
+		{"RSA-PSS SHA512", "", azkeys.SignatureAlgorithmPS512, rsaPSSSHA512Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA512ResultSig},
 		}, nil},
 		// Errors
-		{"fail Sign", "", azkeys.JSONWebKeySignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{}, errTest},
-		{"fail sign length", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+		{"fail Sign", "", azkeys.SignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{}, errTest},
+		{"fail sign length", "", azkeys.SignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaSHA256ResultSig},
 		}, nil},
-		{"fail base64", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+		{"fail base64", "", azkeys.SignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: func() []byte { return []byte("😎") }()},
 		}, nil},
 	}
@@ -428,19 +428,19 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 	expects := []struct {
 		name       string
 		keyVersion string
-		alg        azkeys.JSONWebKeySignatureAlgorithm
+		alg        azkeys.SignatureAlgorithm
 		digest     []byte
 		result     azkeys.SignResponse
 		err        error
 	}{
-		{"ok 1", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"ok 2", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"ok 3", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"ok 4", "", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, okResult, nil},
-		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
-		{"fail", "fail-version", azkeys.JSONWebKeySignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 1", "", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 2", "", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 3", "", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"ok 4", "", azkeys.SignatureAlgorithmES256, p256Digest, okResult, nil},
+		{"fail", "fail-version", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
+		{"fail", "fail-version", azkeys.SignatureAlgorithmES256, p256Digest, failResult, retryError},
 	}
 	for _, e := range expects {
 		ee := e

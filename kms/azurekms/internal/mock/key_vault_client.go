@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	azkeys "github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	azkeys "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	gomock "go.uber.org/mock/gomock"
 )
 

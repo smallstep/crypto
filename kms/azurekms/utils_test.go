@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"go.step.sm/crypto/kms/apiv1"
 )
 
@@ -159,111 +159,111 @@ func Test_convertKey(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok EC P-256", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   x,
 			Y:   y,
 		}}, &p256.PublicKey, false},
 		{"ok EC P-384", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP384),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP384),
 			X:   encodeXorY(p384.X, 48),
 			Y:   encodeXorY(p384.Y, 48),
 		}}, &p384.PublicKey, false},
 		{"ok EC P-521", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP521),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP521),
 			X:   encodeXorY(p521.X, 66),
 			Y:   encodeXorY(p521.Y, 66),
 		}}, &p521.PublicKey, false},
 		{"ok RSA", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			Kty: pointer(azkeys.KeyTypeRSA),
 			E:   e,
 			N:   n,
 		}}, &rsaKey.PublicKey, false},
 		{"ok EC-HSM", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeECHSM),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeECHSM),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   x,
 			Y:   y,
 		}}, &p256.PublicKey, false},
 		{"ok RSA-HSM", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeRSAHSM),
+			Kty: pointer(azkeys.KeyTypeRSAHSM),
 			E:   e,
 			N:   n,
 		}}, &rsaKey.PublicKey, false},
 		{"ok oct", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeOct),
+			Kty: pointer(azkeys.KeyTypeOct),
 			K:   []byte("a-symmetric-key"),
 		}}, []byte("a-symmetric-key"), false},
 		{"fail nil", args{nil}, nil, true},
 		{"fail nil kty", args{&azkeys.JSONWebKey{}}, nil, true},
 		{"fail kty", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyType("EC-BAD")),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP521),
+			Kty: pointer(azkeys.KeyType("EC-BAD")),
+			Crv: pointer(azkeys.CurveNameP521),
 			X:   encodeXorY(p521.X, 66),
 			Y:   encodeXorY(p521.Y, 66),
 		}}, nil, true},
 		{"fail nil crv", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
+			Kty: pointer(azkeys.KeyTypeEC),
 			Crv: nil,
 			X:   x,
 			Y:   y,
 		}}, nil, true},
 		{"fail nil x", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   nil,
 			Y:   y,
 		}}, nil, true},
 		{"fail nil y", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   x,
 			Y:   nil,
 		}}, nil, true},
 		{"fail size x", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   encodeXorY(p256.X, 33),
 			Y:   y,
 		}}, nil, true},
 		{"fail size y", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   x,
 			Y:   encodeXorY(p256.Y, 33),
 		}}, nil, true},
 		{"fail or curve", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256),
 			X:   y,
 			Y:   x,
 		}}, nil, true},
 		{"fail or P-256k", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveNameP256K),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveNameP256K),
 			X:   y,
 			Y:   x,
 		}}, nil, true},
 		{"fail unknown curve", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeEC),
-			Crv: pointer(azkeys.JSONWebKeyCurveName("COOL")),
+			Kty: pointer(azkeys.KeyTypeEC),
+			Crv: pointer(azkeys.CurveName("COOL")),
 			X:   y,
 			Y:   x,
 		}}, nil, true},
 		{"fail nil n", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			Kty: pointer(azkeys.KeyTypeRSA),
 			N:   nil,
 			E:   e,
 		}}, nil, true},
 		{"fail nil e", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeRSA),
+			Kty: pointer(azkeys.KeyTypeRSA),
 			N:   n,
 			E:   nil,
 		}}, nil, true},
 		{"fail nil k", args{&azkeys.JSONWebKey{
-			Kty: pointer(azkeys.JSONWebKeyTypeOct),
+			Kty: pointer(azkeys.KeyTypeOct),
 			K:   nil,
 		}}, nil, true},
 	}
