@@ -29,7 +29,7 @@ require (
 	golang.org/x/term v0.33.0
 	google.golang.org/api v0.244.0
 	google.golang.org/grpc v1.74.2
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.7
 	modernc.org/sqlite v1.38.2
 )
 
