@@ -31,6 +31,7 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
+	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
 )
 
@@ -1080,8 +1081,19 @@ func TestYubiKey_CreateDecrypter(t *testing.T) {
 func TestYubiKey_CreateAttestation(t *testing.T) {
 	yk := newStubPivKey(t, ECDSA)
 
+	ykA1 := newStubPivKey(t, ECDSA)
+	ykA1.attestCA.Intermediate.Issuer.CommonName = "Yubico PIV Attestation A 1"
+
+	ykB1 := newStubPivKey(t, ECDSA)
+	ykB1.attestCA.Intermediate.Issuer.CommonName = "Yubico PIV Attestation B 1"
+
 	ykFail := newStubPivKey(t, ECDSA)
 	delete(ykFail.certMap, slotAttestation)
+
+	a1Certs, err := pemutil.ParseCertificateBundle([]byte(yubicoPIVAttestationA1))
+	require.NoError(t, err)
+	b1Certs, err := pemutil.ParseCertificateBundle([]byte(yubicoPIVAttestationB1))
+	require.NoError(t, err)
 
 	type fields struct {
 		yk            pivKey
@@ -1104,6 +1116,28 @@ func TestYubiKey_CreateAttestation(t *testing.T) {
 			Certificate:         yk.attestMap[piv.SlotAuthentication],
 			CertificateChain:    []*x509.Certificate{yk.attestMap[piv.SlotAuthentication], yk.attestCA.Intermediate},
 			PublicKey:           yk.attestMap[piv.SlotAuthentication].PublicKey,
+			PermanentIdentifier: "112233",
+		}, false},
+		{"ok A1", fields{ykA1, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateAttestationRequest{
+			Name: "yubikey:slot-id=9a",
+		}}, &apiv1.CreateAttestationResponse{
+			Certificate: ykA1.attestMap[piv.SlotAuthentication],
+			CertificateChain: []*x509.Certificate{
+				ykA1.attestMap[piv.SlotAuthentication], ykA1.attestCA.Intermediate,
+				a1Certs[0], a1Certs[1],
+			},
+			PublicKey:           ykA1.attestMap[piv.SlotAuthentication].PublicKey,
+			PermanentIdentifier: "112233",
+		}, false},
+		{"ok B1", fields{ykB1, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateAttestationRequest{
+			Name: "yubikey:slot-id=9a",
+		}}, &apiv1.CreateAttestationResponse{
+			Certificate: ykB1.attestMap[piv.SlotAuthentication],
+			CertificateChain: []*x509.Certificate{
+				ykB1.attestMap[piv.SlotAuthentication], ykB1.attestCA.Intermediate,
+				b1Certs[0], b1Certs[1],
+			},
+			PublicKey:           ykB1.attestMap[piv.SlotAuthentication].PublicKey,
 			PermanentIdentifier: "112233",
 		}, false},
 		{"fail getSlot", fields{yk, "123456", piv.DefaultManagementKey}, args{&apiv1.CreateAttestationRequest{
@@ -1339,4 +1373,72 @@ func Test_syncDecrypter_Decrypt(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, data, plain)
+}
+
+func TestYubicoNewRoots(t *testing.T) {
+	const rootPEM = `-----BEGIN CERTIFICATE-----
+MIIDPjCCAiagAwIBAgIUXzeiEDJEOTt14F5n0o6Zf/bBwiUwDQYJKoZIhvcNAQEN
+BQAwJDEiMCAGA1UEAwwZWXViaWNvIEF0dGVzdGF0aW9uIFJvb3QgMTAgFw0yNDEy
+MDEwMDAwMDBaGA85OTk5MTIzMTIzNTk1OVowJDEiMCAGA1UEAwwZWXViaWNvIEF0
+dGVzdGF0aW9uIFJvb3QgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+AMZ6/TxM8rIT+EaoPvG81ontMOo/2mQ2RBwJHS0QZcxVaNXvl12LUhBZ5LmiBScI
+Zd1Rnx1od585h+/dhK7hEm7JAALkKKts1fO53KGNLZujz5h3wGncr4hyKF0G74b/
+U3K9hE5mGND6zqYchCRAHfrYMYRDF4YL0X4D5nGdxvppAy6nkEmtWmMnwO3i0TAu
+csrbE485HvGM4r0VpgVdJpvgQjiTJCTIq+D35hwtT8QDIv+nGvpcyi5wcIfCkzyC
+imJukhYy6KoqNMKQEdpNiSOvWyDMTMt1bwCvEzpw91u+msUt4rj0efnO9s0ZOwdw
+MRDnH4xgUl5ZLwrrPkfC1/0CAwEAAaNmMGQwHQYDVR0OBBYEFNLu71oijTptXCOX
+PfKF1SbxJXuSMB8GA1UdIwQYMBaAFNLu71oijTptXCOXPfKF1SbxJXuSMBIGA1Ud
+EwEB/wQIMAYBAf8CAQMwDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBDQUAA4IB
+AQC3IW/sgB9pZ8apJNjxuGoX+FkILks0wMNrdXL/coUvsrhzsvl6mePMrbGJByJ1
+XnquB5sgcRENFxdQFma3mio8Upf1owM1ZreXrJ0mADG2BplqbJnxiyYa+R11reIF
+TWeIhMNcZKsDZrFAyPuFjCWSQvJmNWe9mFRYFgNhXJKkXIb5H1XgEDlwiedYRM7V
+olBNlld6pRFKlX8ust6OTMOeADl2xNF0m1LThSdeuXvDyC1g9+ILfz3S6OIYgc3i
+roRcFD354g7rKfu67qFAw9gC4yi0xBTPrY95rh4/HqaUYCA/L8ldRk6H7Xk35D+W
+Vpmq2Sh/xT5HiFuhf4wJb0bK
+-----END CERTIFICATE-----`
+
+	root, err := pemutil.ParseCertificate([]byte(rootPEM))
+	require.NoError(t, err)
+
+	a1Certs, err := pemutil.ParseCertificateBundle([]byte(yubicoPIVAttestationA1))
+	require.NoError(t, err)
+	require.Len(t, a1Certs, 2)
+
+	b1Certs, err := pemutil.ParseCertificateBundle([]byte(yubicoPIVAttestationB1))
+	require.NoError(t, err)
+	require.Len(t, b1Certs, 2)
+
+	assert.Equal(t, "Yubico PIV Attestation A 1", a1Certs[0].Subject.CommonName)
+	assert.Equal(t, "Yubico Attestation Intermediate A 1", a1Certs[1].Subject.CommonName)
+
+	assert.Equal(t, "Yubico PIV Attestation B 1", b1Certs[0].Subject.CommonName)
+	assert.Equal(t, "Yubico Attestation Intermediate B 1", b1Certs[1].Subject.CommonName)
+
+	assert.True(t, a1Certs[0].BasicConstraintsValid)
+	assert.True(t, a1Certs[0].IsCA)
+	assert.True(t, a1Certs[0].MaxPathLen == 1)
+	assert.True(t, a1Certs[1].BasicConstraintsValid)
+	assert.True(t, a1Certs[1].IsCA)
+	assert.True(t, a1Certs[1].MaxPathLen == 2)
+
+	assert.True(t, b1Certs[0].BasicConstraintsValid)
+	assert.True(t, b1Certs[0].IsCA)
+	assert.True(t, b1Certs[0].MaxPathLen == 1)
+	assert.True(t, b1Certs[1].BasicConstraintsValid)
+	assert.True(t, b1Certs[1].IsCA)
+	assert.True(t, b1Certs[1].MaxPathLen == 2)
+
+	rootPool := x509.NewCertPool()
+	rootPool.AddCert(root)
+	for _, chain := range [][]*x509.Certificate{a1Certs, b1Certs} {
+		intPool := x509.NewCertPool()
+		intPool.AddCert(chain[1])
+
+		_, err := chain[0].Verify(x509.VerifyOptions{
+			Roots:         rootPool,
+			Intermediates: intPool,
+		})
+		assert.NoError(t, err)
+	}
+
 }
