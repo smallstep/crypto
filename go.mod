@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	cloud.google.com/go/kms v1.22.0
 	filippo.io/edwards25519 v1.1.0
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.4.0
 	github.com/Masterminds/sprig/v3 v3.3.0
