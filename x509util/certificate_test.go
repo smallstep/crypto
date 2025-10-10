@@ -146,6 +146,8 @@ func TestNewCertificate(t *testing.T) {
 	customSANsData.Set(SANsKey, []SubjectAlternativeName{
 		{Type: PermanentIdentifierType, Value: "123456"},
 		{Type: "1.2.3.4", Value: "utf8:otherName"},
+		// An empty SAN won't be encoded
+		{Type: "auto", Value: ""},
 	})
 	badCustomSANsData := CreateTemplateData("commonName", nil)
 	badCustomSANsData.Set(SANsKey, []SubjectAlternativeName{
@@ -202,6 +204,7 @@ func TestNewCertificate(t *testing.T) {
 			SANs: []SubjectAlternativeName{
 				{Type: PermanentIdentifierType, Value: "123456"},
 				{Type: "1.2.3.4", Value: "utf8:otherName"},
+				{Type: "auto", Value: ""},
 			},
 			Extensions: []Extension{{
 				ID:       ObjectIdentifier{2, 5, 29, 17},
@@ -378,6 +381,7 @@ func TestNewCertificateTemplate(t *testing.T) {
 		(dict "type" "hardwareModuleName" "value" .Insecure.User.hmn)
 		(dict "type" "userPrincipalName" "value" .Token.upn)
 		(dict "type" "1.2.3.4" "value" (printf "int:%s" .Insecure.User.id))
+		(dict "type" "auto" "value" "")
 	) | toJson }},
 	"notBefore": "{{ .Token.nbf | formatTime }}",
 	"notAfter": {{ now | dateModify "24h" | toJson }},

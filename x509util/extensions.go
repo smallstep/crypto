@@ -339,8 +339,13 @@ type SubjectAlternativeName struct {
 	ASN1Value json.RawMessage `json:"asn1Value,omitempty"`
 }
 
-// Set sets the subject alternative name in the given x509.Certificate.
+// Set sets the subject alternative name in the given x509.Certificate. This
+// method will not set any SAN if the value is empty.
 func (s SubjectAlternativeName) Set(c *x509.Certificate) {
+	if s.Value == "" {
+		return
+	}
+
 	switch strings.ToLower(s.Type) {
 	case DNSType:
 		c.DNSNames = append(c.DNSNames, s.Value)
@@ -1215,6 +1220,10 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 
 	var rawValues []asn1.RawValue
 	for _, dnsName := range dnsNames {
+		if dnsName == "" {
+			continue
+		}
+
 		rawValue, err := SubjectAlternativeName{
 			Type: DNSType, Value: dnsName,
 		}.RawValue()
@@ -1226,6 +1235,10 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 	}
 
 	for _, emailAddress := range emailAddresses {
+		if emailAddress == "" {
+			continue
+		}
+
 		rawValue, err := SubjectAlternativeName{
 			Type: EmailType, Value: emailAddress,
 		}.RawValue()
@@ -1237,6 +1250,10 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 	}
 
 	for _, ip := range ipAddresses {
+		if len(ip) == 0 {
+			continue
+		}
+
 		rawValue, err := SubjectAlternativeName{
 			Type: IPType, Value: ip.String(),
 		}.RawValue()
@@ -1248,8 +1265,13 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 	}
 
 	for _, uri := range uris {
+		v := uri.String()
+		if v == "" {
+			continue
+		}
+
 		rawValue, err := SubjectAlternativeName{
-			Type: URIType, Value: uri.String(),
+			Type: URIType, Value: v,
 		}.RawValue()
 		if err != nil {
 			return zero, err
@@ -1259,6 +1281,10 @@ func createSubjectAltNameExtension(dnsNames, emailAddresses MultiString, ipAddre
 	}
 
 	for _, san := range sans {
+		if san.Value == "" && len(san.ASN1Value) == 0 {
+			continue
+		}
+
 		rawValue, err := san.RawValue()
 		if err != nil {
 			return zero, err
