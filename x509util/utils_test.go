@@ -61,7 +61,7 @@ func TestSplitSANs(t *testing.T) {
 			{Scheme: "mailto", Opaque: "john@doe.com"},
 			{Scheme: "urn", Opaque: "uuid:ddfe62ba-7e99-4bc1-83b3-8f57fe3e9959"},
 		}},
-		{"mixed", args{[]string{
+		{"mixed", args{[]string{"",
 			"foo.internal", "https://ca.smallstep.com", "max@smallstep.com",
 			"urn:uuid:ddfe62ba-7e99-4bc1-83b3-8f57fe3e9959", "mariano@smallstep.com",
 			"1.1.1.1", "bar.internal", "https://google.com/index.html",

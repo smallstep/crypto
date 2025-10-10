@@ -243,6 +243,7 @@ func TestSubjectAlternativeName_Set(t *testing.T) {
 		{"AutoIPAdd", fields{"", "::1"}, args{&x509.Certificate{IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}}}, &x509.Certificate{IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}}},
 		{"AutoURI", fields{"Auto", "https://foo.com"}, args{&x509.Certificate{}}, &x509.Certificate{URIs: []*url.URL{{Scheme: "https", Host: "foo.com"}}}},
 		{"AutoURIAdd", fields{"", "uri:foo:bar"}, args{&x509.Certificate{URIs: []*url.URL{{Scheme: "https", Host: "foo.com"}}}}, &x509.Certificate{URIs: []*url.URL{{Scheme: "https", Host: "foo.com"}, {Scheme: "uri", Opaque: "foo:bar"}}}},
+		{"skipEmpty", fields{"auto", ""}, args{&x509.Certificate{}}, &x509.Certificate{}},
 		{"panic", fields{"panic", "foo.com"}, args{&x509.Certificate{}}, &x509.Certificate{DNSNames: []string{"foo.com"}}},
 		{"panicAdd", fields{"panic", "bar.com"}, args{&x509.Certificate{DNSNames: []string{"foo.com"}}}, &x509.Certificate{DNSNames: []string{"foo.com"}}},
 	}
@@ -1249,7 +1250,7 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok dns", args{Certificate{
-			DNSNames: []string{"foo.com"},
+			DNSNames: []string{"foo.com", ""},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
@@ -1263,21 +1264,21 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 			Value:    append([]byte{0x30, 9, 0x80 | nameTypeDNS, 7}, []byte("foo.com")...),
 		}, false},
 		{"ok email", args{Certificate{
-			EmailAddresses: []string{"bar@foo.com"},
+			EmailAddresses: []string{"bar@foo.com", ""},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    append([]byte{0x30, 13, 0x80 | nameTypeEmail, 11}, []byte("bar@foo.com")...),
 		}, false},
 		{"ok uri", args{Certificate{
-			URIs: []*url.URL{{Scheme: "urn", Opaque: "foo:bar"}},
+			URIs: []*url.URL{{Scheme: "urn", Opaque: "foo:bar"}, {}},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
 			Value:    append([]byte{0x30, 13, 0x80 | nameTypeURI, 11}, []byte("urn:foo:bar")...),
 		}, false},
 		{"ok ip", args{Certificate{
-			IPAddresses: []net.IP{net.ParseIP("1.2.3.4")},
+			IPAddresses: []net.IP{net.ParseIP("1.2.3.4"), {}},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
 			Critical: false,
@@ -1289,6 +1290,7 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 				{Type: "email", Value: "bar@foo.com"},
 				{Type: "uri", Value: "urn:foo:bar"},
 				{Type: "ip", Value: "1.2.3.4"},
+				{Type: "auto", Value: ""},
 			},
 		}, false}, Extension{
 			ID:       oidExtensionSubjectAltName,
@@ -1322,7 +1324,7 @@ func Test_createSubjectAltNameExtension(t *testing.T) {
 			}, nil),
 		}, false},
 		{"fail dns", args{Certificate{
-			DNSNames: []string{""},
+			DNSNames: []string{"xn--bücher.example.com"},
 		}, false}, Extension{}, true},
 		{"fail email", args{Certificate{
 			EmailAddresses: []string{"nöt@ia5.com"},
