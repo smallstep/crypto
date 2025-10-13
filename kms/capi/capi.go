@@ -856,6 +856,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		cryptFindCertificateKeyProvInfo(certContext)
 	}
 
+	if friendlyName := u.Get(FriendlyNameArg); friendlyName != "" {
+		cryptSetCertificateFriendlyName(certContext, friendlyName)
+	}
+
+	if description := u.Get(DescriptionArg); description != "" {
+		cryptSetCertificateDescription(certContext, description)
+	}
+
 	st, err := windows.CertOpenStore(
 		certStoreProvSystem,
 		0,

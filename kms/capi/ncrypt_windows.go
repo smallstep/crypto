@@ -155,6 +155,7 @@ var (
 	procCertFindCertificateInStore        = crypt32.MustFindProc("CertFindCertificateInStore")
 	procCryptFindCertificateKeyProvInfo   = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
 	procCertGetCertificateContextProperty = crypt32.MustFindProc("CertGetCertificateContextProperty")
+	procCertSetCertificateContextProperty = crypt32.MustFindProc("CertSetCertificateContextProperty")
 	procCertStrToName                     = crypt32.MustFindProc("CertStrToNameW")
 )
 
@@ -608,6 +609,38 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 	}
 
 	return "", nil
+}
+
+func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
+	r0, _, err := procCertSetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(propID),
+		0,
+		pvData,
+	)
+
+	if r0 == 0 {
+		return err
+	}
+	return nil
+}
+
+func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val string) error {
+	data := CRYPTOAPI_BLOB{
+		len: uint32(len(val)+1) * 2,
+		data: uintptr(unsafe.Pointer(wide(val))),
+	}
+
+	return certSetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, uintptr(unsafe.Pointer(&data)))
+}
+
+func cryptSetCertificateDescription(certContext *windows.CertContext, val string) error {
+	data := CRYPTOAPI_BLOB{
+		len: uint32(len(val)+1) * 2,
+		data: uintptr(unsafe.Pointer(wide(val))),
+	}
+
+	return certSetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, uintptr(unsafe.Pointer(&data)))
 }
 
 func certGetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData *byte, pcbData *uint32) error {
