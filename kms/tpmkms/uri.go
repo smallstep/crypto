@@ -18,6 +18,8 @@ type objectProperties struct {
 	path                      string
 	storeLocation             string
 	store                     string
+	friendlyName              string
+	description               string
 	intermediateStoreLocation string
 	intermediateStore         string
 	skipFindCertificateKey    bool
@@ -57,10 +59,12 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 			o.qualifyingData = qualifyingData
 		}
 
-		// store location and store options are used on Windows to override
+		// store location, store options are used on Windows to override
 		// which store(s) are used for storing and loading (intermediate) certificates
 		o.storeLocation = u.Get("store-location")
 		o.store = u.Get("store")
+		o.friendlyName = u.Get("friendly-name")
+		o.description = u.Get("description")
 		o.intermediateStoreLocation = u.Get("intermediate-store-location")
 		o.intermediateStore = u.Get("intermediate-store")
 		o.skipFindCertificateKey = u.GetBool("skip-find-certificate-key")
