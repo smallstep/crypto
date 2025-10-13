@@ -43,6 +43,8 @@ const (
 	HashArg                      = "sha1"
 	StoreLocationArg             = "store-location" // 'machine', 'user', etc
 	StoreNameArg                 = "store"          // 'MY', 'CA', 'ROOT', etc
+	FriendlyNameArg              = "friendly-name"
+	DescriptionArg               = "description"
 	IntermediateStoreLocationArg = "intermediate-store-location"
 	IntermediateStoreNameArg     = "intermediate-store"
 	KeyIDArg                     = "key-id"
@@ -90,6 +92,8 @@ type uriAttributes struct {
 	subjectCN                 string
 	serialNumber              string
 	issuerName                string
+	friendlyName              string
+	description               string
 	keySpec                   string
 	skipFindCertificateKey    bool
 	pin                       string
@@ -126,6 +130,8 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		subjectCN:                 u.Get(SubjectCNArg),
 		serialNumber:              u.Get(SerialNumberArg),
 		issuerName:                u.Get(IssuerNameArg),
+		friendlyName:              u.Get(FriendlyNameArg),
+		description:               u.Get(DescriptionArg),
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
 		pin:                       u.Pin(),
@@ -391,6 +397,7 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
 
+	canLookupByIssuer := issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != "")
 	var handle *windows.CertContext
 
 	switch {
@@ -432,7 +439,13 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		if handle == nil {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", KeyIDArg, u.keyID)}
 		}
-	case u.issuerName != "" && (u.serialNumber != "" || u.subjectCN != ""):
+	}
+
+	if handle != nil {
+		return handle, err
+	}
+
+	if canLookupByIssuer {
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -481,15 +494,31 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 				if x509Cert.Subject.CommonName == u.subjectCN {
 					return handle, nil
 				}
+			case len(friendlyName) > 0:
+				val, err := cryptFindCertificateFriendlyName(prevCert)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
+				}
+
+				if val == friendlyName {
+					return handle, nil
+				}
+			case len(description) > 0:
+				val, err := cryptFindCertificateDescription(prevCert)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
+				}
+
+				if val == description {
+					return handle, nil
+				}
 			}
 
 			prevCert = handle
 		}
-	default:
+	} else {
 		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
 	}
-
-	return handle, err
 }
 
 // CreateSigner returns a crypto.Signer that will sign using the key passed in via the URI.

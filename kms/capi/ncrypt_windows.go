@@ -60,9 +60,11 @@ const (
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
 	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
+	compareProp             = 5                                              // CERT_COMPARE_CERT_ID
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
 	findIssuerName          = compareName<<compareShift | infoIssuerFlag      // CERT_FIND_ISSUER_NAME
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
+	findProperty            = compareProp << compareShift                     // CERT_FIND_PROPERTY
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
 	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
@@ -82,6 +84,8 @@ const (
 	CERT_ID_SHA1_HASH            = uint32(3)
 
 	CERT_KEY_PROV_INFO_PROP_ID = uint32(2)
+	CERT_FRIENDLY_NAME_PROP_ID = uint32(11)
+	CERT_DESCRIPTION_PROP_ID   = uint32(13)
 
 	CERT_NAME_STR_COMMA_FLAG = uint32(0x04000000)
 	CERT_SIMPLE_NAME_STR     = uint32(1)
@@ -604,6 +608,78 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 	}
 
 	return "", nil
+}
+
+func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string, error) {
+	var size uint32
+
+	r1, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_FRIENDLY_NAME_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(&size)),
+	)
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
+	if r1 == 0 {
+		return "", fmt.Errorf("finding certificate friendly name failed: %v", errNoToStr(uint32(r1)))
+	}
+
+	buf := make([]byte, size)
+	r2, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(&buf[0])),
+	)
+
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
+
+	if r2 == 0 {
+		return "", fmt.Errorf("finding certificate friendly name failed: %v", errNoToStr(uint32(r2)))
+	}
+
+	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
+	return string(uc), nil
+}
+
+func cryptFindCertificateDescription(certContext *windows.CertContext) (string, error) {
+	var size uint32
+
+	r1, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_DESCRIPTION_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(&size)),
+	)
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
+	if r1 == 0 {
+		return "", fmt.Errorf("finding certificate description failed: %v", errNoToStr(uint32(r1)))
+	}
+
+	buf := make([]byte, size)
+	r2, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
+		uintptr(0),
+		uintptr(unsafe.Pointer(&buf[0])),
+	)
+
+	if !errors.Is(err, windows.Errno(0)) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	}
+
+	if r2 == 0 {
+		return "", fmt.Errorf("finding certificate description failed: %v", errNoToStr(uint32(r2)))
+	}
+
+	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
+	return string(uc), nil
 }
 
 func certStrToName(x500Str string) ([]byte, error) {
