@@ -55,6 +55,9 @@ func SplitSANs(sans []string) (dnsNames []string, ips []net.IP, emails []string,
 	emails = []string{}
 	uris = []*url.URL{}
 	for _, san := range sans {
+		if san == "" {
+			continue
+		}
 		ip := net.ParseIP(san)
 		u, err := url.Parse(san)
 		switch {
