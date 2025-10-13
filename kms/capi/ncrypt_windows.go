@@ -610,36 +610,34 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 	return "", nil
 }
 
+func certGetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData *byte, pcbData *uint32) error {
+	r0, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(propID),
+		uintptr(unsafe.Pointer(pvData)),
+		uintptr(unsafe.Pointer(pcbData)),
+	)
+	if r0 == 0 {
+		return err
+	}
+	return nil
+}
+
 func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string, error) {
 	var size uint32
 
-	r1, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_FRIENDLY_NAME_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&size)),
-	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
+	if err != nil {
+		return "", err
 	}
-	if r1 == 0 {
-		return "", fmt.Errorf("finding certificate friendly name failed: %v", errNoToStr(uint32(r1)))
+	if size == 0 {
+		return "", fmt.Errorf("certificate has no friendly name")
 	}
 
 	buf := make([]byte, size)
-	r2, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&buf[0])),
-	)
-
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
-	}
-
-	if r2 == 0 {
-		return "", fmt.Errorf("finding certificate friendly name failed: %v", errNoToStr(uint32(r2)))
+	err = certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, &buf[0], &size)
+	if err != nil {
+		return "", err
 	}
 
 	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
@@ -649,33 +647,18 @@ func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string,
 func cryptFindCertificateDescription(certContext *windows.CertContext) (string, error) {
 	var size uint32
 
-	r1, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_DESCRIPTION_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&size)),
-	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
+	if err != nil {
+		return "", err
 	}
-	if r1 == 0 {
-		return "", fmt.Errorf("finding certificate description failed: %v", errNoToStr(uint32(r1)))
+	if size == 0 {
+		return "", fmt.Errorf("certificate has no description")
 	}
 
 	buf := make([]byte, size)
-	r2, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&buf[0])),
-	)
-
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
-	}
-
-	if r2 == 0 {
-		return "", fmt.Errorf("finding certificate description failed: %v", errNoToStr(uint32(r2)))
+	err = certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, &buf[0], &size)
+	if err != nil {
+		return "", err
 	}
 
 	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
