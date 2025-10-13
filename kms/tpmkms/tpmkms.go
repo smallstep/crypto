@@ -875,6 +875,8 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	uv.Set("sha1", fp)
 	uv.Set("store-location", location)
 	uv.Set("store", store)
+	uv.Set("friendly-name", o.friendlyName)
+	uv.Set("description", o.description)
 	uv.Set("skip-find-certificate-key", skipFindCertificateKey)
 
 	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
