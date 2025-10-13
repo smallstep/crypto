@@ -59,8 +59,10 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 			o.qualifyingData = qualifyingData
 		}
 
-		// store location, store options are used on Windows to override
+		// store location and store options are used on Windows to override
 		// which store(s) are used for storing and loading (intermediate) certificates
+		// friendly-name and description are used on Windows to populate additional certificate
+		// context properties to aid in retrieval
 		o.storeLocation = u.Get("store-location")
 		o.store = u.Get("store")
 		o.friendlyName = u.Get("friendly-name")
