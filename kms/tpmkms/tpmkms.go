@@ -966,6 +966,8 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		Name: uri.New("capi", url.Values{
 			"store-location":              []string{location},
 			"store":                       []string{store},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 			"skip-find-certificate-key":   []string{skipFindCertificateKey},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
