@@ -500,7 +500,7 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 					return handle, nil
 				}
 			case len(friendlyName) > 0:
-				val, err := cryptFindCertificateFriendlyName(prevCert)
+				val, err := cryptFindCertificateFriendlyName(handle)
 				if err != nil {
 					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
 				}
@@ -509,7 +509,7 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 					return handle, nil
 				}
 			case len(description) > 0:
-				val, err := cryptFindCertificateDescription(prevCert)
+				val, err := cryptFindCertificateDescription(handle)
 				if err != nil {
 					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
 				}
