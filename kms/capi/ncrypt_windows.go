@@ -60,7 +60,7 @@ const (
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
 	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
-	compareProp             = 5                                              // CERT_COMPARE_CERT_ID
+	compareProp             = 5                                               // CERT_COMPARE_CERT_ID
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
 	findIssuerName          = compareName<<compareShift | infoIssuerFlag      // CERT_FIND_ISSUER_NAME
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
@@ -628,10 +628,15 @@ func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string,
 
 	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
 	if err != nil {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+
 		return "", err
 	}
+
 	if size == 0 {
-		return "", fmt.Errorf("certificate has no friendly name")
+		return "", nil
 	}
 
 	buf := make([]byte, size)
@@ -649,10 +654,14 @@ func cryptFindCertificateDescription(certContext *windows.CertContext) (string, 
 
 	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
 	if err != nil {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+
 		return "", err
 	}
 	if size == 0 {
-		return "", fmt.Errorf("certificate has no description")
+		return "", nil
 	}
 
 	buf := make([]byte, size)
