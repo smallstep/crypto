@@ -869,6 +869,8 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 			"store":                       []string{store},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 		}).String(),
 	})
 }
