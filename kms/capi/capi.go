@@ -38,6 +38,8 @@ const (
 	HashArg                = "sha1"
 	StoreLocationArg       = "store-location" // 'machine', 'user', etc
 	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
+	FriendlyNameArg        = "friendly-name"
+	DescriptionArg         = "description"
 	KeyIDArg               = "key-id"
 	SubjectCNArg           = "cn"
 	SerialNumberArg        = "serial"
@@ -315,6 +317,8 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	issuerName := u.Get(IssuerNameArg)
 	subjectCN := u.Get(SubjectCNArg)
 	serialNumber := u.Get(SerialNumberArg)
+	friendlyName := u.Get(FriendlyNameArg)
+	description := u.Get(DescriptionArg)
 
 	// default to the user store
 	var storeLocation string
@@ -390,7 +394,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		if handle == nil {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
 		}
-	case issuerName != "" && (serialNumber != "" || subjectCN != ""):
+	case issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != ""):
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -437,6 +441,24 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				}
 			case len(subjectCN) > 0:
 				if x509Cert.Subject.CommonName == subjectCN {
+					return handle, nil
+				}
+			case len(friendlyName) > 0:
+				val, err := cryptFindCertificateFriendlyName(prevCert)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
+				}
+
+				if val == friendlyName {
+					return handle, nil
+				}
+			case len(description) > 0:
+				val, err := cryptFindCertificateDescription(prevCert)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
+				}
+
+				if val == description {
 					return handle, nil
 				}
 			}
