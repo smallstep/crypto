@@ -261,7 +261,7 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			flags |= security.KSecAccessControlBiometryCurrentSet
 		}
 		access, err := security.SecAccessControlCreateWithFlags(
-			security.KSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+			security.KSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
 			flags,
 		)
 		if err != nil {
