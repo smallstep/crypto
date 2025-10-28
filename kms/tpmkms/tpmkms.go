@@ -707,11 +707,14 @@ const (
 )
 
 func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
-	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+	var subjectKeyID string
+	if pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 		Name: req.Name,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed retrieving public key: %w", err)
+	}); err == nil {
+		subjectKeyID, err = generateWindowsSubjectKeyID(pub)
+		if err != nil {
+			return nil, fmt.Errorf("failed generating subject key id: %w", err)
+		}
 	}
 
 	o, err := parseNameURI(req.Name)
@@ -728,13 +731,24 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		store = o.store
 	}
 
-	subjectKeyID, err := generateWindowsSubjectKeyID(pub)
-	if err != nil {
-		return nil, fmt.Errorf("failed generating subject key id: %w", err)
+	uv := url.Values{
+		"store-location": []string{location},
+		"store": []string{store},
+	}
+
+	switch {
+	case subjectKeyID != "":
+		uv.Set("key-id", subjectKeyID)
+	case o.issuer != "":
+		uv.Set("issuer", o.issuer)
+	case o.friendlyName != "":
+		uv.Set("friendly-name", o.friendlyName)
+	case o.description != "":
+		uv.Set("description", o.description)
 	}
 
 	cert, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
-		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s;", subjectKeyID, location, store),
+		Name: uri.New("capi", uv).String(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
@@ -875,6 +889,8 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	uv.Set("sha1", fp)
 	uv.Set("store-location", location)
 	uv.Set("store", store)
+	uv.Set("friendly-name", o.friendlyName)
+	uv.Set("description", o.description)
 	uv.Set("skip-find-certificate-key", skipFindCertificateKey)
 
 	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
