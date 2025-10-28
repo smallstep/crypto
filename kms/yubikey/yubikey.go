@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -164,6 +165,17 @@ func openCard(card string) (pivKey, error) {
 	return yk, nil
 }
 
+// validManagementKeyLengths contains the valid lengths
+// a YubiKey management key can have:
+//   - 16 bytes for AES128
+//   - 24 bytes for AES192 and DES3
+//   - 32 bytes for AES256
+var validManagementKeyLengths = []int{16, 24, 32}
+
+// maximumManagementKeyLength is the maximum length a
+// Yubikey management key can have.
+const maximumManagementKeyLength = 32
+
 // New initializes a new YubiKey KMS.
 //
 // The most common way to open a YubiKey is to add a URI in the options:
@@ -189,7 +201,11 @@ func openCard(card string) (pivKey, error) {
 // ones.
 func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
-	managementKey := piv.DefaultManagementKey
+	var managementKey [maximumManagementKeyLength]byte
+
+	// set the default management key
+	managementKeyLength := len(piv.DefaultManagementKey)
+	copy(managementKey[:managementKeyLength], piv.DefaultManagementKey)
 
 	var serial string
 	if opts.URI != "" {
@@ -222,10 +238,11 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "error decoding management key")
 		}
-		if len(b) != 24 {
-			return nil, errors.New("invalid managementKey: length is not 24 bytes")
+		managementKeyLength = len(b)
+		if !slices.Contains(validManagementKeyLengths, managementKeyLength) {
+			return nil, fmt.Errorf("invalid management key length %d; expected 16, 24 or 32 bytes", managementKeyLength)
 		}
-		copy(managementKey, b[:24])
+		copy(managementKey[:managementKeyLength], b[:managementKeyLength])
 	}
 
 	if opts.Pin != "" {
@@ -266,7 +283,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		yk:            yk,
 		pin:           pin,
 		card:          card,
-		managementKey: managementKey,
+		managementKey: managementKey[:managementKeyLength],
 	}, nil
 }
 
