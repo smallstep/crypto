@@ -294,7 +294,7 @@ func TestRegister(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	pOpen := pivOpen
 	pCards := pivCards
 	t.Cleanup(func() {
@@ -303,10 +303,14 @@ func TestNew(t *testing.T) {
 		pivCards = pCards
 	})
 
-	managementKey, err := randutil.Salt(24)
+	managementKey, err := randutil.Salt(24) // DES3 and AES192
 	require.NoError(t, err)
 	managementKeyFile := filepath.Join(t.TempDir(), "management.key")
 	require.NoError(t, os.WriteFile(managementKeyFile, []byte(hex.EncodeToString(managementKey)), 0600))
+	aes128ManagementKey, err := randutil.Salt(16)
+	require.NoError(t, err)
+	aes256ManagementKey, err := randutil.Salt(32)
+	require.NoError(t, err)
 
 	yk := newStubPivKey(t, ECDSA)
 
@@ -376,6 +380,20 @@ func TestNew(t *testing.T) {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: managementKey}, false},
+		{"ok with AES128 management key", args{ctx, apiv1.Options{
+			URI: fmt.Sprintf("yubikey:management-key=%s?pin-value=123456", hex.EncodeToString(aes128ManagementKey)),
+		}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: aes128ManagementKey}, false},
+		{"ok with AES256 management key", args{ctx, apiv1.Options{
+			URI: fmt.Sprintf("yubikey:management-key=%s?pin-value=123456", hex.EncodeToString(aes256ManagementKey)),
+		}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: aes256ManagementKey}, false},
 		{"ok with Pin", args{ctx, apiv1.Options{Pin: "222222"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
