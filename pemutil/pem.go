@@ -5,6 +5,8 @@ package pemutil
 
 import (
 	"bytes"
+	"crypto"
+	_ "crypto/init" // Register all crypto algorithms for Agiligo
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -25,6 +27,7 @@ import (
 	fileutils "go.step.sm/crypto/internal/utils/file"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
+	"go.step.sm/crypto/x509compat"
 )
 
 // DefaultEncCipher is the default algorithm used when encrypting sensitive
@@ -477,16 +480,16 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 
 	switch block.Type {
 	case "PUBLIC KEY":
-		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+		pub, err := x509compat.ParsePKIXPublicKey(block.Bytes)
 		return pub, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "RSA PRIVATE KEY":
-		priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		priv, err := x509compat.ParsePKCS1PrivateKey(block.Bytes)
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "EC PRIVATE KEY":
-		priv, err := x509.ParseECPrivateKey(block.Bytes)
+		priv, err := x509compat.ParseECPrivateKey(block.Bytes)
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "PRIVATE KEY", "ENCRYPTED PRIVATE KEY":
-		priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		priv, err := x509compat.ParsePKCS8PrivateKey(block.Bytes)
 		return priv, errors.Wrapf(err, "error parsing %s", ctx.filename)
 	case "OPENSSH PRIVATE KEY":
 		priv, err := ParseOpenSSHPrivateKey(b, withContext(ctx))
@@ -559,7 +562,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 	var isPrivateKey bool
 	switch k := in.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
-		b, err := x509.MarshalPKIXPublicKey(k)
+		b, err := x509compat.MarshalPKIXPublicKey(k)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -571,7 +574,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 		isPrivateKey = true
 		switch {
 		case ctx.pkcs8:
-			b, err := x509.MarshalPKCS8PrivateKey(k)
+			b, err := x509compat.MarshalPKCS8PrivateKey(k)
 			if err != nil {
 				return nil, err
 			}
@@ -584,14 +587,14 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 		default:
 			p = &pem.Block{
 				Type:  "RSA PRIVATE KEY",
-				Bytes: x509.MarshalPKCS1PrivateKey(k),
+				Bytes: x509compat.MarshalPKCS1PrivateKey(k),
 			}
 		}
 	case *ecdsa.PrivateKey:
 		isPrivateKey = true
 		switch {
 		case ctx.pkcs8:
-			b, err := x509.MarshalPKCS8PrivateKey(k)
+			b, err := x509compat.MarshalPKCS8PrivateKey(k)
 			if err != nil {
 				return nil, err
 			}
@@ -602,7 +605,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 		case ctx.openSSH:
 			return SerializeOpenSSHPrivateKey(k, withContext(ctx))
 		default:
-			b, err := x509.MarshalECPrivateKey(k)
+			b, err := x509compat.MarshalECPrivateKey(k)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to marshal private key")
 			}
@@ -618,7 +621,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			return SerializeOpenSSHPrivateKey(k, withContext(ctx))
 		default: // Ed25519 keys will use pkcs8 by default
 			ctx.pkcs8 = true
-			b, err := x509.MarshalPKCS8PrivateKey(k)
+			b, err := x509compat.MarshalPKCS8PrivateKey(k)
 			if err != nil {
 				return nil, err
 			}
@@ -679,17 +682,17 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 // key encoded.
 func ParseDER(b []byte) (interface{}, error) {
 	// Try private keys
-	key, err := x509.ParsePKCS8PrivateKey(b)
+	key, err := x509compat.ParsePKCS8PrivateKey(b)
 	if err != nil {
-		if key, err = x509.ParseECPrivateKey(b); err != nil {
-			key, err = x509.ParsePKCS1PrivateKey(b)
+		if key, err = x509compat.ParseECPrivateKey(b); err != nil {
+			key, err = x509compat.ParsePKCS1PrivateKey(b)
 		}
 	}
 
 	// Try public key
 	if err != nil {
-		if key, err = x509.ParsePKIXPublicKey(b); err != nil {
-			if key, err = x509.ParsePKCS1PublicKey(b); err != nil {
+		if key, err = x509compat.ParsePKIXPublicKey(b); err != nil {
+			if key, err = x509compat.ParsePKCS1PublicKey(b); err != nil {
 				return nil, errors.New("error decoding DER; bad format")
 			}
 		}

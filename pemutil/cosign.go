@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/pkg/errors"
+	"go.step.sm/crypto/x509compat"
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/scrypt"
 )
@@ -70,7 +71,7 @@ func ParseCosignPrivateKey(data, password []byte) (crypto.PrivateKey, error) {
 		return nil, x509.IncorrectPasswordError
 	}
 
-	priv, err := x509.ParsePKCS8PrivateKey(out)
+	priv, err := x509compat.ParsePKCS8PrivateKey(out)
 	if err != nil {
 		return nil, errors.Wrap(err, "error parsing pkcs8 key")
 	}
