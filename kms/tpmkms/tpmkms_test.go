@@ -40,6 +40,7 @@ func TestNew(t *testing.T) {
 
 			if assert.NotNil(t, got) {
 				assert.NotNil(t, got.tpm)
+				assert.Equal(t, got.tpm, got.TPM())
 				assert.Equal(t, tt.want.identityEarlyRenewalEnabled, got.identityEarlyRenewalEnabled)
 				assert.Equal(t, tt.want.identityRenewalPeriodPercentage, got.identityRenewalPeriodPercentage)
 			}

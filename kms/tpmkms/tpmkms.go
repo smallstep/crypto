@@ -310,6 +310,11 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	return
 }
 
+// TPM returns the TPM instance used by in the TPM KMS.
+func (k *TPMKMS) TPM() *tpm.TPM {
+	return k.tpm
+}
+
 // usesWindowsCertificateStore is a helper method that indicates whether
 // the TPMKMS should use the Windows certificate stores for certificate
 // operations.
