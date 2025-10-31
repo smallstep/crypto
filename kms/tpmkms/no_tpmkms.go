@@ -1,5 +1,4 @@
 //go:build notpmkms
-// +build notpmkms
 
 package tpmkms
 

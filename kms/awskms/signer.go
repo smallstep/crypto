@@ -1,5 +1,4 @@
 //go:build !noawskms
-// +build !noawskms
 
 package awskms
 

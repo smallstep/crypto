@@ -1,5 +1,4 @@
 //go:build nocloudkms
-// +build nocloudkms
 
 package cloudkms
 
