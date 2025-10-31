@@ -35,6 +35,15 @@ func TestNew(t *testing.T) {
 				windowsIntermediateStore:         defaultIntermediateStore,
 				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
 			}}, false},
+		{"ok/storageDirectory", args{apiv1.Options{Type: "tpmkms", StorageDirectory: "my-tpm"}}, &TPMKMS{
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, false},
 		{"ok/uri", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:device=/dev/tpm0;storage-directory=/tmp/tpmstorage;renewal-percentage=70"}}, &TPMKMS{
 			opts: &options{
 				identityEarlyRenewalEnabled:      true,
@@ -149,6 +158,23 @@ func TestNewWithTPM(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestNewWithTPM_no_windows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("This test cannot run on windows")
+	}
+
+	tp, err := tpm.New()
+	require.NoError(t, err)
+
+	got, err := NewWithTPM(t.Context(), tp, WithWindowsCertificateStore("", ""))
+	assert.Error(t, err)
+	assert.Nil(t, got)
+
+	got, err = NewWithTPM(t.Context(), tp, WithWindowsIntermediateStore("", ""))
+	assert.Error(t, err)
+	assert.Nil(t, got)
 }
 
 func Test_parseTSS2(t *testing.T) {

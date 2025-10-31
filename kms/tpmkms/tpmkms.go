@@ -181,6 +181,45 @@ func WithWindowsIntermediateStore(store, location string) Option {
 	}
 }
 
+// TPMOptions is a helper method that returns a slice of [tpm.NewTPMOption] for
+// the given URI.
+func TPMOptions(u *uri.URI) []tpm.NewTPMOption {
+	var opts []tpm.NewTPMOption
+	if device := u.Get("device"); device != "" {
+		opts = append(opts, tpm.WithDeviceName(device))
+	}
+	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
+		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
+	}
+	return opts
+}
+
+// TPMKMSOptions is a helper method that returns a slice of [Option] for the
+// give URI.
+func TPMKMSOptions(u *uri.URI) []Option {
+	opts := []Option{
+		WithAttestationCA(u.Get("attestation-ca-url"), u.Get("attestation-ca-root"), u.GetBool("attestation-ca-insecure")),
+		WithPermanentIdentifier(u.Get("permanent-identifier")), // TODO(hs): determine if this is needed
+	}
+
+	if u.GetBool("disable-early-renewal") {
+		opts = append(opts, WithDisableIdentityEarlyRenewal())
+	} else if percentage := u.GetInt("renewal-percentage"); percentage != nil {
+		opts = append(opts, WithIdentityEarlyRenewalPercentage(*percentage))
+	}
+
+	// Microsoft Cryptography API: Next Generation (CNG) options
+	// TODO(hs): maybe change the option flag or make this the default on Windows
+	if u.GetBool("enable-cng") {
+		opts = append(opts,
+			WithWindowsCertificateStore(u.Get("store"), u.Get("store-location")),
+			WithWindowsIntermediateStore(u.Get("intermediate-store"), u.Get("intermediate-store-location")),
+		)
+	}
+
+	return opts
+}
+
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
 	tpm                       *tpm.TPM
@@ -326,33 +365,9 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
 		}
-		if device := u.Get("device"); device != "" {
-			tpmOpts = append(tpmOpts, tpm.WithDeviceName(device))
-		}
-		if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
-			tpmOpts = append(tpmOpts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
-		}
 
-		// Create NewWithTPM options from URI.
-		uriOptions = append(uriOptions,
-			WithAttestationCA(u.Get("attestation-ca-url"), u.Get("attestation-ca-root"), u.GetBool("attestation-ca-insecure")),
-			WithPermanentIdentifier(u.Get("permanent-identifier")), // TODO(hs): determine if this is needed
-		)
-
-		if u.GetBool("disable-early-renewal") {
-			uriOptions = append(uriOptions, WithDisableIdentityEarlyRenewal())
-		} else if percentage := u.GetInt("renewal-percentage"); percentage != nil {
-			uriOptions = append(uriOptions, WithIdentityEarlyRenewalPercentage(*percentage))
-		}
-
-		// Microsoft Cryptography API: Next Generation (CNG) options
-		// TODO(hs): maybe change the option flag or make this the default on Windows
-		if u.GetBool("enable-cng") {
-			uriOptions = append(uriOptions,
-				WithWindowsCertificateStore(u.Get("store"), u.Get("store-location")),
-				WithWindowsIntermediateStore(u.Get("intermediate-store"), u.Get("intermediate-store-location")),
-			)
-		}
+		tpmOpts = append(tpmOpts, TPMOptions(u)...)
+		uriOptions = TPMKMSOptions(u)
 	}
 
 	t, err := tpm.New(tpmOpts...)
