@@ -16,6 +16,91 @@ import (
 	"go.step.sm/crypto/tpm"
 )
 
+func TestNew_windows(t *testing.T) {
+	ctx := t.Context()
+
+	km, err := capi.New(ctx, apiv1.Options{
+		Type: apiv1.CAPIKMS,
+		URI:  uri.New("capi", url.Values{"provider": []string{microsoftPCP}}).String(),
+	})
+	require.NoError(t, err)
+
+	apiv1.Register(apiv1.CAPIKMS, func(ctx context.Context, opts apiv1.Options) (apiv1.KeyManager, error) {
+		return km, nil
+	})
+
+	type args struct {
+		ctx  context.Context
+		opts apiv1.Options
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *TPMKMS
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{ctx, apiv1.Options{Type: "tpmkms"}}, &TPMKMS{
+			tpm: nil, // not known
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, assert.NoError},
+		{"ok uri", args{ctx, apiv1.Options{Type: "tpmkms", URI: "tpmkms:renewal-percentage=70"}}, &TPMKMS{
+			tpm: nil, // not known
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  70,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, assert.NoError},
+		{"ok cng", args{ctx, apiv1.Options{Type: "tpmkms", URI: "tpmkms:enable-cng=true"}}, &TPMKMS{
+			tpm:                       nil, // not known
+			windowsCertificateManager: km,
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCNG:                       true,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, assert.NoError},
+		{"ok cng stores", args{ctx, apiv1.Options{
+			Type: "tpmkms",
+			URI:  "tpmkms:enable-cng=true;store=CA;store-location=machine;intermediate-store=My;intermediate-store-location=machine",
+		}}, &TPMKMS{
+			tpm:                       nil, // not known
+			windowsCertificateManager: km,
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCNG:                       true,
+				windowsCertificateStore:          "CA",
+				windowsCertificateStoreLocation:  "machine",
+				windowsIntermediateStore:         "My",
+				windowsIntermediateStoreLocation: "machine",
+			}}, assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := New(tt.args.ctx, tt.args.opts)
+			tt.assertion(t, err)
+			if got != nil {
+				assert.NotNil(t, got.tpm)
+				assert.IsType(t, &tpm.TPM{}, got.tpm)
+				tt.want.tpm = got.tpm
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestNewWithTPM_windows(t *testing.T) {
 	ctx := t.Context()
 	tp, err := tpm.New()

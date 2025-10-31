@@ -346,15 +346,12 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		}
 
 		// Microsoft Cryptography API: Next Generation (CNG) options
-		store := u.Get("store")
-		storeLocation := u.Get("store-location")
-		if store != "" || storeLocation != "" {
-			uriOptions = append(uriOptions, WithWindowsCertificateStore(store, storeLocation))
-		}
-		store = u.Get("intermediate-store")
-		storeLocation = u.Get("intermediate-store-location")
-		if store != "" || storeLocation != "" {
-			uriOptions = append(uriOptions, WithWindowsIntermediateStore(store, storeLocation))
+		// TODO(hs): maybe change the option flag or make this the default on Windows
+		if u.GetBool("enable-cng") {
+			uriOptions = append(uriOptions,
+				WithWindowsCertificateStore(u.Get("store"), u.Get("store-location")),
+				WithWindowsIntermediateStore(u.Get("intermediate-store"), u.Get("intermediate-store-location")),
+			)
 		}
 	}
 

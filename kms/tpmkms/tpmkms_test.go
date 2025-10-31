@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,6 +44,15 @@ func TestNew(t *testing.T) {
 				windowsIntermediateStore:         defaultIntermediateStore,
 				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
 			}}, false},
+		{"ok/disable-early-renewal", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:disable-early-renewal=true"}}, &TPMKMS{
+			opts: &options{
+				identityEarlyRenewalEnabled:      false,
+				identityRenewalPeriodPercentage:  0,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, false},
 		{"fail/uri-scheme", args{apiv1.Options{Type: "tpmkms", URI: "tpmkmz://device=/dev/tpm0"}}, &TPMKMS{}, true},
 		{"fail/renewal-percentage-too-low", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:renewal-percentage=0"}}, &TPMKMS{}, true},
 	}
@@ -60,6 +70,18 @@ func TestNew(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNew_no_windows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("This test cannot run on windows")
+	}
+
+	got, err := New(t.Context(), apiv1.Options{
+		URI: "tpmkms:enable-cng=true",
+	})
+	assert.Error(t, err)
+	assert.Nil(t, got)
 }
 
 func TestNewWithTPM(t *testing.T) {
