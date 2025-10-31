@@ -2182,11 +2182,13 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 		tc := tt(t)
 		t.Run(name, func(t *testing.T) {
 			k := &TPMKMS{
-				tpm:                   tc.fields.tpm,
-				attestationCABaseURL:  tc.fields.attestationCABaseURL,
-				attestationCARootFile: tc.fields.attestationCARootFile,
-				attestationCAInsecure: tc.fields.attestationCAInsecure,
-				permanentIdentifier:   tc.fields.permanentIdentifier,
+				tpm: tc.fields.tpm,
+				opts: &options{
+					attestationCABaseURL:  tc.fields.attestationCABaseURL,
+					attestationCARootFile: tc.fields.attestationCARootFile,
+					attestationCAInsecure: tc.fields.attestationCAInsecure,
+					permanentIdentifier:   tc.fields.permanentIdentifier,
+				},
 			}
 			if tc.server != nil {
 				defer tc.server.Close()
@@ -2205,8 +2207,10 @@ func TestTPMKMS_CreateAttestation(t *testing.T) {
 
 func Test_hasValidIdentity(t *testing.T) {
 	k := &TPMKMS{
-		identityEarlyRenewalEnabled:     true,
-		identityRenewalPeriodPercentage: 60,
+		opts: &options{
+			identityEarlyRenewalEnabled:     true,
+			identityRenewalPeriodPercentage: 60,
+		},
 	}
 	ctx := context.Background()
 	tpm := newSimulatedTPM(t)

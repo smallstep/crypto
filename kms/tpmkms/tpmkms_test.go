@@ -25,8 +25,24 @@ func TestNew(t *testing.T) {
 		want    *TPMKMS
 		wantErr bool
 	}{
-		{"ok/defaults", args{apiv1.Options{Type: "tpmkms"}}, &TPMKMS{identityEarlyRenewalEnabled: true, identityRenewalPeriodPercentage: 60}, false},
-		{"ok/uri", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:device=/dev/tpm0;storage-directory=/tmp/tpmstorage;renewal-percentage=70"}}, &TPMKMS{identityEarlyRenewalEnabled: true, identityRenewalPeriodPercentage: 70}, false},
+		{"ok/defaults", args{apiv1.Options{Type: "tpmkms"}}, &TPMKMS{
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, false},
+		{"ok/uri", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:device=/dev/tpm0;storage-directory=/tmp/tpmstorage;renewal-percentage=70"}}, &TPMKMS{
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  70,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			}}, false},
 		{"fail/uri-scheme", args{apiv1.Options{Type: "tpmkms", URI: "tpmkmz://device=/dev/tpm0"}}, &TPMKMS{}, true},
 		{"fail/renewal-percentage-too-low", args{apiv1.Options{Type: "tpmkms", URI: "tpmkms:renewal-percentage=0"}}, &TPMKMS{}, true},
 	}
@@ -40,10 +56,75 @@ func TestNew(t *testing.T) {
 
 			if assert.NotNil(t, got) {
 				assert.NotNil(t, got.tpm)
-				assert.Equal(t, got.tpm, got.TPM())
-				assert.Equal(t, tt.want.identityEarlyRenewalEnabled, got.identityEarlyRenewalEnabled)
-				assert.Equal(t, tt.want.identityRenewalPeriodPercentage, got.identityRenewalPeriodPercentage)
+				assert.Equal(t, tt.want.opts, got.opts)
 			}
+		})
+	}
+}
+
+func TestNewWithTPM(t *testing.T) {
+	ctx := t.Context()
+	tp, err := tpm.New()
+	require.NoError(t, err)
+
+	type args struct {
+		ctx  context.Context
+		t    *tpm.TPM
+		opts []Option
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *TPMKMS
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{ctx, tp, nil}, &TPMKMS{
+			tpm: tp,
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  60,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			},
+		}, assert.NoError},
+		{"ok without early renewal", args{ctx, tp, []Option{WithDisableIdentityEarlyRenewal()}}, &TPMKMS{
+			tpm: tp,
+			opts: &options{
+				identityEarlyRenewalEnabled:      false,
+				identityRenewalPeriodPercentage:  0,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			},
+		}, assert.NoError},
+		{"ok with other options", args{ctx, tp, []Option{
+			WithIdentityEarlyRenewalPercentage(70),
+			WithAttestationCA("https://ca.example.com", "path/to/file.crt", true),
+		}}, &TPMKMS{
+			tpm: tp,
+			opts: &options{
+				identityEarlyRenewalEnabled:      true,
+				identityRenewalPeriodPercentage:  70,
+				attestationCABaseURL:             "https://ca.example.com",
+				attestationCARootFile:            "path/to/file.crt",
+				attestationCAInsecure:            true,
+				windowsCertificateStore:          defaultStore,
+				windowsCertificateStoreLocation:  defaultStoreLocation,
+				windowsIntermediateStore:         defaultIntermediateStore,
+				windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+			},
+		}, assert.NoError},
+		{"fail percentage 0", args{ctx, tp, []Option{WithIdentityEarlyRenewalPercentage(0)}}, nil, assert.Error},
+		{"fail percentage 101", args{ctx, tp, []Option{WithIdentityEarlyRenewalPercentage(101)}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewWithTPM(tt.args.ctx, tt.args.t, tt.args.opts...)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
