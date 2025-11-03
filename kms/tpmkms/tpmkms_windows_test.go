@@ -91,6 +91,9 @@ func TestNew_windows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := New(tt.args.ctx, tt.args.opts)
 			tt.assertion(t, err)
+			// It is not possible to compare a *tpm.TPM with the one created by
+			// New because the storage.Dirstore contains functions that cannot
+			// be compared.
 			if got != nil {
 				assert.NotNil(t, got.tpm)
 				assert.IsType(t, &tpm.TPM{}, got.tpm)

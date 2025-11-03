@@ -97,6 +97,11 @@ type options struct {
 }
 
 // Option is the type used as a variadic argument in NewWithTPM.
+//
+// # Experimental
+//
+// Notice: This type is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type Option func(o *options) error
 
 // WithAttestationCA is the [Option] used to define the attestation CA.
@@ -181,9 +186,9 @@ func WithWindowsIntermediateStore(store, location string) Option {
 	}
 }
 
-// TPMOptions is a helper method that returns a slice of [tpm.NewTPMOption] for
-// the given URI.
-func TPMOptions(u *uri.URI) []tpm.NewTPMOption {
+// ParseTPMOptions is a helper method that returns a slice of [tpm.NewTPMOption]
+// for the given URI.
+func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	var opts []tpm.NewTPMOption
 	if device := u.Get("device"); device != "" {
 		opts = append(opts, tpm.WithDeviceName(device))
@@ -194,9 +199,9 @@ func TPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	return opts
 }
 
-// TPMKMSOptions is a helper method that returns a slice of [Option] for the
-// give URI.
-func TPMKMSOptions(u *uri.URI) []Option {
+// ParseTPMKMSOptions is a helper method that returns a slice of [Option] for
+// the give URI.
+func ParseTPMKMSOptions(u *uri.URI) []Option {
 	opts := []Option{
 		WithAttestationCA(u.Get("attestation-ca-url"), u.Get("attestation-ca-root"), u.GetBool("attestation-ca-insecure")),
 		WithPermanentIdentifier(u.Get("permanent-identifier")), // TODO(hs): determine if this is needed
@@ -366,8 +371,8 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
 		}
 
-		tpmOpts = append(tpmOpts, TPMOptions(u)...)
-		uriOptions = TPMKMSOptions(u)
+		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
+		uriOptions = ParseTPMKMSOptions(u)
 	}
 
 	t, err := tpm.New(tpmOpts...)
@@ -379,6 +384,11 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 }
 
 // NewWithTPM initializes a new KMS backed by the given TPM.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error) {
 	o := &options{
 		identityEarlyRenewalEnabled:      true,

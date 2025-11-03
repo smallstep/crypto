@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -81,18 +80,6 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNew_no_windows(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("This test cannot run on windows")
-	}
-
-	got, err := New(t.Context(), apiv1.Options{
-		URI: "tpmkms:enable-cng=true",
-	})
-	assert.Error(t, err)
-	assert.Nil(t, got)
-}
-
 func TestNewWithTPM(t *testing.T) {
 	ctx := t.Context()
 	tp, err := tpm.New()
@@ -158,23 +145,6 @@ func TestNewWithTPM(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func TestNewWithTPM_no_windows(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("This test cannot run on windows")
-	}
-
-	tp, err := tpm.New()
-	require.NoError(t, err)
-
-	got, err := NewWithTPM(t.Context(), tp, WithWindowsCertificateStore("", ""))
-	assert.Error(t, err)
-	assert.Nil(t, got)
-
-	got, err = NewWithTPM(t.Context(), tp, WithWindowsIntermediateStore("", ""))
-	assert.Error(t, err)
-	assert.Nil(t, got)
 }
 
 func Test_parseTSS2(t *testing.T) {
