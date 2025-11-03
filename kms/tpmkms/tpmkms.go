@@ -199,9 +199,9 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	return opts
 }
 
-// ParseTPMKMSOptions is a helper method that returns a slice of [Option] for
+// ParseOptions is a helper method that returns a slice of [Option] for
 // the give URI.
-func ParseTPMKMSOptions(u *uri.URI) []Option {
+func ParseOptions(u *uri.URI) []Option {
 	opts := []Option{
 		WithAttestationCA(u.Get("attestation-ca-url"), u.Get("attestation-ca-root"), u.GetBool("attestation-ca-insecure")),
 		WithPermanentIdentifier(u.Get("permanent-identifier")), // TODO(hs): determine if this is needed
@@ -372,7 +372,7 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		}
 
 		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
-		uriOptions = ParseTPMKMSOptions(u)
+		uriOptions = ParseOptions(u)
 	}
 
 	t, err := tpm.New(tpmOpts...)
