@@ -1,5 +1,4 @@
 //go:build !notpmkms
-// +build !notpmkms
 
 package tpmkms
 
@@ -83,20 +82,154 @@ const (
 	defaultRSAAKSize = 2048
 )
 
-// TPMKMS is a KMS implementation backed by a TPM.
-type TPMKMS struct {
-	tpm                              *tpm.TPM
-	windowsCertificateManager        apiv1.CertificateManager
-	windowsCertificateStoreLocation  string
+type options struct {
+	windowsCNG                       bool
 	windowsCertificateStore          string
-	windowsIntermediateStoreLocation string
+	windowsCertificateStoreLocation  string
 	windowsIntermediateStore         string
+	windowsIntermediateStoreLocation string
 	attestationCABaseURL             string
 	attestationCARootFile            string
 	attestationCAInsecure            bool
 	permanentIdentifier              string
 	identityRenewalPeriodPercentage  int64
 	identityEarlyRenewalEnabled      bool
+}
+
+// Option is the type used as a variadic argument in NewWithTPM.
+//
+// # Experimental
+//
+// Notice: This type is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type Option func(o *options) error
+
+// WithAttestationCA is the [Option] used to define the attestation CA.
+func WithAttestationCA(caURL, rootFile string, insecure bool) Option {
+	return func(o *options) error {
+		o.attestationCABaseURL = caURL
+		o.attestationCARootFile = rootFile
+		o.attestationCAInsecure = insecure
+		return nil
+	}
+}
+
+// WithPermanentIdentifier is the [Option] used to define the permanent
+// identifier.
+func WithPermanentIdentifier(s string) Option {
+	return func(o *options) error {
+		o.permanentIdentifier = s
+		return nil
+	}
+}
+
+// WithDisableIdentityEarlyRenewal is the [Option] used to disable early
+// renewal of the AK certificate.
+func WithDisableIdentityEarlyRenewal() Option {
+	return func(o *options) error {
+		o.identityEarlyRenewalEnabled = false
+		o.identityRenewalPeriodPercentage = 0
+		return nil
+	}
+}
+
+// WithIdentityEarlyRenewalPercentage is the [Option] used to change the
+// lifetime percentage for renewing the AK certificate.
+func WithIdentityEarlyRenewalPercentage(percentage int64) Option {
+	return func(o *options) error {
+		if percentage < 1 || percentage > 100 {
+			return fmt.Errorf("renewal percentage must be between 1 and 100; got %d", percentage)
+		}
+		o.identityEarlyRenewalEnabled = true
+		o.identityRenewalPeriodPercentage = percentage
+		return nil
+	}
+}
+
+// WithWindowsCertificateStore sets certificate store and location. It defaults
+// to "My" and "user".
+func WithWindowsCertificateStore(store, location string) Option {
+	return func(o *options) error {
+		if runtime.GOOS != "windows" {
+			return fmt.Errorf(`certificate location is not supported on %s`, runtime.GOOS)
+		}
+		if store == "" {
+			store = defaultStore
+		}
+		if location == "" {
+			location = defaultStoreLocation
+		}
+		o.windowsCNG = true
+		o.windowsCertificateStore = store
+		o.windowsCertificateStoreLocation = location
+		return nil
+	}
+}
+
+// WithWindowsIntermediateStore sets intermediate certificate store and
+// location. It defaults to "CA" and "user".
+func WithWindowsIntermediateStore(store, location string) Option {
+	return func(o *options) error {
+		if runtime.GOOS != "windows" {
+			return fmt.Errorf(`certificate location is not supported on %s`, runtime.GOOS)
+		}
+		if store == "" {
+			store = defaultIntermediateStore
+		}
+		if location == "" {
+			location = defaultIntermediateStoreLocation
+		}
+		o.windowsCNG = true
+		o.windowsIntermediateStore = store
+		o.windowsIntermediateStoreLocation = location
+		return nil
+	}
+}
+
+// ParseTPMOptions is a helper method that returns a slice of [tpm.NewTPMOption]
+// for the given URI.
+func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
+	var opts []tpm.NewTPMOption
+	if device := u.Get("device"); device != "" {
+		opts = append(opts, tpm.WithDeviceName(device))
+	}
+	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
+		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
+	}
+	return opts
+}
+
+// ParseOptions is a helper method that returns a slice of [Option] for
+// the give URI.
+func ParseOptions(u *uri.URI) []Option {
+	opts := []Option{
+		WithAttestationCA(u.Get("attestation-ca-url"), u.Get("attestation-ca-root"), u.GetBool("attestation-ca-insecure")),
+		WithPermanentIdentifier(u.Get("permanent-identifier")), // TODO(hs): determine if this is needed
+	}
+
+	if u.GetBool("disable-early-renewal") {
+		opts = append(opts, WithDisableIdentityEarlyRenewal())
+	} else if percentage := u.GetInt("renewal-percentage"); percentage != nil {
+		opts = append(opts, WithIdentityEarlyRenewalPercentage(*percentage))
+	}
+
+	// Microsoft Cryptography API: Next Generation (CNG) options
+	// TODO(hs): maybe change the option flag or make this the default on Windows
+	if u.GetBool("enable-cng") {
+		opts = append(opts,
+			WithWindowsCertificateStore(u.Get("store"), u.Get("store-location")),
+			WithWindowsIntermediateStore(u.Get("intermediate-store"), u.Get("intermediate-store-location")),
+		)
+	}
+
+	return opts
+}
+
+// TPMKMS is a KMS implementation backed by a TPM.
+type TPMKMS struct {
+	tpm                       *tpm.TPM
+	windowsCertificateManager apiv1.CertificateManager
+	opts                      *options
 }
 
 type algorithmAttributes struct {
@@ -221,93 +354,89 @@ const (
 // the `tpm` package. If the TPMKMS operations aren't sufficient for
 // your use case, use a tpm.TPM instance instead.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
-	kms = &TPMKMS{
-		identityEarlyRenewalEnabled:     true,
-		identityRenewalPeriodPercentage: 60, // default to AK certificate renewal at 60% of lifetime
-	}
+	var uriOptions []Option
+
 	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
 	if opts.StorageDirectory != "" {
 		storageDirectory = opts.StorageDirectory
 	}
-	tpmOpts := []tpm.NewTPMOption{tpm.WithStore(storage.NewDirstore(storageDirectory))}
+	tpmOpts := []tpm.NewTPMOption{
+		tpm.WithStore(storage.NewDirstore(storageDirectory)),
+	}
+
+	// Get other options from URI
 	if opts.URI != "" {
 		u, err := uri.ParseWithScheme(Scheme, opts.URI)
 		if err != nil {
 			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
 		}
-		if device := u.Get("device"); device != "" {
-			tpmOpts = append(tpmOpts, tpm.WithDeviceName(device))
-		}
-		if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
-			tpmOpts = append(tpmOpts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
-		}
-		kms.attestationCABaseURL = u.Get("attestation-ca-url")
-		kms.attestationCARootFile = u.Get("attestation-ca-root")
-		kms.attestationCAInsecure = u.GetBool("attestation-ca-insecure")
-		kms.permanentIdentifier = u.Get("permanent-identifier") // TODO(hs): determine if this is needed
-		kms.identityEarlyRenewalEnabled = !u.GetBool("disable-early-renewal")
-		if percentage := u.GetInt("renewal-percentage"); percentage != nil {
-			if *percentage < 1 || *percentage > 100 {
-				return nil, fmt.Errorf("renewal percentage must be between 1 and 100; got %d", *percentage)
-			}
-			kms.identityRenewalPeriodPercentage = *percentage
-		}
 
-		// opt-in for enabling CAPI integration on Windows for certificate
-		// management. This will result in certificates being stored to or
-		// retrieved from the Windows certificate stores.
-		enableCNG := u.GetBool("enable-cng") // TODO(hs): maybe change the option flag or make this the default on Windows
-		if enableCNG && runtime.GOOS != "windows" {
-			return nil, fmt.Errorf(`"enable-cng" is not supported on %s`, runtime.GOOS)
-		}
-
-		if enableCNG {
-			fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.CAPIKMS)
-			if !ok {
-				name := filepath.Base(os.Args[0])
-				return nil, fmt.Errorf(`unsupported KMS type "capi": %s is compiled without Microsoft CryptoAPI Next Generation (CNG) support`, name)
-			}
-			km, err := fn(ctx, apiv1.Options{
-				Type: apiv1.CAPIKMS,
-				URI:  uri.New("capi", url.Values{"provider": []string{microsoftPCP}}).String(),
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
-			}
-			kms.windowsCertificateManager, ok = km.(apiv1.CertificateManager)
-			if !ok {
-				return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
-			}
-			kms.windowsCertificateStoreLocation = defaultStoreLocation
-			if storeLocation := u.Get("store-location"); storeLocation != "" {
-				kms.windowsCertificateStoreLocation = storeLocation
-			}
-			kms.windowsCertificateStore = defaultStore
-			if store := u.Get("store"); store != "" {
-				kms.windowsCertificateStore = store
-			}
-			kms.windowsIntermediateStoreLocation = defaultIntermediateStoreLocation
-			if intermediateStoreLocation := u.Get("intermediate-store-location"); intermediateStoreLocation != "" {
-				kms.windowsIntermediateStoreLocation = intermediateStoreLocation
-			}
-			kms.windowsIntermediateStore = defaultIntermediateStore
-			if intermediateStore := u.Get("intermediate-store"); intermediateStore != "" {
-				kms.windowsIntermediateStore = intermediateStore
-			}
-		}
-
-		// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
-		// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
-		// as the ones that create AKs and keys. Is all of the data available in the keys stored
-		// with Windows, incl. the attestation certification?
+		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
+		uriOptions = ParseOptions(u)
 	}
 
-	kms.tpm, err = tpm.New(tpmOpts...)
+	t, err := tpm.New(tpmOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new TPM: %w", err)
 	}
 
-	return
+	return NewWithTPM(ctx, t, uriOptions...)
+}
+
+// NewWithTPM initializes a new KMS backed by the given TPM.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error) {
+	o := &options{
+		identityEarlyRenewalEnabled:      true,
+		identityRenewalPeriodPercentage:  60, // default to AK certificate renewal at 60% of lifetime
+		windowsCNG:                       false,
+		windowsCertificateStore:          defaultStore,
+		windowsCertificateStoreLocation:  defaultStoreLocation,
+		windowsIntermediateStore:         defaultIntermediateStore,
+		windowsIntermediateStoreLocation: defaultIntermediateStoreLocation,
+	}
+	for _, fn := range opts {
+		if err := fn(o); err != nil {
+			return nil, err
+		}
+	}
+
+	var cm apiv1.CertificateManager
+
+	// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
+	// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
+	// as the ones that create AKs and keys. Is all of the data available in the keys stored
+	// with Windows, incl. the attestation certification?
+	if o.windowsCNG {
+		fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.CAPIKMS)
+		if !ok {
+			name := filepath.Base(os.Args[0])
+			return nil, fmt.Errorf(`unsupported KMS type "capi": %s is compiled without Microsoft CryptoAPI Next Generation (CNG) support`, name)
+		}
+
+		km, err := fn(ctx, apiv1.Options{
+			Type: apiv1.CAPIKMS,
+			URI:  uri.New("capi", url.Values{"provider": []string{microsoftPCP}}).String(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
+		}
+
+		cm, ok = km.(apiv1.CertificateManager)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
+		}
+	}
+
+	return &TPMKMS{
+		tpm:                       t,
+		windowsCertificateManager: cm,
+		opts:                      o,
+	}, nil
 }
 
 // usesWindowsCertificateStore is a helper method that indicates whether
@@ -719,11 +848,11 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	location := k.windowsCertificateStoreLocation
+	location := k.opts.windowsCertificateStoreLocation
 	if o.storeLocation != "" {
 		location = o.storeLocation
 	}
-	store := k.windowsCertificateStore
+	store := k.opts.windowsCertificateStore
 	if o.store != "" {
 		store = o.store
 	}
@@ -740,12 +869,12 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
 	}
 
-	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	intermediateCAStoreLocation := k.opts.windowsIntermediateStoreLocation
 	if o.intermediateStoreLocation != "" {
 		intermediateCAStoreLocation = o.intermediateStoreLocation
 	}
 
-	intermediateCAStore := k.windowsIntermediateStore
+	intermediateCAStore := k.opts.windowsIntermediateStore
 	if o.intermediateStore != "" {
 		intermediateCAStore = o.intermediateStore
 	}
@@ -852,11 +981,11 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	location := k.windowsCertificateStoreLocation
+	location := k.opts.windowsCertificateStoreLocation
 	if o.storeLocation != "" {
 		location = o.storeLocation
 	}
-	store := k.windowsCertificateStore
+	store := k.opts.windowsCertificateStore
 	if o.store != "" {
 		store = o.store
 	}
@@ -889,12 +1018,12 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		return nil
 	}
 
-	intermediateCAStoreLocation := k.windowsIntermediateStoreLocation
+	intermediateCAStoreLocation := k.opts.windowsIntermediateStoreLocation
 	if o.intermediateStoreLocation != "" {
 		intermediateCAStoreLocation = o.intermediateStoreLocation
 	}
 
-	intermediateCAStore := k.windowsIntermediateStore
+	intermediateCAStore := k.opts.windowsIntermediateStore
 	if o.intermediateStore != "" {
 		intermediateCAStore = o.intermediateStore
 	}
@@ -1006,11 +1135,11 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
 	}
 
-	location := k.windowsCertificateStoreLocation
+	location := k.opts.windowsCertificateStoreLocation
 	if o.storeLocation != "" {
 		location = o.storeLocation
 	}
-	store := k.windowsCertificateStore
+	store := k.opts.windowsCertificateStore
 	if o.store != "" {
 		store = o.store
 	}
@@ -1058,15 +1187,15 @@ type attestationClient struct {
 // newAttestorClient creates a new [attestationClient], wrapping references
 // to the [tpm.TPM] instance, the EK and the AK to use when attesting.
 func (k *TPMKMS) newAttestorClient(ek *tpm.EK, ak *tpm.AK) (*attestationClient, error) {
-	if k.attestationCABaseURL == "" {
+	if k.opts.attestationCABaseURL == "" {
 		return nil, errors.New("failed creating attestation client: attestation CA base URL must not be empty")
 	}
 	// prepare a client to perform attestation with an Attestation CA
-	attestationClientOptions := []attestation.Option{attestation.WithRootsFile(k.attestationCARootFile)}
-	if k.attestationCAInsecure {
+	attestationClientOptions := []attestation.Option{attestation.WithRootsFile(k.opts.attestationCARootFile)}
+	if k.opts.attestationCAInsecure {
 		attestationClientOptions = append(attestationClientOptions, attestation.WithInsecure())
 	}
-	client, err := attestation.NewClient(k.attestationCABaseURL, attestationClientOptions...)
+	client, err := attestation.NewClient(k.opts.attestationCABaseURL, attestationClientOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating attestation client: %w", err)
 	}
@@ -1135,8 +1264,8 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	// be used as the AK identity, so an error is returned if there's no match. This
 	// could be changed in the future, so that another attestation flow takes place,
 	// instead, for example.
-	if k.permanentIdentifier != "" && permanentIdentifier != k.permanentIdentifier {
-		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.permanentIdentifier, permanentIdentifier)
+	if k.opts.permanentIdentifier != "" && permanentIdentifier != k.opts.permanentIdentifier {
+		return nil, fmt.Errorf("the provided permanent identifier %q does not match the EK URL %q", k.opts.permanentIdentifier, permanentIdentifier)
 	}
 
 	var key *tpm.Key
@@ -1286,9 +1415,9 @@ func (k *TPMKMS) hasValidIdentity(ak *tpm.AK, ekURL *url.URL) error {
 
 	// it's possible to disable early expiration errors for the AK identity
 	// certificate when instantiating the TPMKMS.
-	if k.identityEarlyRenewalEnabled {
+	if k.opts.identityEarlyRenewalEnabled {
 		period := akCert.NotAfter.Sub(akCert.NotBefore).Truncate(time.Second)
-		renewBefore := time.Duration(float64(period.Nanoseconds()) * (float64(k.identityRenewalPeriodPercentage) / 100))
+		renewBefore := time.Duration(float64(period.Nanoseconds()) * (float64(k.opts.identityRenewalPeriodPercentage) / 100))
 		earlyAfter := akCert.NotAfter.Add(-1 * renewBefore)
 		if now.After(earlyAfter) {
 			return ErrIdentityCertificateIsExpiring

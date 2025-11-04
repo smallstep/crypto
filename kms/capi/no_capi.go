@@ -1,5 +1,4 @@
 //go:build !windows || nocapi
-// +build !windows nocapi
 
 package cloudkms
 
