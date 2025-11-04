@@ -1,5 +1,4 @@
 //go:build opensc
-// +build opensc
 
 package pkcs11
 

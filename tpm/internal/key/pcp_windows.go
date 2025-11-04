@@ -15,7 +15,6 @@
 // the License.
 
 //go:build windows
-// +build windows
 
 //nolint:errorlint,revive // copied package https://github.com/google/go-attestation/blob/master/attest/pcp_windows.go
 package key
