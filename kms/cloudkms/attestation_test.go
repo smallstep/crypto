@@ -746,6 +746,10 @@ func Test_getKeyType(t *testing.T) {
 // this package. The current certificate expires on November 16, 2025. We will
 // need to change it once Marvell changes it.
 func TestValidateCaviumRoot(t *testing.T) {
+	if !time.Now().After(time.Unix(1768460400, 0)) { // retrigger test after Thu Jan 15 2026 07:00:00
+		t.Skip("skipping expired Cavium root test until Thu Jan 15 2026 07:00:00 GMT")
+	}
+
 	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
 	require.NoError(t, err)
 
