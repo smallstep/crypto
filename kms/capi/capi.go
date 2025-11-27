@@ -37,6 +37,8 @@ const (
 	HashArg                = "sha1"
 	StoreLocationArg       = "store-location" // 'machine', 'user', etc
 	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
+	FriendlyNameArg        = "friendly-name"
+	DescriptionArg         = "description"
 	KeyIDArg               = "key-id"
 	SubjectCNArg           = "cn"
 	SerialNumberArg        = "serial"
@@ -314,6 +316,8 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	issuerName := u.Get(IssuerNameArg)
 	subjectCN := u.Get(SubjectCNArg)
 	serialNumber := u.Get(SerialNumberArg)
+	friendlyName := u.Get(FriendlyNameArg)
+	description := u.Get(DescriptionArg)
 
 	// default to the user store
 	var storeLocation string
@@ -389,7 +393,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		if handle == nil {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
 		}
-	case issuerName != "" && (serialNumber != "" || subjectCN != ""):
+	case issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != ""):
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -436,6 +440,24 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				}
 			case len(subjectCN) > 0:
 				if x509Cert.Subject.CommonName == subjectCN {
+					return handle, nil
+				}
+			case len(friendlyName) > 0:
+				val, err := cryptFindCertificateFriendlyName(handle)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
+				}
+
+				if val == friendlyName {
+					return handle, nil
+				}
+			case len(description) > 0:
+				val, err := cryptFindCertificateDescription(handle)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
+				}
+
+				if val == description {
 					return handle, nil
 				}
 			}
@@ -745,6 +767,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	if !u.GetBool(SkipFindCertificateKey) {
 		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
 		cryptFindCertificateKeyProvInfo(certContext)
+	}
+
+	if friendlyName := u.Get(FriendlyNameArg); friendlyName != "" {
+		cryptSetCertificateFriendlyName(certContext, friendlyName)
+	}
+
+	if description := u.Get(DescriptionArg); description != "" {
+		cryptSetCertificateDescription(certContext, description)
 	}
 
 	st, err := windows.CertOpenStore(
