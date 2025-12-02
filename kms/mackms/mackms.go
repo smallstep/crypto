@@ -218,7 +218,9 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	if !ok {
 		return nil, fmt.Errorf("createKeyRequest 'signatureAlgorithm=%q' is not supported", req.SignatureAlgorithm)
 	}
-	if u.useSecureEnclave && req.SignatureAlgorithm != apiv1.UnspecifiedSignAlgorithm && req.SignatureAlgorithm != apiv1.ECDSAWithSHA256 {
+	if u.useSecureEnclave && req.SignatureAlgorithm != apiv1.UnspecifiedSignAlgorithm &&
+		req.SignatureAlgorithm != apiv1.ECDSAWithSHA256 &&
+		req.SignatureAlgorithm != apiv1.ECDSAWithSHA384 {
 		return nil, fmt.Errorf("createKeyRequest 'signatureAlgorithm=%q' is not supported on Secure Enclave", req.SignatureAlgorithm)
 	}
 
