@@ -433,11 +433,12 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil {
+		if err != nil && !canLookupByIssuer() {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
-		if handle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", KeyIDArg, u.keyID)}
+
+		if handle == nil && !canLookupByIssuer {
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
 		}
 	}
 
@@ -494,22 +495,22 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 				if x509Cert.Subject.CommonName == u.subjectCN {
 					return handle, nil
 				}
-			case len(friendlyName) > 0:
+			case len(u.friendlyName) > 0:
 				val, err := cryptFindCertificateFriendlyName(handle)
 				if err != nil {
 					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
 				}
 
-				if val == friendlyName {
+				if val == u.friendlyName {
 					return handle, nil
 				}
-			case len(description) > 0:
+			case len(u.description) > 0:
 				val, err := cryptFindCertificateDescription(handle)
 				if err != nil {
 					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
 				}
 
-				if val == description {
+				if val == u.description {
 					return handle, nil
 				}
 			}
