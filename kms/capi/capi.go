@@ -37,6 +37,8 @@ const (
 	HashArg                = "sha1"
 	StoreLocationArg       = "store-location" // 'machine', 'user', etc
 	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
+	FriendlyNameArg        = "friendly-name"
+	DescriptionArg         = "description"
 	KeyIDArg               = "key-id"
 	SubjectCNArg           = "cn"
 	SerialNumberArg        = "serial"
@@ -314,6 +316,8 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 	issuerName := u.Get(IssuerNameArg)
 	subjectCN := u.Get(SubjectCNArg)
 	serialNumber := u.Get(SerialNumberArg)
+	friendlyName := u.Get(FriendlyNameArg)
+	description := u.Get(DescriptionArg)
 
 	// default to the user store
 	var storeLocation string
@@ -348,6 +352,10 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
 	}
 
+	canLookupByIssuer := func() bool {
+		return issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != "")
+	}
+
 	var handle *windows.CertContext
 
 	switch {
@@ -370,6 +378,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		if handle == nil {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, u.Get(HashArg))}
 		}
+
 	case len(keyID) > 0:
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
@@ -383,13 +392,20 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil {
+		if err != nil && !canLookupByIssuer() {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
-		if handle == nil {
+		if handle == nil && !canLookupByIssuer() {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
 		}
-	case issuerName != "" && (serialNumber != "" || subjectCN != ""):
+	}
+
+	if handle != nil {
+		return handle, err
+	}
+
+	// if issuer is set try to locate certificate using it even if lookup by key-id failed.
+	if canLookupByIssuer() {
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -438,15 +454,31 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				if x509Cert.Subject.CommonName == subjectCN {
 					return handle, nil
 				}
+			case len(friendlyName) > 0:
+				val, err := cryptFindCertificateFriendlyName(handle)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
+				}
+
+				if val == friendlyName {
+					return handle, nil
+				}
+			case len(description) > 0:
+				val, err := cryptFindCertificateDescription(handle)
+				if err != nil {
+					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
+				}
+
+				if val == description {
+					return handle, nil
+				}
 			}
 
 			prevCert = handle
 		}
-	default:
+	} else {
 		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
 	}
-
-	return handle, err
 }
 
 // CreateSigner returns a crypto.Signer that will sign using the key passed in via the URI.
@@ -745,6 +777,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	if !u.GetBool(SkipFindCertificateKey) {
 		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
 		cryptFindCertificateKeyProvInfo(certContext)
+	}
+
+	if friendlyName := u.Get(FriendlyNameArg); friendlyName != "" {
+		cryptSetCertificateFriendlyName(certContext, friendlyName)
+	}
+
+	if description := u.Get(DescriptionArg); description != "" {
+		cryptSetCertificateDescription(certContext, description)
 	}
 
 	st, err := windows.CertOpenStore(
