@@ -353,6 +353,10 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
 	}
 
+	canLookupByIssuer := func() bool {
+		return issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != "")
+	}
+
 	var handle *windows.CertContext
 
 	switch {
@@ -375,6 +379,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		if handle == nil {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, u.Get(HashArg))}
 		}
+
 	case len(keyID) > 0:
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
@@ -388,13 +393,20 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil {
+		if err != nil && !canLookupByIssuer() {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
-		if handle == nil {
+		if handle == nil && !canLookupByIssuer() {
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
 		}
-	case issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != ""):
+	}
+
+	if handle != nil {
+		return handle, err
+	}
+
+	// if issuer is set try to locate certificate using it even if lookup by key-id failed.
+	if canLookupByIssuer() {
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -465,11 +477,9 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 
 			prevCert = handle
 		}
-	default:
+	} else {
 		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
 	}
-
-	return handle, err
 }
 
 // CreateSigner returns a crypto.Signer that will sign using the key passed in via the URI.
