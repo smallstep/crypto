@@ -9,7 +9,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	stdans1 "encoding/asn1"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -32,23 +35,30 @@ import (
 const Scheme = string(apiv1.CAPIKMS)
 
 const (
-	ProviderNameArg        = "provider"
-	ContainerNameArg       = "key"
-	HashArg                = "sha1"
-	StoreLocationArg       = "store-location" // 'machine', 'user', etc
-	StoreNameArg           = "store"          // 'MY', 'CA', 'ROOT', etc
-	KeyIDArg               = "key-id"
-	SubjectCNArg           = "cn"
-	SerialNumberArg        = "serial"
-	IssuerNameArg          = "issuer"
-	KeySpec                = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
-	SkipFindCertificateKey = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
+	ProviderNameArg              = "provider"
+	ContainerNameArg             = "key"
+	HashArg                      = "sha1"
+	StoreLocationArg             = "store-location" // 'machine', 'user', etc
+	StoreNameArg                 = "store"          // 'MY', 'CA', 'ROOT', etc
+	IntermediateStoreLocationArg = "intermediate-store-location"
+	IntermediateStoreNameArg     = "intermediate-store"
+	KeyIDArg                     = "key-id"
+	SubjectCNArg                 = "cn"
+	SerialNumberArg              = "serial"
+	IssuerNameArg                = "issuer"
+	KeySpec                      = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
+	SkipFindCertificateKey       = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
 )
 
 const (
 	MachineStore = "machine"
 	UserStore    = "user"
+	CAStore      = "CA" // TODO(hs): verify "CA" works for "machine" certs too
 )
+
+// maximumIterations is the maximum number of times for the recursive
+// intermediate CA lookup loop.
+const maximumIterations = 10
 
 var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 	apiv1.UnspecifiedSignAlgorithm: ALG_ECDSA_P256,
@@ -58,6 +68,61 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 	apiv1.ECDSAWithSHA256:          ALG_ECDSA_P256,
 	apiv1.ECDSAWithSHA384:          ALG_ECDSA_P384,
 	apiv1.ECDSAWithSHA512:          ALG_ECDSA_P521,
+}
+
+type uriAttributes struct {
+	ProviderName              string
+	ContainerName             string
+	Hash                      []byte
+	StoreLocation             string
+	StoreName                 string
+	IntermediateStoreLocation string
+	IntermediateStoreName     string
+	KeyID                     []byte
+	SubjectCN                 string
+	SerialNumber              string
+	IssuerName                string
+	KeySpec                   string
+	SkipFindCertificateKey    string
+	Pin                       string
+}
+
+func parseURI(rawuri string) (*uriAttributes, error) {
+	u, err := uri.ParseWithScheme(Scheme, rawuri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URI: %w", err)
+	}
+
+	var hashValue []byte
+	if u.Has(HashArg) {
+		if hashValue, err = u.GetHexEncoded(HashArg); err != nil {
+			return nil, fmt.Errorf("failed getting %s from URI %q: %w", HashArg, rawuri, err)
+		}
+	}
+
+	var keyIDValue []byte
+	if u.Has(KeyIDArg) {
+		if keyIDValue, err = u.GetHexEncoded(KeyIDArg); err != nil {
+			return nil, fmt.Errorf("failed getting %s from URI %q: %w", KeyIDArg, rawuri, err)
+		}
+	}
+
+	return &uriAttributes{
+		ProviderName:              u.Get(ProviderNameArg),
+		ContainerName:             u.Get(ContainerNameArg),
+		Hash:                      hashValue,
+		StoreLocation:             u.Get(StoreLocationArg),
+		StoreName:                 u.Get(StoreNameArg),
+		IntermediateStoreLocation: u.Get(IntermediateStoreLocationArg),
+		IntermediateStoreName:     u.Get(IntermediateStoreNameArg),
+		KeyID:                     keyIDValue,
+		SubjectCN:                 u.Get(SubjectCNArg),
+		SerialNumber:              u.Get(SerialNumberArg),
+		IssuerName:                u.Get(IssuerNameArg),
+		KeySpec:                   u.Get(KeySpec),
+		SkipFindCertificateKey:    u.Get(SkipFindCertificateKey),
+		Pin:                       u.Pin(),
+	}, nil
 }
 
 // CAPIKMS implements a KMS using Windows CryptoAPI (CAPI) and Next-Gen CryptoAPI (CNG).
@@ -293,49 +358,30 @@ func (k *CAPIKMS) Close() error {
 
 // getCertContext returns a pointer to a X.509 certificate context based on the provided URI
 // callers are responsible for freeing the context
-func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.CertContext, error) {
-	u, err := uri.ParseWithScheme(Scheme, req.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URI: %w", err)
+func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error) {
+	// Default to the 'My' store
+	if u.StoreName == "" {
+		u.StoreName = "My"
 	}
 
-	sha1Hash, err := u.GetHexEncoded(HashArg)
-	switch {
-	case err != nil:
-		return nil, fmt.Errorf("failed getting %s from URI %q: %w", HashArg, req.Name, err)
-	case len(sha1Hash) > 0 && len(sha1Hash) != 20:
-		return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(sha1Hash))
+	// Default to the user store
+	if u.StoreLocation == "" {
+		u.StoreLocation = UserStore
 	}
 
-	keyID, err := u.GetHexEncoded(KeyIDArg)
-	if err != nil {
-		return nil, fmt.Errorf("failed getting %s from URI %q: %w", KeyIDArg, req.Name, err)
-	}
-	issuerName := u.Get(IssuerNameArg)
-	subjectCN := u.Get(SubjectCNArg)
-	serialNumber := u.Get(SerialNumberArg)
-
-	// default to the user store
-	var storeLocation string
-	if storeLocation = u.Get(StoreLocationArg); storeLocation == "" {
-		storeLocation = UserStore
+	// The hash argument is a SHA-1
+	if len(u.Hash) > 0 && len(u.Hash) != 20 {
+		return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(u.Hash))
 	}
 
 	var certStoreLocation uint32
-	switch storeLocation {
+	switch u.StoreLocation {
 	case UserStore:
 		certStoreLocation = certStoreCurrentUser
 	case MachineStore:
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return nil, fmt.Errorf("invalid cert store location %q", storeLocation)
-	}
-
-	var storeName string
-
-	// default to the 'My' store
-	if storeName = u.Get(StoreNameArg); storeName == "" {
-		storeName = "My"
+		return nil, fmt.Errorf("invalid cert store location %q", u.StoreLocation)
 	}
 
 	st, err := windows.CertOpenStore(
@@ -343,20 +389,20 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 		0,
 		0,
 		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(storeName))))
+		uintptr(unsafe.Pointer(wide(u.StoreName))))
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
+		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.StoreLocation, u.StoreName, err)
 	}
 
 	var handle *windows.CertContext
 
 	switch {
-	case len(sha1Hash) > 0:
+	case len(u.Hash) > 0:
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_SHA1_HASH,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(sha1Hash)),
-				data: uintptr(unsafe.Pointer(&sha1Hash[0])),
+				len:  uint32(len(u.Hash)),
+				data: uintptr(unsafe.Pointer(&u.Hash[0])),
 			},
 		}
 		handle, err = findCertificateInStore(st,
@@ -368,14 +414,14 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if handle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", HashArg, u.Get(HashArg))}
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", HashArg, u.Hash)}
 		}
-	case len(keyID) > 0:
+	case len(u.KeyID) > 0:
 		searchData := CERT_ID_KEYIDORHASH{
 			idChoice: CERT_ID_KEY_IDENTIFIER,
 			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(keyID)),
-				data: uintptr(unsafe.Pointer(&keyID[0])),
+				len:  uint32(len(u.KeyID)),
+				data: uintptr(unsafe.Pointer(&u.KeyID[0])),
 			},
 		}
 		handle, err = findCertificateInStore(st,
@@ -387,22 +433,22 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if handle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, keyID)}
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", KeyIDArg, u.KeyID)}
 		}
-	case issuerName != "" && (serialNumber != "" || subjectCN != ""):
+	case u.IssuerName != "" && (u.SerialNumber != "" || u.SubjectCN != ""):
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
 				encodingX509ASN|encodingPKCS7,
 				0,
 				findIssuerStr,
-				uintptr(unsafe.Pointer(wide(issuerName))), prevCert)
+				uintptr(unsafe.Pointer(wide(u.IssuerName))), prevCert)
 			if err != nil {
 				return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 			}
 
 			if handle == nil {
-				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q not found", IssuerNameArg, issuerName)}
+				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q not found", IssuerNameArg, u.IssuerName)}
 			}
 
 			x509Cert, err := certContextToX509(handle)
@@ -411,13 +457,13 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 			}
 
 			switch {
-			case len(serialNumber) > 0:
+			case len(u.SerialNumber) > 0:
 				// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
 				var bi *big.Int
-				if strings.HasPrefix(serialNumber, "0x") {
-					serialBytes, err := hex.DecodeString(strings.TrimPrefix(serialNumber, "0x"))
+				if strings.HasPrefix(u.SerialNumber, "0x") {
+					serialBytes, err := hex.DecodeString(strings.TrimPrefix(u.SerialNumber, "0x"))
 					if err != nil {
 						return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
 					}
@@ -425,7 +471,7 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 					bi = new(big.Int).SetBytes(serialBytes)
 				} else {
 					bi := new(big.Int)
-					bi, ok := bi.SetString(serialNumber, 10)
+					bi, ok := bi.SetString(u.SerialNumber, 10)
 					if !ok {
 						return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
 					}
@@ -434,8 +480,8 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 				if x509Cert.SerialNumber.Cmp(bi) == 0 {
 					return handle, nil
 				}
-			case len(subjectCN) > 0:
-				if x509Cert.Subject.CommonName == subjectCN {
+			case len(u.SubjectCN) > 0:
+				if x509Cert.Subject.CommonName == u.SubjectCN {
 					return handle, nil
 				}
 			}
@@ -451,31 +497,29 @@ func (k *CAPIKMS) getCertContext(req *apiv1.LoadCertificateRequest) (*windows.Ce
 
 // CreateSigner returns a crypto.Signer that will sign using the key passed in via the URI.
 func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
-	u, err := uri.ParseWithScheme(Scheme, req.SigningKey)
+	u, err := parseURI(req.SigningKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URI: %w", err)
+		return nil, err
 	}
 
 	var (
-		kh            uintptr
-		certHandle    *windows.CertContext
-		containerName string
+		kh         uintptr
+		certHandle *windows.CertContext
 	)
-	if containerName = u.Get(ContainerNameArg); containerName != "" {
+
+	if u.ContainerName != "" {
 		keyFlags, err := k.getKeyFlags(u)
 		if err != nil {
 			return nil, err
 		}
 
-		kh, err = nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
+		kh, err = nCryptOpenKey(k.providerHandle, u.ContainerName, 0, keyFlags)
 		if err != nil {
-			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, containerName, err)
+			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, u.ContainerName, err)
 		}
 	} else {
 		// check if a certificate can be located using the URI
-		certHandle, err = k.getCertContext(&apiv1.LoadCertificateRequest{
-			Name: req.SigningKey,
-		})
+		certHandle, err = k.getCertContext(u)
 		if err != nil {
 			return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 		}
@@ -486,18 +530,17 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 	}
 
-	pinOrPass := u.Pin()
-	if pinOrPass == "" {
-		pinOrPass = k.pin
+	if u.Pin == "" {
+		u.Pin = k.pin
 	}
 
-	if pinOrPass != "" && k.providerName == ProviderMSSC {
-		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pinOrPass, 0)
+	if u.Pin != "" && k.providerName == ProviderMSSC {
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, u.Pin, 0)
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
-	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
-		passHash, err := hashPasswordUTF16(pinOrPass)
+	} else if u.Pin != "" && k.providerName == ProviderMSPCP {
+		passHash, err := hashPasswordUTF16(u.Pin)
 		if err != nil {
 			return nil, fmt.Errorf("unable to hash password: %w", err)
 		}
@@ -508,13 +551,12 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 	}
 
-	return newCAPISigner(kh, containerName, pinOrPass)
+	return newCAPISigner(kh, u.ContainerName, u.Pin)
 }
 
-func setKeySpec(u *uri.URI) (uint32, error) {
+func setKeySpec(u *uriAttributes) (uint32, error) {
 	keySpec := uint32(0) // default KeySpec value is NONE
-	value := u.Get(KeySpec)
-	if v := strings.ReplaceAll(strings.ToLower(value), "_", ""); v != "" {
+	if v := strings.ReplaceAll(strings.ToLower(u.KeySpec), "_", ""); v != "" {
 		switch v {
 		case "0", "none", "null":
 			break // already set as the default
@@ -523,7 +565,7 @@ func setKeySpec(u *uri.URI) (uint32, error) {
 		case "2", "atsignature":
 			keySpec = uint32(2) // AT_SIGNATURE
 		default:
-			return 0, fmt.Errorf("invalid value set for key-spec: %q", value)
+			return 0, fmt.Errorf("invalid value set for key-spec: %q", u.KeySpec)
 		}
 	}
 
@@ -542,15 +584,14 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("cannot create keys on %s", ProviderMSSC)
 	}
 
-	u, err := uri.ParseWithScheme(Scheme, req.Name)
+	u, err := parseURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URI: %w", err)
+		return nil, err
 	}
 
-	var containerName string
-	if containerName = u.Get(ContainerNameArg); containerName == "" {
-		// generate a uuid for the container name
-		containerName, err = randutil.UUIDv4()
+	// generate a random uuid for the container name if it is not present
+	if u.ContainerName == "" {
+		u.ContainerName, err = randutil.UUIDv4()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate uuid: %w", err)
 		}
@@ -572,7 +613,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	// TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
-	kh, err := nCryptCreatePersistedKey(k.providerHandle, containerName, alg, keySpec, keyFlags)
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, u.ContainerName, alg, keySpec, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create persisted key: %w", err)
 	}
@@ -586,22 +627,20 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		}
 	}
 
-	// if supplied, set the smart card pin/or PCP pass
-	pinOrPass := u.Pin()
-
-	// failover to pin set in kms instantiation
-	if pinOrPass == "" {
-		pinOrPass = k.pin
+	// if supplied, set the smart card pin/or PCP pass, failover to pin set in
+	// kms instantiation
+	if u.Pin == "" {
+		u.Pin = k.pin
 	}
 
 	// TODO: investigate if there is a similar property for software backed keys
-	if pinOrPass != "" && k.providerName == ProviderMSSC {
-		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, pinOrPass, 0)
+	if u.Pin != "" && k.providerName == ProviderMSSC {
+		err = nCryptSetProperty(kh, NCRYPT_PIN_PROPERTY, u.Pin, 0)
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
 		}
-	} else if pinOrPass != "" && k.providerName == ProviderMSPCP {
-		pwHash, err := hashPasswordUTF16(pinOrPass) // we have to SHA1 hash over the utf16 string
+	} else if u.Pin != "" && k.providerName == ProviderMSPCP {
+		pwHash, err := hashPasswordUTF16(u.Pin) // we have to SHA1 hash over the utf16 string
 		if err != nil {
 			return nil, fmt.Errorf("unable to hash pin: %w", err)
 		}
@@ -639,13 +678,12 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 
 // DeleteKey deletes the key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
 func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
-	u, err := uri.ParseWithScheme(Scheme, req.Name)
+	u, err := parseURI(req.Name)
 	if err != nil {
-		return fmt.Errorf("failed to parse URI: %w", err)
+		return err
 	}
 
-	var containerName string
-	if containerName = u.Get(ContainerNameArg); containerName == "" {
+	if u.ContainerName == "" {
 		return fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
@@ -654,7 +692,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return err
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
+	kh, err := nCryptOpenKey(k.providerHandle, u.ContainerName, 0, keyFlags)
 	if err != nil {
 		return fmt.Errorf("unable to open key: %w", err)
 	}
@@ -666,13 +704,12 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 
 // GetPublicKey returns the public key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
 func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	u, err := uri.ParseWithScheme(Scheme, req.Name)
+	u, err := parseURI(req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URI: %w", err)
+		return nil, err
 	}
 
-	var containerName string
-	if containerName = u.Get(ContainerNameArg); containerName == "" {
+	if u.ContainerName == "" {
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
@@ -681,7 +718,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, err
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, containerName, 0, keyFlags)
+	kh, err := nCryptOpenKey(k.providerHandle, u.ContainerName, 0, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -694,13 +731,75 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 // LoadCertificate will return an x509.Certificate if passed a URI containing a subject key
 // identifier (key-id) or sha1 hash
 func (k *CAPIKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
-	certHandle, err := k.getCertContext(req)
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	certHandle, err := k.getCertContext(u)
 	if err != nil {
 		return nil, err
 	}
 
 	defer windows.CertFreeCertificateContext(certHandle)
 	return certContextToX509(certHandle)
+}
+
+func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: req.Name,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Default to the user store location
+	if u.IntermediateStoreLocation == "" {
+		u.IntermediateStoreLocation = UserStore
+	}
+
+	// Default to the CA store
+	if u.IntermediateStoreName == "" {
+		u.IntermediateStoreName = CAStore
+	}
+
+	chain := []*x509.Certificate{cert}
+	child := cert
+	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
+		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
+		parent, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", authorityKeyID, u.IntermediateStoreLocation, u.IntermediateStoreName),
+		})
+		if err != nil {
+			if errors.Is(err, apiv1.NotFoundError{}) {
+				// if error indicates the parent wasn't found, assume end of chain for a specific
+				// combination of store location and store is reached, and break from the loop
+				break
+			}
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+
+		// if the discovered parent has a signature from itself, assume it's a root CA,
+		// and break from the loop
+		if parent.CheckSignatureFrom(parent) == nil {
+			break
+		}
+
+		// ensure child has a valid signature from the parent
+		if err := child.CheckSignatureFrom(parent); err != nil {
+			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
+		}
+
+		chain = append(chain, parent)
+		child = parent
+	}
+
+	return chain, nil
 }
 
 func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
@@ -931,10 +1030,10 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	}
 }
 
-func (k *CAPIKMS) getKeyFlags(u *uri.URI) (uint32, error) {
+func (k *CAPIKMS) getKeyFlags(u *uriAttributes) (uint32, error) {
 	keyFlags := uint32(0)
 
-	switch u.Get(StoreLocationArg) {
+	switch u.StoreLocation {
 	case MachineStore:
 		if k.providerName == ProviderMSSC {
 			return 0, fmt.Errorf("machine store cannot be used with the %s", ProviderMSSC)
@@ -950,7 +1049,7 @@ func (k *CAPIKMS) getKeyFlags(u *uri.URI) (uint32, error) {
 	case "":
 
 	default:
-		return 0, fmt.Errorf("invalid storeLocation %v", u.Get(StoreLocationArg))
+		return 0, fmt.Errorf("invalid storeLocation %v", u.StoreLocation)
 	}
 
 	return keyFlags, nil
@@ -1039,6 +1138,25 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 
 func (s *CAPISigner) Public() crypto.PublicKey {
 	return s.PublicKey
+}
+
+type subjectPublicKeyInfo struct {
+	Algorithm        pkix.AlgorithmIdentifier
+	SubjectPublicKey stdans1.BitString
+}
+
+func generateWindowsSubjectKeyID(pub crypto.PublicKey) (string, error) {
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	var info subjectPublicKeyInfo
+	if _, err = stdans1.Unmarshal(b, &info); err != nil {
+		return "", err
+	}
+	hash := sha1.Sum(info.SubjectPublicKey.Bytes) //nolint:gosec // required for Windows key ID calculation
+
+	return hex.EncodeToString(hash[:]), nil
 }
 
 var _ apiv1.CertificateManager = (*CAPIKMS)(nil)
