@@ -54,10 +54,15 @@ const (
 )
 
 const (
-	MachineStore = "machine"
-	UserStore    = "user"
-	MyStore      = "My"
-	CAStore      = "CA" // TODO(hs): verify "CA" works for "machine" certs too
+	MachineStoreLocation = "machine"
+	UserStoreLocation    = "user"
+	MyStore              = "My"
+	CAStore              = "CA" // TODO(hs): verify "CA" works for "machine" certs too
+
+	// Deprecated: use MachineStoreLocation
+	MachineStore = MachineStoreLocation
+	// Deprecated: use UserStoreLocation
+	UserStore = UserStoreLocation
 )
 
 // maximumIterations is the maximum number of times for the recursive
@@ -113,9 +118,9 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 	return &uriAttributes{
 		ContainerName:             u.Get(ContainerNameArg),
 		Hash:                      hashValue,
-		StoreLocation:             cmp.Or(u.Get(StoreLocationArg), UserStore),
+		StoreLocation:             cmp.Or(u.Get(StoreLocationArg), UserStoreLocation),
 		StoreName:                 cmp.Or(u.Get(StoreNameArg), MyStore),
-		IntermediateStoreLocation: cmp.Or(u.Get(IntermediateStoreLocationArg), UserStore),
+		IntermediateStoreLocation: cmp.Or(u.Get(IntermediateStoreLocationArg), UserStoreLocation),
 		IntermediateStoreName:     cmp.Or(u.Get(IntermediateStoreNameArg), CAStore),
 		KeyID:                     keyIDValue,
 		SubjectCN:                 u.Get(SubjectCNArg),
@@ -368,9 +373,9 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 
 	var certStoreLocation uint32
 	switch u.StoreLocation {
-	case UserStore:
+	case UserStoreLocation:
 		certStoreLocation = certStoreCurrentUser
-	case MachineStore:
+	case MachineStoreLocation:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return nil, fmt.Errorf("invalid cert store location %q", u.StoreLocation)
@@ -750,16 +755,6 @@ func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) (
 		return nil, err
 	}
 
-	// Default to the user store location
-	if u.IntermediateStoreLocation == "" {
-		u.IntermediateStoreLocation = UserStore
-	}
-
-	// Default to the CA store
-	if u.IntermediateStoreName == "" {
-		u.IntermediateStoreName = CAStore
-	}
-
 	chain := []*x509.Certificate{cert}
 	child := cert
 	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
@@ -806,9 +801,9 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	var certStoreLocation uint32
 	switch u.StoreLocation {
-	case UserStore:
+	case UserStoreLocation:
 		certStoreLocation = certStoreCurrentUser
-	case MachineStore:
+	case MachineStoreLocation:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return fmt.Errorf("invalid cert store location %q", u.StoreLocation)
@@ -920,9 +915,9 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 
 	var certStoreLocation uint32
 	switch u.StoreLocation {
-	case UserStore:
+	case UserStoreLocation:
 		certStoreLocation = certStoreCurrentUser
-	case MachineStore:
+	case MachineStoreLocation:
 		certStoreLocation = certStoreLocalMachine
 	default:
 		return fmt.Errorf("invalid cert store location %q", u.StoreLocation)
@@ -1050,14 +1045,14 @@ func (k *CAPIKMS) getKeyFlags(u *uriAttributes) (uint32, error) {
 	keyFlags := uint32(0)
 
 	switch u.StoreLocation {
-	case MachineStore:
+	case MachineStoreLocation:
 		if k.providerName == ProviderMSSC {
 			return 0, fmt.Errorf("machine store cannot be used with the %s", ProviderMSSC)
 		}
 
 		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
 
-	case UserStore:
+	case UserStoreLocation:
 		if k.providerName == ProviderMSPCP {
 			return 0, fmt.Errorf("user store cannot be used with the %s", ProviderMSPCP)
 		}
