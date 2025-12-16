@@ -3,7 +3,6 @@
 package tpmkms
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
@@ -23,7 +22,6 @@ import (
 	"runtime"
 	"time"
 
-	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -228,7 +226,7 @@ func ParseOptions(u *uri.URI) []Option {
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
 	tpm                       *tpm.TPM
-	windowsCertificateManager apiv1.CertificateManager
+	windowsCertificateManager apiv1.CertificateChainManager
 	opts                      *options
 }
 
@@ -405,7 +403,7 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error
 		}
 	}
 
-	var cm apiv1.CertificateManager
+	var cm apiv1.CertificateChainManager
 
 	// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
 	// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
@@ -426,7 +424,7 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error
 			return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
 		}
 
-		cm, ok = km.(apiv1.CertificateManager)
+		cm, ok = km.(apiv1.CertificateChainManager)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
 		}
@@ -829,12 +827,6 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 	return chain, nil
 }
 
-const (
-	// maximumIterations is the maximum number of times for the recursive
-	// intermediate CA lookup loop.
-	maximumIterations = 10
-)
-
 func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
 	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 		Name: req.Name,
@@ -856,61 +848,29 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 	if o.store != "" {
 		store = o.store
 	}
+	intermediateCAStoreLocation := k.opts.windowsIntermediateStoreLocation
+	if o.intermediateStoreLocation != "" {
+		intermediateCAStoreLocation = o.intermediateStoreLocation
+	}
+	intermediateCAStore := k.opts.windowsIntermediateStore
+	if o.intermediateStore != "" {
+		intermediateCAStore = o.intermediateStore
+	}
 
 	subjectKeyID, err := generateWindowsSubjectKeyID(pub)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating subject key id: %w", err)
 	}
 
-	cert, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
-		Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s;", subjectKeyID, location, store),
+	return k.windowsCertificateManager.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{
+		Name: uri.New("capi", url.Values{
+			"key-id":                      []string{subjectKeyID},
+			"store-location":              []string{location},
+			"store":                       []string{store},
+			"intermediate-store-location": []string{intermediateCAStoreLocation},
+			"intermediate-store":          []string{intermediateCAStore},
+		}).String(),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed retrieving certificate using Windows platform cryptography provider: %w", err)
-	}
-
-	intermediateCAStoreLocation := k.opts.windowsIntermediateStoreLocation
-	if o.intermediateStoreLocation != "" {
-		intermediateCAStoreLocation = o.intermediateStoreLocation
-	}
-
-	intermediateCAStore := k.opts.windowsIntermediateStore
-	if o.intermediateStore != "" {
-		intermediateCAStore = o.intermediateStore
-	}
-
-	chain := []*x509.Certificate{cert}
-	child := cert
-	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
-		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
-		parent, err := k.windowsCertificateManager.LoadCertificate(&apiv1.LoadCertificateRequest{
-			Name: fmt.Sprintf("capi:key-id=%s;store-location=%s;store=%s", authorityKeyID, intermediateCAStoreLocation, intermediateCAStore),
-		})
-		if err != nil {
-			if errors.Is(err, apiv1.NotFoundError{}) {
-				// if error indicates the parent wasn't found, assume end of chain for a specific
-				// combination of store location and store is reached, and break from the loop
-				break
-			}
-			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
-		}
-
-		// if the discovered parent has a signature from itself, assume it's a root CA,
-		// and break from the loop
-		if parent.CheckSignatureFrom(parent) == nil {
-			break
-		}
-
-		// ensure child has a valid signature from the parent
-		if err := child.CheckSignatureFrom(parent); err != nil {
-			return nil, fmt.Errorf("failed loading intermediate CA certificate using Windows platform cryptography provider: %w", err)
-		}
-
-		chain = append(chain, parent)
-		child = parent
-	}
-
-	return chain, nil
 }
 
 // StoreCertificate stores the certificate for the key identified by name to the TPMKMS.
@@ -993,82 +953,25 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.skipFindCertificateKey {
 		skipFindCertificateKey = "true"
 	}
-
-	leaf := req.CertificateChain[0]
-	fp, err := fingerprint.New(leaf.Raw, crypto.SHA1, fingerprint.HexFingerprint)
-	if err != nil {
-		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
-	}
-
-	uv := url.Values{}
-	uv.Set("sha1", fp)
-	uv.Set("store-location", location)
-	uv.Set("store", store)
-	uv.Set("skip-find-certificate-key", skipFindCertificateKey)
-
-	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
-		Name:        uri.New("capi", uv).String(),
-		Certificate: leaf,
-	}); err != nil {
-		return fmt.Errorf("failed storing certificate using Windows platform cryptography provider: %w", err)
-	}
-
-	if len(req.CertificateChain) == 1 {
-		// no certificate chain; return early
-		return nil
-	}
-
 	intermediateCAStoreLocation := k.opts.windowsIntermediateStoreLocation
 	if o.intermediateStoreLocation != "" {
 		intermediateCAStoreLocation = o.intermediateStoreLocation
 	}
-
 	intermediateCAStore := k.opts.windowsIntermediateStore
 	if o.intermediateStore != "" {
 		intermediateCAStore = o.intermediateStore
 	}
 
-	for _, c := range req.CertificateChain[1:] {
-		if err := validateIntermediateCertificate(c); err != nil {
-			return fmt.Errorf("invalid intermediate certificate provided in chain: %w", err)
-		}
-		if err := k.storeIntermediateToWindowsCertificateStore(c, intermediateCAStoreLocation, intermediateCAStore); err != nil {
-			return fmt.Errorf("failed storing intermediate certificate using Windows platform cryptography provider: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func validateIntermediateCertificate(c *x509.Certificate) error {
-	switch {
-	case !c.IsCA:
-		return fmt.Errorf("certificate with serial %q is not a CA certificate", c.SerialNumber.String())
-	case !c.BasicConstraintsValid:
-		return fmt.Errorf("certificate with serial %q has invalid basic constraints", c.SerialNumber.String())
-	case bytes.Equal(c.AuthorityKeyId, c.SubjectKeyId):
-		return fmt.Errorf("certificate with serial %q has equal subject and authority key IDs", c.SerialNumber.String())
-	case c.CheckSignatureFrom(c) == nil:
-		return fmt.Errorf("certificate with serial %q is self-signed root CA", c.SerialNumber.String())
-	}
-
-	return nil
-}
-
-func (k *TPMKMS) storeIntermediateToWindowsCertificateStore(c *x509.Certificate, storeLocation, store string) error {
-	fp, err := fingerprint.New(c.Raw, crypto.SHA1, fingerprint.HexFingerprint)
-	if err != nil {
-		return fmt.Errorf("failed calculating certificate SHA1 fingerprint: %w", err)
-	}
-
-	if err := k.windowsCertificateManager.StoreCertificate(&apiv1.StoreCertificateRequest{
-		Name:        fmt.Sprintf("capi:sha1=%s;store-location=%s;store=%s;skip-find-certificate-key=true", fp, storeLocation, store),
-		Certificate: c,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return k.windowsCertificateManager.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{
+		Name: uri.New("capi", url.Values{
+			"store-location":              []string{location},
+			"store":                       []string{store},
+			"skip-find-certificate-key":   []string{skipFindCertificateKey},
+			"intermediate-store-location": []string{intermediateCAStoreLocation},
+			"intermediate-store":          []string{intermediateCAStore},
+		}).String(),
+		CertificateChain: req.CertificateChain,
+	})
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
