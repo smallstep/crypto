@@ -113,13 +113,13 @@ func New(ctx context.Context, opts apiv1.Options) (*CloudKMS, error) {
 			return nil, err
 		}
 		if f := u.Get("credentials-file"); f != "" {
-			cloudOpts = append(cloudOpts, option.WithCredentialsFile(f))
+			cloudOpts = append(cloudOpts, option.WithAuthCredentialsFile(option.ServiceAccount, f))
 		}
 	}
 
 	// Deprecated way to set configuration parameters.
 	if opts.CredentialsFile != "" {
-		cloudOpts = append(cloudOpts, option.WithCredentialsFile(opts.CredentialsFile))
+		cloudOpts = append(cloudOpts, option.WithAuthCredentialsFile(option.ServiceAccount, opts.CredentialsFile))
 	}
 
 	client, err := newKeyManagementClient(ctx, cloudOpts...)
