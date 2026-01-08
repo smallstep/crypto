@@ -392,12 +392,13 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		0,
 		0,
 		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))))
+		uintptr(unsafe.Pointer(wide(u.storeName))),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
 
-	canLookupByIssuer := issuerName != "" && (serialNumber != "" || subjectCN != "" || friendlyName != "" || description != "")
+	canLookupByIssuer := u.issuerName != "" && (u.serialNumber != "" || u.subjectCN != "" || u.friendlyName != "" || u.description != "")
 	var handle *windows.CertContext
 
 	switch {
