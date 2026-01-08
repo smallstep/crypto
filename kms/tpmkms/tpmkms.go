@@ -1275,6 +1275,94 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	}, nil
 }
 
+// SearchKeys searches for keys according to the query URI in the request. By
+// default, with the query "tpmkms:", it will return all keys and attestation
+// keys managed by the KMS. The supported queries are:
+//
+//   - "tpmkms:" will return all keys and AKs managed by the KMS
+//   - "tpmkms:ak=true" will return all AKs managed by the KMS
+//   - "tpmkms:ak=false" will return all the keys managed by the KMS
+//   - "tpmkms:name=my-name" will only return the key with the selected name
+//   - "tpmkms:name=my-name;ak=true" will only return the AK with the selected name
+//   - "tpmkms:name=my-name;ak=false" will only return the key with the selected name
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *TPMKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+	if req.Query == "" {
+		return nil, fmt.Errorf("searchKeysRequest 'query' cannot be empty")
+	}
+
+	u, err := uri.ParseWithScheme(Scheme, req.Query)
+	if err != nil {
+		return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
+	}
+
+	var (
+		name  = u.Get("name")
+		ak    = u.GetBool("ak")
+		hasAK = u.Has("ak")
+		aks   []*tpm.AK
+		keys  []*tpm.Key
+	)
+
+	var results []apiv1.SearchKeyResult
+
+	// List AKs
+	if !hasAK || (hasAK && ak) {
+		if aks, err = k.tpm.ListAKs(context.Background()); err != nil {
+			return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
+		}
+
+		for _, key := range aks {
+			if name == "" || name == key.Name() {
+				results = append(results, apiv1.SearchKeyResult{
+					Name: uri.New(Scheme, url.Values{
+						"name": []string{key.Name()},
+						"ak":   []string{"true"},
+					}).String(),
+					PublicKey: key.Public(),
+				})
+			}
+		}
+	}
+
+	// List Keys
+	if !hasAK || (hasAK && !ak) {
+		if keys, err = k.tpm.ListKeys(context.Background()); err != nil {
+			return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
+		}
+
+		for _, key := range keys {
+			if name == "" || name == key.Name() {
+				values := url.Values{"name": []string{key.Name()}}
+				if attestedBy := key.AttestedBy(); attestedBy != "" {
+					values.Set("attest-by", attestedBy)
+				}
+				signer, err := key.Signer(context.Background())
+				if err != nil {
+					return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
+				}
+
+				keyURI := uri.New(Scheme, values).String()
+				results = append(results, apiv1.SearchKeyResult{
+					Name:      keyURI,
+					PublicKey: signer.Public(),
+					CreateSignerRequest: apiv1.CreateSignerRequest{
+						SigningKey: keyURI,
+					},
+				})
+			}
+		}
+	}
+
+	return &apiv1.SearchKeysResponse{
+		Results: results,
+	}, nil
+}
+
 // Close releases the connection to the TPM.
 func (k *TPMKMS) Close() (err error) {
 	return

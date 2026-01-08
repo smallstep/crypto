@@ -663,7 +663,6 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 // all keys managed by the KMS using the default tag, and both Secure Enclave as well as
 // non-Secure Enclave keys will be returned.
 //
-//   - "" will return all keys managed by the KMS (using the default tag)
 //   - "mackms:" will return all keys managed by the KMS  (using the default tag)
 //   - "mackms:label=my-label" will return all keys using label "my-label" (and the default tag)
 //   - "mackms:hash=the-hash" will return all keys having hash "hash" (and the default tag; generally one result)
