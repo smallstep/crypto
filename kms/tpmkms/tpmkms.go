@@ -1317,15 +1317,17 @@ func (k *TPMKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 		}
 
 		for _, key := range aks {
-			if name == "" || name == key.Name() {
-				results = append(results, apiv1.SearchKeyResult{
-					Name: uri.New(Scheme, url.Values{
-						"name": []string{key.Name()},
-						"ak":   []string{"true"},
-					}).String(),
-					PublicKey: key.Public(),
-				})
+			if name != "" && name != key.Name() {
+				continue
 			}
+
+			results = append(results, apiv1.SearchKeyResult{
+				Name: uri.New(Scheme, url.Values{
+					"name": []string{key.Name()},
+					"ak":   []string{"true"},
+				}).String(),
+				PublicKey: key.Public(),
+			})
 		}
 	}
 
@@ -1336,25 +1338,27 @@ func (k *TPMKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 		}
 
 		for _, key := range keys {
-			if name == "" || name == key.Name() {
-				values := url.Values{"name": []string{key.Name()}}
-				if attestedBy := key.AttestedBy(); attestedBy != "" {
-					values.Set("attest-by", attestedBy)
-				}
-				signer, err := key.Signer(context.Background())
-				if err != nil {
-					return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
-				}
-
-				keyURI := uri.New(Scheme, values).String()
-				results = append(results, apiv1.SearchKeyResult{
-					Name:      keyURI,
-					PublicKey: signer.Public(),
-					CreateSignerRequest: apiv1.CreateSignerRequest{
-						SigningKey: keyURI,
-					},
-				})
+			if name != "" && name != key.Name() {
+				continue
 			}
+
+			values := url.Values{"name": []string{key.Name()}}
+			if attestedBy := key.AttestedBy(); attestedBy != "" {
+				values.Set("attest-by", attestedBy)
+			}
+			signer, err := key.Signer(context.Background())
+			if err != nil {
+				return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
+			}
+
+			keyURI := uri.New(Scheme, values).String()
+			results = append(results, apiv1.SearchKeyResult{
+				Name:      keyURI,
+				PublicKey: signer.Public(),
+				CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: keyURI,
+				},
+			})
 		}
 	}
 
