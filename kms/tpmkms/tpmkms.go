@@ -869,6 +869,7 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 			"store":                       []string{store},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
+			"issuer":                      []string{o.issuer},
 			"friendly-name":               []string{o.friendlyName},
 			"description":                 []string{o.description},
 		}).String(),
@@ -1439,9 +1440,11 @@ type deletingCertificateChainManager interface {
 	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
 }
 
-var _ apiv1.KeyManager = (*TPMKMS)(nil)
-var _ apiv1.Attester = (*TPMKMS)(nil)
-var _ apiv1.CertificateManager = (*TPMKMS)(nil)
-var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
-var _ deletingCertificateChainManager = (*TPMKMS)(nil)
-var _ apiv1.AttestationClient = (*attestationClient)(nil)
+var (
+	_ apiv1.KeyManager                = (*TPMKMS)(nil)
+	_ apiv1.Attester                  = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager        = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager   = (*TPMKMS)(nil)
+	_ deletingCertificateChainManager = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient         = (*attestationClient)(nil)
+)

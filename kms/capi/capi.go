@@ -434,7 +434,7 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			0,
 			findCertID,
 			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil && !canLookupByIssuer() {
+		if err != nil && !canLookupByIssuer {
 			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 
@@ -858,12 +858,12 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		cryptFindCertificateKeyProvInfo(certContext)
 	}
 
-	if friendlyName := u.Get(FriendlyNameArg); friendlyName != "" {
-		cryptSetCertificateFriendlyName(certContext, friendlyName)
+	if u.friendlyName != "" {
+		cryptSetCertificateFriendlyName(certContext, u.friendlyName)
 	}
 
-	if description := u.Get(DescriptionArg); description != "" {
-		cryptSetCertificateDescription(certContext, description)
+	if u.description != "" {
+		cryptSetCertificateDescription(certContext, u.description)
 	}
 
 	st, err := windows.CertOpenStore(
@@ -901,6 +901,8 @@ func (k *CAPIKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest)
 			HashArg:                []string{fp},
 			StoreLocationArg:       []string{u.storeLocation},
 			StoreNameArg:           []string{u.storeName},
+			FriendlyNameArg:        []string{u.friendlyName},
+			DescriptionArg:         []string{u.description},
 			SkipFindCertificateKey: []string{strconv.FormatBool(u.skipFindCertificateKey)},
 		}).String(),
 		Certificate: leaf,
