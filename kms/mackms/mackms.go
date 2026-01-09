@@ -689,8 +689,8 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 		return nil, fmt.Errorf("failed getting keys: %w", err)
 	}
 
-	results := make([]apiv1.SearchKeyResult, len(keys))
-	for i, key := range keys {
+	results := make([]apiv1.SearchKeyResult, 0, len(keys))
+	for _, key := range keys {
 		d := cf.NewDictionaryRef(cf.TypeRef(key.TypeRef()))
 		var (
 			hash    = security.GetSecAttrApplicationLabel(d)
@@ -729,13 +729,13 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 			return nil, fmt.Errorf("failed getting public key: %w", err)
 		}
 
-		results[i] = apiv1.SearchKeyResult{
+		results = append(results, apiv1.SearchKeyResult{
 			Name:      name.String(),
 			PublicKey: pub,
 			CreateSignerRequest: apiv1.CreateSignerRequest{
 				SigningKey: name.String(),
 			},
-		}
+		})
 	}
 
 	return &apiv1.SearchKeysResponse{
