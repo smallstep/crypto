@@ -404,6 +404,10 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
 
+	// if issuer + any of the other fields in the list below is provided, then attempt a second certificate lookup when
+	// lookup by KeyID fails (not found). This fix an issue when looking up device certificates, as in that case the KeyID is
+	// derived from a randomly generate string each time agent runs, thus not being able to find certificates installed from
+	// a previous run.
 	canLookupByIssuer := u.issuerName != "" && (u.serialNumber != "" || u.subjectCN != "" || u.friendlyName != "" || u.description != "")
 	var handle *windows.CertContext
 
@@ -431,19 +435,6 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		if handle, err = findCertificateBySubjectKeyID(st, u.keyID); err != nil {
 			return nil, err
 		}
-	case u.issuerName != "" && (u.serialNumber != nil || u.subjectCN != ""):
-		handle, err = findCertificateInStore(st,
-			encodingX509ASN|encodingPKCS7,
-			0,
-			findCertID,
-			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil && !canLookupByIssuer {
-			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
-		}
-
-		if handle == nil && !canLookupByIssuer {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
-		}
 	case u.containerName != "":
 		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
@@ -468,63 +459,64 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		return handle, err
 	}
 
-	if canLookupByIssuer {
-		var prevCert *windows.CertContext
-		for {
-			handle, err = findCertificateInStore(st,
-				encodingX509ASN|encodingPKCS7,
-				0,
-				findIssuerStr,
-				uintptr(unsafe.Pointer(wide(u.issuerName))), prevCert)
-			if err != nil {
-				return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
-			}
-
-			if handle == nil {
-				return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q not found", IssuerNameArg, u.issuerName)}
-			}
-
-			x509Cert, err := certContextToX509(handle)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshal certificate to DER: %w", err)
-			}
-
-			switch {
-			case u.serialNumber != nil:
-				// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
-				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
-				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
-				if x509Cert.SerialNumber.Cmp(u.serialNumber) == 0 {
-					return handle, nil
-				}
-			case len(u.subjectCN) > 0:
-				if x509Cert.Subject.CommonName == u.subjectCN {
-					return handle, nil
-				}
-			case len(u.friendlyName) > 0:
-				val, err := cryptFindCertificateFriendlyName(handle)
-				if err != nil {
-					return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
-				}
-
-				if val == u.friendlyName {
-					return handle, nil
-				}
-			case len(u.description) > 0:
-				val, err := cryptFindCertificateDescription(handle)
-				if err != nil {
-					return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
-				}
-
-				if val == u.description {
-					return handle, nil
-				}
-			}
-
-			prevCert = handle
-		}
-	} else {
+	if !canLookupByIssuer {
 		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
+	}
+
+	// lookup certificate by issuer + another field (serial, CN, friendlyName, description)
+	var prevCert *windows.CertContext
+	for {
+		handle, err = findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findIssuerStr,
+			uintptr(unsafe.Pointer(wide(u.issuerName))), prevCert)
+		if err != nil {
+			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+
+		if handle == nil {
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q not found", IssuerNameArg, u.issuerName)}
+		}
+
+		x509Cert, err := certContextToX509(handle)
+		if err != nil {
+			return nil, fmt.Errorf("could not unmarshal certificate to DER: %w", err)
+		}
+
+		switch {
+		case u.serialNumber != nil:
+			// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
+			// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
+			// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
+			if x509Cert.SerialNumber.Cmp(u.serialNumber) == 0 {
+				return handle, nil
+			}
+		case len(u.subjectCN) > 0:
+			if x509Cert.Subject.CommonName == u.subjectCN {
+				return handle, nil
+			}
+		case len(u.friendlyName) > 0:
+			val, err := cryptFindCertificateFriendlyName(handle)
+			if err != nil {
+				return nil, fmt.Errorf("cryptFindCertificateFriendlyName failed: %w", err)
+			}
+
+			if val == u.friendlyName {
+				return handle, nil
+			}
+		case len(u.description) > 0:
+			val, err := cryptFindCertificateDescription(handle)
+			if err != nil {
+				return nil, fmt.Errorf("cryptFindCertificateDescription failed: %w", err)
+			}
+
+			if val == u.description {
+				return handle, nil
+			}
+		}
+
+		prevCert = handle
 	}
 }
 
