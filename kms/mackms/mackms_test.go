@@ -1437,8 +1437,17 @@ func TestMacKMS_SearchKeys(t *testing.T) {
 		}
 
 	}
-
 	assert.Equal(t, expectedHashes, hashes)
+
+	// fail empty query
+	got, err = k.SearchKeys(&apiv1.SearchKeysRequest{Query: ""})
+	assert.Error(t, err)
+	assert.Nil(t, got)
+
+	// fail parse query
+	got, err = k.SearchKeys(&apiv1.SearchKeysRequest{Query: "mackms:label=%%FF"})
+	assert.Error(t, err)
+	assert.Nil(t, got)
 }
 
 func Test_keyAttributes_retryAttributes(t *testing.T) {
