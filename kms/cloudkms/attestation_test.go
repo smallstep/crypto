@@ -34,15 +34,6 @@ import (
 	"go.step.sm/crypto/randutil"
 )
 
-func mustTime(t *testing.T) {
-	t.Helper()
-
-	currentTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	t.Cleanup(func() {
-		currentTime = time.Time{}
-	})
-}
-
 func mustContent(t *testing.T, filename string) ([]byte, []AttestationAttribute, []AttestationAttribute) {
 	t.Helper()
 
@@ -210,8 +201,6 @@ func mustAsymmetricContentV1(t *testing.T, pub, priv []AttestationAttribute, key
 }
 
 func TestCloudKMS_VerifyAttestation(t *testing.T) {
-	mustTime(t)
-
 	ecContent, ecPub, ecPriv := mustContent(t, "testdata/ec.dat")
 	rsaContent, rsaPub, rsaPriv := mustContent(t, "testdata/rsa.dat")
 	aesContent, aesSym, _ := mustContent(t, "testdata/aes.dat")
@@ -313,8 +302,6 @@ func TestCloudKMS_VerifyAttestation(t *testing.T) {
 }
 
 func TestCloudKMS_verifyAttestation(t *testing.T) {
-	mustTime(t)
-
 	ca, err := minica.New()
 	require.NoError(t, err)
 	caRoot := string(pem.EncodeToMemory(&pem.Block{
@@ -743,18 +730,12 @@ func Test_getKeyType(t *testing.T) {
 
 // TestValidateCaviumRoot validates that the current root certificate for the
 // hard-coded root for Marvell's LiquidSecurity HSM adapters matches the one in
-// this package. The current certificate expires on November 16, 2025. We will
-// need to change it once Marvell changes it.
+// this package.
 func TestValidateCaviumRoot(t *testing.T) {
-	d := time.Date(2026, 3, 19, 7, 0, 0, 0, time.UTC)
-	if !time.Now().After(d) {
-		t.Skipf("skipping expired Cavium root test until %s", d.Format(time.RFC1123))
-	}
-
 	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
 	require.NoError(t, err)
 
-	resp, err := http.Get("https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquid_security_certificate.zip")
+	resp, err := http.Get("https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquidsecurity-certificate-cnxxxxx-nfbe-x.0-g-v3.zip")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, resp.Body.Close())
@@ -767,7 +748,7 @@ func TestValidateCaviumRoot(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, f := range r.File {
-		if f.Name != "liquid_security_certificate.crt" {
+		if f.Name != "cavium_cert.crt" {
 			continue
 		}
 		rc, err := f.Open()
