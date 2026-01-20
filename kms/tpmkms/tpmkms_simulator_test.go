@@ -30,6 +30,7 @@ import (
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
+	"go.step.sm/crypto/tpm"
 	tpmp "go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
@@ -2363,6 +2364,106 @@ func Test_hasValidIdentity(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestTPMKMS_SearchKeys(t *testing.T) {
+	ctx := t.Context()
+	sim := newSimulatedTPM(t)
+
+	ak1, err := sim.CreateAK(ctx, "test-ak1")
+	require.NoError(t, err)
+
+	ak2, err := sim.CreateAK(ctx, "test-ak2")
+	require.NoError(t, err)
+
+	key1, err := sim.CreateKey(ctx, "test-key1", tpmp.CreateKeyConfig{
+		Algorithm: "RSA",
+		Size:      2048,
+	})
+	require.NoError(t, err)
+	signer1, err := key1.Signer(ctx)
+	require.NoError(t, err)
+
+	key2, err := sim.AttestKey(ctx, "test-ak1", "test-key2", tpmp.AttestKeyConfig{
+		Algorithm:      "ECDSA",
+		Size:           256,
+		QualifyingData: []byte(t.Name()),
+	})
+	require.NoError(t, err)
+	signer2, err := key2.Signer(ctx)
+	require.NoError(t, err)
+
+	type fields struct {
+		tpm                       *tpm.TPM
+		windowsCertificateManager apiv1.CertificateChainManager
+		opts                      *options
+	}
+	type args struct {
+		req *apiv1.SearchKeysRequest
+	}
+	tests := []struct {
+		name      string
+		fields    fields
+		args      args
+		want      *apiv1.SearchKeysResponse
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok all", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:"}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:ak=true;name=test-ak1", PublicKey: ak1.Public()},
+				{Name: "tpmkms:ak=true;name=test-ak2", PublicKey: ak2.Public()},
+				{Name: "tpmkms:name=test-key1", PublicKey: signer1.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:name=test-key1",
+				}},
+				{Name: "tpmkms:attest-by=test-ak1;name=test-key2", PublicKey: signer2.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:attest-by=test-ak1;name=test-key2",
+				}},
+			},
+		}, assert.NoError},
+		{"ok ak", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:ak=true"}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:ak=true;name=test-ak1", PublicKey: ak1.Public()},
+				{Name: "tpmkms:ak=true;name=test-ak2", PublicKey: ak2.Public()},
+			},
+		}, assert.NoError},
+		{"ok ak name", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:ak=true;name=test-ak2"}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:ak=true;name=test-ak2", PublicKey: ak2.Public()},
+			},
+		}, assert.NoError},
+		{"ok keys", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:ak=false"}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:name=test-key1", PublicKey: signer1.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:name=test-key1",
+				}},
+				{Name: "tpmkms:attest-by=test-ak1;name=test-key2", PublicKey: signer2.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:attest-by=test-ak1;name=test-key2",
+				}},
+			},
+		}, assert.NoError},
+		{"ok keys name", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:ak=false;name=test-key1"}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:name=test-key1", PublicKey: signer1.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{
+					SigningKey: "tpmkms:name=test-key1",
+				}},
+			},
+		}, assert.NoError},
+		{"ok empty", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:name=not-found"}}, &apiv1.SearchKeysResponse{}, assert.NoError},
+		{"fail empty query", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: ""}}, nil, assert.Error},
+		{"fail parse query", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "kms:name=test-key1"}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &TPMKMS{
+				tpm:                       tt.fields.tpm,
+				windowsCertificateManager: tt.fields.windowsCertificateManager,
+				opts:                      tt.fields.opts,
+			}
+			got, err := k.SearchKeys(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 
@@ -48,29 +47,31 @@ x2JBsjEjmWpHuBDAXPCesD5cu9UzzDgcpdwmi7Xidl74kj3f/HgrOeimRdOb8lG5
 /A==
 -----END CERTIFICATE-----`
 
-// Marvell (Cavium) certificate, expires on Nov 16 13:55:25 2025 UTC
-// https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquid_security_certificate.zip
+// Marvell (Cavium) certificate, expires on Jul 23 20:29:20 2034 UTC
+// https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/liquidsecurity-certificate-cnxxxxx-nfbe-x0-g-v3.html
+// https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquidsecurity-certificate-cnxxxxx-nfbe-x.0-g-v3.zip
 const caviumRoot = `-----BEGIN CERTIFICATE-----
-MIIDoDCCAogCCQDA6q30NN7cFzANBgkqhkiG9w0BAQsFADCBkTELMAkGA1UEBhMC
-VVMxEzARBgNVBAgMCkNhbGlmb3JuaWExETAPBgNVBAcMCFNhbiBKb3NlMRUwEwYD
-VQQKDAxDYXZpdW0sIEluYy4xFzAVBgNVBAsMDkxpcXVpZFNlY3VyaXR5MSowKAYD
-VQQDDCFsb2NhbGNhLmxpcXVpZHNlY3VyaXR5LmNhdml1bS5jb20wHhcNMTUxMTE5
-MTM1NTI1WhcNMjUxMTE2MTM1NTI1WjCBkTELMAkGA1UEBhMCVVMxEzARBgNVBAgM
-CkNhbGlmb3JuaWExETAPBgNVBAcMCFNhbiBKb3NlMRUwEwYDVQQKDAxDYXZpdW0s
-IEluYy4xFzAVBgNVBAsMDkxpcXVpZFNlY3VyaXR5MSowKAYDVQQDDCFsb2NhbGNh
-LmxpcXVpZHNlY3VyaXR5LmNhdml1bS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IB
-DwAwggEKAoIBAQDckvqQM4cvZjdyqOLGMTjKJwvfxJOhVqw6pojgUMz10VU7z3Ct
-JrwHcESwEDUxUkMxzof55kForURLaVVCjedYauEisnZwwSWkAemp9GREm8iX6BXt
-oZ8VDWoO2H0AJiHCM62qJeZVXhm8A/zWG0PyLrCINH0yz9ah6BcwdsZGLvQvkpUN
-JhwVMrb9nI9BlRmTWhoot1YSTf7jfibEkc/pN+0Ez30RFaL3MhyIaNJS22+10tny
-4sOUTsPEtXKah5mPlHpnrGcB18z5Yxgr0vDNYx+FCPGo95XGrq9NYfNMlwsSeFSr
-8D1VQ7HZmipeTB1hQTUQw/K/Rmtw5NiljkYTAgMBAAEwDQYJKoZIhvcNAQELBQAD
-ggEBAJjqbFaa3FOXEXcXPX2lCHdcyl8TwOR9f3Rq87MEfb3oeK9FarNkUCdvuGs3
-OkAWoFib/9l2F7ZgaNlJqVrwBaOvYuGguQoUpDybqttYUJVLcu9vA9eZA+UCJdhd
-P7fCyGMO+G96cnG3GTS1/SrIDU+YCnVElQ0P/73/de+ImoeMkwcqiUi2lsf3vGGR
-YXMt/DxUwjXwjIpWCs+37cwbNHAv0VKDOR/jmNf5EZf+sy4x2rJZ1NS6eDZ9RBug
-CLaN6ntybV4YlE7jDI9XIOm/tPJULZGLpLolngWVB6qtzn1RjBw1HIqpoXg+9s1g
-pLFFinSrEL1fkQR0YZQrJckktPs=
+MIIDvzCCAqegAwIBAgIBADANBgkqhkiG9w0BAQsFADCBkTELMAkGA1UEBhMCVVMx
+EzARBgNVBAgMCkNhbGlmb3JuaWExETAPBgNVBAcMCFNhbiBKb3NlMRUwEwYDVQQK
+DAxDYXZpdW0sIEluYy4xFzAVBgNVBAsMDkxpcXVpZFNlY3VyaXR5MSowKAYDVQQD
+DCFsb2NhbGNhLmxpcXVpZHNlY3VyaXR5LmNhdml1bS5jb20wHhcNMjQwNzI1MjAy
+OTIwWhcNMzQwNzIzMjAyOTIwWjCBkTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNh
+bGlmb3JuaWExETAPBgNVBAcMCFNhbiBKb3NlMRUwEwYDVQQKDAxDYXZpdW0sIElu
+Yy4xFzAVBgNVBAsMDkxpcXVpZFNlY3VyaXR5MSowKAYDVQQDDCFsb2NhbGNhLmxp
+cXVpZHNlY3VyaXR5LmNhdml1bS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw
+ggEKAoIBAQDckvqQM4cvZjdyqOLGMTjKJwvfxJOhVqw6pojgUMz10VU7z3CtJrwH
+cESwEDUxUkMxzof55kForURLaVVCjedYauEisnZwwSWkAemp9GREm8iX6BXtoZ8V
+DWoO2H0AJiHCM62qJeZVXhm8A/zWG0PyLrCINH0yz9ah6BcwdsZGLvQvkpUNJhwV
+Mrb9nI9BlRmTWhoot1YSTf7jfibEkc/pN+0Ez30RFaL3MhyIaNJS22+10tny4sOU
+TsPEtXKah5mPlHpnrGcB18z5Yxgr0vDNYx+FCPGo95XGrq9NYfNMlwsSeFSr8D1V
+Q7HZmipeTB1hQTUQw/K/Rmtw5NiljkYTAgMBAAGjIDAeMA4GA1UdDwEB/wQEAwIC
+hDAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCYlr7aeTnbRfPJGc5Q
+5LEVreY91mp0e5KN331iG3DXQ6x07RMY4PPN+MvVgIPD21Ix6Xtp6Vj9VcsBpV7h
++6X69s79Ix8j0XV+6+AnrLuftjUjNw7iI9shOYa9aSTg/R6YpwwpXH+L3SZZ+VEF
+yBg5gM7az0aJvuF48fSxNNwel11VC6xkrUFTuzI13GqYe+2rWhc/4TWvs1PpSzA0
+K0W7KYFX2jhGi7H1uOrVneJiaVgD9bgIao/UaQabjlLT62wE9DegpdKPOHbIiQp5
+XOV1rIP/pAWSSiyY7BB7c1acC/3ucDoSjTNUEsVIk3Zsm2jiUy0XC/rZTxaZkHaH
+Bux7
 -----END CERTIFICATE-----`
 
 type Attestation struct {
@@ -110,10 +111,6 @@ const attestationSignatureSize = 256
 
 // cryptoKeyVersionRx is the regular used to validate the key names.
 var cryptoKeyVersionRx = regexp.MustCompile("^projects/([^/]+)/locations/([a-zA-Z0-9_-]{1,63})/keyRings/([a-zA-Z0-9_-]{1,63})/cryptoKeys/([a-zA-Z0-9_-]{1,63})/cryptoKeyVersions/([a-zA-Z0-9_-]{1,63})$")
-
-// currentTime is the time used to validate certificates. The zero value will
-// use the current time, but we can it for testing purposes.
-var currentTime time.Time
 
 // VerifyAttestation obtains and validates the attestation from an object in
 // Cloud HSM.
@@ -317,9 +314,8 @@ func getIssuedCertificate(issuer *x509.Certificate, certs []*x509.Certificate, v
 			continue
 		}
 		if _, err := crt.Verify(x509.VerifyOptions{
-			Roots:       roots,
-			KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-			CurrentTime: currentTime,
+			Roots:     roots,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		}); err == nil {
 			for _, fn := range validators {
 				if !fn(crt) {
