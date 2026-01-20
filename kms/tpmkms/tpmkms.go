@@ -1276,15 +1276,15 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 }
 
 // SearchKeys searches for keys according to the query URI in the request. By
-// default, with the query "tpmkms:", it will return all keys and attestation
-// keys managed by the KMS. The supported queries are:
+// default, with the query "tpmkms:", it will return all application and
+// attestation keys managed by the KMS. The supported queries are:
 //
-//   - "tpmkms:" will return all keys and AKs managed by the KMS
+//   - "tpmkms:" will return all application keys and AKs managed by the KMS
 //   - "tpmkms:ak=true" will return all AKs managed by the KMS
-//   - "tpmkms:ak=false" will return all the keys managed by the KMS
-//   - "tpmkms:name=my-name" will only return the key with the selected name
+//   - "tpmkms:ak=false" will return all the application keys managed by the KMS
+//   - "tpmkms:name=my-name" will only return the application key and AK with the selected name
 //   - "tpmkms:name=my-name;ak=true" will only return the AK with the selected name
-//   - "tpmkms:name=my-name;ak=false" will only return the key with the selected name
+//   - "tpmkms:name=my-name;ak=false" will only return the application key with the selected name
 //
 // # Experimental
 //

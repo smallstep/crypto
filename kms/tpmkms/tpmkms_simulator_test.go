@@ -2450,7 +2450,7 @@ func TestTPMKMS_SearchKeys(t *testing.T) {
 				}},
 			},
 		}, assert.NoError},
-		{"ok enpty", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:name=not-found"}}, &apiv1.SearchKeysResponse{}, assert.NoError},
+		{"ok empty", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "tpmkms:name=not-found"}}, &apiv1.SearchKeysResponse{}, assert.NoError},
 		{"fail empty query", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: ""}}, nil, assert.Error},
 		{"fail parse query", fields{sim, nil, nil}, args{&apiv1.SearchKeysRequest{Query: "kms:name=test-key1"}}, nil, assert.Error},
 	}
