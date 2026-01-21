@@ -5,6 +5,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -46,14 +47,13 @@ func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 }
 
 func transformToCapiKMS(u *kmsURI) string {
-	uv := url.Values{
-		"key": []string{u.name},
+	uv := url.Values{}
+	if u.name != "" {
+		uv.Set("key", u.name)
 	}
 
-	// Add custom extra values that might be tpmkms specific.
-	for k, v := range u.extraValues {
-		uv[k] = v
-	}
+	// Add custom extra values that might be CAPI specific.
+	maps.Copy(uv, u.extraValues)
 
 	return uri.New(capi.Scheme, uv).String()
 }

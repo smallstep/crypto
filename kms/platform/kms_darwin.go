@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -46,8 +47,9 @@ func newMacKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 }
 
 func transformToMacKMS(u *kmsURI) string {
-	uv := url.Values{
-		"label": []string{u.name},
+	uv := url.Values{}
+	if u.name != "" {
+		uv.Set("label", u.name)
 	}
 	if u.hw {
 		uv.Set("se", "true")
@@ -55,9 +57,7 @@ func transformToMacKMS(u *kmsURI) string {
 	}
 
 	// Add custom extra values that might be mackms specific.
-	for k, v := range u.extraValues {
-		uv[k] = v
-	}
+	maps.Copy(uv, u.extraValues)
 
 	return uri.New(mackms.Scheme, uv).String()
 }
