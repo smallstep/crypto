@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"maps"
 	"net/url"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -55,17 +56,16 @@ func (k *KMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.Cre
 }
 
 func transformToTPMKMS(u *kmsURI) string {
-	uv := url.Values{
-		"name": []string{u.name},
+	uv := url.Values{}
+	if u.name != "" {
+		uv.Set("name", u.name)
 	}
 	if u.hw {
 		uv.Set("ak", "true")
 	}
 
 	// Add custom extra values that might be tpmkms specific.
-	for k, v := range u.extraValues {
-		uv[k] = v
-	}
+	maps.Copy(uv, u.extraValues)
 
 	return uri.New(tpmkms.Scheme, uv).String()
 }
