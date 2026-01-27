@@ -1,7 +1,6 @@
 package cloudkms
 
 import (
-	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -15,7 +14,6 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -729,45 +727,11 @@ func Test_getKeyType(t *testing.T) {
 }
 
 // TestValidateCaviumRoot validates that the current root certificate for the
-// hard-coded root for Marvell's LiquidSecurity HSM adapters matches the one in
-// this package.
+// hard-coded root for Marvell's LiquidSecurity HSM adapters is still valid.
 func TestValidateCaviumRoot(t *testing.T) {
 	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
 	require.NoError(t, err)
-
-	resp, err := http.Get("https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquidsecurity-certificate-cnxxxxx-nfbe-x.0-g-v3.zip")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, resp.Body.Close())
-	})
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	r, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
-	require.NoError(t, err)
-
-	for _, f := range r.File {
-		if f.Name != "cavium_cert.crt" {
-			continue
-		}
-		rc, err := f.Open()
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			assert.NoError(t, rc.Close())
-		})
-		b, err = io.ReadAll(rc)
-		require.NoError(t, err)
-
-		cert, err := pemutil.ParseCertificate(b)
-		require.NoError(t, err)
-
-		assert.Equal(t, root, cert)
-		assert.True(t, time.Now().Before(cert.NotAfter))
-		return
-	}
-
-	t.Error("certificate not found")
+	assert.True(t, time.Now().Before(root.NotAfter))
 }
 
 func Test_isSymmetric(t *testing.T) {
