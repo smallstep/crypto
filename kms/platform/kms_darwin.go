@@ -26,6 +26,8 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	switch u.backend {
 	case apiv1.TPMKMS:
 		return newTPMKMS(ctx, opts)
+	case apiv1.SoftKMS:
+		return newSoftKMS(ctx, opts)
 	case apiv1.DefaultKMS, apiv1.MacKMS:
 		opts.URI = transformToMacKMS(u)
 		return newMacKMS(ctx, opts)

@@ -27,6 +27,8 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	case apiv1.CAPIKMS:
 		opts.URI = transformToCapiKMS(u)
 		return newCAPIKMS(ctx, opts)
+	case apiv1.SoftKMS:
+		return newSoftKMS(ctx, opts)
 	case apiv1.DefaultKMS, apiv1.TPMKMS:
 		return newTPMKMS(ctx, opts)
 	default:
