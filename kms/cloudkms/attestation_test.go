@@ -732,10 +732,27 @@ func Test_getKeyType(t *testing.T) {
 // hard-coded root for Marvell's LiquidSecurity HSM adapters matches the one in
 // this package.
 func TestValidateCaviumRoot(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.SkipNow()
+	}
+
 	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
 	require.NoError(t, err)
 
-	resp, err := http.Get("https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquidsecurity-certificate-cnxxxxx-nfbe-x.0-g-v3.zip")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		"https://www.marvell.com/content/dam/marvell/en/public-collateral/security-solutions/liquidsecurity-certificate-cnxxxxx-nfbe-x.0-g-v3.zip",
+		http.NoBody,
+	)
+	require.NoError(t, err)
+
+	// Trick marvell, only Accept and User-Agent are required
+	req.Header.Set("Accept", "*")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Referer", "https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/software-key-attestation.html")
+	req.Header.Set("Accept-Language", "en-US")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, resp.Body.Close())
