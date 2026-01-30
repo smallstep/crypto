@@ -60,6 +60,7 @@ type extendedKeyManager interface {
 	apiv1.KeyDeleter
 	apiv1.CertificateManager
 	apiv1.CertificateChainManager
+	apiv1.CertificateDeleter
 }
 
 var _ apiv1.KeyManager = (*KMS)(nil)
@@ -164,6 +165,17 @@ func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) err
 	req = clone(req)
 	req.Name = name
 	return k.backend.StoreCertificateChain(req)
+}
+
+func (k *KMS) DeleteCertificater(req *apiv1.DeleteCertificateRequest) error {
+	name, err := k.transform(req.Name)
+	if err != nil {
+		return err
+	}
+
+	req = clone(req)
+	req.Name = name
+	return k.backend.DeleteCertificate(req)
 }
 
 func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
