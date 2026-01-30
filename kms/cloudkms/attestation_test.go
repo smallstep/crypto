@@ -728,6 +728,13 @@ func Test_getKeyType(t *testing.T) {
 	}
 }
 
+func TestCaviumRootValidity(t *testing.T) {
+	root, err := pemutil.ParseCertificate([]byte(caviumRoot))
+	require.NoError(t, err)
+
+	assert.True(t, time.Now().Before(root.NotAfter), "Cavium root is expired")
+}
+
 // TestValidateCaviumRoot validates that the current root certificate for the
 // hard-coded root for Marvell's LiquidSecurity HSM adapters matches the one in
 // this package.
