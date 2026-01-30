@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
+	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
@@ -436,6 +436,72 @@ func Test_filename(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, filename(tt.args.s))
+		})
+	}
+}
+
+func TestSoftKMS_LoadCertificate(t *testing.T) {
+	cert, err := pemutil.ReadCertificate("testdata/cert.crt")
+	require.NoError(t, err)
+
+	type args struct {
+		req *apiv1.LoadCertificateRequest
+	}
+	tests := []struct {
+		name      string
+		k         *SoftKMS
+		args      args
+		want      *x509.Certificate
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/cert.crt"}}, cert, assert.NoError},
+		{"ok uri", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/cert.crt"}}, cert, assert.NoError},
+		{"ok uri with path", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "softkms:path=testdata/cert.crt"}}, cert, assert.NoError},
+		{"fail empty", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{}}, nil, assert.Error},
+		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/missing.crt"}}, nil, assert.Error},
+		{"fail not a certificate", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/cert.key"}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &SoftKMS{}
+			got, err := k.LoadCertificate(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSoftKMS_LoadCertificateChain(t *testing.T) {
+	chain, err := pemutil.ReadCertificateBundle("testdata/chain.crt")
+	require.NoError(t, err)
+
+	cert, err := pemutil.ReadCertificate("testdata/cert.crt")
+	require.NoError(t, err)
+
+	type args struct {
+		req *apiv1.LoadCertificateChainRequest
+	}
+	tests := []struct {
+		name      string
+		k         *SoftKMS
+		args      args
+		want      []*x509.Certificate
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/chain.crt"}}, chain, assert.NoError},
+		{"ok uri", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/chain.crt"}}, chain, assert.NoError},
+		{"ok uri with path", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "softkms:path=testdata/chain.crt"}}, chain, assert.NoError},
+		{"ok cert", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "softkms:testdata/cert.crt"}}, []*x509.Certificate{cert}, assert.NoError},
+		{"fail empty", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{}}, nil, assert.Error},
+		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/missing.crt"}}, nil, assert.Error},
+		{"fail not a certificate", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/cert.key"}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &SoftKMS{}
+			got, err := k.LoadCertificateChain(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
