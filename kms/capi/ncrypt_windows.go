@@ -60,9 +60,11 @@ const (
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
 	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
+	compareProp             = 5                                               // CERT_COMPARE_CERT_ID
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
 	findIssuerName          = compareName<<compareShift | infoIssuerFlag      // CERT_FIND_ISSUER_NAME
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
+	findProperty            = compareProp << compareShift                     // CERT_FIND_PROPERTY
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
 	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
@@ -82,6 +84,8 @@ const (
 	CERT_ID_SHA1_HASH            = uint32(3)
 
 	CERT_KEY_PROV_INFO_PROP_ID = uint32(2)
+	CERT_FRIENDLY_NAME_PROP_ID = uint32(11)
+	CERT_DESCRIPTION_PROP_ID   = uint32(13)
 
 	CERT_NAME_STR_COMMA_FLAG = uint32(0x04000000)
 	CERT_SIMPLE_NAME_STR     = uint32(1)
@@ -151,6 +155,7 @@ var (
 	procCertFindCertificateInStore        = crypt32.MustFindProc("CertFindCertificateInStore")
 	procCryptFindCertificateKeyProvInfo   = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
 	procCertGetCertificateContextProperty = crypt32.MustFindProc("CertGetCertificateContextProperty")
+	procCertSetCertificateContextProperty = crypt32.MustFindProc("CertSetCertificateContextProperty")
 	procCertStrToName                     = crypt32.MustFindProc("CertStrToNameW")
 )
 
@@ -604,6 +609,102 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 	}
 
 	return "", nil
+}
+
+func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
+	r0, _, err := procCertSetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(propID),
+		0,
+		pvData,
+	)
+
+	if r0 == 0 {
+		return err
+	}
+	return nil
+}
+
+func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val string) error {
+	data := CRYPTOAPI_BLOB{
+		len: uint32(len(val)+1) * 2,
+		data: uintptr(unsafe.Pointer(wide(val))),
+	}
+
+	return certSetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, uintptr(unsafe.Pointer(&data)))
+}
+
+func cryptSetCertificateDescription(certContext *windows.CertContext, val string) error {
+	data := CRYPTOAPI_BLOB{
+		len: uint32(len(val)+1) * 2,
+		data: uintptr(unsafe.Pointer(wide(val))),
+	}
+
+	return certSetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, uintptr(unsafe.Pointer(&data)))
+}
+
+func certGetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData *byte, pcbData *uint32) error {
+	r0, _, err := procCertGetCertificateContextProperty.Call(
+		uintptr(unsafe.Pointer(certContext)),
+		uintptr(propID),
+		uintptr(unsafe.Pointer(pvData)),
+		uintptr(unsafe.Pointer(pcbData)),
+	)
+	if r0 == 0 {
+		return err
+	}
+	return nil
+}
+
+func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string, error) {
+	var size uint32
+
+	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
+	if err != nil {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	if size == 0 {
+		return "", nil
+	}
+
+	buf := make([]byte, size)
+	err = certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, &buf[0], &size)
+	if err != nil {
+		return "", err
+	}
+
+	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
+	return string(uc), nil
+}
+
+func cryptFindCertificateDescription(certContext *windows.CertContext) (string, error) {
+	var size uint32
+
+	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
+	if err != nil {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+
+		return "", err
+	}
+	if size == 0 {
+		return "", nil
+	}
+
+	buf := make([]byte, size)
+	err = certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, &buf[0], &size)
+	if err != nil {
+		return "", err
+	}
+
+	uc := bytes.ReplaceAll(buf, []byte{0x00}, []byte(""))
+	return string(uc), nil
 }
 
 func certStrToName(x500Str string) ([]byte, error) {
