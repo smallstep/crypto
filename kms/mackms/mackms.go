@@ -241,10 +241,18 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		u.keySize = alg.Size
 	}
 
-	// Apply UserAuthorization from the request if set and not already
-	// configured via URI attributes (bio=true or auth=...).
+	// Normalize bio=true into the unified userAuthorization field.
+	// bio=true is equivalent to auth=biometric and is kept for backward
+	// compatibility.
+	if u.useBiometrics && u.userAuthorization == apiv1.UserAuthorizationNone {
+		u.userAuthorization = apiv1.UserAuthorizationBiometric
+		u.useBiometrics = false // handled via userAuthorization from now on
+	}
+
+	// Apply UserAuthorization from the request if not already configured
+	// via URI attributes (bio=true or auth=...).
 	if req.UserAuthorization != apiv1.UserAuthorizationNone &&
-		u.userAuthorization == apiv1.UserAuthorizationNone && !u.useBiometrics {
+		u.userAuthorization == apiv1.UserAuthorizationNone {
 		u.userAuthorization = req.UserAuthorization
 	}
 
@@ -344,9 +352,6 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	})
 	if u.useSecureEnclave {
 		name.Values.Set("se", "true")
-	}
-	if u.useBiometrics {
-		name.Values.Set("bio", "true")
 	}
 	if u.userAuthorization != apiv1.UserAuthorizationNone {
 		name.Values.Set("auth", u.userAuthorization.String())
@@ -761,20 +766,12 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 
 var _ apiv1.SearchableKeyManager = (*MacKMS)(nil)
 
-// getAccessControlFlags returns the SecAccessControlCreateFlags for the
-// given key attributes. It considers both the legacy useBiometrics flag
-// and the new userAuthorization field.
+// getAccessControlFlags returns the SecAccessControlCreateFlags for the given
+// key attributes. The caller must normalize useBiometrics into
+// userAuthorization before calling this function (see CreateKey).
 func getAccessControlFlags(u *keyAttributes) security.SecAccessControlCreateFlags {
 	flags := security.KSecAccessControlPrivateKeyUsage
 
-	// Legacy bio=true support
-	if u.useBiometrics && u.userAuthorization == apiv1.UserAuthorizationNone {
-		flags |= security.KSecAccessControlAnd
-		flags |= security.KSecAccessControlBiometryCurrentSet
-		return flags
-	}
-
-	// New UserAuthorization support
 	switch u.userAuthorization {
 	case apiv1.UserAuthorizationBiometric:
 		flags |= security.KSecAccessControlAnd
