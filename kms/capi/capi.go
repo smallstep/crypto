@@ -51,6 +51,7 @@ const (
 	IssuerNameArg                = "issuer"
 	KeySpec                      = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
 	SkipFindCertificateKey       = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
+	AuthArg                      = "auth"                       // user authorization policy: none, biometric, user-presence, pin
 )
 
 const (
@@ -93,6 +94,7 @@ type uriAttributes struct {
 	keySpec                   string
 	skipFindCertificateKey    bool
 	pin                       string
+	userAuthorization         apiv1.UserAuthorization
 }
 
 func parseURI(rawuri string) (*uriAttributes, error) {
@@ -115,6 +117,15 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		}
 	}
 
+	var userAuth apiv1.UserAuthorization
+	if authStr := u.Get(AuthArg); authStr != "" {
+		var err error
+		userAuth, err = apiv1.ParseUserAuthorization(authStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing %s from URI %q: %w", AuthArg, rawuri, err)
+		}
+	}
+
 	return &uriAttributes{
 		containerName:             u.Get(ContainerNameArg),
 		hash:                      hashValue,
@@ -129,6 +140,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
 		pin:                       u.Pin(),
+		userAuthorization:         userAuth,
 	}, nil
 }
 
@@ -551,6 +563,22 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 	return newCAPISigner(kh, u.containerName, u.pin)
 }
 
+// uiPolicyFlags returns the NCRYPT_UI_POLICY flags for the given
+// UserAuthorization value. These flags control how Windows prompts the user
+// before allowing private key operations.
+func uiPolicyFlags(auth apiv1.UserAuthorization) uint32 {
+	switch auth {
+	case apiv1.UserAuthorizationBiometric, apiv1.UserAuthorizationBiometryAny:
+		return NCRYPT_UI_FINGERPRINT_PROTECTION_FLAG
+	case apiv1.UserAuthorizationUserPresence:
+		return NCRYPT_UI_PROTECT_KEY_FLAG
+	case apiv1.UserAuthorizationPIN:
+		return NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG
+	default:
+		return 0
+	}
+}
+
 func setKeySpec(u *uriAttributes) (uint32, error) {
 	keySpec := uint32(0) // default KeySpec value is NONE
 	if v := strings.ReplaceAll(strings.ToLower(u.keySpec), "_", ""); v != "" {
@@ -644,6 +672,20 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		err = nCryptSetProperty(kh, NCRYPT_PCP_USAGE_AUTH_PROPERTY, pwHash, 0)
 		if err != nil {
 			return nil, fmt.Errorf("unable to set key NCRYPT_PIN_PROPERTY: %w", err)
+		}
+	}
+
+	// Apply UserAuthorization from the request if not already set via URI.
+	userAuth := u.userAuthorization
+	if userAuth == apiv1.UserAuthorizationNone && req.UserAuthorization != apiv1.UserAuthorizationNone {
+		userAuth = req.UserAuthorization
+	}
+
+	// Set NCRYPT_UI_POLICY for Windows Hello-style authorization prompts.
+	if userAuth != apiv1.UserAuthorizationNone {
+		uiFlags := uiPolicyFlags(userAuth)
+		if err := nCryptSetUIPolicy(kh, uiFlags, "", ""); err != nil {
+			return nil, fmt.Errorf("unable to set key UI policy: %w", err)
 		}
 	}
 

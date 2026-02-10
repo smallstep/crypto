@@ -51,14 +51,15 @@ const Scheme = string(apiv1.MacKMS)
 var DefaultTag = "com.smallstep.crypto"
 
 type keyAttributes struct {
-	label            string
-	tag              string
-	hash             []byte
-	retry            bool
-	useSecureEnclave bool
-	useBiometrics    bool
-	sigAlgorithm     apiv1.SignatureAlgorithm
-	keySize          int
+	label             string
+	tag               string
+	hash              []byte
+	retry             bool
+	useSecureEnclave  bool
+	useBiometrics     bool
+	userAuthorization apiv1.UserAuthorization
+	sigAlgorithm      apiv1.SignatureAlgorithm
+	keySize           int
 }
 
 // retryAttributes returns the original URI attributes used to get a private
@@ -136,7 +137,16 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //     with the appropriate entitlements.
 //   - "bio" is a boolean value. If set to true, sign and verify operations
 //     require Touch ID or Face ID. This options requires the key to be in the
-//     Secure Enclave.
+//     Secure Enclave. Equivalent to auth=biometric.
+//   - "auth" specifies the user authorization policy for signing operations.
+//     Requires the key to be in the Secure Enclave (se=true). Valid values are:
+//   - "biometric": Touch ID/Face ID, invalidated on enrollment change
+//     (kSecAccessControlBiometryCurrentSet)
+//   - "biometry-any": Touch ID/Face ID, survives enrollment changes
+//     (kSecAccessControlBiometryAny)
+//   - "user-presence": Biometric OR device passcode
+//     (kSecAccessControlUserPresence)
+//   - "pin": Device passcode only (kSecAccessControlDevicePasscode)
 //   - "hash" corresponds with kSecAttrApplicationLabel. It is the SHA-1 of the
 //     DER representation of an RSA public key using the PKCS #1 format or the
 //     SHA-1 of the uncompressed ECDSA point according to SEC 1, Version 2.0,
@@ -231,6 +241,13 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		u.keySize = alg.Size
 	}
 
+	// Apply UserAuthorization from the request if set and not already
+	// configured via URI attributes (bio=true or auth=...).
+	if req.UserAuthorization != apiv1.UserAuthorizationNone &&
+		u.userAuthorization == apiv1.UserAuthorizationNone && !u.useBiometrics {
+		u.userAuthorization = req.UserAuthorization
+	}
+
 	// Define key attributes
 	cfLabel, err := cf.NewString(u.label)
 	if err != nil {
@@ -257,11 +274,7 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		// device, these items will not be present.
 		//
 		// TODO: make this a configuration option
-		flags := security.KSecAccessControlPrivateKeyUsage
-		if u.useBiometrics {
-			flags |= security.KSecAccessControlAnd
-			flags |= security.KSecAccessControlBiometryCurrentSet
-		}
+		flags := getAccessControlFlags(u)
 		access, err := security.SecAccessControlCreateWithFlags(
 			security.KSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
 			flags,
@@ -334,6 +347,9 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	}
 	if u.useBiometrics {
 		name.Values.Set("bio", "true")
+	}
+	if u.userAuthorization != apiv1.UserAuthorizationNone {
+		name.Values.Set("auth", u.userAuthorization.String())
 	}
 
 	return &apiv1.CreateKeyResponse{
@@ -744,6 +760,40 @@ func (k *MacKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 }
 
 var _ apiv1.SearchableKeyManager = (*MacKMS)(nil)
+
+// getAccessControlFlags returns the SecAccessControlCreateFlags for the
+// given key attributes. It considers both the legacy useBiometrics flag
+// and the new userAuthorization field.
+func getAccessControlFlags(u *keyAttributes) security.SecAccessControlCreateFlags {
+	flags := security.KSecAccessControlPrivateKeyUsage
+
+	// Legacy bio=true support
+	if u.useBiometrics && u.userAuthorization == apiv1.UserAuthorizationNone {
+		flags |= security.KSecAccessControlAnd
+		flags |= security.KSecAccessControlBiometryCurrentSet
+		return flags
+	}
+
+	// New UserAuthorization support
+	switch u.userAuthorization {
+	case apiv1.UserAuthorizationBiometric:
+		flags |= security.KSecAccessControlAnd
+		flags |= security.KSecAccessControlBiometryCurrentSet
+	case apiv1.UserAuthorizationBiometryAny:
+		flags |= security.KSecAccessControlAnd
+		flags |= security.KSecAccessControlBiometryAny
+	case apiv1.UserAuthorizationUserPresence:
+		flags |= security.KSecAccessControlAnd
+		flags |= security.KSecAccessControlUserPresence
+	case apiv1.UserAuthorizationPIN:
+		flags |= security.KSecAccessControlAnd
+		flags |= security.KSecAccessControlDevicePasscode
+	case apiv1.UserAuthorizationNone:
+		// No additional authorization flags
+	}
+
+	return flags
+}
 
 func deleteItem(dict cf.Dictionary, hash []byte) error {
 	if len(hash) > 0 {
@@ -1194,13 +1244,22 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	if tag == "" && !u.Has("tag") {
 		tag = DefaultTag
 	}
+	var userAuth apiv1.UserAuthorization
+	if authStr := u.Get("auth"); authStr != "" {
+		userAuth, err = apiv1.ParseUserAuthorization(authStr)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing %q: %w", rawuri, err)
+		}
+	}
+
 	return &keyAttributes{
-		label:            label,
-		tag:              tag,
-		hash:             u.GetEncoded("hash"),
-		retry:            !u.Has("tag"),
-		useSecureEnclave: u.GetBool("se"),
-		useBiometrics:    u.GetBool("bio"),
+		label:             label,
+		tag:               tag,
+		hash:              u.GetEncoded("hash"),
+		retry:             !u.Has("tag"),
+		useSecureEnclave:  u.GetBool("se"),
+		useBiometrics:     u.GetBool("bio"),
+		userAuthorization: userAuth,
 	}, nil
 }
 

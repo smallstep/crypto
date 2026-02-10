@@ -88,11 +88,27 @@ type Signer struct {
 	publicKey   crypto.PublicKey
 	tpmKey      *TPMKey
 	srkTemplate tpm2.Public
+	password    string
 }
 
 // CreateSigner creates a new [crypto.Signer] with the given TPM (rw) and
 // [TPMKey]. The caller is responsible for opening and closing the TPM.
 func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
+	return CreateSignerWithPassword(rw, key, "")
+}
+
+// CreateSignerWithPassword creates a new [crypto.Signer] with the given TPM
+// (rw), [TPMKey], and password (auth value). The password is used to authorize
+// signing operations on keys created with TPM2_PolicyAuthValue or an auth
+// value. If the key was created with an empty auth value, pass an empty string.
+//
+// The caller is responsible for opening and closing the TPM.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func CreateSignerWithPassword(rw io.ReadWriter, key *TPMKey, password string) (*Signer, error) {
 	switch {
 	case rw == nil:
 		return nil, fmt.Errorf("invalid TPM channel: rw cannot be nil")
@@ -124,6 +140,7 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 		publicKey:   publicKey,
 		tpmKey:      key,
 		srkTemplate: RSASRKTemplate,
+		password:    password,
 	}, nil
 }
 
@@ -157,6 +174,19 @@ func (s *Signer) SetCommandChannel(rw io.ReadWriter) {
 	s.m.Unlock()
 }
 
+// SetPassword sets the authorization password for signing operations. This
+// password is passed to the TPM as the auth value when using the key.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (s *Signer) SetPassword(password string) {
+	s.m.Lock()
+	s.password = password
+	s.m.Unlock()
+}
+
 // Public implements the [crypto.Signer] interface.
 func (s *Signer) Public() crypto.PublicKey {
 	return s.publicKey
@@ -186,21 +216,21 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signa
 
 	switch p := s.publicKey.(type) {
 	case *ecdsa.PublicKey:
-		return signECDSA(s.rw, keyHandle, digest, p.Curve)
+		return signECDSA(s.rw, keyHandle, digest, p.Curve, s.password)
 	case *rsa.PublicKey:
-		return signRSA(s.rw, keyHandle, digest, opts)
+		return signRSA(s.rw, keyHandle, digest, opts, s.password)
 	default:
 		return nil, fmt.Errorf("unsupported signing key type %T", s.publicKey)
 	}
 }
 
 // https://github.com/smallstep/go-attestation/blob/f5480326fb6d63859537ec89fbea7c62485bc4da/attest/wrapped_tpm20.go#L513
-func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve elliptic.Curve) ([]byte, error) {
+func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve elliptic.Curve, password string) ([]byte, error) {
 	scheme, err := curveSigScheme(curve)
 	if err != nil {
 		return nil, err
 	}
-	sig, err := tpm2.Sign(rw, key, "", digest, nil, scheme)
+	sig, err := tpm2.Sign(rw, key, password, digest, nil, scheme)
 	if err != nil {
 		return nil, fmt.Errorf("error creating ECDSA signature: %w", err)
 	}
@@ -214,7 +244,7 @@ func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve ellipt
 }
 
 // https://github.com/smallstep/go-attestation/blob/f5480326fb6d63859537ec89fbea7c62485bc4da/attest/wrapped_tpm20.go#L527
-func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.SignerOpts, password string) ([]byte, error) {
 	h, err := tpm2.HashToAlgorithm(opts.HashFunc())
 	if err != nil {
 		return nil, fmt.Errorf("error getting algorithm: %w", err)
@@ -232,7 +262,7 @@ func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.Si
 		scheme.Alg = tpm2.AlgRSAPSS
 	}
 
-	sig, err := tpm2.Sign(rw, key, "", digest, nil, scheme)
+	sig, err := tpm2.Sign(rw, key, password, digest, nil, scheme)
 	if err != nil {
 		return nil, fmt.Errorf("error creating RSA signature: %w", err)
 	}

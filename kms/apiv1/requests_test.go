@@ -1,6 +1,8 @@
 package apiv1
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestProtectionLevel_String(t *testing.T) {
 	tests := []struct {
@@ -45,6 +47,57 @@ func TestSignatureAlgorithm_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.s.String(); got != tt.want {
 				t.Errorf("SignatureAlgorithm.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUserAuthorization_String(t *testing.T) {
+	tests := []struct {
+		name string
+		u    UserAuthorization
+		want string
+	}{
+		{"none", UserAuthorizationNone, "none"},
+		{"biometric", UserAuthorizationBiometric, "biometric"},
+		{"biometry-any", UserAuthorizationBiometryAny, "biometry-any"},
+		{"user-presence", UserAuthorizationUserPresence, "user-presence"},
+		{"pin", UserAuthorizationPIN, "pin"},
+		{"unknown", UserAuthorization(100), "unknown(100)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.u.String(); got != tt.want {
+				t.Errorf("UserAuthorization.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseUserAuthorization(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    UserAuthorization
+		wantErr bool
+	}{
+		{"empty", "", UserAuthorizationNone, false},
+		{"none", "none", UserAuthorizationNone, false},
+		{"biometric", "biometric", UserAuthorizationBiometric, false},
+		{"biometry-any", "biometry-any", UserAuthorizationBiometryAny, false},
+		{"user-presence", "user-presence", UserAuthorizationUserPresence, false},
+		{"pin", "pin", UserAuthorizationPIN, false},
+		{"invalid", "invalid-value", UserAuthorizationNone, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseUserAuthorization(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseUserAuthorization() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ParseUserAuthorization() = %v, want %v", got, tt.want)
 			}
 		})
 	}

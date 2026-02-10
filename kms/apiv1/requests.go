@@ -50,6 +50,115 @@ const (
 	TouchPolicyCached
 )
 
+// UserAuthorization specifies user authorization requirements for signing
+// operations. This controls how the hardware enforces user presence or
+// authentication before allowing private key operations.
+//
+// The behavior is platform-specific:
+//   - On macOS (Secure Enclave): Maps to SecAccessControl flags. The OS handles
+//     prompting via LAContext automatically when the key is used.
+//   - On Windows (CNG/TPM): Maps to NCRYPT_UI_POLICY for Windows Hello prompts
+//     or NCRYPT_PCP_USAGE_AUTH_PROPERTY for TPM-backed PIN.
+//   - On Linux (TPM): Maps to TPM2_PolicyAuthValue, requiring a PIN/password
+//     that the TPM enforces natively before signing.
+//   - On YubiKey: Use PINPolicy and TouchPolicy instead.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type UserAuthorization int
+
+const (
+	// UserAuthorizationNone indicates no user authorization is required for
+	// signing operations. This is the default.
+	UserAuthorizationNone UserAuthorization = iota
+
+	// UserAuthorizationBiometric requires biometric authentication (e.g.,
+	// Touch ID, Face ID, or fingerprint) before each signing operation.
+	// The key is invalidated if biometric enrollment changes.
+	//
+	// Platform mapping:
+	//   - macOS: kSecAccessControlBiometryCurrentSet
+	//   - Windows: NCRYPT_UI_POLICY with NCRYPT_UI_FINGERPRINT_PROTECTION_FLAG
+	//   - Linux: Not available (falls back to UserAuthorizationPIN)
+	UserAuthorizationBiometric
+
+	// UserAuthorizationBiometryAny requires biometric authentication before
+	// each signing operation. Unlike UserAuthorizationBiometric, the key
+	// remains valid even if biometric enrollment changes (e.g., new
+	// fingerprint added).
+	//
+	// Platform mapping:
+	//   - macOS: kSecAccessControlBiometryAny
+	//   - Windows: NCRYPT_UI_POLICY with NCRYPT_UI_FINGERPRINT_PROTECTION_FLAG
+	//   - Linux: Not available (falls back to UserAuthorizationPIN)
+	//
+	// # Experimental
+	//
+	// Notice: This value is EXPERIMENTAL and may be changed or removed in a
+	// later release.
+	UserAuthorizationBiometryAny
+
+	// UserAuthorizationUserPresence requires some form of user presence
+	// verification before each signing operation. This is the most flexible
+	// option: the platform may use biometrics, device passcode/PIN, or
+	// Apple Watch depending on what is available.
+	//
+	// Platform mapping:
+	//   - macOS: kSecAccessControlUserPresence (biometric OR passcode)
+	//   - Windows: NCRYPT_UI_POLICY with NCRYPT_UI_PROTECT_KEY_FLAG
+	//   - Linux: TPM2_PolicyAuthValue (PIN-based)
+	UserAuthorizationUserPresence
+
+	// UserAuthorizationPIN requires a PIN or password before each signing
+	// operation. The PIN is enforced by the hardware where possible.
+	//
+	// Platform mapping:
+	//   - macOS: kSecAccessControlDevicePasscode
+	//   - Windows: NCRYPT_PCP_USAGE_AUTH_PROPERTY (TPM) or NCRYPT_PIN_PROPERTY
+	//   - Linux: TPM2_PolicyAuthValue
+	UserAuthorizationPIN
+)
+
+// String returns a string representation of u.
+func (u UserAuthorization) String() string {
+	switch u {
+	case UserAuthorizationNone:
+		return "none"
+	case UserAuthorizationBiometric:
+		return "biometric"
+	case UserAuthorizationBiometryAny:
+		return "biometry-any"
+	case UserAuthorizationUserPresence:
+		return "user-presence"
+	case UserAuthorizationPIN:
+		return "pin"
+	default:
+		return fmt.Sprintf("unknown(%d)", u)
+	}
+}
+
+// ParseUserAuthorization returns the UserAuthorization value for the given
+// string. Valid values are "none", "biometric", "biometry-any",
+// "user-presence", and "pin". An empty string returns UserAuthorizationNone.
+func ParseUserAuthorization(s string) (UserAuthorization, error) {
+	switch s {
+	case "", "none":
+		return UserAuthorizationNone, nil
+	case "biometric":
+		return UserAuthorizationBiometric, nil
+	case "biometry-any":
+		return UserAuthorizationBiometryAny, nil
+	case "user-presence":
+		return UserAuthorizationUserPresence, nil
+	case "pin":
+		return UserAuthorizationPIN, nil
+	default:
+		return UserAuthorizationNone, fmt.Errorf("unsupported user authorization %q", s)
+	}
+}
+
 // String returns a string representation of p.
 func (p ProtectionLevel) String() string {
 	switch p {
@@ -167,6 +276,18 @@ type CreateKeyRequest struct {
 	//
 	// Used by: cloudkms
 	DestroyRetentionPeriod time.Duration
+
+	// UserAuthorization specifies user authorization requirements for
+	// signing operations. When set, the hardware will enforce user
+	// presence or authentication before allowing private key use.
+	//
+	// Used by: mackms, capi, tpmkms
+	//
+	// # Experimental
+	//
+	// Notice: This field is EXPERIMENTAL and may be changed or removed in a
+	// later release.
+	UserAuthorization UserAuthorization
 }
 
 // CreateKeyResponse is the response value of the kms.CreateKey method.

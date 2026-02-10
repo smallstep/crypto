@@ -330,7 +330,7 @@ func Test_signECDSA_fail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := signECDSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.curve)
+			got, err := signECDSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.curve, "")
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -367,7 +367,7 @@ func Test_signRSA_fail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := signRSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.opts)
+			got, err := signRSA(tt.args.rw, tt.args.key, tt.args.digest, tt.args.opts, "")
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

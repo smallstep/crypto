@@ -649,12 +649,18 @@ func (k *TPMKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 //
 //   - name=<name>: specify the name to identify the key with
 //   - path=<file>: specify the TSS2 PEM file to use
+//   - pin=<value>: specify the PIN/password for TPM authorization via the URI
+//     query parameter (e.g., tpmkms:name=my-key?pin=1234)
+//
+// Alternatively, the PIN/password can be provided via the Password field or
+// PasswordPrompter in the [apiv1.CreateSignerRequest].
 func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
 	if req.Signer != nil {
 		return req.Signer, nil
 	}
 
 	var pemBytes []byte
+	var pin string
 
 	switch {
 	case req.SigningKey != "":
@@ -665,6 +671,8 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		if properties.ak {
 			return nil, fmt.Errorf("signing with an AK currently not supported")
 		}
+
+		pin = properties.pin
 
 		switch {
 		case properties.name != "":
@@ -691,6 +699,18 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		return nil, errors.New("createSignerRequest 'signingKey' and 'signingKeyPEM' cannot be empty")
 	}
 
+	// Resolve the PIN/password from the request if not already set via URI.
+	if pin == "" && len(req.Password) > 0 {
+		pin = string(req.Password)
+	}
+	if pin == "" && req.PasswordPrompter != nil {
+		passwordBytes, err := req.PasswordPrompter("Enter PIN for TPM key")
+		if err != nil {
+			return nil, fmt.Errorf("failed prompting for TPM key password: %w", err)
+		}
+		pin = string(passwordBytes)
+	}
+
 	// Create a signer from a TSS2 PEM block
 	key, err := parseTSS2(pemBytes)
 	if err != nil {
@@ -698,7 +718,7 @@ func (k *TPMKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	}
 
 	ctx := context.Background()
-	signer, err := tpm.CreateTSS2Signer(ctx, k.tpm, key)
+	signer, err := tpm.CreateTSS2SignerWithPassword(ctx, k.tpm, key, pin)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting signer for TSS2 PEM: %w", err)
 	}

@@ -112,12 +112,25 @@ func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 
 // CreateTSS2Signer returns a crypto.Signer using the given [TPM] and [tss2.TPMKey].
 func CreateTSS2Signer(ctx context.Context, t *TPM, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
+	return CreateTSS2SignerWithPassword(ctx, t, key, "")
+}
+
+// CreateTSS2SignerWithPassword returns a crypto.Signer using the given [TPM],
+// [tss2.TPMKey], and password (auth value). The password is passed to the TPM
+// for authorization when signing. Use an empty string for keys created with
+// empty auth.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func CreateTSS2SignerWithPassword(ctx context.Context, t *TPM, key *tss2.TPMKey, password string) (csigner crypto.Signer, err error) {
 	if err := t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
 
-	s, err := tss2.CreateSigner(t.rwc, key)
+	s, err := tss2.CreateSignerWithPassword(t.rwc, key, password)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating TSS2 signer: %w", err)
 	}

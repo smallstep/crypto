@@ -25,6 +25,7 @@ type objectProperties struct {
 	sha1                      string
 	serial                    string
 	issuer                    string
+	pin                       string
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -68,6 +69,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		o.sha1 = u.Get("sha1")
 		o.serial = u.Get("serial")
 		o.issuer = u.Get("issuer")
+		o.pin = u.Pin()
 
 		// validation
 		if o.ak && o.attestBy != "" {

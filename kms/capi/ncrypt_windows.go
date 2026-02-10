@@ -30,6 +30,14 @@ const (
 	NCRYPT_READER_PROPERTY          = "SmartCardReader"
 	NCRYPT_ALGORITHM_PROPERTY       = "Algorithm Name"
 	NCRYPT_PCP_USAGE_AUTH_PROPERTY  = "PCP_USAGEAUTH"
+	NCRYPT_UI_POLICY_PROPERTY       = "UI Policy"
+
+	// NCRYPT_UI_POLICY flags for Windows Hello integration.
+	// See: https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/ns-ncrypt-ncrypt_ui_policy
+	NCRYPT_UI_PROTECT_KEY_FLAG             = 0x00000001
+	NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG   = 0x00000002
+	NCRYPT_UI_FINGERPRINT_PROTECTION_FLAG  = 0x00000004
+	NCRYPT_UI_APPCONTAINER_ACCESS_MEDIUM_FLAG = 0x00000008
 
 	// Key Storage Flags
 	NCRYPT_MACHINE_KEY_FLAG = 0x00000020
@@ -153,6 +161,19 @@ var (
 	procCertGetCertificateContextProperty = crypt32.MustFindProc("CertGetCertificateContextProperty")
 	procCertStrToName                     = crypt32.MustFindProc("CertStrToNameW")
 )
+
+// NCRYPT_UI_POLICY is the structure used with the NCRYPT_UI_POLICY_PROPERTY
+// to specify the UI policy for a CNG key. Setting this policy causes Windows
+// to prompt the user (e.g., via Windows Hello) before allowing signing operations.
+//
+// See: https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/ns-ncrypt-ncrypt_ui_policy
+type NCRYPT_UI_POLICY struct {
+	dwVersion      uint32
+	dwFlags        uint32
+	pszCreationTitle    *uint16
+	pszFriendlyName     *uint16
+	pszDescription      *uint16
+}
 
 type BCRYPT_PKCS1_PADDING_INFO struct {
 	pszAlgID *uint16
@@ -647,6 +668,42 @@ func certStrToName(x500Str string) ([]byte, error) {
 		return nil, fmt.Errorf("CertStrToName returned %v during convert (%w)", errNoToStr(uint32(r)), err)
 	}
 	return buf, nil
+}
+
+// nCryptSetUIPolicy sets the NCRYPT_UI_POLICY_PROPERTY on a key handle, which
+// causes Windows to prompt the user (e.g., via Windows Hello) before allowing
+// signing operations. The flags parameter controls the type of prompt:
+//   - NCRYPT_UI_PROTECT_KEY_FLAG: Requires user consent before key use
+//   - NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG: Requires strong authentication
+//   - NCRYPT_UI_FINGERPRINT_PROTECTION_FLAG: Requires fingerprint authentication
+func nCryptSetUIPolicy(keyHandle uintptr, flags uint32, friendlyName, description string) error {
+	policy := NCRYPT_UI_POLICY{
+		dwVersion: 1,
+		dwFlags:   flags,
+	}
+
+	if friendlyName != "" {
+		policy.pszFriendlyName = wide(friendlyName)
+	}
+	if description != "" {
+		policy.pszDescription = wide(description)
+	}
+
+	policySize := unsafe.Sizeof(policy)
+	r, _, err := procNCryptSetProperty.Call(
+		keyHandle,
+		uintptr(unsafe.Pointer(wide(NCRYPT_UI_POLICY_PROPERTY))),
+		uintptr(unsafe.Pointer(&policy)),
+		uintptr(policySize),
+		0)
+	if !errors.Is(err, windows.Errno(0)) {
+		return fmt.Errorf("NCryptSetProperty(UI Policy) returned %w", err)
+	}
+	if r != 0 {
+		return fmt.Errorf("NCryptSetProperty(UI Policy) returned %v", errNoToStr(uint32(r)))
+	}
+
+	return nil
 }
 
 func hashPasswordUTF16(s string) ([]byte, error) {
