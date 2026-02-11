@@ -167,7 +167,7 @@ func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) err
 	return k.backend.StoreCertificateChain(req)
 }
 
-func (k *KMS) DeleteCertificater(req *apiv1.DeleteCertificateRequest) error {
+func (k *KMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	name, err := k.transform(req.Name)
 	if err != nil {
 		return err
