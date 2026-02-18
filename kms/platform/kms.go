@@ -68,12 +68,22 @@ var _ apiv1.CertificateManager = (*KMS)(nil)
 var _ apiv1.CertificateChainManager = (*KMS)(nil)
 
 type KMS struct {
-	backend      extendedKeyManager
-	transformURI func(*kmsURI) string
+	typ              apiv1.Type
+	backend          extendedKeyManager
+	transformToURI   func(*kmsURI) string
+	transformFromURI func(string) (string, error)
 }
 
 func New(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	return newKMS(ctx, opts)
+}
+
+func (k *KMS) Type() apiv1.Type {
+	return k.typ
+}
+
+func (k *KMS) Close() error {
+	return k.backend.Close()
 }
 
 func (k *KMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
@@ -94,10 +104,19 @@ func (k *KMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, 
 
 	req = clone(req)
 	req.Name = name
-	return k.backend.CreateKey(req)
+	resp, err := k.backend.CreateKey(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return k.patchCreateKeyResponse(resp)
 }
 
 func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
+	if req.Signer != nil {
+		return req.Signer, nil
+	}
+
 	signingKey, err := k.transform(req.SigningKey)
 	if err != nil {
 		return nil, err
@@ -106,10 +125,6 @@ func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error
 	req = clone(req)
 	req.SigningKey = signingKey
 	return k.backend.CreateSigner(req)
-}
-
-func (k *KMS) Close() error {
-	return k.backend.Close()
 }
 
 func (k *KMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
@@ -187,7 +202,12 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 
 		req = clone(req)
 		req.Query = query
-		return km.SearchKeys(req)
+		resp, err := km.SearchKeys(req)
+		if err != nil {
+			return nil, err
+		}
+
+		return k.patchSearchKeysResponse(resp)
 	}
 
 	return nil, apiv1.NotImplementedError{}
@@ -199,7 +219,37 @@ func (k *KMS) transform(rawuri string) (string, error) {
 		return "", err
 	}
 
-	return k.transformURI(u), nil
+	return k.transformToURI(u), nil
+}
+
+func (k *KMS) patchCreateKeyResponse(resp *apiv1.CreateKeyResponse) (*apiv1.CreateKeyResponse, error) {
+	name, err := k.transformFromURI(resp.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Name = name
+	if resp.CreateSignerRequest.SigningKey != "" {
+		resp.CreateSignerRequest.SigningKey = name
+	}
+
+	return resp, nil
+}
+
+func (k *KMS) patchSearchKeysResponse(resp *apiv1.SearchKeysResponse) (*apiv1.SearchKeysResponse, error) {
+	for i := range resp.Results {
+		name, err := k.transformFromURI(resp.Results[i].Name)
+		if err != nil {
+			return nil, err
+		}
+
+		resp.Results[i].Name = name
+		if resp.Results[i].CreateSignerRequest.SigningKey != "" {
+			resp.Results[i].CreateSignerRequest.SigningKey = name
+		}
+	}
+
+	return resp, nil
 }
 
 func clone[T any](v *T) *T {

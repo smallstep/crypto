@@ -43,8 +43,10 @@ func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}
 
 	return &KMS{
-		backend:      km,
-		transformURI: transformToCapiKMS,
+		typ:              apiv1.CAPIKMS,
+		backend:          km,
+		transformToURI:   transformToCapiKMS,
+		transformFromURI: transformFromCapiKMS,
 	}, nil
 }
 
@@ -58,4 +60,23 @@ func transformToCapiKMS(u *kmsURI) string {
 	maps.Copy(uv, u.extraValues)
 
 	return uri.New(capi.Scheme, uv).String()
+}
+
+func transformFromCapiKMS(rawuri string) (string, error) {
+	u, err := uri.ParseWithScheme(capi.Scheme, rawuri)
+	if err != nil {
+		return "", err
+	}
+
+	uv := url.Values{
+		"name": []string{u.Get("key")},
+	}
+
+	for k, v := range u.Values {
+		if k != "name" {
+			uv[k] = v
+		}
+	}
+
+	return uri.New(Scheme, uv).String(), nil
 }

@@ -30,8 +30,10 @@ func newTPMKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}
 
 	return &KMS{
-		backend:      km,
-		transformURI: transformToTPMKMS,
+		typ:              apiv1.TPMKMS,
+		backend:          km,
+		transformToURI:   transformToTPMKMS,
+		transformFromURI: transformFromTPMKMS,
 	}, nil
 }
 
@@ -42,8 +44,8 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...tpmkms.Option) (*KMS, e
 	}
 
 	return &KMS{
-		backend:      km,
-		transformURI: transformToTPMKMS,
+		backend:        km,
+		transformToURI: transformToTPMKMS,
 	}, nil
 }
 
@@ -68,4 +70,26 @@ func transformToTPMKMS(u *kmsURI) string {
 	maps.Copy(uv, u.extraValues)
 
 	return uri.New(tpmkms.Scheme, uv).String()
+}
+
+func transformFromTPMKMS(rawuri string) (string, error) {
+	u, err := uri.ParseWithScheme(tpmkms.Scheme, rawuri)
+	if err != nil {
+		return "", err
+	}
+
+	uv := url.Values{
+		"name": []string{u.Get("name")},
+	}
+	if u.GetBool("ak") {
+		uv.Set("hw", "true")
+	}
+
+	for k, v := range u.Values {
+		if k != "name" && k != "ak" {
+			uv[k] = v
+		}
+	}
+
+	return uri.New(Scheme, uv).String(), nil
 }

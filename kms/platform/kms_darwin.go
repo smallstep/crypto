@@ -43,8 +43,10 @@ func newMacKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}
 
 	return &KMS{
-		backend:      km,
-		transformURI: transformToMacKMS,
+		typ:              apiv1.MacKMS,
+		backend:          km,
+		transformToURI:   transformToMacKMS,
+		transformFromURI: transformFromMacKMS,
 	}, nil
 }
 
@@ -62,4 +64,26 @@ func transformToMacKMS(u *kmsURI) string {
 	maps.Copy(uv, u.extraValues)
 
 	return uri.New(mackms.Scheme, uv).String()
+}
+
+func transformFromMacKMS(rawuri string) (string, error) {
+	u, err := uri.ParseWithScheme(mackms.Scheme, rawuri)
+	if err != nil {
+		return "", err
+	}
+
+	uv := url.Values{
+		"name": []string{u.Get("label")},
+	}
+	if u.GetBool("se") {
+		uv.Set("hw", "true")
+	}
+
+	for k, v := range u.Values {
+		if k != "label" && k != "se" {
+			uv[k] = v
+		}
+	}
+
+	return uri.New(Scheme, uv).String(), nil
 }

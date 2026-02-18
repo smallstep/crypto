@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -20,8 +21,10 @@ func newSoftKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}
 
 	return &KMS{
-		backend:      &softKMS{SoftKMS: km},
-		transformURI: transformToSoftKMS,
+		typ:              apiv1.SoftKMS,
+		backend:          &softKMS{SoftKMS: km},
+		transformToURI:   transformToSoftKMS,
+		transformFromURI: transformFromSoftKMS,
 	}, nil
 }
 
@@ -57,7 +60,7 @@ func (k *softKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	case req.Certificate == nil:
 		return fmt.Errorf("storeCertificateRequest 'certificate' cannot be empty")
 	}
-
+	fmt.Println(filename(req.Name))
 	return os.WriteFile(filename(req.Name), pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: req.Certificate.Raw,
@@ -94,7 +97,7 @@ func (k *softKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 }
 
 func filename(s string) string {
-	if u, err := uri.ParseWithScheme(Scheme, s); err == nil {
+	if u, err := uri.ParseWithScheme(softkms.Scheme, s); err == nil {
 		if f := u.Get("path"); f != "" {
 			return f
 		}
@@ -109,5 +112,14 @@ func filename(s string) string {
 }
 
 func transformToSoftKMS(u *kmsURI) string {
-	return uri.NewOpaque(softkms.Scheme, u.name).String()
+	if u.name != "" {
+		return uri.NewOpaque(softkms.Scheme, u.name).String()
+	}
+	return uri.NewOpaque(softkms.Scheme, u.uri.Path).String()
+}
+
+func transformFromSoftKMS(rawuri string) (string, error) {
+	return uri.New(Scheme, url.Values{
+		"name": []string{rawuri},
+	}).String(), nil
 }
