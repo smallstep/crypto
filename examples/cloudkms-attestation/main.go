@@ -12,6 +12,7 @@ import (
 )
 
 func usage() {
+	//nolint:gosec // os.Args[0] is the program name, not user-controlled HTML content
 	fmt.Fprintf(flag.CommandLine.Output(), "%s [options] <resource>\n", os.Args[0])
 	flag.PrintDefaults()
 }

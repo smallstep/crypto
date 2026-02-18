@@ -60,6 +60,7 @@ func withTerminal(f func(in, out *os.File) error) error {
 		return f(tty, tty)
 	}
 
+	//nolint:gosec // Fd() returns uintptr, conversion to int is safe for file descriptors
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		return f(os.Stdin, os.Stdin)
 	}
@@ -73,6 +74,7 @@ func ReadPassword(prompt string) (s []byte, err error) {
 	err = withTerminal(func(in, out *os.File) error {
 		fmt.Fprintf(out, "%s ", prompt)
 		defer clearLine(out)
+		//nolint:gosec // Fd() returns uintptr, conversion to int is safe for file descriptors
 		s, err = term.ReadPassword(int(in.Fd()))
 		return err
 	})

@@ -35,7 +35,9 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"slices"
 	"strings"
+	"time"
 
 	cf "go.step.sm/crypto/internal/darwin/corefoundation"
 	"go.step.sm/crypto/internal/darwin/security"
@@ -374,9 +376,11 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	}, nil
 }
 
-// LoadCertificate returns an x509.Certificate by its label and/or serial
-// number. By default Apple Keychain will use the certificate common name as the
-// label.
+// LoadCertificate returns an [x509.Certificate] by its label and/or serial
+// number. If multiple certificates match, it will return the certificate with
+// the most recent NotBefore date among those that have already become valid.
+// Future certificates maintain their original order. Expiration is not checked.
+// By default Apple Keychain will use the certificate common name as the label.
 //
 // Valid names (URIs) are:
 //   - mackms:label=test@example.com
@@ -460,9 +464,12 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
-// LoadCertificateChain returns the leaf certificate by label and/or serial
-// number and its intermediate certificates. By default Apple Keychain will use
-// the certificate common name as the label.
+// LoadCertificateChain returns the leaf [x509.Certificate] by its label and/or
+// serial number and its intermediate certificates. If multiple certificates
+// match, it will return the certificate with the most recent NotBefore date
+// among those that have already become valid. Future certificates maintain
+// their original order. Expiration is not checked. By default Apple Keychain
+// will use the certificate common name as the label.
 //
 // Valid names (URIs) are:
 //   - mackms:label=test@example.com
@@ -1014,7 +1021,7 @@ func isSelfSigned(cert *x509.Certificate) bool {
 func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate, error) {
 	query := cf.Dictionary{
 		security.KSecClass:      security.KSecClassCertificate,
-		security.KSecMatchLimit: security.KSecMatchLimitOne,
+		security.KSecMatchLimit: security.KSecMatchLimitAll,
 		security.KSecReturnRef:  cf.True,
 	}
 	if u.label != "" {
@@ -1061,18 +1068,57 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 	}
 	defer ref.Release()
 
-	data, err := security.SecCertificateCopyData(security.NewSecCertificateRef(ref))
-	if err != nil {
-		return nil, err
-	}
-	defer data.Release()
-
-	cert, err := x509.ParseCertificate(data.Bytes())
-	if err != nil {
-		return nil, err
+	array := cf.NewArrayRef(ref)
+	if array.Len() == 0 {
+		return nil, apiv1.NotFoundError{
+			Message: "certificate not found",
+		}
 	}
 
-	return cert, nil
+	certs := make([]*x509.Certificate, array.Len())
+	for i := 0; i < array.Len(); i++ {
+		item := array.Get(i)
+		certRef := security.NewSecCertificateRef(item)
+		data, err := security.SecCertificateCopyData(certRef)
+		if err != nil {
+			return nil, err
+		}
+
+		certs[i], err = x509.ParseCertificate(data.Bytes())
+		data.Release()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(certs) == 1 {
+		return certs[0], nil
+	}
+
+	now := time.Now().Truncate(time.Second)
+	// Sort certificates by start date (NotBefore) in descending order, but only
+	// compare certificates that have already started (now > NotBefore). Future
+	// certificates maintain their original relative order. Expiration is
+	// intentionally not checked.
+	slices.SortFunc(certs, func(a, b *x509.Certificate) int {
+		aValid := now.After(a.NotBefore) || now.Equal(a.NotBefore)
+		bValid := now.After(b.NotBefore) || now.Equal(b.NotBefore)
+
+		// Prioritize started certificates over future ones. If both have
+		// started, sort by NotBefore descending. If both are future-dated,
+		// maintain original order.
+		switch {
+		case aValid && !bValid:
+			return -1
+		case bValid && !aValid:
+			return 1
+		case aValid && bValid:
+			return b.NotBefore.Compare(a.NotBefore)
+		default:
+			return 0
+		}
+	})
+
+	return certs[0], nil
 }
 
 func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
