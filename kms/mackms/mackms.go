@@ -36,6 +36,7 @@ import (
 	"math/big"
 	"net/url"
 	"strings"
+	"time"
 
 	cf "go.step.sm/crypto/internal/darwin/corefoundation"
 	"go.step.sm/crypto/internal/darwin/security"
@@ -347,6 +348,11 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 
 // CreateSigner returns a new [crypto.Signer] from the given URI in the request
 // signing key.
+//
+// If the URI contains only a label (no hash), CreateSigner will automatically
+// find the most recently issued certificate with that label and use its public
+// key hash to load the corresponding private key. This ensures the certificate
+// and key always match, even when multiple certificates share the same label.
 func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error) {
 	if req.SigningKey == "" {
 		return nil, fmt.Errorf("createSignerRequest 'signingKey' cannot be empty")
@@ -355,6 +361,29 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	u, err := parseURI(req.SigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
+	}
+
+	// If no hash is provided, derive it from the most recent certificate
+	// with the same label. This ensures we load the matching private key
+	// when multiple certificates exist with the same label.
+	if len(u.hash) == 0 && u.label != "" {
+		certURI := &certAttributes{
+			label:                     u.label,
+			useDataProtectionKeychain: u.useSecureEnclave,
+		}
+		certs, err := loadAllCertificates(certURI, nil)
+		if err == nil && len(certs) > 0 {
+			cert := selectMostRecentCertificate(certs)
+			if cert != nil {
+				hash, err := createHash(cert.PublicKey)
+				if err == nil {
+					u.hash = hash
+				}
+			}
+		}
+		// If we couldn't load a certificate or derive the hash, continue
+		// without it and let getPrivateKey return the first matching key.
+		// This maintains backward compatibility.
 	}
 
 	key, err := getPrivateKey(u)
@@ -464,6 +493,10 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 // number and its intermediate certificates. By default Apple Keychain will use
 // the certificate common name as the label.
 //
+// If multiple certificates with the same label exist, this method will select
+// the most recently issued certificate, preferring valid certificates over
+// expired ones.
+//
 // Valid names (URIs) are:
 //   - mackms:label=test@example.com
 //   - mackms:serial=2c273934eda8454d2595a94497e2395a
@@ -479,9 +512,16 @@ func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", err)
 	}
 
-	cert, err := loadCertificate(u, nil)
+	// Load all matching certificates to handle potential duplicates
+	certs, err := loadAllCertificates(u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", apiv1Error(err))
+	}
+
+	// Select the most appropriate certificate (most recently issued, preferring valid over expired)
+	cert := selectMostRecentCertificate(certs)
+	if cert == nil {
+		return nil, fmt.Errorf("mackms LoadCertificateChain failed: no certificate found")
 	}
 
 	chain := []*x509.Certificate{cert}
@@ -1009,6 +1049,123 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	}
 
 	return false
+}
+
+// loadAllCertificates returns all certificates matching the given attributes.
+// This is used to handle cases where multiple certificates share the same label.
+func loadAllCertificates(u *certAttributes, subjectKeyID []byte) ([]*x509.Certificate, error) {
+	query := cf.Dictionary{
+		security.KSecClass:      security.KSecClassCertificate,
+		security.KSecMatchLimit: security.KSecMatchLimitAll,
+		security.KSecReturnRef:  cf.True,
+	}
+	if u.label != "" {
+		cfLabel, err := cf.NewString(u.label)
+		if err != nil {
+			return nil, err
+		}
+		defer cfLabel.Release()
+		query[security.KSecAttrLabel] = cfLabel
+	}
+	if u.serialNumber != nil {
+		cfSerial, err := cf.NewData(encodeSerialNumber(u.serialNumber))
+		if err != nil {
+			return nil, err
+		}
+		defer cfSerial.Release()
+		query[security.KSecAttrSerialNumber] = cfSerial
+	}
+	if subjectKeyID != nil {
+		cfSubjectKeyID, err := cf.NewData(subjectKeyID)
+		if err != nil {
+			return nil, err
+		}
+		defer cfSubjectKeyID.Release()
+		query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
+	}
+	if u.useDataProtectionKeychain {
+		query[security.KSecUseDataProtectionKeychain] = cf.True
+	} else {
+		query[security.KSecUseDataProtectionKeychain] = cf.False
+	}
+
+	cfQuery, err := cf.NewDictionary(query)
+	if err != nil {
+		return nil, err
+	}
+	defer cfQuery.Release()
+
+	var result cf.TypeRef
+	err = security.SecItemCopyMatching(cfQuery, &result)
+	if err != nil {
+		if errors.Is(err, security.ErrNotFound) {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	// KSecMatchLimitAll returns an array
+	array := cf.NewArrayRef(result)
+	defer array.Release()
+
+	certs := make([]*x509.Certificate, 0, array.Len())
+	for i := 0; i < array.Len(); i++ {
+		ref := array.Get(i)
+		data, err := security.SecCertificateCopyData(security.NewSecCertificateRef(ref))
+		if err != nil {
+			continue // Skip certificates that can't be read
+		}
+
+		cert, err := x509.ParseCertificate(data.Bytes())
+		data.Release()
+		if err != nil {
+			continue // Skip certificates that can't be parsed
+		}
+		certs = append(certs, cert)
+	}
+
+	if len(certs) == 0 {
+		return nil, security.ErrNotFound
+	}
+
+	return certs, nil
+}
+
+// selectMostRecentCertificate selects the most appropriate certificate from a list.
+// It prefers valid certificates over expired ones, and among certificates with the same
+// validity status, it selects the most recently issued one based on NotBefore date.
+func selectMostRecentCertificate(certs []*x509.Certificate) *x509.Certificate {
+	if len(certs) == 0 {
+		return nil
+	}
+	if len(certs) == 1 {
+		return certs[0]
+	}
+
+	now := time.Now()
+	bestCert := certs[0]
+	isBestValid := now.Before(bestCert.NotAfter)
+
+	for _, cert := range certs[1:] {
+		isCertValid := now.Before(cert.NotAfter)
+
+		// Prefer valid certificates over expired ones
+		if !isBestValid && isCertValid {
+			bestCert = cert
+			isBestValid = true
+			continue
+		}
+		if isBestValid && !isCertValid {
+			continue
+		}
+
+		// Both have same validity status - choose most recently issued
+		if cert.NotBefore.After(bestCert.NotBefore) {
+			bestCert = cert
+		}
+	}
+
+	return bestCert
 }
 
 func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate, error) {
