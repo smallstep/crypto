@@ -5,6 +5,7 @@ package azurekms
 import (
 	"context"
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -128,16 +129,20 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 	}
 
 	var curve elliptic.Curve
+	var ecdhCurve ecdh.Curve
 	var curveSize int
 	switch *crv {
 	case azkeys.CurveNameP256:
 		curve = elliptic.P256()
+		ecdhCurve = ecdh.P256()
 		curveSize = 32
 	case azkeys.CurveNameP384:
 		curve = elliptic.P384()
+		ecdhCurve = ecdh.P384()
 		curveSize = 48
 	case azkeys.CurveNameP521:
 		curve = elliptic.P521()
+		ecdhCurve = ecdh.P521()
 		curveSize = 66 // (521/8 + 1)
 	case azkeys.CurveNameP256K:
 		return nil, fmt.Errorf(`invalid EC key: crv %q is not supported`, *crv)
@@ -149,14 +154,22 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 		return nil, errors.New("invalid EC key: x or y length is not valid")
 	}
 
+	// Validate the point is on the curve using crypto/ecdh
+	// The uncompressed format is 0x04 || x || y
+	uncompressed := make([]byte, 1+len(x)+len(y))
+	uncompressed[0] = 0x04
+	copy(uncompressed[1:], x)
+	copy(uncompressed[1+len(x):], y)
+
+	// NewPublicKey validates that the point is on the curve
+	if _, err := ecdhCurve.NewPublicKey(uncompressed); err != nil {
+		return nil, errors.New("invalid EC key: point (x, y) does not lie on the curve")
+	}
+
 	key := &ecdsa.PublicKey{
 		Curve: curve,
 		X:     new(big.Int).SetBytes(x),
 		Y:     new(big.Int).SetBytes(y),
-	}
-
-	if !curve.IsOnCurve(key.X, key.Y) {
-		return nil, errors.New("invalid EC key: point (x, y) does not lie on the curve")
 	}
 
 	return key, nil

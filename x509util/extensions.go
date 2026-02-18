@@ -695,7 +695,9 @@ func (k KeyUsage) Extension() (Extension, error) {
 	}
 
 	var b [2]byte
+	//nolint:gosec // KeyUsage is an int representing bit flags, conversion to byte is intentional
 	b[0] = reverseBitsInAByte(byte(k))
+	//nolint:gosec // KeyUsage is an int representing bit flags, conversion to byte is intentional
 	b[1] = reverseBitsInAByte(byte(k >> 8))
 
 	l := 1

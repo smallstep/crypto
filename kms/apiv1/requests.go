@@ -204,7 +204,7 @@ type CreateSignerRequest struct {
 	TokenLabel       string
 	PublicKey        string
 	PublicKeyPEM     []byte
-	Password         []byte
+	Password         []byte //nolint:gosec // Password field for KMS authentication
 	PasswordPrompter PasswordPrompter
 }
 
@@ -213,7 +213,7 @@ type CreateDecrypterRequest struct {
 	Decrypter        crypto.Decrypter
 	DecryptionKey    string
 	DecryptionKeyPEM []byte
-	Password         []byte
+	Password         []byte //nolint:gosec // Password field for KMS authentication
 	PasswordPrompter PasswordPrompter
 }
 

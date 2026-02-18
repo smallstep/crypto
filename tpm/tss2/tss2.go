@@ -30,11 +30,11 @@ type TPMKey struct {
 	Type       asn1.ObjectIdentifier
 	EmptyAuth  bool            `asn1:"optional,explicit,tag:0"`
 	Policy     []TPMPolicy     `asn1:"optional,explicit,tag:1"`
-	Secret     []byte          `asn1:"optional,explicit,tag:2"`
+	Secret     []byte          `asn1:"optional,explicit,tag:2"` //nolint:gosec // Secret field for TPM key structure
 	AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
 	Parent     int
 	PublicKey  []byte
-	PrivateKey []byte
+	PrivateKey []byte //nolint:gosec // PrivateKey field for TPM key structure
 }
 
 // TPMPolicy is defined in https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html#section-4.1:
