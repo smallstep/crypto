@@ -1103,8 +1103,8 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 		aValid := now.After(a.NotBefore) || now.Equal(a.NotBefore)
 		bValid := now.After(b.NotBefore) || now.Equal(b.NotBefore)
 
-		// Prioritize valid certificates over future ones. If both are valid or
-		// both, sort by NotBefore descending. If both are future-dated,
+		// Prioritize started certificates over future ones. If both have
+		// started, sort by NotBefore descending. If both are future-dated,
 		// maintain original order.
 		switch {
 		case aValid && !bValid:
