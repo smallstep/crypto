@@ -36,6 +36,7 @@ import (
 	"math/big"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -860,6 +861,95 @@ func TestMacKMS_LoadCertificate(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestMacKMS_LoadCertificate_sort(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	now := time.Now().Truncate(time.Second)
+	cert1, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "1@example.com"},
+		EmailAddresses: []string{testName + "1@example.com"},
+		PublicKey:      key.Public(),
+		NotBefore:      now.Add(-time.Second),
+	})
+	require.NoError(t, err)
+
+	cert2, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
+		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+		NotBefore:      now,
+	})
+	require.NoError(t, err)
+
+	cert3, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
+		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+		NotBefore:      now.Add(-2 * time.Second),
+	})
+	require.NoError(t, err)
+
+	cert4, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
+		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+		NotBefore:      now.Add(30 * time.Second),
+	})
+	require.NoError(t, err)
+
+	cert5, err := ca.Sign(&x509.Certificate{
+		Subject:        pkix.Name{CommonName: testName + "2@example.com"},
+		EmailAddresses: []string{testName + "2@example.com"},
+		PublicKey:      key.Public(),
+		NotBefore:      now.Add(-time.Second),
+	})
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-" + suffix
+	certURI := uri.New(Scheme, url.Values{
+		"label": []string{label},
+	}).String()
+
+	kms := &MacKMS{}
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: certURI, Certificate: cert1,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, label, cert1) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: certURI, Certificate: cert2,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, label, cert2) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: certURI, Certificate: cert3,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, label, cert3) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: certURI, Certificate: cert4,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, label, cert4) })
+
+	require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name: certURI, Certificate: cert5,
+	}))
+	t.Cleanup(func() { deleteCertificate(t, label, cert5) })
+
+	cert, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: certURI,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, cert2, cert)
 }
 
 func TestMacKMS_StoreCertificate(t *testing.T) {
