@@ -163,7 +163,7 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 
 	// NewPublicKey validates that the point is on the curve
 	if _, err := ecdhCurve.NewPublicKey(uncompressed); err != nil {
-		return nil, errors.New("invalid EC key: point (x, y) does not lie on the curve")
+		return nil, fmt.Errorf("invalid EC key: %w", err)
 	}
 
 	key := &ecdsa.PublicKey{
