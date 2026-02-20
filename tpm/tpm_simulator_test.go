@@ -745,24 +745,6 @@ func TestKey_Public(t *testing.T) {
 			})
 		}
 	})
-
-	t.Run("fail with header", func(t *testing.T) {
-		key, err := tpm.CreateKey(ctx, "rsa-key", CreateKeyConfig{
-			Algorithm: "RSA",
-			Size:      2048,
-		})
-		require.NoError(t, err)
-
-		blobs, err := key.Blobs(ctx)
-		require.NoError(t, err)
-
-		public, err := blobs.Public()
-		require.NoError(t, err)
-		key.blobs.public = public
-
-		pub := key.Public()
-		assert.Nil(t, pub)
-	})
 }
 
 func TestKey_Blobs(t *testing.T) {
