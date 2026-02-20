@@ -33,12 +33,17 @@ type softKMS struct {
 }
 
 func (k *softKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
+	name := filename(req.Name)
+	if name == "" {
+		return nil, fmt.Errorf("createKeyRequest 'name' cannot be empty")
+	}
+
 	resp, err := k.SoftKMS.CreateKey(req)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := pemutil.Serialize(resp.PrivateKey, pemutil.ToFile(resp.Name, 0o600)); err != nil {
+	if _, err := pemutil.Serialize(resp.PrivateKey, pemutil.ToFile(name, 0o600)); err != nil {
 		return nil, err
 	}
 
@@ -46,30 +51,33 @@ func (k *softKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 }
 
 func (k *softKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
-	if req.Name == "" {
+	name := filename(req.Name)
+	if name == "" {
 		return fmt.Errorf("deleteKeyRequest 'name' cannot be empty")
 	}
 
-	return os.Remove(filename(req.Name))
+	return os.Remove(name)
 }
 
 func (k *softKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
+	name := filename(req.Name)
 	switch {
-	case req.Name == "":
+	case name == "":
 		return fmt.Errorf("storeCertificateRequest 'name' cannot be empty")
 	case req.Certificate == nil:
 		return fmt.Errorf("storeCertificateRequest 'certificate' cannot be empty")
 	}
-	fmt.Println(filename(req.Name))
-	return os.WriteFile(filename(req.Name), pem.EncodeToMemory(&pem.Block{
+
+	return os.WriteFile(name, pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: req.Certificate.Raw,
 	}), 0o600)
 }
 
 func (k *softKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
+	name := filename(req.Name)
 	switch {
-	case req.Name == "":
+	case name == "":
 		return fmt.Errorf("storeCertificateChainRequest 'name' cannot be empty")
 	case len(req.CertificateChain) == 0:
 		return fmt.Errorf("storeCertificateChainRequest 'certificateChain' cannot be empty")
@@ -85,15 +93,16 @@ func (k *softKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest)
 		}
 	}
 
-	return os.WriteFile(filename(req.Name), buf.Bytes(), 0o600)
+	return os.WriteFile(name, buf.Bytes(), 0o600)
 }
 
 func (k *softKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
-	if req.Name == "" {
+	name := filename(req.Name)
+	if name == "" {
 		return fmt.Errorf("deleteCertificateRequest 'name' cannot be empty")
 	}
 
-	return os.Remove(filename(req.Name))
+	return os.Remove(name)
 }
 
 func filename(s string) string {

@@ -58,6 +58,8 @@ func transformToMacKMS(u *kmsURI) string {
 	if u.hw {
 		uv.Set("se", "true")
 		uv.Set("keychain", "dataProtection")
+	} else if u.uri.Has("hw") {
+		uv.Set("se", "false")
 	}
 
 	// Add custom extra values that might be mackms specific.

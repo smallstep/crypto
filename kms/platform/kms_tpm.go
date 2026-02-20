@@ -44,8 +44,10 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...tpmkms.Option) (*KMS, e
 	}
 
 	return &KMS{
-		backend:        km,
-		transformToURI: transformToTPMKMS,
+		typ:              apiv1.TPMKMS,
+		backend:          km,
+		transformToURI:   transformToTPMKMS,
+		transformFromURI: transformFromTPMKMS,
 	}, nil
 }
 
@@ -64,6 +66,8 @@ func transformToTPMKMS(u *kmsURI) string {
 	}
 	if u.hw {
 		uv.Set("ak", "true")
+	} else if u.uri.Has("hw") {
+		uv.Set("ak", "false")
 	}
 
 	// Add custom extra values that might be tpmkms specific.
