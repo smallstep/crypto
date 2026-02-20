@@ -63,6 +63,28 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 	return k.attestedBy == ak.name
 }
 
+// Public returns the Key public key. This is backed
+// by a call to the TPM, so it can fail. If it fails,
+// nil is returned.
+func (k *Key) Public() crypto.PublicKey {
+	var (
+		err error
+		ctx = context.Background()
+	)
+	if err = k.tpm.open(ctx); err != nil {
+		return nil
+	}
+	defer closeTPM(context.Background(), k.tpm, &err)
+
+	key, err := k.tpm.attestTPM.LoadKey(k.data)
+	if err != nil {
+		return nil
+	}
+	defer key.Close()
+
+	return key.Public()
+}
+
 // Certificate returns the certificate for the Key, if set.
 // Will return nil in case no AK certificate is available.
 func (k *Key) Certificate() *x509.Certificate {
