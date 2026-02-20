@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -691,6 +693,76 @@ func TestKey_CertificationParameters(t *testing.T) {
 	}
 	err = params.Verify(opts)
 	require.NoError(t, err)
+}
+
+func TestKey_Public(t *testing.T) {
+	ctx := t.Context()
+	tpm := newSimulatedTPM(t)
+
+	t.Run("RSA", func(t *testing.T) {
+		for _, size := range []int{1024, 2048} {
+			sizeStr := strconv.Itoa(size)
+			t.Run(sizeStr, func(t *testing.T) {
+				key, err := tpm.CreateKey(ctx, "rsa-key-"+sizeStr, CreateKeyConfig{
+					Algorithm: "RSA",
+					Size:      size,
+				})
+				require.NoError(t, err)
+
+				signer, err := key.Signer(ctx)
+				require.NoError(t, err)
+
+				pub := key.Public()
+				assert.Equal(t, signer.Public(), pub)
+				if assert.IsType(t, &rsa.PublicKey{}, pub) {
+					assert.Equal(t, size/8, pub.(*rsa.PublicKey).Size())
+				}
+			})
+		}
+	})
+
+	t.Run("ECDSA", func(t *testing.T) {
+		for _, crv := range []elliptic.Curve{
+			elliptic.P256(), elliptic.P384(), elliptic.P521(),
+		} {
+			size := crv.Params().BitSize
+			sizeStr := strconv.Itoa(size)
+			t.Run("P-"+sizeStr, func(t *testing.T) {
+				key, err := tpm.CreateKey(ctx, "ecdsa-key-"+sizeStr, CreateKeyConfig{
+					Algorithm: "ECDSA",
+					Size:      size,
+				})
+				require.NoError(t, err)
+
+				signer, err := key.Signer(ctx)
+				require.NoError(t, err)
+
+				pub := key.Public()
+				assert.Equal(t, signer.Public(), pub)
+				if assert.IsType(t, &ecdsa.PublicKey{}, pub) {
+					assert.Equal(t, crv, pub.(*ecdsa.PublicKey).Curve)
+				}
+			})
+		}
+	})
+
+	t.Run("fail with header", func(t *testing.T) {
+		key, err := tpm.CreateKey(ctx, "rsa-key", CreateKeyConfig{
+			Algorithm: "RSA",
+			Size:      2048,
+		})
+		require.NoError(t, err)
+
+		blobs, err := key.Blobs(ctx)
+		require.NoError(t, err)
+
+		public, err := blobs.Public()
+		require.NoError(t, err)
+		key.blobs.public = public
+
+		pub := key.Public()
+		assert.Nil(t, pub)
+	})
 }
 
 func TestKey_Blobs(t *testing.T) {
