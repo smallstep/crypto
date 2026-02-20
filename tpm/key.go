@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/smallstep/go-attestation/attest"
 
 	internalkey "go.step.sm/crypto/tpm/internal/key"
@@ -68,19 +67,22 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 // by a call to the TPM, so it can fail. If it fails,
 // nil is returned.
 func (k *Key) Public() crypto.PublicKey {
-	blobs, err := k.Blobs(context.Background())
+	var (
+		err error
+		ctx = context.Background()
+	)
+	if err = k.tpm.open(ctx); err != nil {
+		return nil
+	}
+	defer closeTPM(context.Background(), k.tpm, &err)
+
+	key, err := k.tpm.attestTPM.LoadKey(k.data)
 	if err != nil {
 		return nil
 	}
-	pub, err := tpm2.DecodePublic(blobs.public)
-	if err != nil {
-		return nil
-	}
-	publicKey, err := pub.Key()
-	if err != nil {
-		return nil
-	}
-	return publicKey
+	defer key.Close()
+
+	return key.Public()
 }
 
 // Certificate returns the certificate for the Key, if set.

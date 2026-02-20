@@ -8,9 +8,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +23,30 @@ import (
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
 )
+
+var (
+	platformKeyName     string
+	platformCertName    string
+	platformMissingName string
+)
+
+func TestMain(m *testing.M) {
+	suffix, err := randutil.Alphanumeric(8)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	platformKeyName = "kms:name=test-" + suffix
+	platformCertName = "kms:name=test-" + suffix
+	platformMissingName = "kms:name=test-missing-" + suffix
+
+	if runtime.GOOS == "darwin" {
+		platformKeyName += ";tag=com.smallstep.test." + suffix
+	}
+
+	os.Exit(m.Run())
+}
 
 func shouldSkipNow(t *testing.T, km *KMS) {
 	t.Helper()
@@ -110,6 +136,11 @@ func mustCertificateWithKey(t *testing.T, key crypto.PublicKey) []*x509.Certific
 	ca, err := minica.New()
 	require.NoError(t, err)
 
+	// skipped platform
+	if key == nil {
+		return []*x509.Certificate{ca.Intermediate}
+	}
+
 	cert, err := ca.Sign(&x509.Certificate{
 		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -117,6 +148,107 @@ func mustCertificateWithKey(t *testing.T, key crypto.PublicKey) []*x509.Certific
 		DNSNames:    []string{"example.com"},
 	})
 	require.NoError(t, err)
+
+	return []*x509.Certificate{
+		cert, ca.Intermediate,
+	}
+}
+
+func mustSuffix(t *testing.T) string {
+	t.Helper()
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	return suffix
+}
+
+type createOptions struct {
+	name      string
+	noCleanup bool
+}
+
+type createFuncOption func(*createOptions)
+
+func withName(s string) createFuncOption {
+	return func(co *createOptions) {
+		co.name = s
+	}
+}
+
+func withNoCleanup() createFuncOption {
+	return func(co *createOptions) {
+		co.noCleanup = true
+	}
+}
+
+func mustCreatePlatformKey(t *testing.T, km *KMS, opts ...createFuncOption) *apiv1.CreateKeyResponse {
+	t.Helper()
+
+	o := new(createOptions)
+	o.name = platformKeyName
+	for _, fn := range opts {
+		fn(o)
+	}
+
+	if km.SkipTests() {
+		return &apiv1.CreateKeyResponse{}
+	}
+
+	resp, err := km.CreateKey(&apiv1.CreateKeyRequest{
+		Name: o.name,
+	})
+	require.NoError(t, err)
+
+	if !o.noCleanup {
+		t.Cleanup(func() {
+			assert.NoError(t, km.DeleteKey(&apiv1.DeleteKeyRequest{
+				Name: resp.Name,
+			}))
+		})
+	}
+
+	return resp
+}
+
+func mustCreatePlatformCertificate(t *testing.T, km *KMS, opts ...createFuncOption) []*x509.Certificate {
+	t.Helper()
+
+	o := new(createOptions)
+	o.name = platformCertName
+	for _, fn := range opts {
+		fn(o)
+	}
+
+	ca, err := minica.New()
+	require.NoError(t, err)
+
+	if km.SkipTests() {
+		return []*x509.Certificate{
+			ca.Intermediate,
+		}
+	}
+
+	key := mustCreatePlatformKey(t, km, opts...)
+	cert, err := ca.Sign(&x509.Certificate{
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		PublicKey:   key.PublicKey,
+		DNSNames:    []string{"example.com"},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, km.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{
+		Name: o.name,
+		CertificateChain: []*x509.Certificate{
+			cert, ca.Intermediate,
+		},
+	}))
+	if !o.noCleanup {
+		t.Cleanup(func() {
+			assert.NoError(t, km.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+				Name: o.name,
+			}))
+		})
+	}
 
 	return []*x509.Certificate{
 		cert, ca.Intermediate,
@@ -142,6 +274,9 @@ func TestKMS_GetPublicKey(t *testing.T) {
 	signer := mustSigner(t, privateKeyPath)
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	platformKMS := mustPlatformKMS(t)
+	platformKey := mustCreatePlatformKey(t, platformKMS)
+
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
 	}
@@ -152,6 +287,18 @@ func TestKMS_GetPublicKey(t *testing.T) {
 		want      crypto.PublicKey
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.GetPublicKeyRequest{
+			Name: platformKey.Name,
+		}}, platformKey.PublicKey, assert.NoError},
+		{"fail platform missing", platformKMS, args{&apiv1.GetPublicKeyRequest{
+			Name: platformMissingName,
+		}}, nil, assert.Error},
+		{"fail platform name", platformKMS, args{&apiv1.GetPublicKeyRequest{
+			Name: "kms:something=test",
+		}}, nil, assert.Error},
+
+		// SoftKMS
 		{"ok SoftKMS", softKMS, args{&apiv1.GetPublicKeyRequest{
 			Name: "kms:name=" + privateKeyPath,
 		}}, signer.Public(), assert.NoError},
@@ -167,7 +314,7 @@ func TestKMS_GetPublicKey(t *testing.T) {
 		{"fail SoftKMS missing", softKMS, args{&apiv1.GetPublicKeyRequest{
 			Name: "kms:" + filepath.Join(dir, "notfound.key"),
 		}}, nil, assert.Error},
-		{"fail parseURI", softKMS, args{&apiv1.GetPublicKeyRequest{
+		{"fail transform", softKMS, args{&apiv1.GetPublicKeyRequest{
 			Name: "softkms:" + privateKeyPath,
 		}}, nil, assert.Error},
 	}
@@ -185,11 +332,10 @@ func TestKMS_GetPublicKey(t *testing.T) {
 func TestKMS_CreateKey(t *testing.T) {
 	dir := t.TempDir()
 	privateKeyPath := filepath.Join(dir, "private.key")
-	platformKMS := mustPlatformKMS(t)
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
-	suffix, err := randutil.Alphanumeric(8)
-	require.NoError(t, err)
+	suffix := mustSuffix(t)
+	platformKMS := mustPlatformKMS(t)
 
 	type args struct {
 		req *apiv1.CreateKeyRequest
@@ -201,7 +347,8 @@ func TestKMS_CreateKey(t *testing.T) {
 		equal     func(t *testing.T, got *apiv1.CreateKeyResponse)
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok default", platformKMS, args{&apiv1.CreateKeyRequest{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.CreateKeyRequest{
 			Name: "kms:name=test1-" + suffix,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			require.NotNil(t, got)
@@ -218,10 +365,9 @@ func TestKMS_CreateKey(t *testing.T) {
 				assert.Equal(t, elliptic.P256(), got.PublicKey.(*ecdsa.PublicKey).Curve)
 			}
 		}, assert.NoError},
-		{"ok rsa", platformKMS, args{&apiv1.CreateKeyRequest{
+		{"ok platform ECDSA", platformKMS, args{&apiv1.CreateKeyRequest{
 			Name:               "kms:name=test2-" + suffix,
-			SignatureAlgorithm: apiv1.SHA256WithRSA,
-			Bits:               2048,
+			SignatureAlgorithm: apiv1.ECDSAWithSHA384,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			require.NotNil(t, got)
 
@@ -233,10 +379,37 @@ func TestKMS_CreateKey(t *testing.T) {
 
 			assert.Regexp(t, "^kms:.*name=test2-.*$", got.Name)
 			assert.Equal(t, got.Name, got.CreateSignerRequest.SigningKey)
+			if assert.IsType(t, &ecdsa.PublicKey{}, got.PublicKey) {
+				assert.Equal(t, elliptic.P384(), got.PublicKey.(*ecdsa.PublicKey).Curve)
+			}
+		}, assert.NoError},
+		{"ok platform RSA", platformKMS, args{&apiv1.CreateKeyRequest{
+			Name:               "kms:name=test3-" + suffix,
+			SignatureAlgorithm: apiv1.SHA256WithRSA,
+			Bits:               2048,
+		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
+			require.NotNil(t, got)
+
+			t.Cleanup(func() {
+				assert.NoError(t, platformKMS.DeleteKey(&apiv1.DeleteKeyRequest{
+					Name: "kms:name=test3-" + suffix,
+				}))
+			})
+
+			assert.Regexp(t, "^kms:.*name=test3-.*$", got.Name)
+			assert.Equal(t, got.Name, got.CreateSignerRequest.SigningKey)
 			if assert.IsType(t, &rsa.PublicKey{}, got.PublicKey) {
 				assert.Equal(t, 256, got.PublicKey.(*rsa.PublicKey).Size())
 			}
 		}, assert.NoError},
+		{"fail platform algorithm", platformKMS, args{&apiv1.CreateKeyRequest{
+			Name:               "kms:test4-" + suffix,
+			SignatureAlgorithm: apiv1.SignatureAlgorithm(100),
+		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
+			assert.Nil(t, got)
+		}, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.CreateKeyRequest{
 			Name: "kms:name=" + privateKeyPath,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
@@ -292,7 +465,7 @@ func TestKMS_CreateKey(t *testing.T) {
 				},
 			})
 		}, assert.NoError},
-		{"fail createKey", softKMS, args{&apiv1.CreateKeyRequest{
+		{"fail softKMS createKey", softKMS, args{&apiv1.CreateKeyRequest{
 			Name:               "kms:" + privateKeyPath,
 			SignatureAlgorithm: apiv1.SignatureAlgorithm(100),
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
@@ -345,6 +518,14 @@ func TestKMS_CreateSigner(t *testing.T) {
 	require.NoError(t, err)
 	signer := mustReadSigner(t, privateKeyPath)
 
+	platformKMS := mustPlatformKMS(t)
+	platformKey := mustCreatePlatformKey(t, platformKMS)
+
+	assertNil := func(t *testing.T, got crypto.Signer) {
+		t.Helper()
+		assert.Nil(t, got)
+	}
+
 	type args struct {
 		req *apiv1.CreateSignerRequest
 	}
@@ -352,28 +533,44 @@ func TestKMS_CreateSigner(t *testing.T) {
 		name      string
 		kms       *KMS
 		args      args
-		want      crypto.Signer
+		equal     func(*testing.T, crypto.Signer)
 		assertion assert.ErrorAssertionFunc
 	}{
+		// PlatformKMS
+		{"ok platform", platformKMS, args{&apiv1.CreateSignerRequest{
+			SigningKey: platformKey.Name,
+		}}, func(t *testing.T, s crypto.Signer) {
+			require.NotNil(t, s)
+			assert.Equal(t, platformKey.PublicKey, s.Public())
+		}, assert.NoError},
+		{"fail platform missing", platformKMS, args{&apiv1.CreateSignerRequest{
+			SigningKey: platformMissingName,
+		}}, assertNil, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: "kms:name=" + url.QueryEscape(privateKeyPath),
-		}}, signer, assert.NoError},
+		}}, func(t *testing.T, s crypto.Signer) {
+			assert.Equal(t, signer, s)
+		}, assert.NoError},
 		{"ok softKMS with signer", softKMS, args{&apiv1.CreateSignerRequest{
 			Signer:     resp.CreateSignerRequest.Signer,
 			SigningKey: resp.CreateSignerRequest.SigningKey,
-		}}, signer, assert.NoError},
+		}}, func(t *testing.T, s crypto.Signer) {
+			assert.Equal(t, signer, s)
+		}, assert.NoError},
 		{"fail missing", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: "kms:name=" + url.QueryEscape(filepath.Join(dir, "missing.key")),
-		}}, nil, assert.Error},
+		}}, assertNil, assert.Error},
 		{"fail parseURI", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: privateKeyPath,
-		}}, nil, assert.Error},
+		}}, assertNil, assert.Error},
 		{"fail signingKey", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: "",
-		}}, nil, assert.Error},
+		}}, assertNil, assert.Error},
 		{"fail empty uri", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: "kms:",
-		}}, nil, assert.Error},
+		}}, assertNil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -381,7 +578,7 @@ func TestKMS_CreateSigner(t *testing.T) {
 
 			got, err := tt.kms.CreateSigner(tt.args.req)
 			tt.assertion(t, err)
-			assert.Equal(t, tt.want, got)
+			tt.equal(t, got)
 		})
 	}
 }
@@ -401,6 +598,9 @@ func TestKMS_DeleteKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	platformKMS := mustPlatformKMS(t)
+	platformKey := mustCreatePlatformKey(t, platformKMS, withNoCleanup())
+
 	type args struct {
 		req *apiv1.DeleteKeyRequest
 	}
@@ -410,6 +610,23 @@ func TestKMS_DeleteKey(t *testing.T) {
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.DeleteKeyRequest{
+			Name: platformKey.Name,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			_, getErr := platformKMS.GetPublicKey(&apiv1.GetPublicKeyRequest{
+				Name: platformKey.Name,
+			})
+			return assert.NoError(t, err) && assert.Error(t, getErr)
+		}},
+		{"fail platform deleted", softKMS, args{&apiv1.DeleteKeyRequest{
+			Name: platformKey.Name,
+		}}, assert.Error},
+		{"fail platform missing", softKMS, args{&apiv1.DeleteKeyRequest{
+			Name: platformMissingName,
+		}}, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteKeyRequest{
 			Name: "kms:name=" + url.QueryEscape(keyPath1),
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
@@ -454,6 +671,9 @@ func TestKMS_LoadCertificate(t *testing.T) {
 		Certificate: chain[0],
 	}))
 
+	platformKMS := mustPlatformKMS(t)
+	platformChain := mustCreatePlatformCertificate(t, platformKMS)
+
 	type args struct {
 		req *apiv1.LoadCertificateRequest
 	}
@@ -464,6 +684,15 @@ func TestKMS_LoadCertificate(t *testing.T) {
 		want      *x509.Certificate
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.LoadCertificateRequest{
+			Name: platformCertName,
+		}}, platformChain[0], assert.NoError},
+		{"fail platform missing", platformKMS, args{&apiv1.LoadCertificateRequest{
+			Name: platformMissingName,
+		}}, nil, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.LoadCertificateRequest{
 			Name: "kms:" + certPath,
 		}}, chain[0], assert.NoError},
@@ -496,6 +725,10 @@ func TestKMS_StoreCertificate(t *testing.T) {
 	chain := mustCertificate(t, "")
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	platformKMS := mustPlatformKMS(t)
+	platformKey := mustCreatePlatformKey(t, platformKMS)
+	platformChain := mustCertificateWithKey(t, platformKey.PublicKey)
+
 	type args struct {
 		req *apiv1.StoreCertificateRequest
 	}
@@ -505,6 +738,28 @@ func TestKMS_StoreCertificate(t *testing.T) {
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.StoreCertificateRequest{
+			Name:        platformCertName,
+			Certificate: platformChain[0],
+		}}, assert.NoError},
+		{"ok platform no key", platformKMS, args{&apiv1.StoreCertificateRequest{
+			Name:        platformCertName + "-other",
+			Certificate: chain[0],
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			t.Cleanup(func() {
+				assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+					Name: platformCertName,
+				}))
+			})
+			return assert.NoError(t, err)
+		}},
+		{"fail platform bad certificate", platformKMS, args{&apiv1.StoreCertificateRequest{
+			Name:        platformCertName,
+			Certificate: &x509.Certificate{},
+		}}, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=" + filepath.Join(dir, "cert.crt"),
 			Certificate: chain[0],
@@ -558,6 +813,9 @@ func TestKMS_LoadCertificateChain(t *testing.T) {
 	chain := mustCertificate(t, chainPath)
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	platformKMS := mustPlatformKMS(t)
+	platformChain := mustCreatePlatformCertificate(t, platformKMS)
+
 	type args struct {
 		req *apiv1.LoadCertificateChainRequest
 	}
@@ -568,6 +826,15 @@ func TestKMS_LoadCertificateChain(t *testing.T) {
 		want      []*x509.Certificate
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.LoadCertificateChainRequest{
+			Name: platformCertName,
+		}}, platformChain, assert.NoError},
+		{"fail platform missing", platformKMS, args{&apiv1.LoadCertificateChainRequest{
+			Name: platformMissingName,
+		}}, nil, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.LoadCertificateChainRequest{
 			Name: "kms:name=" + chainPath,
 		}}, chain, assert.NoError},
@@ -600,6 +867,10 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 	chain := mustCertificate(t, "")
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	platformKMS := mustPlatformKMS(t)
+	platformKey := mustCreatePlatformKey(t, platformKMS)
+	platformChain := mustCertificateWithKey(t, platformKey.PublicKey)
+
 	type args struct {
 		req *apiv1.StoreCertificateChainRequest
 	}
@@ -609,6 +880,28 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
+		// Platform KMS
+		{"ok platform", platformKMS, args{&apiv1.StoreCertificateChainRequest{
+			Name:             platformCertName,
+			CertificateChain: platformChain,
+		}}, assert.NoError},
+		{"ok platform no key", platformKMS, args{&apiv1.StoreCertificateChainRequest{
+			Name:             platformCertName + "-other",
+			CertificateChain: chain,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			t.Cleanup(func() {
+				assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+					Name: platformCertName,
+				}))
+			})
+			return assert.NoError(t, err)
+		}},
+		{"fail platform bad chain", platformKMS, args{&apiv1.StoreCertificateChainRequest{
+			Name:             platformCertName,
+			CertificateChain: []*x509.Certificate{},
+		}}, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=" + filepath.Join(dir, "chain.crt"),
 			CertificateChain: chain,
@@ -653,6 +946,9 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 	_ = mustCertificate(t, filepath.Join(dir, "chain.crt"))
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	platformKMS := mustPlatformKMS(t)
+	_ = mustCreatePlatformCertificate(t, platformKMS, withNoCleanup())
+
 	type args struct {
 		req *apiv1.DeleteCertificateRequest
 	}
@@ -662,6 +958,19 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
+		{"ok platform", platformKMS, args{&apiv1.DeleteCertificateRequest{
+			Name: platformCertName,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			_, loadErr := platformKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
+				Name: platformCertName,
+			})
+			return assert.NoError(t, err) && assert.Error(t, loadErr)
+		}},
+		{"fail platform missing", platformKMS, args{&apiv1.DeleteCertificateRequest{
+			Name: platformMissingName,
+		}}, assert.Error},
+
+		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: "kms:name=" + url.QueryEscape(filepath.Join(dir, "chain.crt")),
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
@@ -694,6 +1003,26 @@ func TestKMS_SearchKeys(t *testing.T) {
 	dir := t.TempDir()
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
+	suffix := mustSuffix(t)
+	platformKMS := mustPlatformKMS(t)
+
+	platformKeys := make([]*apiv1.CreateKeyResponse, 4)
+	for i := range platformKeys {
+		name := fmt.Sprintf("kms:name=search-test-%d-%s", i, suffix)
+		if runtime.GOOS == "darwin" {
+			name += ";tag=com.smallstep.test." + suffix
+		}
+		platformKeys[i] = mustCreatePlatformKey(t, platformKMS, withName(name))
+	}
+
+	makeResult := func(r *apiv1.CreateKeyResponse) apiv1.SearchKeyResult {
+		return apiv1.SearchKeyResult{
+			Name:                r.Name,
+			PublicKey:           r.PublicKey,
+			CreateSignerRequest: r.CreateSignerRequest,
+		}
+	}
+
 	type args struct {
 		req *apiv1.SearchKeysRequest
 	}
@@ -704,6 +1033,24 @@ func TestKMS_SearchKeys(t *testing.T) {
 		want      *apiv1.SearchKeysResponse
 		assertion assert.ErrorAssertionFunc
 	}{
+		// PlatformKMS
+		{"ok platform", platformKMS, args{&apiv1.SearchKeysRequest{
+			Query: "kms:tag=com.smallstep.test." + suffix,
+		}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				makeResult(platformKeys[0]), makeResult(platformKeys[1]),
+				makeResult(platformKeys[2]), makeResult(platformKeys[3]),
+			},
+		}, assert.NoError},
+		{"ok platform with name", platformKMS, args{&apiv1.SearchKeysRequest{
+			Query: fmt.Sprintf("kms:name=search-test-%d-%s;tag=com.smallstep.test.%s", 2, suffix, suffix),
+		}}, &apiv1.SearchKeysResponse{
+			Results: []apiv1.SearchKeyResult{
+				makeResult(platformKeys[2]),
+			},
+		}, assert.NoError},
+
+		// SoftKMS
 		{"fail softKMS", softKMS, args{&apiv1.SearchKeysRequest{
 			Query: "kms:name=" + url.QueryEscape(dir),
 		}}, nil, assert.Error},
