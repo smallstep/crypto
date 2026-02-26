@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/sys/windows"
 )
 
@@ -516,6 +517,31 @@ func nCryptExportKey(kh uintptr, blobType string) ([]byte, error) {
 		return nil, fmt.Errorf("NCryptExportKey returned %v during export", errNoToStr(uint32(r)))
 	}
 	return buf, nil
+}
+
+func findCertificateBySubjectKeyID(store windows.Handle, keyID []byte) (*windows.CertContext, error) {
+	searchData := CERT_ID_KEYIDORHASH{
+		idChoice: CERT_ID_KEY_IDENTIFIER,
+		KeyIDOrHash: CRYPTOAPI_BLOB{
+			len:  uint32(len(keyID)),
+			data: uintptr(unsafe.Pointer(&keyID[0])),
+		},
+	}
+
+	handle, err := findCertificateInStore(store,
+		encodingX509ASN|encodingPKCS7,
+		0,
+		findCertID,
+		uintptr(unsafe.Pointer(&searchData)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+	}
+
+	if handle == nil {
+		return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", KeyIDArg, keyID)}
+	}
+
+	return handle, nil
 }
 
 func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint32, para uintptr, prev *windows.CertContext) (*windows.CertContext, error) {

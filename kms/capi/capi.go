@@ -32,6 +32,7 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/randutil"
+	"go.step.sm/crypto/x509util"
 )
 
 // Scheme is the scheme used in uris, the string "capi".
@@ -88,7 +89,7 @@ type uriAttributes struct {
 	intermediateStoreName     string
 	keyID                     []byte
 	subjectCN                 string
-	serialNumber              string
+	serialNumber              *big.Int
 	issuerName                string
 	keySpec                   string
 	skipFindCertificateKey    bool
@@ -115,6 +116,11 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		}
 	}
 
+	serialNumber, err := u.GetBigInt(SerialNumberArg)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting %s from URI %q: %w", SerialNumberArg, rawuri, err)
+	}
+
 	return &uriAttributes{
 		containerName:             u.Get(ContainerNameArg),
 		hash:                      hashValue,
@@ -124,7 +130,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		intermediateStoreName:     cmp.Or(u.Get(IntermediateStoreNameArg), CAStore),
 		keyID:                     keyIDValue,
 		subjectCN:                 u.Get(SubjectCNArg),
-		serialNumber:              u.Get(SerialNumberArg),
+		serialNumber:              serialNumber,
 		issuerName:                u.Get(IssuerNameArg),
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
@@ -414,25 +420,10 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", HashArg, u.hash)}
 		}
 	case len(u.keyID) > 0:
-		searchData := CERT_ID_KEYIDORHASH{
-			idChoice: CERT_ID_KEY_IDENTIFIER,
-			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(u.keyID)),
-				data: uintptr(unsafe.Pointer(&u.keyID[0])),
-			},
+		if handle, err = findCertificateBySubjectKeyID(st, u.keyID); err != nil {
+			return nil, err
 		}
-		handle, err = findCertificateInStore(st,
-			encodingX509ASN|encodingPKCS7,
-			0,
-			findCertID,
-			uintptr(unsafe.Pointer(&searchData)), nil)
-		if err != nil {
-			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
-		}
-		if handle == nil {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%x not found", KeyIDArg, u.keyID)}
-		}
-	case u.issuerName != "" && (u.serialNumber != "" || u.subjectCN != ""):
+	case u.issuerName != "" && (u.serialNumber != nil || u.subjectCN != ""):
 		var prevCert *windows.CertContext
 		for {
 			handle, err = findCertificateInStore(st,
@@ -454,27 +445,11 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			}
 
 			switch {
-			case len(u.serialNumber) > 0:
+			case u.serialNumber != nil:
 				// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 				// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
-				var bi *big.Int
-				if strings.HasPrefix(u.serialNumber, "0x") {
-					serialBytes, err := hex.DecodeString(strings.TrimPrefix(u.serialNumber, "0x"))
-					if err != nil {
-						return nil, fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
-					}
-
-					bi = new(big.Int).SetBytes(serialBytes)
-				} else {
-					bi := new(big.Int)
-					bi, ok := bi.SetString(u.serialNumber, 10)
-					if !ok {
-						return nil, fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
-					}
-				}
-
-				if x509Cert.SerialNumber.Cmp(bi) == 0 {
+				if x509Cert.SerialNumber.Cmp(u.serialNumber) == 0 {
 					return handle, nil
 				}
 			case len(u.subjectCN) > 0:
@@ -484,6 +459,22 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			}
 
 			prevCert = handle
+		}
+	case u.containerName != "":
+		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: uri.New(Scheme, url.Values{
+				ContainerNameArg: []string{u.containerName},
+			}).String(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		keyID, err := x509util.GenerateSubjectKeyID(key)
+		if err != nil {
+			return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
+		}
+		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
@@ -964,50 +955,22 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		}
 		return nil
 	case len(u.keyID) > 0:
-		searchData := CERT_ID_KEYIDORHASH{
-			idChoice: CERT_ID_KEY_IDENTIFIER,
-			KeyIDOrHash: CRYPTOAPI_BLOB{
-				len:  uint32(len(u.keyID)),
-				data: uintptr(unsafe.Pointer(&u.keyID[0])),
-			},
-		}
-		certHandle, err = findCertificateInStore(st,
-			encodingX509ASN|encodingPKCS7,
-			0,
-			findCertID,
-			uintptr(unsafe.Pointer(&searchData)), nil)
+		certHandle, err = findCertificateBySubjectKeyID(st, u.keyID)
 		if err != nil {
-			return fmt.Errorf("findCertificateInStore failed: %w", err)
+			return err
 		}
-		if certHandle == nil {
-			return nil
-		}
-
 		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)
 		}
 		return nil
-	case u.issuerName != "" && u.serialNumber != "":
+	case u.issuerName != "" && u.serialNumber != nil:
 		// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
 		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_issuer_serial_number
-		var serialBytes []byte
-		if strings.HasPrefix(u.serialNumber, "0x") {
-			u.serialNumber = strings.TrimPrefix(u.serialNumber, "0x")
-			u.serialNumber = strings.TrimPrefix(u.serialNumber, "00") // Comparison fails if leading 00 is not removed
-			serialBytes, err = hex.DecodeString(u.serialNumber)
-			if err != nil {
-				return fmt.Errorf("invalid hex format for %s: %w", SerialNumberArg, err)
-			}
-		} else {
-			bi := new(big.Int)
-			bi, ok := bi.SetString(u.serialNumber, 10)
-			if !ok {
-				return fmt.Errorf("invalid %s - must be in hex or integer format", SerialNumberArg)
-			}
-			serialBytes = bi.Bytes()
-		}
-		var prevCert *windows.CertContext
+		var (
+			prevCert    *windows.CertContext
+			serialBytes = u.serialNumber.Bytes()
+		)
 		for {
 			certHandle, err = findCertificateInStore(st,
 				encodingX509ASN|encodingPKCS7,
@@ -1036,6 +999,27 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			}
 			prevCert = certHandle
 		}
+	case u.containerName != "":
+		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: uri.New(Scheme, url.Values{
+				ContainerNameArg: []string{u.containerName},
+			}).String(),
+		})
+		if err != nil {
+			return err
+		}
+		keyID, err := x509util.GenerateSubjectKeyID(key)
+		if err != nil {
+			return fmt.Errorf("error generating SubjectKeyID: %w", err)
+		}
+		certHandle, err = findCertificateBySubjectKeyID(st, keyID)
+		if err != nil {
+			return err
+		}
+		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
+			return fmt.Errorf("failed removing certificate: %w", err)
+		}
+		return nil
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
