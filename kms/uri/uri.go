@@ -162,7 +162,7 @@ func (u *URI) GetInt(key string) *int64 {
 func (u *URI) GetBigInt(key string) (*big.Int, error) {
 	v := u.Get(key)
 	if v == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // return nil value
 	}
 
 	if hx, ok := hexString(v); ok {
