@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net/url"
@@ -19,9 +20,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
+	"go.step.sm/crypto/tpm"
 )
 
 var (
@@ -46,6 +49,14 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+func isTPMAvailable() bool {
+	t, err := tpm.New()
+	if err != nil {
+		return false
+	}
+	return t.Available() == nil
 }
 
 func shouldSkipNow(t *testing.T, km *KMS) {
@@ -162,8 +173,9 @@ func mustSuffix(t *testing.T) string {
 }
 
 type createOptions struct {
-	name      string
-	noCleanup bool
+	name                 string
+	noCleanup            bool
+	noCleanupCertificate bool
 }
 
 type createFuncOption func(*createOptions)
@@ -177,6 +189,13 @@ func withName(s string) createFuncOption {
 func withNoCleanup() createFuncOption {
 	return func(co *createOptions) {
 		co.noCleanup = true
+		co.noCleanupCertificate = true
+	}
+}
+
+func withNoCleanupCertificate() createFuncOption {
+	return func(co *createOptions) {
+		co.noCleanupCertificate = true
 	}
 }
 
@@ -242,10 +261,21 @@ func mustCreatePlatformCertificate(t *testing.T, km *KMS, opts ...createFuncOpti
 			cert, ca.Intermediate,
 		},
 	}))
-	if !o.noCleanup {
+	if !o.noCleanupCertificate {
 		t.Cleanup(func() {
 			assert.NoError(t, km.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 				Name: o.name,
+			}))
+		})
+	}
+
+	// Always delete the intermediate on macOS
+	if typ := km.Type(); typ == apiv1.MacKMS {
+		t.Cleanup(func() {
+			assert.NoError(t, km.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+				Name: uri.New(Scheme, url.Values{
+					"serial": []string{ca.Intermediate.SerialNumber.String()},
+				}).String(),
 			}))
 		})
 	}
@@ -361,7 +391,10 @@ func TestKMS_CreateKey(t *testing.T) {
 
 			assert.Regexp(t, "^kms:.*name=test1-.*$", got.Name)
 			assert.Equal(t, got.Name, got.CreateSignerRequest.SigningKey)
-			if assert.IsType(t, &ecdsa.PublicKey{}, got.PublicKey) {
+
+			if platformKMS.Type() == apiv1.TPMKMS && assert.IsType(t, &rsa.PublicKey{}, got.PublicKey) {
+				assert.Equal(t, 256, got.PublicKey.(*rsa.PublicKey).Size())
+			} else if assert.IsType(t, &ecdsa.PublicKey{}, got.PublicKey) {
 				assert.Equal(t, elliptic.P256(), got.PublicKey.(*ecdsa.PublicKey).Curve)
 			}
 		}, assert.NoError},
@@ -379,6 +412,7 @@ func TestKMS_CreateKey(t *testing.T) {
 
 			assert.Regexp(t, "^kms:.*name=test2-.*$", got.Name)
 			assert.Equal(t, got.Name, got.CreateSignerRequest.SigningKey)
+
 			if assert.IsType(t, &ecdsa.PublicKey{}, got.PublicKey) {
 				assert.Equal(t, elliptic.P384(), got.PublicKey.(*ecdsa.PublicKey).Curve)
 			}
@@ -538,7 +572,7 @@ func TestKMS_CreateSigner(t *testing.T) {
 	}{
 		// PlatformKMS
 		{"ok platform", platformKMS, args{&apiv1.CreateSignerRequest{
-			SigningKey: platformKey.Name,
+			SigningKey: platformKeyName,
 		}}, func(t *testing.T, s crypto.Signer) {
 			require.NotNil(t, s)
 			assert.Equal(t, platformKey.PublicKey, s.Public())
@@ -619,10 +653,10 @@ func TestKMS_DeleteKey(t *testing.T) {
 			})
 			return assert.NoError(t, err) && assert.Error(t, getErr)
 		}},
-		{"fail platform deleted", softKMS, args{&apiv1.DeleteKeyRequest{
+		{"fail platform deleted", platformKMS, args{&apiv1.DeleteKeyRequest{
 			Name: platformKey.Name,
 		}}, assert.Error},
-		{"fail platform missing", softKMS, args{&apiv1.DeleteKeyRequest{
+		{"fail platform missing", platformKMS, args{&apiv1.DeleteKeyRequest{
 			Name: platformMissingName,
 		}}, assert.Error},
 
@@ -747,6 +781,11 @@ func TestKMS_StoreCertificate(t *testing.T) {
 			Name:        platformCertName + "-other",
 			Certificate: chain[0],
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			// Storing a certificate with no key is not supported on TPMKMS.
+			if platformKMS.Type() == apiv1.TPMKMS {
+				return assert.Error(t, err)
+			}
+
 			t.Cleanup(func() {
 				assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 					Name: platformCertName,
@@ -889,10 +928,23 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 			Name:             platformCertName + "-other",
 			CertificateChain: chain,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			// Storing a certificate with no key is not supported on TPMKMS.
+			if platformKMS.Type() == apiv1.TPMKMS {
+				return assert.Error(t, err)
+			}
+
 			t.Cleanup(func() {
 				assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 					Name: platformCertName,
 				}))
+
+				if typ := platformKMS.Type(); typ == apiv1.MacKMS {
+					assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+						Name: uri.New(Scheme, url.Values{
+							"serial": []string{hex.EncodeToString(platformChain[1].SerialNumber.Bytes())},
+						}).String(),
+					}))
+				}
 			})
 			return assert.NoError(t, err)
 		}},
@@ -947,7 +999,7 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 	softKMS := mustKMS(t, "kms:backend=softkms")
 
 	platformKMS := mustPlatformKMS(t)
-	_ = mustCreatePlatformCertificate(t, platformKMS, withNoCleanup())
+	_ = mustCreatePlatformCertificate(t, platformKMS, withNoCleanupCertificate())
 
 	type args struct {
 		req *apiv1.DeleteCertificateRequest
@@ -1017,9 +1069,11 @@ func TestKMS_SearchKeys(t *testing.T) {
 
 	makeResult := func(r *apiv1.CreateKeyResponse) apiv1.SearchKeyResult {
 		return apiv1.SearchKeyResult{
-			Name:                r.Name,
-			PublicKey:           r.PublicKey,
-			CreateSignerRequest: r.CreateSignerRequest,
+			Name:      r.Name,
+			PublicKey: r.PublicKey,
+			CreateSignerRequest: apiv1.CreateSignerRequest{
+				SigningKey: r.Name,
+			},
 		}
 	}
 

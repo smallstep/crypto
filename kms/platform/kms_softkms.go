@@ -107,9 +107,6 @@ func (k *softKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 
 func filename(s string) string {
 	if u, err := uri.ParseWithScheme(softkms.Scheme, s); err == nil {
-		if f := u.Get("path"); f != "" {
-			return f
-		}
 		switch {
 		case u.Path != "":
 			return u.Path
@@ -121,10 +118,18 @@ func filename(s string) string {
 }
 
 func transformToSoftKMS(u *kmsURI) string {
-	if u.name != "" {
+	switch {
+	case u.uri.Has("name"):
 		return uri.NewOpaque(softkms.Scheme, u.name).String()
+	case u.uri.Has("path"):
+		return uri.NewOpaque(softkms.Scheme, u.uri.Get("path")).String()
+	case u.uri.Path != "":
+		return uri.NewOpaque(softkms.Scheme, u.uri.Path).String()
+	case u.uri.Opaque != "":
+		return uri.NewOpaque(softkms.Scheme, u.uri.Opaque).String()
+	default:
+		return uri.NewOpaque(softkms.Scheme, "").String()
 	}
-	return uri.NewOpaque(softkms.Scheme, u.uri.Path).String()
 }
 
 func transformFromSoftKMS(rawuri string) (string, error) {

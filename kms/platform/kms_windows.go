@@ -56,6 +56,10 @@ func transformToCapiKMS(u *kmsURI) string {
 		uv.Set("key", u.name)
 	}
 
+	// When storing certificate skip key validation.
+	// This avoid a prompt looking for an SmartCard.
+	uv.Set("skip-find-certificate-key", "true")
+
 	// Add custom extra values that might be CAPI specific.
 	maps.Copy(uv, u.extraValues)
 
@@ -73,7 +77,7 @@ func transformFromCapiKMS(rawuri string) (string, error) {
 	}
 
 	for k, v := range u.Values {
-		if k != "name" {
+		if k != "key" {
 			uv[k] = v
 		}
 	}
