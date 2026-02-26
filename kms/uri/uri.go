@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"net/url"
 	"os"
 	"strconv"
@@ -152,6 +153,38 @@ func (u *URI) GetInt(key string) *int64 {
 	return nil
 }
 
+// GetBigInt returns the first [*big.Int] value in the URI with the given key.
+// It returns nil if the field is not present. It parses as a hexadecimal
+// string if the value starts with 0x (0x12), 0X (0X1A), contains a colon
+// (00:01), or contains only hex characters with at least one letter A-F
+// (e.g. "0A01"); otherwise it parses as a base-10 number.
+func (u *URI) GetBigInt(key string) (*big.Int, error) {
+	v := u.Get(key)
+	if v == "" {
+		return nil, nil
+	}
+
+	if hx, ok := hexString(v); ok {
+		if hx == "" {
+			return nil, fmt.Errorf("value %q is not a valid hexadecimal number", v)
+		}
+
+		b, err := hex.DecodeString(hx)
+		if err != nil {
+			return nil, err
+		}
+
+		return new(big.Int).SetBytes(b), nil
+	}
+
+	bi, ok := new(big.Int).SetString(v, 10)
+	if !ok {
+		return nil, fmt.Errorf("value %q is not a valid number", v)
+	}
+
+	return bi, nil
+}
+
 // GetEncoded returns the first value in the uri with the given key, it will
 // return empty nil if that field is not present or is empty. If the return
 // value is hex encoded it will decode it and return it.
@@ -160,8 +193,8 @@ func (u *URI) GetEncoded(key string) []byte {
 	if v == "" {
 		return nil
 	}
-	if len(v)%2 == 0 {
-		if b, err := hex.DecodeString(strings.TrimPrefix(v, "0x")); err == nil {
+	if hx, ok := hexString(v); ok {
+		if b, err := hex.DecodeString(hx); err == nil {
 			return b
 		}
 	}
@@ -177,12 +210,12 @@ func (u *URI) GetHexEncoded(key string) ([]byte, error) {
 		return nil, nil
 	}
 
-	b, err := hex.DecodeString(strings.TrimPrefix(v, "0x"))
-	if err != nil {
-		return nil, fmt.Errorf("failed decoding %q: %w", v, err)
+	hx, ok := hexString(v)
+	if !ok || hx == "" {
+		return nil, fmt.Errorf("value %q is not a valid hexadecimal number", v)
 	}
 
-	return b, nil
+	return hex.DecodeString(hx)
 }
 
 // Pin returns the pin encoded in the url. It will read the pin from the
@@ -216,6 +249,45 @@ func (u *URI) Read(key string) ([]byte, error) {
 		return nil, nil
 	}
 	return readFile(path)
+}
+
+// hexString returns a clean hexadecimal string and a boolean indicating if s
+// can be an hexadecimal string. If s starts with 0x (0x12), 0X (0X1A), or
+// contains colons (01:1A) it will remove them and return true if it only
+// contains valid hexadecimal characters. It will also true if the string
+// contains at least one letter A-F (010A). It will also prefix the string with
+// 0 if the length is an odd number.
+func hexString(s string) (string, bool) {
+	hx := strings.TrimPrefix(s, "0x")
+	hx = strings.TrimPrefix(hx, "0X")
+	hx = strings.ReplaceAll(hx, ":", "")
+	changed := (len(s) != len(hx))
+
+	if len(hx)%2 != 0 {
+		hx = "0" + hx
+	}
+
+	valid, hasLetter := isValidHexString(hx)
+	return hx, valid && (changed || hasLetter)
+}
+
+// isValidHexString returns two booleans, the first indicating s contains only
+// hexadecimal characters and the second if at least one letter (a-f or A-F),
+// indicating it should be treated as hex.
+func isValidHexString(s string) (bool, bool) {
+	var hasLetter bool
+	for _, c := range s {
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'f':
+			hasLetter = true
+		case c >= 'A' && c <= 'F':
+			hasLetter = true
+		default:
+			return false, false
+		}
+	}
+	return true, hasLetter
 }
 
 func readFile(path string) ([]byte, error) {
