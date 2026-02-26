@@ -174,7 +174,7 @@ const (
 	// MacKMS is the KMS implementation using macOS Keychain and Secure Enclave.
 	MacKMS Type = "mackms"
 	// PlatformKMS is the KMS implementation that uses TPMKMS on Windows and
-	// Linux and MacKMS on macOS..
+	// Linux and MacKMS on macOS.
 	PlatformKMS Type = "kms"
 )
 

@@ -1284,7 +1284,7 @@ func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (
 		return nil, fmt.Errorf("error parsing %q: %w", rawuri, err)
 	}
 	if requireValue && label == "" && serialNumber == nil {
-		return nil, fmt.Errorf("error parsing %q: label or serial are required", rawuri)
+		return nil, fmt.Errorf("error parsing %q: label or serial is required", rawuri)
 	}
 
 	return &certAttributes{

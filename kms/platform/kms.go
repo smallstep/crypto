@@ -102,9 +102,9 @@ func (k *KMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, 
 		return nil, err
 	}
 
-	req = clone(req)
-	req.Name = name
-	resp, err := k.backend.CreateKey(req)
+	r := clone(req)
+	r.Name = name
+	resp, err := k.backend.CreateKey(r)
 	if err != nil {
 		return nil, err
 	}
@@ -122,9 +122,9 @@ func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error
 		return nil, err
 	}
 
-	req = clone(req)
-	req.SigningKey = signingKey
-	return k.backend.CreateSigner(req)
+	r := clone(req)
+	r.SigningKey = signingKey
+	return k.backend.CreateSigner(r)
 }
 
 func (k *KMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
@@ -133,9 +133,9 @@ func (k *KMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.DeleteKey(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.DeleteKey(r)
 }
 
 func (k *KMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
@@ -144,9 +144,9 @@ func (k *KMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certific
 		return nil, err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.LoadCertificate(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.LoadCertificate(r)
 }
 
 func (k *KMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
@@ -155,9 +155,9 @@ func (k *KMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.StoreCertificate(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.StoreCertificate(r)
 }
 
 func (k *KMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
@@ -166,9 +166,9 @@ func (k *KMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x
 		return nil, err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.LoadCertificateChain(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.LoadCertificateChain(r)
 }
 
 func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
@@ -177,9 +177,9 @@ func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) err
 		return err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.StoreCertificateChain(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.StoreCertificateChain(r)
 }
 
 func (k *KMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
@@ -188,9 +188,9 @@ func (k *KMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		return err
 	}
 
-	req = clone(req)
-	req.Name = name
-	return k.backend.DeleteCertificate(req)
+	r := clone(req)
+	r.Name = name
+	return k.backend.DeleteCertificate(r)
 }
 
 func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
@@ -200,9 +200,9 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 			return nil, err
 		}
 
-		req = clone(req)
-		req.Query = query
-		resp, err := km.SearchKeys(req)
+		r := clone(req)
+		r.Query = query
+		resp, err := km.SearchKeys(r)
 		if err != nil {
 			return nil, err
 		}

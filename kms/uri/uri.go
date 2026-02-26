@@ -255,9 +255,9 @@ func (u *URI) Read(key string) ([]byte, error) {
 // hexString returns a clean hexadecimal string and a boolean indicating if s
 // can be an hexadecimal string. If s starts with 0x (0x12), 0X (0X1A), or
 // contains colons (01:1A) it will remove them and return true if it only
-// contains valid hexadecimal characters. It will also true if the string
-// contains at least one letter A-F (010A). It will also prefix the string with
-// 0 if the length is an odd number.
+// contains valid hexadecimal characters. It will also return true if the string
+// contains at least one letter A-F (010A). It will prefix the string with 0 if
+// the length is an odd number.
 func hexString(s string) (string, bool) {
 	hx := strings.TrimPrefix(s, "0x")
 	hx = strings.TrimPrefix(hx, "0X")

@@ -18,12 +18,13 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/tpm/available"
 )
 
 func mustPlatformKMS(t *testing.T) *KMS {
 	t.Helper()
 
-	if !isTPMAvailable() {
+	if available.Check() != nil {
 		return &KMS{}
 	}
 

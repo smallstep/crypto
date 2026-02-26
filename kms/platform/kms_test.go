@@ -25,7 +25,6 @@ import (
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
-	"go.step.sm/crypto/tpm"
 )
 
 var (
@@ -50,14 +49,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
-}
-
-func isTPMAvailable() bool {
-	t, err := tpm.New()
-	if err != nil {
-		return false
-	}
-	return t.Available() == nil
 }
 
 func shouldSkipNow(t *testing.T, km *KMS) {

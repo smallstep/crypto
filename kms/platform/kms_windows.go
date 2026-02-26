@@ -25,7 +25,7 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 
 	switch u.backend {
 	case apiv1.CAPIKMS:
-		opts.URI = transformToCapiKMS(u)
+		opts.URI = transformToCAPIKMS(u)
 		return newCAPIKMS(ctx, opts)
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
@@ -45,12 +45,12 @@ func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	return &KMS{
 		typ:              apiv1.CAPIKMS,
 		backend:          km,
-		transformToURI:   transformToCapiKMS,
-		transformFromURI: transformFromCapiKMS,
+		transformToURI:   transformToCAPIKMS,
+		transformFromURI: transformFromCAPIKMS,
 	}, nil
 }
 
-func transformToCapiKMS(u *kmsURI) string {
+func transformToCAPIKMS(u *kmsURI) string {
 	uv := url.Values{}
 	if u.name != "" {
 		uv.Set("key", u.name)
@@ -66,7 +66,7 @@ func transformToCapiKMS(u *kmsURI) string {
 	return uri.New(capi.Scheme, uv).String()
 }
 
-func transformFromCapiKMS(rawuri string) (string, error) {
+func transformFromCAPIKMS(rawuri string) (string, error) {
 	u, err := uri.ParseWithScheme(capi.Scheme, rawuri)
 	if err != nil {
 		return "", err
