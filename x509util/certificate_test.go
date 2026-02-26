@@ -81,7 +81,7 @@ func createIssuerCertificate(t *testing.T, commonName string) (*x509.Certificate
 	if err != nil {
 		t.Fatal(err)
 	}
-	subjectKeyID, err := generateSubjectKeyID(pub)
+	subjectKeyID, err := GenerateSubjectKeyID(pub)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +814,7 @@ func TestCreateCertificate(t *testing.T) {
 		return sn
 	}
 	mustSubjectKeyID := func(pub crypto.PublicKey) []byte {
-		b, err := generateSubjectKeyID(pub)
+		b, err := GenerateSubjectKeyID(pub)
 		if err != nil {
 			t.Fatal(err)
 		}

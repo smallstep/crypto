@@ -172,7 +172,7 @@ func Test_generateSubjectKeyID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateSubjectKeyID(tt.args.pub)
+			got, err := GenerateSubjectKeyID(tt.args.pub)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("generateSubjectKeyID() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -204,7 +204,7 @@ func Test_generateSubjectKeyID_fips(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateSubjectKeyID(tt.args.pub)
+			got, err := GenerateSubjectKeyID(tt.args.pub)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})
