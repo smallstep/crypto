@@ -849,6 +849,7 @@ func TestMacKMS_LoadCertificate(t *testing.T) {
 		{"fail uri", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:"}}, nil, assert.Error},
 		{"fail missing label", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:label=missing-" + suffix}}, nil, assert.Error},
 		{"fail missing serial", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:serial=010a020b030c"}}, nil, assert.Error},
+		{"fail bad serial", &MacKMS{}, args{&apiv1.LoadCertificateRequest{Name: "mackms:serial=010a020b030z"}}, nil, assert.Error},
 		{"fail with keychain", &MacKMS{}, args{&apiv1.LoadCertificateRequest{
 			Name: "mackms:keychain=dataProtection;label=" + label,
 		}}, nil, assert.Error},
