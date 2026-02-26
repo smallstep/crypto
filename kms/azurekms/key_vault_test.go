@@ -15,10 +15,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/go-jose/go-jose/v3"
+	"go.uber.org/mock/gomock"
+
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/azurekms/internal/mock"
-	"go.uber.org/mock/gomock"
 )
 
 var errTest = fmt.Errorf("test error")

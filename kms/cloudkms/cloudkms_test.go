@@ -14,13 +14,14 @@ import (
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.step.sm/crypto/kms/apiv1"
-	"go.step.sm/crypto/kms/uri"
-	"go.step.sm/crypto/pemutil"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/pemutil"
 )
 
 func TestParent(t *testing.T) {

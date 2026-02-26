@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/google/go-tpm/legacy/tpm2"
+
 	"go.step.sm/crypto/tpm/algorithm"
 )
 

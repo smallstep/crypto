@@ -6,6 +6,7 @@ import (
 
 	"github.com/smallstep/go-attestation/attest"
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/tpm/manufacturer"
 )
 

@@ -12,8 +12,9 @@ import (
 	"fmt"
 	"unsafe"
 
-	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/sys/windows"
+
+	"go.step.sm/crypto/kms/apiv1"
 )
 
 const (

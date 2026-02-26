@@ -40,6 +40,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	cf "go.step.sm/crypto/internal/darwin/corefoundation"
 	"go.step.sm/crypto/internal/darwin/security"
 	"go.step.sm/crypto/kms/apiv1"

@@ -14,9 +14,10 @@ import (
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func TestCloudKMS_CreateDecrypter(t *testing.T) {
