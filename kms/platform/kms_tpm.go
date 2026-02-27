@@ -51,14 +51,6 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...tpmkms.Option) (*KMS, e
 	}, nil
 }
 
-func (k *KMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
-	if km, ok := k.backend.(apiv1.Attester); ok {
-		return km.CreateAttestation(req)
-	}
-
-	return nil, apiv1.NotImplementedError{}
-}
-
 func transformToTPMKMS(u *kmsURI) string {
 	uv := url.Values{}
 	if u.name != "" {

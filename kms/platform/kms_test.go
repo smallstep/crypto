@@ -2,13 +2,18 @@ package platform
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -275,6 +280,38 @@ func mustCreatePlatformCertificate(t *testing.T, km *KMS, opts ...createFuncOpti
 	return []*x509.Certificate{
 		cert, ca.Intermediate,
 	}
+}
+
+func mustPermanentIdentifier(t *testing.T, pub crypto.PublicKey) *url.URL {
+	t.Helper()
+
+	b, err := x509.MarshalPKIXPublicKey(pub)
+	require.NoError(t, err)
+
+	keyID := sha256.Sum256(b)
+	return &url.URL{
+		Scheme: "urn",
+		Opaque: "ek:sha256:" + base64.StdEncoding.EncodeToString(keyID[:]),
+	}
+}
+
+type attestationClient struct {
+	chain []*x509.Certificate
+	err   error
+}
+
+func mustAttestationClient(chain []*x509.Certificate, err error) *attestationClient {
+	return &attestationClient{
+		chain: chain,
+		err:   err,
+	}
+}
+
+func (c *attestationClient) Attest(ctx context.Context) ([]*x509.Certificate, error) {
+	if _, ok := apiv1.AttestSignerFromContext(ctx); !ok {
+		return nil, fmt.Errorf("signer is not in context")
+	}
+	return c.chain, c.err
 }
 
 func TestKMS_Type(t *testing.T) {
@@ -1039,6 +1076,66 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 			shouldSkipNow(t, tt.kms)
 
 			tt.assertion(t, tt.kms.DeleteCertificate(tt.args.req))
+		})
+	}
+}
+
+func TestKMS_CreateAttestation(t *testing.T) {
+	dir := t.TempDir()
+	privateKeyPath := filepath.Join(dir, "private.key")
+	signer := mustSigner(t, privateKeyPath)
+	attester := mustSigner(t, "attester.key")
+	permanentIdentifier := mustPermanentIdentifier(t, attester.Public())
+
+	ca, err := minica.New()
+	require.NoError(t, err)
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "attestation certificate",
+		},
+		URIs:      []*url.URL{permanentIdentifier},
+		PublicKey: signer.Public(),
+	})
+	require.NoError(t, err)
+
+	softKMS := mustKMS(t, "kms:backend=softkms")
+	okClient := mustAttestationClient([]*x509.Certificate{cert, ca.Intermediate}, nil)
+	failClient := mustAttestationClient(nil, errors.New("attestation failed"))
+
+	type args struct {
+		req *apiv1.CreateAttestationRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		want      *apiv1.CreateAttestationResponse
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok custom attestation", softKMS, args{&apiv1.CreateAttestationRequest{
+			Name:              "kms:" + privateKeyPath,
+			AttestationClient: okClient,
+		}}, &apiv1.CreateAttestationResponse{
+			Certificate:         cert,
+			CertificateChain:    []*x509.Certificate{cert, ca.Intermediate},
+			PublicKey:           signer.Public(),
+			PermanentIdentifier: permanentIdentifier.String(),
+		}, assert.NoError},
+		{"fail custom attestation", softKMS, args{&apiv1.CreateAttestationRequest{
+			Name:              "kms:" + privateKeyPath,
+			AttestationClient: failClient,
+		}}, nil, assert.Error},
+		{"fail no client", softKMS, args{&apiv1.CreateAttestationRequest{
+			Name: "kms:" + privateKeyPath,
+		}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldSkipNow(t, tt.kms)
+
+			got, err := tt.kms.CreateAttestation(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

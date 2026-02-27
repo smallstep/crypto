@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/simulator"
 	"go.step.sm/crypto/tpm/storage"
@@ -741,6 +743,94 @@ func TestKMS_DeleteCertificate_tpm(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.assertion(t, tt.kms.DeleteCertificate(tt.args.req))
+		})
+	}
+}
+
+func TestKMS_CreateAttestation_tpm(t *testing.T) {
+	ctx := t.Context()
+	stpm := mustTPM(t)
+	km, err := NewWithTPM(ctx, stpm)
+	require.NoError(t, err)
+
+	eks, err := stpm.GetEKs(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, eks)
+	ekKeyURL := mustPermanentIdentifier(t, eks[0].Public())
+
+	ak, err := stpm.CreateAK(ctx, "ak-1")
+	require.NoError(t, err)
+
+	key, err := stpm.AttestKey(ctx, "ak-1", "key-1", tpm.AttestKeyConfig{
+		Algorithm:      "ECDSA",
+		Size:           256,
+		QualifyingData: []byte{1, 2, 3, 4},
+	})
+	require.NoError(t, err)
+	keyParams, err := key.CertificationParameters(ctx)
+	require.NoError(t, err)
+	keySigner, err := key.Signer(ctx)
+	require.NoError(t, err)
+
+	_, err = stpm.CreateKey(ctx, "key-2", tpm.CreateKeyConfig{
+		Algorithm: "ECDSA",
+		Size:      256,
+	})
+	require.NoError(t, err)
+
+	ca, err := minica.New()
+	require.NoError(t, err)
+
+	akCert, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "ak-1",
+		},
+		URIs:      []*url.URL{ekKeyURL},
+		PublicKey: ak.Public(),
+	})
+	require.NoError(t, err)
+	require.NoError(t, ak.SetCertificateChain(ctx, []*x509.Certificate{
+		akCert, ca.Intermediate,
+	}))
+
+	type args struct {
+		req *apiv1.CreateAttestationRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		want      *apiv1.CreateAttestationResponse
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", km, args{&apiv1.CreateAttestationRequest{
+			Name: "kms:name=key-1",
+		}}, &apiv1.CreateAttestationResponse{
+			Certificate:      akCert,
+			CertificateChain: []*x509.Certificate{akCert, ca.Intermediate},
+			PublicKey:        keySigner.Public(),
+			CertificationParameters: &apiv1.CertificationParameters{
+				Public:            keyParams.Public,
+				CreateData:        keyParams.CreateData,
+				CreateAttestation: keyParams.CreateAttestation,
+				CreateSignature:   keyParams.CreateSignature,
+			},
+			PermanentIdentifier: ekKeyURL.String(),
+		}, assert.NoError},
+		{"fail not attested key", km, args{&apiv1.CreateAttestationRequest{
+			Name: "kms:name=key-2",
+		}}, nil, assert.Error},
+		{"fail missing key", km, args{&apiv1.CreateAttestationRequest{
+			Name: "kms:name=key-3",
+		}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldSkipNow(t, tt.kms)
+
+			got, err := tt.kms.CreateAttestation(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

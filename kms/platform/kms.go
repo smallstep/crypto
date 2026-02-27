@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"net/url"
 	"strings"
 
@@ -191,6 +192,55 @@ func (k *KMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	r := clone(req)
 	r.Name = name
 	return k.backend.DeleteCertificate(r)
+}
+
+func (k *KMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.CreateAttestationResponse, error) {
+	if req.Name == "" {
+		return nil, errors.New("createAttestationRequest 'name' cannot be empty")
+	}
+
+	name, err := k.transform(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Attestation implemented by the backend
+	if km, ok := k.backend.(apiv1.Attester); ok {
+		r := clone(req)
+		r.Name = name
+
+		return km.CreateAttestation(r)
+	}
+
+	// Attestation using a custom attestation client.
+	if req.AttestationClient != nil {
+		signer, err := k.backend.CreateSigner(&apiv1.CreateSignerRequest{
+			SigningKey: name,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		ctx := apiv1.NewAttestSignerContext(context.Background(), signer)
+		chain, err := req.AttestationClient.Attest(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		var permanentIdentifier string
+		if len(chain[0].URIs) > 0 {
+			permanentIdentifier = chain[0].URIs[0].String()
+		}
+
+		return &apiv1.CreateAttestationResponse{
+			Certificate:         chain[0],
+			CertificateChain:    chain,
+			PublicKey:           signer.Public(),
+			PermanentIdentifier: permanentIdentifier,
+		}, nil
+	}
+
+	return nil, apiv1.NotImplementedError{}
 }
 
 func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
