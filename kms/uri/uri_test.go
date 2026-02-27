@@ -478,3 +478,28 @@ func TestURI_Read(t *testing.T) {
 		})
 	}
 }
+
+func TestValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		rawuri string
+		want   url.Values
+	}{
+		{"empty", "kms:", url.Values{}},
+		{"with opaque values", "kms:foo=bar;baz=qux;foo=zar", url.Values{
+			"foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+		{"with query values", "kms:name=value?foo=bar&baz=qux&foo=zar", url.Values{
+			"name": []string{"value"}, "foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+		{"with mixed values", "kms:name=value;foo=bar?baz=qux&foo=zar", url.Values{
+			"name": []string{"value"}, "foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := mustParse(t, tt.rawuri)
+			assert.Equal(t, tt.want, Values(u))
+		})
+	}
+}

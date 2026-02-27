@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/url"
 	"os"
@@ -250,6 +251,23 @@ func (u *URI) Read(key string) ([]byte, error) {
 		return nil, nil
 	}
 	return readFile(path)
+}
+
+// Values returns the [url.Values] merging the values in the opaque and query
+// string of the given [*URI].
+func Values(u *URI) url.Values {
+	uv := url.Values{}
+	maps.Copy(uv, u.Values)
+	for k, v := range u.URL.Query() {
+		if !uv.Has(k) {
+			uv[k] = v
+			continue
+		}
+		for _, s := range v {
+			uv.Add(k, s)
+		}
+	}
+	return uv
 }
 
 // hexString returns a clean hexadecimal string, a boolean indicating if s is a
