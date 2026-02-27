@@ -165,7 +165,7 @@ func (u *URI) GetBigInt(key string) (*big.Int, error) {
 		return nil, nil //nolint:nilnil // return nil value
 	}
 
-	if hx, ok := hexString(v); ok {
+	if hx, ok, isHex := hexString(v); ok && isHex {
 		if hx == "" {
 			return nil, fmt.Errorf("value %q is not a valid hexadecimal number", v)
 		}
@@ -194,7 +194,7 @@ func (u *URI) GetEncoded(key string) []byte {
 	if v == "" {
 		return nil
 	}
-	if hx, ok := hexString(v); ok {
+	if hx, ok, _ := hexString(v); ok {
 		if b, err := hex.DecodeString(hx); err == nil {
 			return b
 		}
@@ -211,7 +211,7 @@ func (u *URI) GetHexEncoded(key string) ([]byte, error) {
 		return nil, nil
 	}
 
-	hx, ok := hexString(v)
+	hx, ok, _ := hexString(v)
 	if !ok || hx == "" {
 		return nil, fmt.Errorf("value %q is not a valid hexadecimal number", v)
 	}
@@ -252,13 +252,13 @@ func (u *URI) Read(key string) ([]byte, error) {
 	return readFile(path)
 }
 
-// hexString returns a clean hexadecimal string and a boolean indicating if s
-// can be an hexadecimal string. If s starts with 0x (0x12), 0X (0X1A), or
-// contains colons (01:1A) it will remove them and return true if it only
-// contains valid hexadecimal characters. It will also return true if the string
-// contains at least one letter A-F (010A). It will prefix the string with 0 if
-// the length is an odd number.
-func hexString(s string) (string, bool) {
+// hexString returns a clean hexadecimal string, a boolean indicating if s is a
+// valid hexadecimal string, and a boolean indicating if s was explicitly
+// identifiable as hexadecimal. If s starts with 0x (0x12), 0X (0X1A), or
+// contains colons (01:1A) it will remove them. The third boolean is true if s
+// had a 0x/0X prefix, contained colons, or contained at least one letter A-F
+// (010A). The string is prefixed with 0 if its length is odd.
+func hexString(s string) (string, bool, bool) {
 	hx := strings.TrimPrefix(s, "0x")
 	hx = strings.TrimPrefix(hx, "0X")
 	hx = strings.ReplaceAll(hx, ":", "")
@@ -269,7 +269,11 @@ func hexString(s string) (string, bool) {
 	}
 
 	valid, hasLetter := isValidHexString(hx)
-	return hx, valid && (changed || hasLetter)
+	if !valid {
+		return "", false, false
+	}
+
+	return hx, valid, (changed || hasLetter)
 }
 
 // isValidHexString returns two booleans, the first indicating s contains only

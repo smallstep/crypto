@@ -214,6 +214,7 @@ func TestNew_config(t *testing.T) {
 		})
 	}
 }
+
 func TestPKCS11_GetPublicKey(t *testing.T) {
 	k := setupPKCS11(t)
 	type args struct {
