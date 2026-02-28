@@ -33,8 +33,7 @@ type softKMS struct {
 }
 
 func (k *softKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
-	name := filename(req.Name)
-	if name == "" {
+	if req.Name == "" {
 		return nil, fmt.Errorf("createKeyRequest 'name' cannot be empty")
 	}
 
@@ -43,7 +42,7 @@ func (k *softKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, err
 	}
 
-	if _, err := pemutil.Serialize(resp.PrivateKey, pemutil.ToFile(name, 0o600)); err != nil {
+	if _, err := pemutil.Serialize(resp.PrivateKey, pemutil.ToFile(req.Name, 0o600)); err != nil {
 		return nil, err
 	}
 
@@ -51,33 +50,30 @@ func (k *softKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 }
 
 func (k *softKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
-	name := filename(req.Name)
-	if name == "" {
+	if req.Name == "" {
 		return fmt.Errorf("deleteKeyRequest 'name' cannot be empty")
 	}
 
-	return os.Remove(name)
+	return os.Remove(req.Name)
 }
 
 func (k *softKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
-	name := filename(req.Name)
 	switch {
-	case name == "":
+	case req.Name == "":
 		return fmt.Errorf("storeCertificateRequest 'name' cannot be empty")
 	case req.Certificate == nil:
 		return fmt.Errorf("storeCertificateRequest 'certificate' cannot be empty")
 	}
 
-	return os.WriteFile(name, pem.EncodeToMemory(&pem.Block{
+	return os.WriteFile(req.Name, pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: req.Certificate.Raw,
 	}), 0o600)
 }
 
 func (k *softKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
-	name := filename(req.Name)
 	switch {
-	case name == "":
+	case req.Name == "":
 		return fmt.Errorf("storeCertificateChainRequest 'name' cannot be empty")
 	case len(req.CertificateChain) == 0:
 		return fmt.Errorf("storeCertificateChainRequest 'certificateChain' cannot be empty")
@@ -93,47 +89,36 @@ func (k *softKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest)
 		}
 	}
 
-	return os.WriteFile(name, buf.Bytes(), 0o600)
+	return os.WriteFile(req.Name, buf.Bytes(), 0o600)
 }
 
 func (k *softKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
-	name := filename(req.Name)
-	if name == "" {
+	if req.Name == "" {
 		return fmt.Errorf("deleteCertificateRequest 'name' cannot be empty")
 	}
 
-	return os.Remove(name)
-}
-
-func filename(s string) string {
-	if u, err := uri.ParseWithScheme(softkms.Scheme, s); err == nil {
-		switch {
-		case u.Path != "":
-			return u.Path
-		default:
-			return u.Opaque
-		}
-	}
-	return s
+	return os.Remove(req.Name)
 }
 
 func transformToSoftKMS(u *kmsURI) string {
 	switch {
 	case u.uri.Has("name"):
-		return uri.NewOpaque(softkms.Scheme, u.name).String()
+		return u.name
 	case u.uri.Has("path"):
-		return uri.NewOpaque(softkms.Scheme, u.uri.Get("path")).String()
+		return u.uri.Get("path")
 	case u.uri.Path != "":
-		return uri.NewOpaque(softkms.Scheme, u.uri.Path).String()
+		return u.uri.Path
 	case u.uri.Opaque != "":
-		return uri.NewOpaque(softkms.Scheme, u.uri.Opaque).String()
+		return u.uri.Opaque
 	default:
-		return uri.NewOpaque(softkms.Scheme, "").String()
+		return ""
 	}
 }
 
-func transformFromSoftKMS(rawuri string) (string, error) {
-	return uri.New(Scheme, url.Values{
-		"name": []string{rawuri},
-	}).String(), nil
+func transformFromSoftKMS(path string) (string, error) {
+	uv := url.Values{}
+	if path != "" {
+		uv.Set(nameKey, path)
+	}
+	return uri.New(Scheme, uv).String(), nil
 }

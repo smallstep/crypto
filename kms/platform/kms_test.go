@@ -64,6 +64,12 @@ func shouldSkipNow(t *testing.T, km *KMS) {
 	}
 }
 
+func mustParseURI(t *testing.T, rawuri string) *kmsURI {
+	u, err := parseURI(rawuri)
+	require.NoError(t, err)
+	return u
+}
+
 func mustKMS(t *testing.T, rawuri string) *KMS {
 	t.Helper()
 
@@ -1084,7 +1090,7 @@ func TestKMS_CreateAttestation(t *testing.T) {
 	dir := t.TempDir()
 	privateKeyPath := filepath.Join(dir, "private.key")
 	signer := mustSigner(t, privateKeyPath)
-	attester := mustSigner(t, "attester.key")
+	attester := mustSigner(t, filepath.Join(dir, "attester.key"))
 	permanentIdentifier := mustPermanentIdentifier(t, attester.Public())
 
 	ca, err := minica.New()

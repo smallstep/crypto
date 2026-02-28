@@ -56,13 +56,9 @@ func transformToTPMKMS(u *kmsURI) string {
 	if u.name != "" {
 		uv.Set("name", u.name)
 	}
-	if u.hw {
-		uv.Set("ak", "true")
-	} else if u.uri.Has("hw") {
-		uv.Set("ak", "false")
-	}
 
 	// Add custom extra values that might be tpmkms specific.
+	// There is not need to set "hw".
 	maps.Copy(uv, u.extraValues)
 
 	return uri.New(tpmkms.Scheme, uv).String()
@@ -74,15 +70,13 @@ func transformFromTPMKMS(rawuri string) (string, error) {
 		return "", err
 	}
 
-	uv := url.Values{
-		"name": []string{u.Get("name")},
-	}
-	if u.GetBool("ak") {
-		uv.Set("hw", "true")
+	uv := url.Values{}
+	if u.Has("name") {
+		uv.Set(nameKey, u.Get("name"))
 	}
 
-	for k, v := range u.Values {
-		if k != "name" && k != "ak" {
+	for k, v := range uri.Values(u) {
+		if k != nameKey {
 			uv[k] = v
 		}
 	}

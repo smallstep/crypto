@@ -57,7 +57,9 @@ func transformToMacKMS(u *kmsURI) string {
 	}
 	if u.hw {
 		uv.Set("se", "true")
-		uv.Set("keychain", "dataProtection")
+		if !u.uri.Has("keychain") {
+			uv.Set("keychain", "dataProtection")
+		}
 	} else if u.uri.Has("hw") {
 		uv.Set("se", "false")
 	}
@@ -74,14 +76,15 @@ func transformFromMacKMS(rawuri string) (string, error) {
 		return "", err
 	}
 
-	uv := url.Values{
-		"name": []string{u.Get("label")},
+	uv := url.Values{}
+	if u.Has("label") {
+		uv.Set("name", u.Get("label"))
 	}
 	if u.GetBool("se") {
 		uv.Set("hw", "true")
 	}
 
-	for k, v := range u.Values {
+	for k, v := range uri.Values(u) {
 		if k != "label" && k != "se" {
 			uv[k] = v
 		}

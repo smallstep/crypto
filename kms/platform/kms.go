@@ -34,6 +34,12 @@ type kmsURI struct {
 	extraValues url.Values
 }
 
+func isDefaultKey(k string) bool {
+	return k == nameKey ||
+		k == hwKey ||
+		k == backendKey
+}
+
 func parseURI(rawuri string) (*kmsURI, error) {
 	u, err := uri.ParseWithScheme(Scheme, rawuri)
 	if err != nil {
@@ -41,8 +47,8 @@ func parseURI(rawuri string) (*kmsURI, error) {
 	}
 
 	extraValues := make(url.Values)
-	for k, v := range u.Values {
-		if k != nameKey && k != hwKey && k != backendKey {
+	for k, v := range uri.Values(u) {
+		if !isDefaultKey(k) {
 			extraValues[k] = v
 		}
 	}

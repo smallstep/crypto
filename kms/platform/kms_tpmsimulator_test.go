@@ -152,19 +152,19 @@ func TestKMS_GetPublicKey_tpm(t *testing.T) {
 			Name: "kms:name=key-1",
 		}}, keySigner.Public(), assert.NoError},
 		{"ok ak", kms1, args{&apiv1.GetPublicKeyRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, ak.Public(), assert.NoError},
 		{"ok key with tpm", kms2, args{&apiv1.GetPublicKeyRequest{
 			Name: "kms:name=key-1",
 		}}, keySigner.Public(), assert.NoError},
 		{"ok ak with tpm", kms2, args{&apiv1.GetPublicKeyRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, ak.Public(), assert.NoError},
 		{"fail missing key", kms1, args{&apiv1.GetPublicKeyRequest{
 			Name: "kms:name=key-2",
 		}}, nil, assert.Error},
 		{"fail missing ak", kms2, args{&apiv1.GetPublicKeyRequest{
-			Name: "kms:name=ak-2;hw=true",
+			Name: "kms:name=ak-2;ak=true",
 		}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
@@ -216,13 +216,13 @@ func TestKMS_CreateKey_tpm(t *testing.T) {
 			})
 		}, assert.NoError},
 		{"ok ak", kms1, args{&apiv1.CreateKeyRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			key, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 
 			assert.Equal(t, got, &apiv1.CreateKeyResponse{
-				Name:      "kms:hw=true;name=ak-1",
+				Name:      "kms:ak=true;name=ak-1",
 				PublicKey: key.Public(),
 			})
 		}, assert.NoError},
@@ -250,13 +250,13 @@ func TestKMS_CreateKey_tpm(t *testing.T) {
 			})
 		}, assert.NoError},
 		{"ok ak with tpm", kms2, args{&apiv1.CreateKeyRequest{
-			Name: "kms:name=ak-2;hw=true",
+			Name: "kms:name=ak-2;ak=true",
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			key, err := stpm.GetAK(ctx, "ak-2")
 			require.NoError(t, err)
 
 			assert.Equal(t, got, &apiv1.CreateKeyResponse{
-				Name:      "kms:hw=true;name=ak-2",
+				Name:      "kms:ak=true;name=ak-2",
 				PublicKey: key.Public(),
 			})
 		}, assert.NoError},
@@ -266,7 +266,7 @@ func TestKMS_CreateKey_tpm(t *testing.T) {
 			assert.Nil(t, got)
 		}, assert.Error},
 		{"fail ak already exists", kms2, args{&apiv1.CreateKeyRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			assert.Nil(t, got)
 		}, assert.Error},
@@ -326,7 +326,7 @@ func TestKMS_CreateSigner_tpm(t *testing.T) {
 			assert.Nil(t, got)
 		}, assert.Error},
 		{"fail with ak", km, args{&apiv1.CreateSignerRequest{
-			SigningKey: "kms:name=ak-1;hw=true",
+			SigningKey: "kms:name=ak-1;ak=true",
 		}}, func(t *testing.T, got crypto.Signer) {
 			assert.Nil(t, got)
 		}, assert.Error},
@@ -371,7 +371,7 @@ func TestKMS_DeleteKey_tpm(t *testing.T) {
 			return assert.NoError(t, err) && assert.Error(t, keyErr)
 		}},
 		{"ok ak", km, args{&apiv1.DeleteKeyRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			_, akErr := stpm.GetAK(ctx, "ak-1")
 			return assert.NoError(t, err) && assert.Error(t, akErr)
@@ -380,7 +380,7 @@ func TestKMS_DeleteKey_tpm(t *testing.T) {
 			Name: "kms:name=key-2",
 		}}, assert.Error},
 		{"fail missing ak", km, args{&apiv1.DeleteKeyRequest{
-			Name: "kms:name=ak-2;hw=true",
+			Name: "kms:name=ak-2;ak=true",
 		}}, assert.Error},
 	}
 	for _, tt := range tests {
@@ -434,13 +434,13 @@ func TestKMS_LoadCertificate_tpm(t *testing.T) {
 			Name: "kms:name=key-1",
 		}}, keyChain[0], assert.NoError},
 		{"ok ak", km, args{&apiv1.LoadCertificateRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, akChain[0], assert.NoError},
 		{"fail no certificate", km, args{&apiv1.LoadCertificateRequest{
 			Name: "kms:name=key-2",
 		}}, nil, assert.Error},
 		{"fail no ak certificate", km, args{&apiv1.LoadCertificateRequest{
-			Name: "kms:name=ak-2;hw=true",
+			Name: "kms:name=ak-2;ak=true",
 		}}, nil, assert.Error},
 		{"fail missing", km, args{&apiv1.LoadCertificateRequest{
 			Name: "kms:name=missing-key",
@@ -501,7 +501,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 			return assert.Equal(t, keyChain2[0], k.Certificate())
 		}},
 		{"ok ak", km, args{&apiv1.StoreCertificateRequest{
-			Name:        "kms:name=ak-1;hw=true",
+			Name:        "kms:name=ak-1;ak=true",
 			Certificate: akChain1[0],
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
@@ -509,7 +509,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 			return assert.Equal(t, akChain1[0], k.Certificate())
 		}},
 		{"ok ak overwrite", km, args{&apiv1.StoreCertificateRequest{
-			Name:        "kms:name=ak-1;hw=true",
+			Name:        "kms:name=ak-1;ak=true",
 			Certificate: akChain2[0],
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
@@ -525,7 +525,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 			Certificate: akChain1[0],
 		}}, assert.Error},
 		{"fail ak key not match", km, args{&apiv1.StoreCertificateRequest{
-			Name:        "kms:name=ak-1;hw=true",
+			Name:        "kms:name=ak-1;ak=true",
 			Certificate: keyChain1[0],
 		}}, assert.Error},
 	}
@@ -580,13 +580,13 @@ func TestKMS_LoadCertificateChain_tpm(t *testing.T) {
 			Name: "kms:name=key-1",
 		}}, keyChain, assert.NoError},
 		{"ok ak", km, args{&apiv1.LoadCertificateChainRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, akChain, assert.NoError},
 		{"fail no chain", km, args{&apiv1.LoadCertificateChainRequest{
 			Name: "kms:name=key-2",
 		}}, nil, assert.Error},
 		{"fail no ak chain", km, args{&apiv1.LoadCertificateChainRequest{
-			Name: "kms:name=ak-2;hw=true",
+			Name: "kms:name=ak-2;ak=true",
 		}}, nil, assert.Error},
 		{"fail missing", km, args{&apiv1.LoadCertificateChainRequest{
 			Name: "kms:name=missing-key",
@@ -649,7 +649,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 				assert.Equal(t, keyChain2, k.CertificateChain())
 		}},
 		{"ok ak", km, args{&apiv1.StoreCertificateChainRequest{
-			Name:             "kms:name=ak-1;hw=true",
+			Name:             "kms:name=ak-1;ak=true",
 			CertificateChain: akChain1,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
@@ -658,7 +658,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 				assert.Equal(t, akChain1, k.CertificateChain())
 		}},
 		{"ok ak overwrite", km, args{&apiv1.StoreCertificateChainRequest{
-			Name:             "kms:name=ak-1;hw=true",
+			Name:             "kms:name=ak-1;ak=true",
 			CertificateChain: akChain2,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
@@ -675,7 +675,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 			CertificateChain: akChain1,
 		}}, assert.Error},
 		{"fail ak key not match", km, args{&apiv1.StoreCertificateChainRequest{
-			Name:             "kms:name=ak-1;hw=true",
+			Name:             "kms:name=ak-1;ak=true",
 			CertificateChain: keyChain1,
 		}}, assert.Error},
 	}
@@ -724,7 +724,7 @@ func TestKMS_DeleteCertificate_tpm(t *testing.T) {
 			return assert.Nil(t, k.Certificate()) && assert.Nil(t, k.CertificateChain())
 		}},
 		{"ok ak", km, args{&apiv1.DeleteCertificateRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
@@ -734,10 +734,10 @@ func TestKMS_DeleteCertificate_tpm(t *testing.T) {
 			Name: "kms:name=key-1",
 		}}, assert.NoError},
 		{"ok delete again ak", km, args{&apiv1.DeleteCertificateRequest{
-			Name: "kms:name=ak-1;hw=true",
+			Name: "kms:name=ak-1;ak=true",
 		}}, assert.NoError},
 		{"fail missing", km, args{&apiv1.DeleteCertificateRequest{
-			Name: "kms:name=missing-ak;hw=true",
+			Name: "kms:name=missing-ak;ak=true",
 		}}, assert.Error},
 	}
 	for _, tt := range tests {
@@ -873,14 +873,14 @@ func TestKMS_SearchKeys_tpm(t *testing.T) {
 			Query: "kms:",
 		}}, &apiv1.SearchKeysResponse{
 			Results: []apiv1.SearchKeyResult{
-				{Name: "kms:hw=true;name=ak-1", PublicKey: ak1.Public()},
-				{Name: "kms:hw=true;name=ak-2", PublicKey: ak2.Public()},
+				{Name: "kms:ak=true;name=ak-1", PublicKey: ak1.Public()},
+				{Name: "kms:ak=true;name=ak-2", PublicKey: ak2.Public()},
 				{Name: "kms:name=key-1", PublicKey: key1.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "kms:name=key-1"}},
 				{Name: "kms:name=key-2", PublicKey: key2.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "kms:name=key-2"}},
 			},
 		}, assert.NoError},
 		{"ok keys", km, args{&apiv1.SearchKeysRequest{
-			Query: "kms:hw=false",
+			Query: "kms:ak=false",
 		}}, &apiv1.SearchKeysResponse{
 			Results: []apiv1.SearchKeyResult{
 				{Name: "kms:name=key-1", PublicKey: key1.Public(), CreateSignerRequest: apiv1.CreateSignerRequest{SigningKey: "kms:name=key-1"}},
@@ -888,11 +888,11 @@ func TestKMS_SearchKeys_tpm(t *testing.T) {
 			},
 		}, assert.NoError},
 		{"ok aks", km, args{&apiv1.SearchKeysRequest{
-			Query: "kms:hw=true",
+			Query: "kms:ak=true",
 		}}, &apiv1.SearchKeysResponse{
 			Results: []apiv1.SearchKeyResult{
-				{Name: "kms:hw=true;name=ak-1", PublicKey: ak1.Public()},
-				{Name: "kms:hw=true;name=ak-2", PublicKey: ak2.Public()},
+				{Name: "kms:ak=true;name=ak-1", PublicKey: ak1.Public()},
+				{Name: "kms:ak=true;name=ak-2", PublicKey: ak2.Public()},
 			},
 		}, assert.NoError},
 	}

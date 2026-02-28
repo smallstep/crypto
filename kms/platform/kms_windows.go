@@ -13,6 +13,8 @@ import (
 	"go.step.sm/crypto/kms/uri"
 )
 
+const tpmProvider = "Microsoft Platform Crypto Provider"
+
 func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	if opts.URI == "" {
 		return newTPMKMS(ctx, opts)
@@ -58,7 +60,14 @@ func transformToCAPIKMS(u *kmsURI) string {
 
 	// When storing certificate skip key validation.
 	// This avoid a prompt looking for an SmartCard.
-	uv.Set("skip-find-certificate-key", "true")
+	if !u.extraValues.Has("skip-find-certificate-key") {
+		uv.Set("skip-find-certificate-key", "true")
+	}
+
+	// Set provider "Microsoft Platform Crypto Provider" to use the TPM.
+	if u.hw && !u.extraValues.Has("provider") {
+		uv.Set("provider", tpmProvider)
+	}
 
 	// Add custom extra values that might be CAPI specific.
 	maps.Copy(uv, u.extraValues)
@@ -72,11 +81,15 @@ func transformFromCAPIKMS(rawuri string) (string, error) {
 		return "", err
 	}
 
-	uv := url.Values{
-		"name": []string{u.Get("key")},
+	uv := url.Values{}
+	if u.Has("key") {
+		uv.Set("name", u.Get("key"))
+	}
+	if u.Get("provider") == tpmProvider {
+		uv.Set("hw", "true")
 	}
 
-	for k, v := range u.Values {
+	for k, v := range uri.Values(u) {
 		if k != "key" {
 			uv[k] = v
 		}

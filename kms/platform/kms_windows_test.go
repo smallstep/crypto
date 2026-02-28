@@ -499,3 +499,55 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 		})
 	}
 }
+
+func Test_transformToCAPIKMS(t *testing.T) {
+	type args struct {
+		u *kmsURI
+	}
+	tests := []struct {
+		name   string
+		rawuri string
+		want   string
+	}{
+		{"scheme", "kms:", "capi:skip-find-certificate-key=true"},
+		{"with name", "kms:name=foo", "capi:key=foo;skip-find-certificate-key=true"},
+		{"with hw", "kms:name=foo;hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true"},
+		{"with hw on query", "kms:name=foo?hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true"},
+		{"with skip-find-certificate-key", "kms:name=foo;skip-find-certificate-key=false", "capi:key=foo;skip-find-certificate-key=false"},
+		{"with provider", "kms:name=foo;hw=true;provider=my", "capi:key=foo;provider=my;skip-find-certificate-key=true"},
+		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "capi:baz=qux;foo=bar;key=foo;skip-find-certificate-key=true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := mustParseURI(t, tt.rawuri)
+			assert.Equal(t, tt.want, transformToCAPIKMS(u))
+		})
+	}
+}
+
+func Test_transformFromCAPIKMS(t *testing.T) {
+	type args struct {
+		rawuri string
+	}
+	tests := []struct {
+		name      string
+		rawuri    string
+		want      string
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"scheme", "capi:", "kms:", assert.NoError},
+		{"with key", "capi:key=foo", "kms:name=foo", assert.NoError},
+		{"with provider", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider", "kms:hw=true;name=foo;provider=Microsoft+Platform+Crypto+Provider", assert.NoError},
+		{"with provider on query", "capi:key=foo?provider=my", "kms:name=foo;provider=my", assert.NoError},
+		{"with others", "capi:key=foo;serial=1234;issuer=My+CA", "kms:issuer=My+CA;name=foo;serial=1234", assert.NoError},
+		{"fail empty", "", "", assert.Error},
+		{"fail scheme", "kms:", "", assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := transformFromCAPIKMS(tt.rawuri)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
