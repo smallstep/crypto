@@ -7,9 +7,6 @@ import (
 )
 
 func Test_transformToTPMKMS(t *testing.T) {
-	type args struct {
-		u *kmsURI
-	}
 	tests := []struct {
 		name   string
 		rawuri string
@@ -32,9 +29,6 @@ func Test_transformToTPMKMS(t *testing.T) {
 }
 
 func Test_transformFromTPMKMS(t *testing.T) {
-	type args struct {
-		rawuri string
-	}
 	tests := []struct {
 		name      string
 		rawuri    string

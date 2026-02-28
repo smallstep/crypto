@@ -501,9 +501,6 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 }
 
 func Test_transformToCAPIKMS(t *testing.T) {
-	type args struct {
-		u *kmsURI
-	}
 	tests := []struct {
 		name   string
 		rawuri string
@@ -526,9 +523,6 @@ func Test_transformToCAPIKMS(t *testing.T) {
 }
 
 func Test_transformFromCAPIKMS(t *testing.T) {
-	type args struct {
-		rawuri string
-	}
 	tests := []struct {
 		name      string
 		rawuri    string

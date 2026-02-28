@@ -19,9 +19,6 @@ func (k *KMS) SkipTests() bool {
 }
 
 func Test_transformToMacKMS(t *testing.T) {
-	type args struct {
-		u *kmsURI
-	}
 	tests := []struct {
 		name   string
 		rawuri string
@@ -43,9 +40,6 @@ func Test_transformToMacKMS(t *testing.T) {
 }
 
 func Test_transformFromMacKMS(t *testing.T) {
-	type args struct {
-		rawuri string
-	}
 	tests := []struct {
 		name      string
 		rawuri    string

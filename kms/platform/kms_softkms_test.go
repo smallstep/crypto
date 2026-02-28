@@ -7,9 +7,6 @@ import (
 )
 
 func Test_transformToSoftKMS(t *testing.T) {
-	type args struct {
-		u *kmsURI
-	}
 	tests := []struct {
 		name   string
 		rawuri string
