@@ -20,21 +20,24 @@ func (k *KMS) SkipTests() bool {
 
 func Test_transformToMacKMS(t *testing.T) {
 	tests := []struct {
-		name   string
-		rawuri string
-		want   string
+		name      string
+		rawuri    string
+		want      string
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"scheme", "kms:", "mackms:"},
-		{"with name", "kms:name=foo", "mackms:label=foo"},
-		{"with hw", "kms:name=foo;hw=true", "mackms:keychain=dataProtection;label=foo;se=true"},
-		{"with hw on query", "kms:name=foo?hw=true", "mackms:keychain=dataProtection;label=foo;se=true"},
-		{"with hw and keychain", "kms:name=foo;hw=true;keychain=my", "mackms:keychain=my;label=foo;se=true"},
-		{"with extrasValues", "kms:name=foo;keychain=my?foo=bar&baz=qux", "mackms:baz=qux;foo=bar;keychain=my;label=foo"},
+		{"scheme", "kms:", "mackms:", assert.NoError},
+		{"with name", "kms:name=foo", "mackms:label=foo", assert.NoError},
+		{"with hw", "kms:name=foo;hw=true", "mackms:keychain=dataProtection;label=foo;se=true", assert.NoError},
+		{"with hw on query", "kms:name=foo?hw=true", "mackms:keychain=dataProtection;label=foo;se=true", assert.NoError},
+		{"with hw and keychain", "kms:name=foo;hw=true;keychain=my", "mackms:keychain=my;label=foo;se=true", assert.NoError},
+		{"with extrasValues", "kms:name=foo;keychain=my?foo=bar&baz=qux", "mackms:baz=qux;foo=bar;keychain=my;label=foo", assert.NoError},
+		{"fail parse", "softkms:name=foo", "", assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := mustParseURI(t, tt.rawuri)
-			assert.Equal(t, tt.want, transformToMacKMS(u))
+			got, err := transformToMacKMS(tt.rawuri)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

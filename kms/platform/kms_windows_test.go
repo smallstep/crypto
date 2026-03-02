@@ -502,22 +502,25 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 
 func Test_transformToCAPIKMS(t *testing.T) {
 	tests := []struct {
-		name   string
-		rawuri string
-		want   string
+		name      string
+		rawuri    string
+		want      string
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"scheme", "kms:", "capi:skip-find-certificate-key=true"},
-		{"with name", "kms:name=foo", "capi:key=foo;skip-find-certificate-key=true"},
-		{"with hw", "kms:name=foo;hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true"},
-		{"with hw on query", "kms:name=foo?hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true"},
-		{"with skip-find-certificate-key", "kms:name=foo;skip-find-certificate-key=false", "capi:key=foo;skip-find-certificate-key=false"},
-		{"with provider", "kms:name=foo;hw=true;provider=my", "capi:key=foo;provider=my;skip-find-certificate-key=true"},
-		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "capi:baz=qux;foo=bar;key=foo;skip-find-certificate-key=true"},
+		{"scheme", "kms:", "capi:skip-find-certificate-key=true", assert.NoError},
+		{"with name", "kms:name=foo", "capi:key=foo;skip-find-certificate-key=true", assert.NoError},
+		{"with hw", "kms:name=foo;hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true", assert.NoError},
+		{"with hw on query", "kms:name=foo?hw=true", "capi:key=foo;provider=Microsoft+Platform+Crypto+Provider;skip-find-certificate-key=true", assert.NoError},
+		{"with skip-find-certificate-key", "kms:name=foo;skip-find-certificate-key=false", "capi:key=foo;skip-find-certificate-key=false", assert.NoError},
+		{"with provider", "kms:name=foo;hw=true;provider=my", "capi:key=foo;provider=my;skip-find-certificate-key=true", assert.NoError},
+		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "capi:baz=qux;foo=bar;key=foo;skip-find-certificate-key=true", assert.NoError},
+		{"fail parse", "capikms:name=foo", "", assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := mustParseURI(t, tt.rawuri)
-			assert.Equal(t, tt.want, transformToCAPIKMS(u))
+			got, err := transformToCAPIKMS(tt.rawuri)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

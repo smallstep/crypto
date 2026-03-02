@@ -29,7 +29,6 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
 	case apiv1.DefaultKMS, apiv1.MacKMS:
-		opts.URI = transformToMacKMS(u)
 		return newMacKMS(ctx, opts)
 	default:
 		return nil, fmt.Errorf("failed parsing %q: unsupported backend %q", opts.URI, u.backend)
@@ -37,6 +36,14 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 }
 
 func newMacKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
+	if opts.URI != "" {
+		u, err := transformToMacKMS(opts.URI)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing uri: %w", err)
+		}
+		opts.URI = u
+	}
+
 	km, err := mackms.New(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -50,7 +57,12 @@ func newMacKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}, nil
 }
 
-func transformToMacKMS(u *kmsURI) string {
+func transformToMacKMS(rawuri string) (string, error) {
+	u, err := parseURI(rawuri)
+	if err != nil {
+		return "", err
+	}
+
 	uv := url.Values{}
 	if u.name != "" {
 		uv.Set("label", u.name)
@@ -67,7 +79,7 @@ func transformToMacKMS(u *kmsURI) string {
 	// Add custom extra values that might be mackms specific.
 	maps.Copy(uv, u.extraValues)
 
-	return uri.New(mackms.Scheme, uv).String()
+	return uri.New(mackms.Scheme, uv).String(), nil
 }
 
 func transformFromMacKMS(rawuri string) (string, error) {

@@ -1127,12 +1127,20 @@ func TestKMS_CreateAttestation(t *testing.T) {
 			PublicKey:           signer.Public(),
 			PermanentIdentifier: permanentIdentifier.String(),
 		}, assert.NoError},
+		{"fail missing key", softKMS, args{&apiv1.CreateAttestationRequest{
+			Name:              "kms:" + platformMissingName,
+			AttestationClient: okClient,
+		}}, nil, assert.Error},
 		{"fail custom attestation", softKMS, args{&apiv1.CreateAttestationRequest{
 			Name:              "kms:" + privateKeyPath,
 			AttestationClient: failClient,
 		}}, nil, assert.Error},
 		{"fail no client", softKMS, args{&apiv1.CreateAttestationRequest{
 			Name: "kms:" + privateKeyPath,
+		}}, nil, assert.Error},
+		{"fail no name", softKMS, args{&apiv1.CreateAttestationRequest{}}, nil, assert.Error},
+		{"fail parse", softKMS, args{&apiv1.CreateAttestationRequest{
+			Name: "tpmkms:",
 		}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
@@ -1198,6 +1206,9 @@ func TestKMS_SearchKeys(t *testing.T) {
 				makeResult(platformKeys[2]),
 			},
 		}, assert.NoError},
+		{"fail parse", platformKMS, args{&apiv1.SearchKeysRequest{
+			Query: "name=",
+		}}, nil, assert.Error},
 
 		// SoftKMS
 		{"fail softKMS", softKMS, args{&apiv1.SearchKeysRequest{

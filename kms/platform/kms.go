@@ -77,7 +77,7 @@ var _ apiv1.CertificateChainManager = (*KMS)(nil)
 type KMS struct {
 	typ              apiv1.Type
 	backend          extendedKeyManager
-	transformToURI   func(*kmsURI) string
+	transformToURI   func(string) (string, error)
 	transformFromURI func(string) (string, error)
 }
 
@@ -94,17 +94,18 @@ func (k *KMS) Close() error {
 }
 
 func (k *KMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey, error) {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return nil, err
 	}
+
 	return k.backend.GetPublicKey(&apiv1.GetPublicKeyRequest{
 		Name: name,
 	})
 }
 
 func (k *KMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, error) {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error
 		return req.Signer, nil
 	}
 
-	signingKey, err := k.transform(req.SigningKey)
+	signingKey, err := k.transformToURI(req.SigningKey)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error
 }
 
 func (k *KMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return err
 	}
@@ -146,7 +147,7 @@ func (k *KMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 }
 
 func (k *KMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certificate, error) {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func (k *KMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certific
 }
 
 func (k *KMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return err
 	}
@@ -168,7 +169,7 @@ func (k *KMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 }
 
 func (k *KMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +180,7 @@ func (k *KMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x
 }
 
 func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) error {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return err
 	}
@@ -190,7 +191,7 @@ func (k *KMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest) err
 }
 
 func (k *KMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return err
 	}
@@ -205,7 +206,7 @@ func (k *KMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.Cre
 		return nil, errors.New("createAttestationRequest 'name' cannot be empty")
 	}
 
-	name, err := k.transform(req.Name)
+	name, err := k.transformToURI(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +252,7 @@ func (k *KMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.Cre
 
 func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
 	if km, ok := k.backend.(apiv1.SearchableKeyManager); ok {
-		query, err := k.transform(req.Query)
+		query, err := k.transformToURI(req.Query)
 		if err != nil {
 			return nil, err
 		}
@@ -267,15 +268,6 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 	}
 
 	return nil, apiv1.NotImplementedError{}
-}
-
-func (k *KMS) transform(rawuri string) (string, error) {
-	u, err := parseURI(rawuri)
-	if err != nil {
-		return "", err
-	}
-
-	return k.transformToURI(u), nil
 }
 
 func (k *KMS) patchCreateKeyResponse(resp *apiv1.CreateKeyResponse) (*apiv1.CreateKeyResponse, error) {

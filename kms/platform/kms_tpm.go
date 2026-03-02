@@ -14,16 +14,14 @@ import (
 var _ apiv1.Attester = (*KMS)(nil)
 
 func newTPMKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
-	if opts.URI == "" {
-		return newTPMKMS(ctx, opts)
+	if opts.URI != "" {
+		u, err := transformToTPMKMS(opts.URI)
+		if err != nil {
+			return nil, err
+		}
+		opts.URI = u
 	}
 
-	u, err := parseURI(opts.URI)
-	if err != nil {
-		return nil, err
-	}
-
-	opts.URI = transformToTPMKMS(u)
 	km, err := tpmkms.New(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -51,7 +49,12 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...tpmkms.Option) (*KMS, e
 	}, nil
 }
 
-func transformToTPMKMS(u *kmsURI) string {
+func transformToTPMKMS(rawuri string) (string, error) {
+	u, err := parseURI(rawuri)
+	if err != nil {
+		return "", err
+	}
+
 	uv := url.Values{}
 	if u.name != "" {
 		uv.Set("name", u.name)
@@ -61,7 +64,7 @@ func transformToTPMKMS(u *kmsURI) string {
 	// There is not need to set "hw".
 	maps.Copy(uv, u.extraValues)
 
-	return uri.New(tpmkms.Scheme, uv).String()
+	return uri.New(tpmkms.Scheme, uv).String(), nil
 }
 
 func transformFromTPMKMS(rawuri string) (string, error) {

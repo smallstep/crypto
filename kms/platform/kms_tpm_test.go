@@ -8,22 +8,25 @@ import (
 
 func Test_transformToTPMKMS(t *testing.T) {
 	tests := []struct {
-		name   string
-		rawuri string
-		want   string
+		name      string
+		rawuri    string
+		want      string
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"scheme", "kms:", "tpmkms:"},
-		{"with name", "kms:name=foo", "tpmkms:name=foo"},
-		{"with ak", "kms:name=foo;ak=true", "tpmkms:ak=true;name=foo"},
-		{"with ak in query", "kms:name=foo?ak=true", "tpmkms:ak=true;name=foo"},
-		{"with ak false", "kms:ak=false", "tpmkms:ak=false"},
-		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "tpmkms:baz=qux;foo=bar;name=foo"},
-		{"without hw", "kms:name=foo;hw=true", "tpmkms:name=foo"},
+		{"scheme", "kms:", "tpmkms:", assert.NoError},
+		{"with name", "kms:name=foo", "tpmkms:name=foo", assert.NoError},
+		{"with ak", "kms:name=foo;ak=true", "tpmkms:ak=true;name=foo", assert.NoError},
+		{"with ak in query", "kms:name=foo?ak=true", "tpmkms:ak=true;name=foo", assert.NoError},
+		{"with ak false", "kms:ak=false", "tpmkms:ak=false", assert.NoError},
+		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "tpmkms:baz=qux;foo=bar;name=foo", assert.NoError},
+		{"without hw", "kms:name=foo;hw=true", "tpmkms:name=foo", assert.NoError},
+		{"fail parse", "mackms:name=foo", "", assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := mustParseURI(t, tt.rawuri)
-			assert.Equal(t, tt.want, transformToTPMKMS(u))
+			got, err := transformToTPMKMS(tt.rawuri)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

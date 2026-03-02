@@ -100,18 +100,27 @@ func (k *softKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	return os.Remove(req.Name)
 }
 
-func transformToSoftKMS(u *kmsURI) string {
+func transformToSoftKMS(rawuri string) (string, error) {
+	u, err := parseURI(rawuri)
+	if err != nil {
+		return "", err
+	}
+
+	if u.hw {
+		return "", fmt.Errorf("error parsing uri: hw is not supported")
+	}
+
 	switch {
 	case u.uri.Has("name"):
-		return u.name
+		return u.name, nil
 	case u.uri.Has("path"):
-		return u.uri.Get("path")
+		return u.uri.Get("path"), nil
 	case u.uri.Path != "":
-		return u.uri.Path
+		return u.uri.Path, nil
 	case u.uri.Opaque != "":
-		return u.uri.Opaque
+		return u.uri.Opaque, nil
 	default:
-		return ""
+		return "", nil
 	}
 }
 

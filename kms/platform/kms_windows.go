@@ -27,7 +27,6 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 
 	switch u.backend {
 	case apiv1.CAPIKMS:
-		opts.URI = transformToCAPIKMS(u)
 		return newCAPIKMS(ctx, opts)
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
@@ -39,6 +38,14 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 }
 
 func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
+	if opts.URI != "" {
+		u, err := transformToCAPIKMS(opts.URI)
+		if err != nil {
+			return nil, err
+		}
+		opts.URI = u
+	}
+
 	km, err := capi.New(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -52,7 +59,12 @@ func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	}, nil
 }
 
-func transformToCAPIKMS(u *kmsURI) string {
+func transformToCAPIKMS(rawuri string) (string, error) {
+	u, err := parseURI(rawuri)
+	if err != nil {
+		return "", err
+	}
+
 	uv := url.Values{}
 	if u.name != "" {
 		uv.Set("key", u.name)
@@ -72,7 +84,7 @@ func transformToCAPIKMS(u *kmsURI) string {
 	// Add custom extra values that might be CAPI specific.
 	maps.Copy(uv, u.extraValues)
 
-	return uri.New(capi.Scheme, uv).String()
+	return uri.New(capi.Scheme, uv).String(), nil
 }
 
 func transformFromCAPIKMS(rawuri string) (string, error) {
