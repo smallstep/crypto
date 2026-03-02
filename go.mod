@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.24.0
+go 1.25.0
 
 require (
 	cloud.google.com/go/kms v1.25.0
@@ -24,7 +24,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.48.0
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.40.0
 	google.golang.org/api v0.264.0
