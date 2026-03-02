@@ -64,12 +64,6 @@ func shouldSkipNow(t *testing.T, km *KMS) {
 	}
 }
 
-func mustParseURI(t *testing.T, rawuri string) *kmsURI {
-	u, err := parseURI(rawuri)
-	require.NoError(t, err)
-	return u
-}
-
 func mustKMS(t *testing.T, rawuri string) *KMS {
 	t.Helper()
 
