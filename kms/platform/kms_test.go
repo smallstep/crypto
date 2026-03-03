@@ -811,7 +811,7 @@ func TestKMS_StoreCertificate(t *testing.T) {
 			Certificate: chain[0],
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			// Storing a certificate with no key is not supported on TPMKMS.
-			if platformKMS.Type() == apiv1.TPMKMS {
+			if platformKMS.Type() == apiv1.TPMKMS && runtime.GOOS != "windows" {
 				return assert.Error(t, err)
 			}
 
@@ -822,9 +822,9 @@ func TestKMS_StoreCertificate(t *testing.T) {
 			})
 			return assert.NoError(t, err)
 		}},
-		{"fail platform bad certificate", platformKMS, args{&apiv1.StoreCertificateRequest{
+		{"fail platform no certificate", platformKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        platformCertName,
-			Certificate: &x509.Certificate{},
+			Certificate: nil,
 		}}, assert.Error},
 
 		// SoftKMS
@@ -958,7 +958,7 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 			CertificateChain: chain,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			// Storing a certificate with no key is not supported on TPMKMS.
-			if platformKMS.Type() == apiv1.TPMKMS {
+			if platformKMS.Type() == apiv1.TPMKMS && runtime.GOOS != "windows" {
 				return assert.Error(t, err)
 			}
 
@@ -967,9 +967,10 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 					Name: platformCertName,
 				}))
 
-				if typ := platformKMS.Type(); typ == apiv1.MacKMS {
+				if typ := platformKMS.Type(); typ == apiv1.MacKMS || (typ == apiv1.TPMKMS && runtime.GOOS == "windows") {
 					assert.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 						Name: uri.New(Scheme, url.Values{
+							"issuer": []string{platformChain[1].Issuer.CommonName}, // for windows only
 							"serial": []string{hex.EncodeToString(platformChain[1].SerialNumber.Bytes())},
 						}).String(),
 					}))
@@ -1016,7 +1017,6 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			shouldSkipNow(t, tt.kms)
-
 			tt.assertion(t, tt.kms.StoreCertificateChain(tt.args.req))
 		})
 	}

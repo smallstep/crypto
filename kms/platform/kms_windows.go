@@ -17,6 +17,7 @@ const tpmProvider = "Microsoft Platform Crypto Provider"
 
 func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	if opts.URI == "" {
+		opts.URI = withEnableCNG(nil)
 		return newTPMKMS(ctx, opts)
 	}
 
@@ -31,6 +32,7 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
 	case apiv1.DefaultKMS, apiv1.TPMKMS:
+		opts.URI = withEnableCNG(u.uri)
 		return newTPMKMS(ctx, opts)
 	default:
 		return nil, fmt.Errorf("failed parsing %q: unsupported backend %q", opts.URI, u.backend)
@@ -57,6 +59,16 @@ func newCAPIKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 		transformToURI:   transformToCAPIKMS,
 		transformFromURI: transformFromCAPIKMS,
 	}, nil
+}
+
+func withEnableCNG(u *uri.URI) string {
+	if u == nil {
+		return "kms:enable-cng=true"
+	}
+	if !u.Has("enable-cng") {
+		u.Set("enable-cng", "true")
+	}
+	return u.String()
 }
 
 func transformToCAPIKMS(rawuri string) (string, error) {

@@ -1,25 +1,39 @@
 package platform
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.step.sm/crypto/kms/uri"
 )
 
 func Test_transformToTPMKMS(t *testing.T) {
+	fixWindowsURI := func(s string) string {
+		if runtime.GOOS != "windows" {
+			return s
+		}
+
+		u, err := uri.Parse(s)
+		require.NoError(t, err)
+		u.Set("skip-find-certificate-key", "true")
+		return u.String()
+	}
+
 	tests := []struct {
 		name      string
 		rawuri    string
 		want      string
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"scheme", "kms:", "tpmkms:", assert.NoError},
-		{"with name", "kms:name=foo", "tpmkms:name=foo", assert.NoError},
-		{"with ak", "kms:name=foo;ak=true", "tpmkms:ak=true;name=foo", assert.NoError},
-		{"with ak in query", "kms:name=foo?ak=true", "tpmkms:ak=true;name=foo", assert.NoError},
-		{"with ak false", "kms:ak=false", "tpmkms:ak=false", assert.NoError},
-		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", "tpmkms:baz=qux;foo=bar;name=foo", assert.NoError},
-		{"without hw", "kms:name=foo;hw=true", "tpmkms:name=foo", assert.NoError},
+		{"scheme", "kms:", fixWindowsURI("tpmkms:"), assert.NoError},
+		{"with name", "kms:name=foo", fixWindowsURI("tpmkms:name=foo"), assert.NoError},
+		{"with ak", "kms:name=foo;ak=true", fixWindowsURI("tpmkms:ak=true;name=foo"), assert.NoError},
+		{"with ak in query", "kms:name=foo?ak=true", fixWindowsURI("tpmkms:ak=true;name=foo"), assert.NoError},
+		{"with ak false", "kms:ak=false", fixWindowsURI("tpmkms:ak=false"), assert.NoError},
+		{"with extrasValues", "kms:name=foo;foo=bar?baz=qux", fixWindowsURI("tpmkms:baz=qux;foo=bar;name=foo"), assert.NoError},
+		{"without hw", "kms:name=foo;hw=true", fixWindowsURI("tpmkms:name=foo"), assert.NoError},
 		{"fail parse", "mackms:name=foo", "", assert.Error},
 	}
 	for _, tt := range tests {

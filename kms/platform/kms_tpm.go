@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"net/url"
+	"runtime"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/tpmkms"
@@ -58,6 +59,12 @@ func transformToTPMKMS(rawuri string) (string, error) {
 	uv := url.Values{}
 	if u.name != "" {
 		uv.Set("name", u.name)
+	}
+
+	// When storing a certificate on windows, skip key validation. This avoid a
+	// prompt looking for an SmartCard.
+	if runtime.GOOS == "windows" && !u.extraValues.Has("skip-find-certificate-key") {
+		uv.Set("skip-find-certificate-key", "true")
 	}
 
 	// Add custom extra values that might be tpmkms specific.
