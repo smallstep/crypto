@@ -3,7 +3,6 @@
 package platform
 
 import (
-	"context"
 	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -57,7 +56,7 @@ func mustTPMDevice(t *testing.T) (*tpm.TPM, string, string) {
 
 	listener := &net.ListenConfig{}
 	socket := filepath.Join(dir, "tpm.sock")
-	ln, err := listener.Listen(context.TODO(), "unix", socket)
+	ln, err := listener.Listen(t.Context(), "unix", socket)
 	require.NoError(t, err)
 
 	go func() {

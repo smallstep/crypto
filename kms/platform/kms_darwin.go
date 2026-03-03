@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"strings"
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/mackms"
@@ -72,7 +73,7 @@ func transformToMacKMS(rawuri string) (string, error) {
 		if !u.uri.Has("keychain") {
 			uv.Set("keychain", "dataProtection")
 		}
-	} else if u.uri.Has("hw") {
+	} else if strings.EqualFold(u.uri.Get("hw"), "false") {
 		uv.Set("se", "false")
 	}
 

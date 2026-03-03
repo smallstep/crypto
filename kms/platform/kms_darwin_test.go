@@ -28,8 +28,10 @@ func Test_transformToMacKMS(t *testing.T) {
 		{"scheme", "kms:", "mackms:", assert.NoError},
 		{"with name", "kms:name=foo", "mackms:label=foo", assert.NoError},
 		{"with hw", "kms:name=foo;hw=true", "mackms:keychain=dataProtection;label=foo;se=true", assert.NoError},
+		{"with hw false", "kms:name=foo;hw=false", "mackms:label=foo;se=false", assert.NoError},
 		{"with hw on query", "kms:name=foo?hw=true", "mackms:keychain=dataProtection;label=foo;se=true", assert.NoError},
 		{"with hw and keychain", "kms:name=foo;hw=true;keychain=my", "mackms:keychain=my;label=foo;se=true", assert.NoError},
+		{"with hw other", "kms:name=foo;hw=other", "mackms:label=foo", assert.NoError},
 		{"with extrasValues", "kms:name=foo;keychain=my?foo=bar&baz=qux", "mackms:baz=qux;foo=bar;keychain=my;label=foo", assert.NoError},
 		{"fail parse", "softkms:name=foo", "", assert.Error},
 	}
