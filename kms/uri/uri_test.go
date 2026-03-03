@@ -2,6 +2,7 @@ package uri
 
 import (
 	"errors"
+	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -263,7 +264,7 @@ func TestURI_GetEncoded(t *testing.T) {
 		{"ok in query percent", mustParse(t, "yubikey:slot-id=9a?foo=%9a"), args{"foo"}, []byte{0x9a}},
 		{"ok missing", mustParse(t, "yubikey:slot-id=9a"), args{"foo"}, nil},
 		{"ok missing query", mustParse(t, "yubikey:slot-id=9a?bar=zar"), args{"foo"}, nil},
-		{"ok no hex", mustParse(t, "yubikey:slot-id=09a?bar=zar"), args{"slot-id"}, []byte{'0', '9', 'a'}},
+		{"ok no hex", mustParse(t, "yubikey:slot-id=09z?bar=zar"), args{"slot-id"}, []byte{'0', '9', 'z'}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -369,6 +370,39 @@ func TestURI_GetInt(t *testing.T) {
 	}
 }
 
+func TestURI_GetBigInt(t *testing.T) {
+	type args struct {
+		key string
+	}
+	tests := []struct {
+		name      string
+		uri       *URI
+		args      args
+		want      *big.Int
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok empty", mustParse(t, "mackms:serial="), args{"serial"}, nil, assert.NoError},
+		{"ok missing", mustParse(t, "mackms:label=123456"), args{"serial"}, nil, assert.NoError},
+		{"ok number", mustParse(t, "mackms:serial=123456"), args{"serial"}, big.NewInt(123456), assert.NoError},
+		{"ok hex with 0x", mustParse(t, "mackms:serial=0x123456"), args{"serial"}, big.NewInt(1193046), assert.NoError},
+		{"ok hex with 0X", mustParse(t, "mackms:serial=0X123456"), args{"serial"}, big.NewInt(1193046), assert.NoError},
+		{"ok hex with colon", mustParse(t, "mackms:serial=12:34:56"), args{"serial"}, big.NewInt(1193046), assert.NoError},
+		{"ok hex odd length", mustParse(t, "mackms:serial=0x1"), args{"serial"}, big.NewInt(1), assert.NoError},
+		{"fail hex empty", mustParse(t, "mackms:serial=0x"), args{"serial"}, nil, assert.Error},
+		{"ok hex with letters", mustParse(t, "mackms:serial=0A01"), args{"serial"}, big.NewInt(0x0A01), assert.NoError},
+		{"ok hex with letters only", mustParse(t, "mackms:serial=12345a"), args{"serial"}, big.NewInt(0x12345a), assert.NoError},
+		{"fail hex", mustParse(t, "mackms:serial=0x12345g"), args{"serial"}, nil, assert.Error},
+		{"fail number", mustParse(t, "mackms:serial=12345G"), args{"serial"}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.uri.GetBigInt(tt.args.key)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestURI_GetHexEncoded(t *testing.T) {
 	type args struct {
 		key string
@@ -384,7 +418,7 @@ func TestURI_GetHexEncoded(t *testing.T) {
 		{"ok first", mustParse(t, "capi:sha1=9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}, false},
 		{"ok prefix", mustParse(t, "capi:sha1=0x9a9b;sha1=9b"), args{"sha1"}, []byte{0x9a, 0x9b}, false},
 		{"ok missing", mustParse(t, "capi:foo=9a"), args{"sha1"}, nil, false},
-		{"fail odd hex", mustParse(t, "capi:sha1=09a?bar=zar"), args{"sha1"}, nil, true},
+		{"ok odd hex", mustParse(t, "capi:sha1=09a?bar=zar"), args{"sha1"}, []byte{0x00, 0x9a}, false},
 		{"fail invalid hex", mustParse(t, "capi:sha1=9z?bar=zar"), args{"sha1"}, nil, true},
 	}
 	for _, tt := range tests {
@@ -399,6 +433,19 @@ func TestURI_GetHexEncoded(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestURI_Set(t *testing.T) {
+	u := mustParse(t, "kms:name=foo")
+	assert.Equal(t, "", u.Get("key"))
+
+	u.Set("key", "bar")
+	assert.Equal(t, "bar", u.Get("key"))
+	assert.Equal(t, "kms:key=bar;name=foo", u.String())
+
+	u.Set("key", "zar")
+	assert.Equal(t, "zar", u.Get("key"))
+	assert.Equal(t, "kms:key=zar;name=foo", u.String())
 }
 
 func TestURI_Read(t *testing.T) {
@@ -441,6 +488,31 @@ func TestURI_Read(t *testing.T) {
 			got, err := tt.uri.Read(tt.args.key)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		rawuri string
+		want   url.Values
+	}{
+		{"empty", "kms:", url.Values{}},
+		{"with opaque values", "kms:foo=bar;baz=qux;foo=zar", url.Values{
+			"foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+		{"with query values", "kms:name=value?foo=bar&baz=qux&foo=zar", url.Values{
+			"name": []string{"value"}, "foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+		{"with mixed values", "kms:name=value;foo=bar?baz=qux&foo=zar", url.Values{
+			"name": []string{"value"}, "foo": []string{"bar", "zar"}, "baz": []string{"qux"},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := mustParse(t, tt.rawuri)
+			assert.Equal(t, tt.want, Values(u))
 		})
 	}
 }

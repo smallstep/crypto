@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.step.sm/crypto/keyutil"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"go.step.sm/crypto/keyutil"
 )
 
 type skKey struct {

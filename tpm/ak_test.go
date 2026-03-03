@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/x509util"

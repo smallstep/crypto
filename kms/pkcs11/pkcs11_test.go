@@ -22,9 +22,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.step.sm/crypto/kms/apiv1"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
+
+	"go.step.sm/crypto/kms/apiv1"
 )
 
 func TestNew(t *testing.T) {
@@ -213,6 +214,7 @@ func TestNew_config(t *testing.T) {
 		})
 	}
 }
+
 func TestPKCS11_GetPublicKey(t *testing.T) {
 	k := setupPKCS11(t)
 	type args struct {

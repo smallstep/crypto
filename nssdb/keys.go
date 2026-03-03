@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"math/big"
 
-	asn1utils "go.step.sm/crypto/internal/utils/asn1"
 	"golang.org/x/crypto/cryptobyte"
+
+	asn1utils "go.step.sm/crypto/internal/utils/asn1"
 )
 
 // ASN.1 encoded OID for secp256r1 (1.2.840.10045.3.1.7), the only supported curve.

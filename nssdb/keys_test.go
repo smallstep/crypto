@@ -11,8 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.step.sm/crypto/pemutil"
 	"golang.org/x/crypto/cryptobyte"
+
+	"go.step.sm/crypto/pemutil"
 )
 
 func TestEcParams(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
+
 	"go.step.sm/crypto/kms/apiv1"
 )
 

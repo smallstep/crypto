@@ -1,6 +1,13 @@
 package apiv1
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"go.step.sm/crypto/keyutil"
+)
 
 func TestProtectionLevel_String(t *testing.T) {
 	tests := []struct {
@@ -48,4 +55,18 @@ func TestSignatureAlgorithm_String(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewAttestSignerContext(t *testing.T) {
+	signer, err := keyutil.GenerateDefaultSigner()
+	require.NoError(t, err)
+
+	ctx := NewAttestSignerContext(t.Context(), signer)
+	got, ok := AttestSignerFromContext(ctx)
+	assert.Equal(t, signer, got)
+	assert.True(t, ok)
+
+	got, ok = AttestSignerFromContext(t.Context())
+	assert.Nil(t, got)
+	assert.False(t, ok)
 }

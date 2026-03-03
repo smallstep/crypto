@@ -1276,17 +1276,15 @@ func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (
 	}
 
 	// With regular values, uris look like this:
-	// mackms:label=my-cert;serial=01020A0B...
+	// mackms:label=my-cert;serial=0x01020A0B...
 	label := u.Get("label")
 	keychain := u.Get("keychain")
-	serial := u.GetEncoded("serial")
-	if requireValue && label == "" && len(serial) == 0 {
-		return nil, fmt.Errorf("error parsing %q: label or serial are required", rawuri)
+	serialNumber, err := u.GetBigInt("serial")
+	if err != nil {
+		return nil, fmt.Errorf("error parsing %q: %w", rawuri, err)
 	}
-
-	var serialNumber *big.Int
-	if len(serial) > 0 {
-		serialNumber = new(big.Int).SetBytes(serial)
+	if requireValue && label == "" && serialNumber == nil {
+		return nil, fmt.Errorf("error parsing %q: label or serial is required", rawuri)
 	}
 
 	return &certAttributes{

@@ -45,7 +45,7 @@ race:
 #########################################
 
 fmt:
-	$Q goimports -l -w $(SRC)
+	$Q goimports --local go.step.sm/crypto -l -w $(SRC)
 
 lint: golint govulncheck
 

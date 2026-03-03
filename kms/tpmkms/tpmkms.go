@@ -29,6 +29,7 @@ import (
 	"go.step.sm/crypto/tpm/attestation"
 	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
+	"go.step.sm/crypto/x509util"
 )
 
 func init() {
@@ -1059,8 +1060,14 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 		uv.Set("key-id", o.keyID)
 	case o.sha1 != "":
 		uv.Set("sha1", o.sha1)
+	case o.name != "":
+		keyID, err := k.getSubjectKeyID(req.Name)
+		if err != nil {
+			return fmt.Errorf("error getting key-id: %w", err)
+		}
+		uv.Set("key-id", hex.EncodeToString(keyID))
 	default:
-		return errors.New(`at least one of "serial", "key-id" or "sha1" is expected to be set`)
+		return errors.New(`at least one of "serial", "key-id", "sha1" or "name" is expected to be set`)
 	}
 
 	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
@@ -1075,6 +1082,16 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 	}
 
 	return nil
+}
+
+func (k *TPMKMS) getSubjectKeyID(name string) ([]byte, error) {
+	key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return x509util.GenerateSubjectKeyID(key)
 }
 
 // attestationClient is a wrapper for [attestation.Client], containing

@@ -265,6 +265,29 @@ type AttestationClient interface {
 	Attest(context.Context) ([]*x509.Certificate, error)
 }
 
+type attestSignerCtx struct{}
+
+// NewAttestSignerContext creates a new context with the given signer.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func NewAttestSignerContext(ctx context.Context, signer crypto.Signer) context.Context {
+	return context.WithValue(ctx, attestSignerCtx{}, signer)
+}
+
+// AttestSignerFromContext returns the signer from the context.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func AttestSignerFromContext(ctx context.Context) (crypto.Signer, bool) {
+	signer, ok := ctx.Value(attestSignerCtx{}).(crypto.Signer)
+	return signer, ok
+}
+
 // CertificationParameters encapsulates the inputs for certifying an application key.
 // Only TPM 2.0 is supported at this point.
 //

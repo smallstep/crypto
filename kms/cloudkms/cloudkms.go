@@ -18,10 +18,11 @@ import (
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/pkg/errors"
+	"google.golang.org/api/option"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
-	"google.golang.org/api/option"
 )
 
 // Scheme is the scheme used in uris, the string "cloudkms".

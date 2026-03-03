@@ -12,8 +12,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.step.sm/crypto/internal/emoji"
 	"golang.org/x/crypto/ssh"
+
+	"go.step.sm/crypto/internal/emoji"
 )
 
 func generateCertificate(t *testing.T) ssh.PublicKey {

@@ -19,11 +19,12 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/randutil"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 )
 
 // Some helpers with inspiration from crypto/ssh/agent/client_test.go
