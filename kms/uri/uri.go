@@ -220,6 +220,11 @@ func (u *URI) GetHexEncoded(key string) ([]byte, error) {
 	return hex.DecodeString(hx)
 }
 
+// Set sets the key to value. It replaces any existing values.
+func (u *URI) Set(key, value string) {
+	u.Values.Set(key, value)
+}
+
 // Pin returns the pin encoded in the url. It will read the pin from the
 // pin-value or the pin-source attributes.
 func (u *URI) Pin() string {

@@ -435,6 +435,19 @@ func TestURI_GetHexEncoded(t *testing.T) {
 	}
 }
 
+func TestURI_Set(t *testing.T) {
+	u := mustParse(t, "kms:name=foo")
+	assert.Equal(t, "", u.Get("key"))
+
+	u.Set("key", "bar")
+	assert.Equal(t, "bar", u.Get("key"))
+	assert.Equal(t, "kms:key=bar;name=foo", u.String())
+
+	u.Set("key", "zar")
+	assert.Equal(t, "zar", u.Get("key"))
+	assert.Equal(t, "kms:key=zar;name=foo", u.String())
+}
+
 func TestURI_Read(t *testing.T) {
 	// Read does not trim the contents of the file
 	expected := []byte("trim-this-pin \n")
