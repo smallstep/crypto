@@ -14,17 +14,17 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 		return newTPMKMS(ctx, opts)
 	}
 
-	u, err := parseURI(opts.URI)
+	backend, err := getBackend(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	switch u.backend {
+	switch backend {
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
 	case apiv1.DefaultKMS, apiv1.TPMKMS:
 		return newTPMKMS(ctx, opts)
 	default:
-		return nil, fmt.Errorf("failed parsing %q: unsupported backend %q", opts.URI, u.backend)
+		return nil, fmt.Errorf("failed parsing options: unsupported backend %q", backend)
 	}
 }

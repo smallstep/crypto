@@ -23,7 +23,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
@@ -1214,6 +1213,99 @@ func TestKMS_SearchKeys(t *testing.T) {
 			shouldSkipNow(t, tt.kms)
 
 			got, err := tt.kms.SearchKeys(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_getBackend(t *testing.T) {
+	type args struct {
+		opts apiv1.Options
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      apiv1.Type
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{apiv1.Options{}}, apiv1.DefaultKMS, assert.NoError},
+		{"ok from type", args{apiv1.Options{Type: apiv1.TPMKMS}}, apiv1.TPMKMS, assert.NoError},
+		{"ok from uri", args{apiv1.Options{URI: "kms:backend=softkms"}}, apiv1.SoftKMS, assert.NoError},
+		{"ok from both", args{apiv1.Options{Type: apiv1.CAPIKMS, URI: "kms:backend=capi"}}, apiv1.CAPIKMS, assert.NoError},
+		{"fail uri", args{apiv1.Options{URI: "softkms:backend=softkms"}}, apiv1.DefaultKMS, assert.Error},
+		{"fail mismatch", args{apiv1.Options{Type: apiv1.TPMKMS, URI: "kms:backend=softkms"}}, apiv1.DefaultKMS, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getBackend(tt.args.opts)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_parseURI(t *testing.T) {
+	mustURI := func(scheme, opaque, rawquery string, values url.Values) *uri.URI {
+		u := uri.New(scheme, values)
+		u.Opaque = opaque
+		u.RawQuery = rawquery
+		return u
+	}
+
+	type args struct {
+		rawuri string
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *kmsURI
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{"kms:"}, &kmsURI{
+			uri:         uri.New(Scheme, url.Values{}),
+			extraValues: url.Values{},
+		}, assert.NoError},
+		{"ok with name", args{"kms:name=foo"}, &kmsURI{
+			uri:         mustURI(Scheme, "name=foo", "", url.Values{"name": []string{"foo"}}),
+			name:        "foo",
+			extraValues: url.Values{},
+		}, assert.NoError},
+		{"ok with hw", args{"kms:name=foo;hw=true"}, &kmsURI{
+			uri: mustURI(Scheme, "name=foo;hw=true", "", url.Values{
+				"name": []string{"foo"},
+				"hw":   []string{"true"},
+			}),
+			name:        "foo",
+			hw:          true,
+			extraValues: url.Values{},
+		}, assert.NoError},
+		{"ok with hw on query", args{"kms:name=foo?hw=true"}, &kmsURI{
+			uri:         mustURI(Scheme, "name=foo", "hw=true", url.Values{"name": []string{"foo"}}),
+			name:        "foo",
+			hw:          true,
+			extraValues: url.Values{},
+		}, assert.NoError},
+		{"ok with extra values", args{"kms:name=foo;hw=true;foo=bar;backend=softkms?bar=zar&foo=qux"}, &kmsURI{
+			uri: mustURI(Scheme, "name=foo;hw=true;foo=bar;backend=softkms", "bar=zar&foo=qux", url.Values{
+				"name":    []string{"foo"},
+				"hw":      []string{"true"},
+				"foo":     []string{"bar"},
+				"backend": []string{"softkms"},
+			}),
+			name: "foo",
+			hw:   true,
+			extraValues: url.Values{
+				"backend": []string{"softkms"},
+				"foo":     []string{"bar", "qux"},
+				"bar":     []string{"zar"},
+			},
+		}, assert.NoError},
+		{"fail parse", args{"tpmkms:name=foo"}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseURI(tt.args.rawuri)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})

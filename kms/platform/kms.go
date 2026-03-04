@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -28,16 +29,35 @@ const (
 
 type kmsURI struct {
 	uri         *uri.URI
-	backend     apiv1.Type
 	name        string
 	hw          bool
 	extraValues url.Values
 }
 
 func isDefaultKey(k string) bool {
-	return k == nameKey ||
-		k == hwKey ||
-		k == backendKey
+	return k == nameKey || k == hwKey
+}
+
+func getBackend(opts apiv1.Options) (apiv1.Type, error) {
+	if opts.URI == "" {
+		return opts.Type, nil
+	}
+
+	typ := opts.Type
+	if opts.URI != "" {
+		u, err := uri.ParseWithScheme(Scheme, opts.URI)
+		if err != nil {
+			return apiv1.DefaultKMS, err
+		}
+		if backend := u.Get(backendKey); backend != "" {
+			typ = apiv1.Type(strings.ToLower(backend))
+			if opts.Type != apiv1.DefaultKMS && opts.Type != typ {
+				return apiv1.DefaultKMS, fmt.Errorf("options type %q and URI backend %q do not match", opts, typ)
+			}
+		}
+	}
+
+	return typ, nil
 }
 
 func parseURI(rawuri string) (*kmsURI, error) {
@@ -55,7 +75,6 @@ func parseURI(rawuri string) (*kmsURI, error) {
 
 	return &kmsURI{
 		uri:         u,
-		backend:     apiv1.Type(strings.ToLower(u.Get(backendKey))),
 		name:        u.Get(nameKey),
 		hw:          u.GetBool(hwKey),
 		extraValues: extraValues,
