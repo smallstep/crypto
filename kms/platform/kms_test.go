@@ -1296,9 +1296,8 @@ func Test_parseURI(t *testing.T) {
 			name: "foo",
 			hw:   true,
 			extraValues: url.Values{
-				"backend": []string{"softkms"},
-				"foo":     []string{"bar", "qux"},
-				"bar":     []string{"zar"},
+				"foo": []string{"bar", "qux"},
+				"bar": []string{"zar"},
 			},
 		}, assert.NoError},
 		{"fail parse", args{"tpmkms:name=foo"}, nil, assert.Error},

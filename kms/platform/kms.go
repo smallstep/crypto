@@ -35,7 +35,7 @@ type kmsURI struct {
 }
 
 func isDefaultKey(k string) bool {
-	return k == nameKey || k == hwKey
+	return k == nameKey || k == hwKey || k == backendKey
 }
 
 func getBackend(opts apiv1.Options) (apiv1.Type, error) {
