@@ -328,7 +328,6 @@ func readFile(path string) ([]byte, error) {
 			path = u.Opaque
 		}
 	}
-	//nolint:gosec // path is validated by callers and used for reading KMS configuration files
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading %s", path)
