@@ -172,8 +172,7 @@ type attestationRequest struct {
 
 type attestationResponse struct {
 	Credential []byte `json:"credential"`
-	//nolint:gosec // Secret field for TPM attestation protocol
-	Secret []byte `json:"secret"` // encrypted secret
+	Secret     []byte `json:"secret"` // encrypted secret
 }
 
 // attest performs the HTTP POST request to the `/attest` endpoint of the
@@ -221,7 +220,6 @@ func (ac *Client) attest(ctx context.Context, info *tpm.Info, ek *tpm.EK, attest
 		return nil, fmt.Errorf("failed creating POST http request for %q: %w", attestURL, err)
 	}
 
-	//nolint:gosec // HTTP request to trusted TPM Attestation CA configured by the caller
 	resp, err := ac.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed performing attestation request with Attestation CA %q: %w", attestURL, err)
@@ -241,7 +239,6 @@ func (ac *Client) attest(ctx context.Context, info *tpm.Info, ek *tpm.EK, attest
 }
 
 type secretRequest struct {
-	//nolint:gosec // Secret field for TPM attestation protocol
 	Secret []byte `json:"secret"` // decrypted secret
 }
 
@@ -256,7 +253,7 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 		Secret: secret,
 	}
 
-	body, err := json.Marshal(sr)
+	body, err := json.Marshal(sr) // #nosec G117 -- (decrypted) secret is expected to be sent to attestation server
 	if err != nil {
 		return nil, fmt.Errorf("failed marshaling secret request: %w", err)
 	}
@@ -267,7 +264,6 @@ func (ac *Client) secret(ctx context.Context, secret []byte) (*secretResponse, e
 		return nil, fmt.Errorf("failed creating POST http request for %q: %w", secretURL, err)
 	}
 
-	//nolint:gosec // HTTP request to trusted TPM Attestation CA configured by the caller
 	resp, err := ac.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed performing secret request with attestation CA %q: %w", secretURL, err)
