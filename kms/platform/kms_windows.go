@@ -26,7 +26,7 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 		return newCAPIKMS(ctx, opts)
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
-	case apiv1.DefaultKMS, apiv1.TPMKMS:
+	case apiv1.PlatformKMS, apiv1.DefaultKMS, apiv1.TPMKMS:
 		// Add enable-cng=true if necessary
 		if opts.URI, err = withEnableCNG(opts.URI); err != nil {
 			return nil, err

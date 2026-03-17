@@ -329,6 +329,14 @@ func TestNew(t *testing.T) {
 			shouldSkipNow(t, platformKMS)
 			assert.Equal(t, platformKMS.Type(), k.Type())
 		}, assert.NoError},
+		{"ok platformKMS type", args{t.Context(), apiv1.Options{Type: apiv1.PlatformKMS}}, func(t *testing.T, k *KMS) {
+			shouldSkipNow(t, platformKMS)
+			assert.Equal(t, platformKMS.Type(), k.Type())
+		}, assert.NoError},
+		{"ok backend type", args{t.Context(), apiv1.Options{Type: platformKMS.Type()}}, func(t *testing.T, k *KMS) {
+			shouldSkipNow(t, platformKMS)
+			assert.Equal(t, platformKMS.Type(), k.Type())
+		}, assert.NoError},
 		{"ok softkms uri", args{t.Context(), apiv1.Options{URI: "kms:backend=softkms"}}, func(t *testing.T, k *KMS) {
 			assert.Equal(t, apiv1.SoftKMS, k.Type())
 		}, assert.NoError},
@@ -352,6 +360,14 @@ func TestNew(t *testing.T) {
 			tt.assert(t, got)
 		})
 	}
+}
+
+func TestLoadKeyManagerNewFunc(t *testing.T) {
+	fn, ok := apiv1.LoadKeyManagerNewFunc(apiv1.PlatformKMS)
+	require.True(t, ok)
+	km, err := fn(t.Context(), apiv1.Options{})
+	require.NoError(t, err)
+	assert.IsType(t, &KMS{}, km)
 }
 
 func TestKMS_Type(t *testing.T) {

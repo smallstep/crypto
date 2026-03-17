@@ -25,7 +25,7 @@ func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
 		return newTPMKMS(ctx, opts)
 	case apiv1.SoftKMS:
 		return newSoftKMS(ctx, opts)
-	case apiv1.DefaultKMS, apiv1.MacKMS:
+	case apiv1.PlatformKMS, apiv1.DefaultKMS, apiv1.MacKMS:
 		return newMacKMS(ctx, opts)
 	default:
 		return nil, fmt.Errorf("failed parsing options: unsupported backend %q", backend)
