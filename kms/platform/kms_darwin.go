@@ -15,10 +15,6 @@ import (
 var _ apiv1.SearchableKeyManager = (*KMS)(nil)
 
 func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
-	if opts.URI == "" {
-		return newMacKMS(ctx, opts)
-	}
-
 	backend, err := getBackend(opts)
 	if err != nil {
 		return nil, err

@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 func shouldSkipNow(t *testing.T, km *KMS) {
 	t.Helper()
 
-	if km.Type() != apiv1.SoftKMS && km.SkipTests() {
+	if km != nil && km.Type() != apiv1.SoftKMS && km.SkipTests() {
 		t.SkipNow()
 	}
 }
@@ -311,6 +311,47 @@ func (c *attestationClient) Attest(ctx context.Context) ([]*x509.Certificate, er
 		return nil, fmt.Errorf("signer is not in context")
 	}
 	return c.chain, c.err
+}
+
+func TestNew(t *testing.T) {
+	platformKMS := mustPlatformKMS(t)
+	type args struct {
+		ctx  context.Context
+		opts apiv1.Options
+	}
+	tests := []struct {
+		name      string
+		args      args
+		assert    func(*testing.T, *KMS)
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", args{t.Context(), apiv1.Options{}}, func(t *testing.T, k *KMS) {
+			shouldSkipNow(t, platformKMS)
+			assert.Equal(t, platformKMS.Type(), k.Type())
+		}, assert.NoError},
+		{"ok softkms uri", args{t.Context(), apiv1.Options{URI: "kms:backend=softkms"}}, func(t *testing.T, k *KMS) {
+			assert.Equal(t, apiv1.SoftKMS, k.Type())
+		}, assert.NoError},
+		{"ok softkms type", args{t.Context(), apiv1.Options{Type: apiv1.SoftKMS}}, func(t *testing.T, k *KMS) {
+			assert.Equal(t, apiv1.SoftKMS, k.Type())
+		}, assert.NoError},
+		{"fail parse", args{t.Context(), apiv1.Options{URI: "foo:backend=softkms"}}, func(t *testing.T, k *KMS) {
+			assert.Nil(t, k)
+		}, assert.Error},
+		{"fail backend", args{t.Context(), apiv1.Options{URI: "kms:backend=unknown"}}, func(t *testing.T, k *KMS) {
+			assert.Nil(t, k)
+		}, assert.Error},
+		{"fail type", args{t.Context(), apiv1.Options{Type: apiv1.Type("unknown")}}, func(t *testing.T, k *KMS) {
+			assert.Nil(t, k)
+		}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := New(tt.args.ctx, tt.args.opts)
+			tt.assertion(t, err)
+			tt.assert(t, got)
+		})
+	}
 }
 
 func TestKMS_Type(t *testing.T) {

@@ -10,10 +10,6 @@ import (
 )
 
 func newKMS(ctx context.Context, opts apiv1.Options) (*KMS, error) {
-	if opts.URI == "" {
-		return newTPMKMS(ctx, opts)
-	}
-
 	backend, err := getBackend(opts)
 	if err != nil {
 		return nil, err
