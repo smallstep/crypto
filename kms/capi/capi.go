@@ -435,6 +435,10 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		if handle, err = findCertificateBySubjectKeyID(st, u.keyID); err != nil {
 			return nil, err
 		}
+
+		if handle == nil && !canLookupByIssuer {
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
+		}
 	case u.containerName != "":
 		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
@@ -451,8 +455,10 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
 			return nil, err
 		}
-	default:
-		return nil, fmt.Errorf("%q, %q, or %q and one of %q or %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg, SubjectCNArg)
+
+		if handle == nil && !canLookupByIssuer {
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
+		}
 	}
 
 	if handle != nil {
