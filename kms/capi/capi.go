@@ -433,11 +433,9 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		}
 	case len(u.keyID) > 0:
 		if handle, err = findCertificateBySubjectKeyID(st, u.keyID); err != nil {
-			return nil, err
-		}
-
-		if handle == nil && !canLookupByIssuer {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
+			if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
+				return nil, err
+			}
 		}
 	case u.containerName != "":
 		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
@@ -453,11 +451,9 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
 		}
 		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
-			return nil, err
-		}
-
-		if handle == nil && !canLookupByIssuer {
-			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%s not found", KeyIDArg, u.keyID)}
+			if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
+				return nil, err
+			}
 		}
 	}
 
