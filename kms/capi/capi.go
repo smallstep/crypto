@@ -408,7 +408,7 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 	// lookup by KeyID fails (not found). This fix an issue when looking up device certificates, as in that case the KeyID is
 	// derived from a randomly generate string each time agent runs, thus not being able to find certificates installed from
 	// a previous run.
-	canLookupByIssuer := u.issuerName != "" && (u.serialNumber != "" || u.subjectCN != "" || u.friendlyName != "" || u.description != "")
+	canLookupByIssuer := u.issuerName != "" && (u.serialNumber != nil || u.subjectCN != "" || u.friendlyName != "" || u.description != "")
 	var handle *windows.CertContext
 
 	switch {
