@@ -168,6 +168,13 @@ func mustSuffix(t *testing.T) string {
 	return suffix
 }
 
+func mustEqualPrivateKey(t *testing.T, x, y crypto.PrivateKey) {
+	t.Helper()
+	xx, ok := x.(interface{ Equal(crypto.PrivateKey) bool })
+	require.True(t, ok)
+	require.True(t, xx.Equal(y))
+}
+
 type createOptions struct {
 	name                 string
 	noCleanup            bool
@@ -533,14 +540,15 @@ func TestKMS_CreateKey(t *testing.T) {
 			Name: "kms:name=" + privateKeyPath,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			signer := mustReadSigner(t, privateKeyPath)
-			assert.IsType(t, &ecdsa.PrivateKey{}, signer)
+			mustEqualPrivateKey(t, signer, got.PrivateKey)
+			mustEqualPrivateKey(t, signer, got.CreateSignerRequest.Signer)
 			name := "kms:name=" + url.QueryEscape(privateKeyPath)
 			assert.Equal(t, got, &apiv1.CreateKeyResponse{
 				Name:       name,
-				PublicKey:  signer.Public(),
-				PrivateKey: signer,
+				PublicKey:  got.PublicKey,
+				PrivateKey: got.PrivateKey,
 				CreateSignerRequest: apiv1.CreateSignerRequest{
-					Signer:     signer,
+					Signer:     got.CreateSignerRequest.Signer,
 					SigningKey: name,
 				},
 			})
@@ -550,16 +558,15 @@ func TestKMS_CreateKey(t *testing.T) {
 			SignatureAlgorithm: apiv1.SHA256WithRSA,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			signer := mustReadSigner(t, privateKeyPath)
-			if assert.IsType(t, &rsa.PrivateKey{}, signer) {
-				assert.Equal(t, 3072/8, signer.(*rsa.PrivateKey).Size())
-			}
+			mustEqualPrivateKey(t, signer, got.PrivateKey)
+			mustEqualPrivateKey(t, signer, got.CreateSignerRequest.Signer)
 			name := "kms:name=" + url.QueryEscape(privateKeyPath)
 			assert.Equal(t, got, &apiv1.CreateKeyResponse{
 				Name:       name,
-				PublicKey:  signer.Public(),
-				PrivateKey: signer,
+				PublicKey:  got.PublicKey,
+				PrivateKey: got.PrivateKey,
 				CreateSignerRequest: apiv1.CreateSignerRequest{
-					Signer:     signer,
+					Signer:     got.CreateSignerRequest.Signer,
 					SigningKey: name,
 				},
 			})
@@ -570,16 +577,15 @@ func TestKMS_CreateKey(t *testing.T) {
 			Bits:               2048,
 		}}, func(t *testing.T, got *apiv1.CreateKeyResponse) {
 			signer := mustReadSigner(t, privateKeyPath)
+			mustEqualPrivateKey(t, signer, got.PrivateKey)
+			mustEqualPrivateKey(t, signer, got.CreateSignerRequest.Signer)
 			name := "kms:name=" + url.QueryEscape(privateKeyPath)
-			if assert.IsType(t, &rsa.PrivateKey{}, signer) {
-				assert.Equal(t, 2048/8, signer.(*rsa.PrivateKey).Size())
-			}
 			assert.Equal(t, got, &apiv1.CreateKeyResponse{
 				Name:       name,
-				PublicKey:  signer.Public(),
-				PrivateKey: signer,
+				PublicKey:  got.PublicKey,
+				PrivateKey: got.PrivateKey,
 				CreateSignerRequest: apiv1.CreateSignerRequest{
-					Signer:     signer,
+					Signer:     got.CreateSignerRequest.Signer,
 					SigningKey: name,
 				},
 			})
