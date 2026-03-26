@@ -24,6 +24,13 @@ import (
 	"go.step.sm/crypto/x25519"
 )
 
+func assertNotFoundError(t assert.TestingT, err error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+	return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msgAndArgs...)
+}
+
 func TestNew(t *testing.T) {
 	type args struct {
 		ctx  context.Context
@@ -111,35 +118,30 @@ func TestSoftKMS_CreateSigner(t *testing.T) {
 		req *apiv1.CreateSignerRequest
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    crypto.Signer
-		wantErr bool
+		name      string
+		args      args
+		want      crypto.Signer
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"signer", args{&apiv1.CreateSignerRequest{Signer: pk}}, pk, false},
-		{"pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlock)}}, pk, false},
-		{"pem password", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, pk, false},
-		{"file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
-		{"file uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
-		{"path uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:path=testdata/priv.pem", Password: []byte("pass")}}, pk2, false},
-		{"fail", args{&apiv1.CreateSignerRequest{}}, nil, true},
-		{"fail bad pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: []byte("bad pem")}}, nil, true},
-		{"fail bad password", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("bad-pass")}}, nil, true},
-		{"fail not a signer", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pub}}, nil, true},
-		{"fail not a signer from file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/pub.pem"}}, nil, true},
-		{"fail missing", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/missing"}}, nil, true},
+		{"signer", args{&apiv1.CreateSignerRequest{Signer: pk}}, pk, assert.NoError},
+		{"pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlock)}}, pk, assert.NoError},
+		{"pem password", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, pk, assert.NoError},
+		{"file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("pass")}}, pk2, assert.NoError},
+		{"file uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:testdata/priv.pem", Password: []byte("pass")}}, pk2, assert.NoError},
+		{"path uri", args{&apiv1.CreateSignerRequest{SigningKey: "softkms:path=testdata/priv.pem", Password: []byte("pass")}}, pk2, assert.NoError},
+		{"fail", args{&apiv1.CreateSignerRequest{}}, nil, assert.Error},
+		{"fail bad pem", args{&apiv1.CreateSignerRequest{SigningKeyPEM: []byte("bad pem")}}, nil, assert.Error},
+		{"fail bad password", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/priv.pem", Password: []byte("bad-pass")}}, nil, assert.Error},
+		{"fail not a signer", args{&apiv1.CreateSignerRequest{SigningKeyPEM: pub}}, nil, assert.Error},
+		{"fail not a signer from file", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/pub.pem"}}, nil, assert.Error},
+		{"fail missing", args{&apiv1.CreateSignerRequest{SigningKey: "testdata/missing"}}, nil, assertNotFoundError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &SoftKMS{}
 			got, err := k.CreateSigner(tt.args.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SoftKMS.CreateSigner() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SoftKMS.CreateSigner() = %v, want %v", got, tt.want)
-			}
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -274,38 +276,33 @@ func TestSoftKMS_GetPublicKey(t *testing.T) {
 		req *apiv1.GetPublicKeyRequest
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    crypto.PublicKey
-		wantErr bool
+		name      string
+		args      args
+		want      crypto.PublicKey
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/pub.pem"}}, pub, false},
-		{"key full path", args{&apiv1.GetPublicKeyRequest{Name: fullPath}}, pub, false},
-		{"key uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/pub.pem"}}, pub, false},
-		{"key path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/pub.pem"}}, pub, false},
-		{"key full path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:" + fullPath}}, pub, false},
-		{"key full path value", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=" + fullPath}}, pub, false},
-		{"cert", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.crt"}}, pub, false},
-		{"cert uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/cert.crt"}}, pub, false},
-		{"cert path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/cert.crt"}}, pub, false},
-		{"private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.key"}}, pub, false},
-		{"x25519 key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.pem"}}, nebulaPub, false},
-		{"x25519 private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.key"}}, nebulaPub, false},
-		{"fail not exists", args{&apiv1.GetPublicKeyRequest{Name: "testdata/missing"}}, nil, true},
-		{"fail encrypted key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/priv.pem"}}, nil, true},
-		{"fail unsupported key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/dsa.pem"}}, nil, true},
+		{"key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/pub.pem"}}, pub, assert.NoError},
+		{"key full path", args{&apiv1.GetPublicKeyRequest{Name: fullPath}}, pub, assert.NoError},
+		{"key uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/pub.pem"}}, pub, assert.NoError},
+		{"key path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/pub.pem"}}, pub, assert.NoError},
+		{"key full path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:" + fullPath}}, pub, assert.NoError},
+		{"key full path value", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=" + fullPath}}, pub, assert.NoError},
+		{"cert", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.crt"}}, pub, assert.NoError},
+		{"cert uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:testdata/cert.crt"}}, pub, assert.NoError},
+		{"cert path uri", args{&apiv1.GetPublicKeyRequest{Name: "softkms:path=testdata/cert.crt"}}, pub, assert.NoError},
+		{"private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/cert.key"}}, pub, assert.NoError},
+		{"x25519 key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.pem"}}, nebulaPub, assert.NoError},
+		{"x25519 private key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/nebula.key"}}, nebulaPub, assert.NoError},
+		{"fail not exists", args{&apiv1.GetPublicKeyRequest{Name: "testdata/missing"}}, nil, assertNotFoundError},
+		{"fail encrypted key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/priv.pem"}}, nil, assert.Error},
+		{"fail unsupported key", args{&apiv1.GetPublicKeyRequest{Name: "testdata/dsa.pem"}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &SoftKMS{}
 			got, err := k.GetPublicKey(tt.args.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SoftKMS.GetPublicKey() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SoftKMS.GetPublicKey() = %v, want %v", got, tt.want)
-			}
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -386,35 +383,30 @@ func TestSoftKMS_CreateDecrypter(t *testing.T) {
 		req *apiv1.CreateDecrypterRequest
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    crypto.Decrypter
-		wantErr bool
+		name      string
+		args      args
+		want      crypto.Decrypter
+		assertion assert.ErrorAssertionFunc
 	}{
-		{"decrypter", args{&apiv1.CreateDecrypterRequest{Decrypter: privateKey}}, privateKey, false},
-		{"file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
-		{"file uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
-		{"path uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:path=testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, false},
-		{"pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlock)}}, privateKey, false},
-		{"pem password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, privateKey, false},
-		{"fail none", args{&apiv1.CreateDecrypterRequest{}}, nil, true},
-		{"fail missing", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/missing"}}, nil, true},
-		{"fail bad pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: []byte("bad pem")}}, nil, true},
-		{"fail bad password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("bad-pass")}}, nil, true},
-		{"fail not a decrypter (ecdsa key)", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(ecdsaPemBlock)}}, nil, true},
-		{"fail not a decrypter from file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.pub.pem"}}, nil, true},
+		{"decrypter", args{&apiv1.CreateDecrypterRequest{Decrypter: privateKey}}, privateKey, assert.NoError},
+		{"file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, assert.NoError},
+		{"file uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, assert.NoError},
+		{"path uri", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "softkms:path=testdata/rsa.priv.pem", Password: []byte("pass")}}, keyFromFile, assert.NoError},
+		{"pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlock)}}, privateKey, assert.NoError},
+		{"pem password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("pass")}}, privateKey, assert.NoError},
+		{"fail none", args{&apiv1.CreateDecrypterRequest{}}, nil, assert.Error},
+		{"fail missing", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/missing"}}, nil, assertNotFoundError},
+		{"fail bad pem", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: []byte("bad pem")}}, nil, assert.Error},
+		{"fail bad password", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(pemBlockPassword), Password: []byte("bad-pass")}}, nil, assert.Error},
+		{"fail not a decrypter (ecdsa key)", args{&apiv1.CreateDecrypterRequest{DecryptionKeyPEM: pem.EncodeToMemory(ecdsaPemBlock)}}, nil, assert.Error},
+		{"fail not a decrypter from file", args{&apiv1.CreateDecrypterRequest{DecryptionKey: "testdata/rsa.pub.pem"}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &SoftKMS{}
 			got, err := k.CreateDecrypter(tt.args.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SoftKMS.CreateDecrypter(), error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SoftKMS.CreateDecrypter() = %v, want %v", got, tt.want)
-			}
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -459,7 +451,7 @@ func TestSoftKMS_LoadCertificate(t *testing.T) {
 		{"ok uri", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/cert.crt"}}, cert, assert.NoError},
 		{"ok uri with path", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "softkms:path=testdata/cert.crt"}}, cert, assert.NoError},
 		{"fail empty", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{}}, nil, assert.Error},
-		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/missing.crt"}}, nil, assert.Error},
+		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/missing.crt"}}, nil, assertNotFoundError},
 		{"fail not a certificate", &SoftKMS{}, args{&apiv1.LoadCertificateRequest{Name: "testdata/cert.key"}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
@@ -494,7 +486,7 @@ func TestSoftKMS_LoadCertificateChain(t *testing.T) {
 		{"ok uri with path", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "softkms:path=testdata/chain.crt"}}, chain, assert.NoError},
 		{"ok cert", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "softkms:testdata/cert.crt"}}, []*x509.Certificate{cert}, assert.NoError},
 		{"fail empty", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{}}, nil, assert.Error},
-		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/missing.crt"}}, nil, assert.Error},
+		{"fail missing", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/missing.crt"}}, nil, assertNotFoundError},
 		{"fail not a certificate", &SoftKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "testdata/cert.key"}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
