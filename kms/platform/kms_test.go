@@ -175,6 +175,13 @@ func mustEqualPrivateKey(t *testing.T, x, y crypto.PrivateKey) {
 	require.True(t, xx.Equal(y))
 }
 
+func assertNotFoundError(t assert.TestingT, err error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+	return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msgAndArgs...)
+}
+
 type createOptions struct {
 	name                 string
 	noCleanup            bool
@@ -686,7 +693,7 @@ func TestKMS_CreateSigner(t *testing.T) {
 		}, assert.NoError},
 		{"fail missing", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: "kms:name=" + url.QueryEscape(filepath.Join(dir, "missing.key")),
-		}}, assertNil, assert.Error},
+		}}, assertNil, assertNotFoundError},
 		{"fail parseURI", softKMS, args{&apiv1.CreateSignerRequest{
 			SigningKey: privateKeyPath,
 		}}, assertNil, assert.Error},
@@ -749,7 +756,7 @@ func TestKMS_DeleteKey(t *testing.T) {
 		}}, assert.Error},
 		{"fail platform missing", platformKMS, args{&apiv1.DeleteKeyRequest{
 			Name: platformMissingName,
-		}}, assert.Error},
+		}}, assertNotFoundError},
 
 		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteKeyRequest{
@@ -760,7 +767,7 @@ func TestKMS_DeleteKey(t *testing.T) {
 		}},
 		{"fail missing", softKMS, args{&apiv1.DeleteKeyRequest{
 			Name: "kms:name=" + url.QueryEscape(filepath.Join(dir, "missing.key")),
-		}}, assert.Error},
+		}}, assertNotFoundError},
 		{"fail parseURI", softKMS, args{&apiv1.DeleteKeyRequest{
 			Name: keyPath2,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
@@ -815,7 +822,7 @@ func TestKMS_LoadCertificate(t *testing.T) {
 		}}, platformChain[0], assert.NoError},
 		{"fail platform missing", platformKMS, args{&apiv1.LoadCertificateRequest{
 			Name: platformMissingName,
-		}}, nil, assert.Error},
+		}}, nil, assertNotFoundError},
 
 		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.LoadCertificateRequest{
@@ -826,7 +833,7 @@ func TestKMS_LoadCertificate(t *testing.T) {
 		}}, chain[0], assert.NoError},
 		{"fail missing", softKMS, args{&apiv1.LoadCertificateRequest{
 			Name: "kms:name=" + filepath.Join(dir, "missing.crt"),
-		}}, nil, assert.Error},
+		}}, nil, assertNotFoundError},
 		{"fail parseURI", softKMS, args{&apiv1.LoadCertificateRequest{
 			Name: "foo:name=" + certPath,
 		}}, nil, assert.Error},
@@ -973,7 +980,7 @@ func TestKMS_LoadCertificateChain(t *testing.T) {
 		}}, nil, assert.Error},
 		{"fail missing", softKMS, args{&apiv1.LoadCertificateChainRequest{
 			Name: "kms:name=" + filepath.Join(dir, "missing.crt"),
-		}}, nil, assert.Error},
+		}}, nil, assertNotFoundError},
 		{"fail parseuri", softKMS, args{&apiv1.LoadCertificateChainRequest{
 			Name: "softkms:name=" + chainPath,
 		}}, nil, assert.Error},
@@ -1111,7 +1118,7 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 		}},
 		{"fail platform missing", platformKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: platformMissingName,
-		}}, assert.Error},
+		}}, assertNotFoundError},
 
 		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteCertificateRequest{
@@ -1122,7 +1129,7 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 		}},
 		{"fail missing", softKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: "kms:name=" + url.QueryEscape(filepath.Join(dir, "chain.crt")),
-		}}, assert.Error},
+		}}, assertNotFoundError},
 		{"fail parseURI", softKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: "foo",
 		}}, assert.Error},
@@ -1186,7 +1193,7 @@ func TestKMS_CreateAttestation(t *testing.T) {
 		{"fail missing key", softKMS, args{&apiv1.CreateAttestationRequest{
 			Name:              "kms:" + platformMissingName,
 			AttestationClient: okClient,
-		}}, nil, assert.Error},
+		}}, nil, assertNotFoundError},
 		{"fail custom attestation", softKMS, args{&apiv1.CreateAttestationRequest{
 			Name:              "kms:" + privateKeyPath,
 			AttestationClient: failClient,
