@@ -8,7 +8,7 @@ import (
 )
 
 func create(_ io.ReadWriteCloser, keyName string, config CreateConfig) ([]byte, error) {
-	pcp, err := openPCP()
+	pcp, err := openPCP(config.MachineKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PCP: %w", err)
 	}

@@ -35,6 +35,9 @@ const (
 	// The below is documented in this Microsoft whitepaper:
 	// https://github.com/Microsoft/TSS.MSR/blob/master/PCPTool.v11/Using%20the%20Windows%208%20Platform%20Crypto%20Provider%20and%20Associated%20TPM%20Functionality.pdf
 	ncryptOverwriteKeyFlag = 0x80
+	// ncryptMachineKeyFlag instructs NCrypt to create or open a key in the
+	// machine (local machine) key store rather than the current user key store.
+	ncryptMachineKeyFlag uint32 = 0x00000020
 	// Key usage value for generic keys
 	nCryptPropertyPCPKeyUsagePolicyGeneric = 0x3
 	// Key usage value for AKs.
@@ -282,7 +285,8 @@ func getNCryptBufferProperty(hnd uintptr, field string) ([]byte, error) {
 
 // winPCP represents a reference to the Platform Crypto Provider.
 type winPCP struct {
-	hProv uintptr
+	hProv      uintptr
+	machineKey bool
 }
 
 // Close releases all resources managed by the Handle.
@@ -301,8 +305,13 @@ func (h *winPCP) newKey(name string, alg string, length uint32, policy uint32) (
 		return 0, nil, nil, err
 	}
 
+	var flags uint32
+	if h.machineKey {
+		flags = ncryptMachineKeyFlag
+	}
+
 	// Create a persistent RSA key of the specified name.
-	r, _, msg := nCryptCreatePersistedKey.Call(h.hProv, uintptr(unsafe.Pointer(&kh)), uintptr(unsafe.Pointer(&utf16RSA[0])), uintptr(unsafe.Pointer(&utf16Name[0])), 0, 0)
+	r, _, msg := nCryptCreatePersistedKey.Call(h.hProv, uintptr(unsafe.Pointer(&kh)), uintptr(unsafe.Pointer(&utf16RSA[0])), uintptr(unsafe.Pointer(&utf16Name[0])), 0, uintptr(flags))
 	if r != 0 {
 		if tpmErr := maybeWinErr(r); tpmErr != nil {
 			msg = tpmErr
@@ -491,10 +500,13 @@ func decodeKeyBlob(keyBlob []byte) ([]byte, []byte, error) {
 }
 
 // openPCP initializes a reference to the Microsoft PCP provider.
+// Pass machineKey=true to create and open keys in the machine (local machine)
+// key store rather than the current user key store.
 // The Caller is expected to call Close() when they are done.
-func openPCP() (*winPCP, error) {
+func openPCP(machineKey bool) (*winPCP, error) {
 	var err error
 	var h winPCP
+	h.machineKey = machineKey
 	pname, err := windows.UTF16FromString(pcpProviderName)
 	if err != nil {
 		return nil, err

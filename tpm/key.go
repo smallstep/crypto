@@ -186,8 +186,9 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	createConfig := internalkey.CreateConfig{
-		Algorithm: config.Algorithm,
-		Size:      config.Size,
+		Algorithm:  config.Algorithm,
+		Size:       config.Size,
+		MachineKey: t.options.attestConfig.MachineKey,
 	}
 	if err := t.validate(&createConfig); err != nil {
 		return nil, fmt.Errorf("invalid key creation parameters: %w", err)
