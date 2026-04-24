@@ -195,6 +195,9 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
 		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
 	}
+	if u.Get("store-location") == "machine" {
+		opts = append(opts, tpm.WithMachineKey())
+	}
 	return opts
 }
 
