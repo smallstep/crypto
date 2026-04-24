@@ -386,8 +386,12 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
+	var attestErr error
 	if err := t.attestTPM.DeleteKey(key.Data); err != nil {
-		return fmt.Errorf("failed deleting key %q: %w", name, err)
+		// Preserve the PCP error but still clean up file-store metadata below.
+		// On Windows the PCP key may be inaccessible when the reset command runs
+		// in a different session than the agent service that created the key.
+		attestErr = fmt.Errorf("failed deleting key %q: %w", name, err)
 	}
 
 	if err := t.store.DeleteKey(name); err != nil {
@@ -398,7 +402,7 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
-	return
+	return attestErr
 }
 
 // Signer returns a crypto.Signer backed by the Key.

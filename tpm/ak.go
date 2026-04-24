@@ -286,8 +286,10 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed deleting AK %q because %d key(s) exist that were attested by it", name, len(keys))
 	}
 
+	var attestErr error
 	if err := t.attestTPM.DeleteKey(ak.Data); err != nil { // TODO: we could add a DeleteAK to go-attestation; under the hood it's loaded the same as a key though.
-		return fmt.Errorf("failed deleting AK %q: %w", name, err)
+		// Preserve the PCP error but still clean up file-store metadata below.
+		attestErr = fmt.Errorf("failed deleting AK %q: %w", name, err)
 	}
 
 	if err := t.store.DeleteAK(name); err != nil {
@@ -298,7 +300,7 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
-	return
+	return attestErr
 }
 
 // AttestationParameters returns information about the AK, typically used to

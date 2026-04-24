@@ -252,6 +252,7 @@ func (t *TPM) initializeCommandChannel() error {
 		t.attestConfig = &attest.OpenConfig{
 			TPMVersion:     t.options.attestConfig.TPMVersion,
 			CommandChannel: t.commandChannel,
+			MachineKey:     t.options.attestConfig.MachineKey,
 		}
 		return nil
 	}
@@ -286,6 +287,7 @@ func (t *TPM) initializeCommandChannel() error {
 	t.attestConfig = &attest.OpenConfig{
 		TPMVersion:     t.options.attestConfig.TPMVersion,
 		CommandChannel: t.commandChannel,
+		MachineKey:     t.options.attestConfig.MachineKey,
 	}
 
 	return nil
