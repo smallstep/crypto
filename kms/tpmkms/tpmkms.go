@@ -953,6 +953,14 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.store != "" {
 		store = o.store
 	}
+
+	if o.issuer != "" && (o.description == "device-id" || o.description == "step-agent-id") {
+		// best-effort: log failure but do not block the store operation
+		if err := k.cleanupExpiredCertificatesFromWindowsCertificateStore(o.issuer, location, store, req.CertificateChain[0].RawSubject); err != nil {
+			_ = err // TODO: replace with structured logging once a logger is available in this context
+		}
+	}
+
 	skipFindCertificateKey := "false"
 	if o.skipFindCertificateKey {
 		skipFindCertificateKey = "true"
@@ -978,6 +986,51 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		}).String(),
 		CertificateChain: req.CertificateChain,
 	})
+}
+
+func (k *TPMKMS) loadCertificatesByIssuerFromWindowsCertificateStore(issuer, storeLocation, store string, subjectRaw []byte) ([]*x509.Certificate, error) {
+	finder, ok := k.windowsCertificateManager.(issuerCertificateFinder)
+	if !ok {
+		return nil, fmt.Errorf("certificate manager does not support finding certificates by issuer")
+	}
+
+	return finder.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
+		Name: uri.New("capi", url.Values{
+			"issuer":         []string{issuer},
+			"store-location": []string{storeLocation},
+			"store":          []string{store},
+		}).String(),
+	}, subjectRaw)
+}
+
+func (k *TPMKMS) cleanupExpiredCertificatesFromWindowsCertificateStore(issuer, storeLocation, store string, subjectRaw []byte) error {
+	certs, err := k.loadCertificatesByIssuerFromWindowsCertificateStore(issuer, storeLocation, store, subjectRaw)
+	if err != nil {
+		return fmt.Errorf("failed loading certificates by issuer %q: %w", issuer, err)
+	}
+
+	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
+	if !ok {
+		return fmt.Errorf("certificate manager does not support deleting certificates")
+	}
+
+	now := time.Now()
+	for _, cert := range certs {
+		if cert.NotAfter.Before(now) {
+			deleteURI := uri.New("capi", url.Values{
+				"store-location": []string{storeLocation},
+				"store":          []string{store},
+				"issuer":         []string{issuer},
+				"serial":         []string{"0x" + cert.SerialNumber.Text(16)},
+			}).String()
+
+			if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteURI}); err != nil {
+				return fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
@@ -1542,6 +1595,10 @@ func generateWindowsSubjectKeyID(pub crypto.PublicKey) (string, error) {
 type deletingCertificateManager interface {
 	apiv1.CertificateManager
 	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
+}
+
+type issuerCertificateFinder interface {
+	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, subjectRaw []byte) ([]*x509.Certificate, error)
 }
 
 type deletingCertificateChainManager interface {

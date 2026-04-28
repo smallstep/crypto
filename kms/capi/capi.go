@@ -823,6 +823,74 @@ func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) (
 	return chain, nil
 }
 
+// FindCertificatesByIssuer returns all certificates in the Windows certificate
+// store that were issued by the given issuer. The URI must contain the "issuer"
+// field; "store-location" and "store" are optional (defaulting to "user" and "My").
+// When subjectRaw is non-empty, only certificates whose raw DER-encoded Subject
+// matches are included.
+func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, subjectRaw []byte) ([]*x509.Certificate, error) {
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+	if u.issuerName == "" {
+		return nil, fmt.Errorf("%q is required", IssuerNameArg)
+	}
+
+	var certStoreLocation uint32
+	switch u.storeLocation {
+	case UserStoreLocation:
+		certStoreLocation = certStoreCurrentUser
+	case MachineStoreLocation:
+		certStoreLocation = certStoreLocalMachine
+	default:
+		return nil, fmt.Errorf("invalid cert store location %q", u.storeLocation)
+	}
+
+	st, err := windows.CertOpenStore(
+		certStoreProvSystem,
+		0,
+		0,
+		certStoreLocation,
+		uintptr(unsafe.Pointer(wide(u.storeName))),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+	}
+
+	var (
+		certs    []*x509.Certificate
+		prevCert *windows.CertContext
+	)
+	for {
+		certHandle, err := findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findIssuerStr,
+			uintptr(unsafe.Pointer(wide(u.issuerName))), prevCert)
+		if err != nil {
+			return nil, fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+		if certHandle == nil {
+			// prevCert was freed by the last findCertificateInStore call per Windows API contract.
+			break
+		}
+
+		x509Cert, err := certContextToX509(certHandle)
+		if err != nil {
+			windows.CertFreeCertificateContext(certHandle)
+			return nil, fmt.Errorf("could not unmarshal certificate: %w", err)
+		}
+
+		if len(subjectRaw) == 0 || bytes.Equal(x509Cert.RawSubject, subjectRaw) {
+			certs = append(certs, x509Cert)
+		}
+		prevCert = certHandle // freed on next findCertificateInStore call
+	}
+
+	return certs, nil
+}
+
 func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	u, err := parseURI(req.Name)
 	if err != nil {
