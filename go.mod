@@ -2,6 +2,8 @@ module go.step.sm/crypto
 
 go 1.25.0
 
+retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
+
 require (
 	cloud.google.com/go/kms v1.28.0
 	filippo.io/edwards25519 v1.2.0
