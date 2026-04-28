@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/aws/aws-sdk-go-v2/service/kms v1.51.0
 	github.com/go-jose/go-jose/v3 v3.0.5
-	github.com/go-piv/piv-go/v2 v2.5.0
+	github.com/go-piv/piv-go/v2 v2.6.0
 	github.com/google/go-tpm v0.9.8
 	github.com/google/go-tpm-tools v0.4.8
 	github.com/googleapis/gax-go/v2 v2.22.0
