@@ -11,7 +11,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
-	github.com/aws/aws-sdk-go-v2/service/kms v1.50.5
+	github.com/aws/aws-sdk-go-v2/service/kms v1.51.0
 	github.com/go-jose/go-jose/v3 v3.0.5
 	github.com/go-piv/piv-go/v2 v2.5.0
 	github.com/google/go-tpm v0.9.8
