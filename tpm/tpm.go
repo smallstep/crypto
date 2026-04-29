@@ -96,6 +96,17 @@ func WithCommandChannel(commandChannel CommandChannel) NewTPMOption {
 	}
 }
 
+// WithMachineKey configures the TPM to create and open keys in the machine
+// (local machine) key store rather than the current user key store. On Windows
+// this causes NCRYPT_MACHINE_KEY_FLAG to be passed to NCrypt key operations.
+// This option has no effect on non-Windows platforms.
+func WithMachineKey() NewTPMOption {
+	return func(o *options) error {
+		o.attestConfig.MachineKey = true
+		return nil
+	}
+}
+
 // WithCapabilities explicitly sets the capabilities rather
 // than acquiring them from the TPM directly. The primary use
 // for this option is to ease testing different TPM capabilities.
@@ -241,6 +252,7 @@ func (t *TPM) initializeCommandChannel() error {
 		t.attestConfig = &attest.OpenConfig{
 			TPMVersion:     t.options.attestConfig.TPMVersion,
 			CommandChannel: t.commandChannel,
+			MachineKey:     t.options.attestConfig.MachineKey,
 		}
 		return nil
 	}
@@ -275,6 +287,7 @@ func (t *TPM) initializeCommandChannel() error {
 	t.attestConfig = &attest.OpenConfig{
 		TPMVersion:     t.options.attestConfig.TPMVersion,
 		CommandChannel: t.commandChannel,
+		MachineKey:     t.options.attestConfig.MachineKey,
 	}
 
 	return nil
