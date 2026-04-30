@@ -62,7 +62,7 @@ const (
 	compareShift            = 16                                              // CERT_COMPARE_SHIFT
 	compareSHA1Hash         = 1                                               // CERT_COMPARE_SHA1_HASH
 	compareCertID           = 16                                              // CERT_COMPARE_CERT_ID
-	compareProp             = 5                                               // CERT_COMPARE_CERT_ID
+	compareProp             = 5                                               // CERT_COMPARE_PROPERTY
 	findIssuerStr           = compareNameStrW<<compareShift | infoIssuerFlag  // CERT_FIND_ISSUER_STR_W
 	findIssuerName          = compareName<<compareShift | infoIssuerFlag      // CERT_FIND_ISSUER_NAME
 	findHash                = compareSHA1Hash << compareShift                 // CERT_FIND_HASH
