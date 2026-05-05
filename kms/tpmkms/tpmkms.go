@@ -954,13 +954,6 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		store = o.store
 	}
 
-	if o.issuer != "" && (o.description == "device-id" || o.description == "step-agent-id") {
-		// best-effort: log failure but do not block the store operation
-		if err := k.cleanupExpiredCertificatesFromWindowsCertificateStore(o.issuer, location, store, req.CertificateChain[0].RawSubject); err != nil {
-			_ = err // TODO: replace with structured logging once a logger is available in this context
-		}
-	}
-
 	skipFindCertificateKey := "false"
 	if o.skipFindCertificateKey {
 		skipFindCertificateKey = "true"
@@ -988,23 +981,26 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	})
 }
 
-func (k *TPMKMS) loadCertificatesByIssuerFromWindowsCertificateStore(issuer, storeLocation, store string, subjectRaw []byte) ([]*x509.Certificate, error) {
-	finder, ok := k.windowsCertificateManager.(issuerCertificateFinder)
-	if !ok {
-		return nil, fmt.Errorf("certificate manager does not support finding certificates by issuer")
+// Cleanup implements [apiv1.CleaningCertificateManager]. It finds all certificates
+// in the Windows certificate store issued to the given subject by the given issuer,
+// and deletes any that have already expired.
+func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte) error {
+	if !k.usesWindowsCertificateStore() {
+		return apiv1.NotImplementedError{}
 	}
 
-	return finder.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
+	finder, ok := k.windowsCertificateManager.(issuerCertificateFinder)
+	if !ok {
+		return fmt.Errorf("certificate manager does not support finding certificates by issuer")
+	}
+
+	certs, err := finder.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
 		Name: uri.New("capi", url.Values{
 			"issuer":         []string{issuer},
 			"store-location": []string{storeLocation},
 			"store":          []string{store},
 		}).String(),
 	}, subjectRaw)
-}
-
-func (k *TPMKMS) cleanupExpiredCertificatesFromWindowsCertificateStore(issuer, storeLocation, store string, subjectRaw []byte) error {
-	certs, err := k.loadCertificatesByIssuerFromWindowsCertificateStore(issuer, storeLocation, store, subjectRaw)
 	if err != nil {
 		return fmt.Errorf("failed loading certificates by issuer %q: %w", issuer, err)
 	}
@@ -1607,10 +1603,11 @@ type deletingCertificateChainManager interface {
 }
 
 var (
-	_ apiv1.KeyManager                = (*TPMKMS)(nil)
-	_ apiv1.Attester                  = (*TPMKMS)(nil)
-	_ apiv1.CertificateManager        = (*TPMKMS)(nil)
-	_ apiv1.CertificateChainManager   = (*TPMKMS)(nil)
-	_ deletingCertificateChainManager = (*TPMKMS)(nil)
-	_ apiv1.AttestationClient         = (*attestationClient)(nil)
+	_ apiv1.KeyManager                  = (*TPMKMS)(nil)
+	_ apiv1.Attester                    = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager          = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager     = (*TPMKMS)(nil)
+	_ apiv1.CleaningCertificateManager  = (*TPMKMS)(nil)
+	_ deletingCertificateChainManager   = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient           = (*attestationClient)(nil)
 )
