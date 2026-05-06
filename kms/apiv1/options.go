@@ -84,7 +84,7 @@ type CertificateDeleter interface {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type CleaningCertificateManager interface {
-	Cleanup(issuer, storeLocation, store string, subjectRaw []byte) error
+	Cleanup(req *CleanupCertificatesRequest) error
 }
 
 // NameValidator is an interface that KeyManager can implement to validate a

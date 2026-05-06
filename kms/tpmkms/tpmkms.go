@@ -982,9 +982,13 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 }
 
 // Cleanup implements [apiv1.CleaningCertificateManager]. It finds all certificates
-// in the Windows certificate store issued to the given subject by the given issuer,
-// and deletes any that have already expired.
-func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte) error {
+// in the Windows certificate store issued to the subject in req by the issuer in
+// req, and deletes any that have already expired.
+func (k *TPMKMS) Cleanup(req *apiv1.CleanupCertificatesRequest) error {
+	if req == nil {
+		return errors.New("cleanupCertificatesRequest cannot be nil")
+	}
+
 	if !k.usesWindowsCertificateStore() {
 		// currently this API is a no-op on non Windows platforms.
 		return nil
@@ -997,13 +1001,13 @@ func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte)
 
 	certs, err := finder.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
 		Name: uri.New("capi", url.Values{
-			"issuer":         []string{issuer},
-			"store-location": []string{storeLocation},
-			"store":          []string{store},
+			"issuer":         []string{req.Issuer},
+			"store-location": []string{req.StoreLocation},
+			"store":          []string{req.Store},
 		}).String(),
-	}, subjectRaw)
+	}, req.SubjectRaw)
 	if err != nil {
-		return fmt.Errorf("failed loading certificates by issuer %q: %w", issuer, err)
+		return fmt.Errorf("failed loading certificates by issuer %q: %w", req.Issuer, err)
 	}
 
 	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
@@ -1016,9 +1020,9 @@ func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte)
 	for _, cert := range certs {
 		if cert.NotAfter.Before(now) {
 			deleteURI := uri.New("capi", url.Values{
-				"store-location": []string{storeLocation},
-				"store":          []string{store},
-				"issuer":         []string{issuer},
+				"store-location": []string{req.StoreLocation},
+				"store":          []string{req.Store},
+				"issuer":         []string{req.Issuer},
 				"serial":         []string{"0x" + cert.SerialNumber.Text(16)},
 			}).String()
 

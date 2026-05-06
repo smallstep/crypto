@@ -350,3 +350,19 @@ type DeleteKeyRequest struct {
 type DeleteCertificateRequest struct {
 	Name string
 }
+
+// CleanupCertificatesRequest is the parameter used in the Cleanup method of a
+// CleaningCertificateManager. It identifies a certificate-store scope (issuer,
+// store location, store name) and a subject for which expired certificates
+// should be removed.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type CleanupCertificatesRequest struct {
+	Issuer        string
+	StoreLocation string
+	Store         string
+	SubjectRaw    []byte
+}
