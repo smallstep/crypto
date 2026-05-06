@@ -986,7 +986,8 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 // and deletes any that have already expired.
 func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte) error {
 	if !k.usesWindowsCertificateStore() {
-		return apiv1.NotImplementedError{}
+		// currently this API is a no-op on non Windows platforms.
+		return nil
 	}
 
 	finder, ok := k.windowsCertificateManager.(issuerCertificateFinder)
@@ -1603,11 +1604,11 @@ type deletingCertificateChainManager interface {
 }
 
 var (
-	_ apiv1.KeyManager                  = (*TPMKMS)(nil)
-	_ apiv1.Attester                    = (*TPMKMS)(nil)
-	_ apiv1.CertificateManager          = (*TPMKMS)(nil)
-	_ apiv1.CertificateChainManager     = (*TPMKMS)(nil)
-	_ apiv1.CleaningCertificateManager  = (*TPMKMS)(nil)
-	_ deletingCertificateChainManager   = (*TPMKMS)(nil)
-	_ apiv1.AttestationClient           = (*attestationClient)(nil)
+	_ apiv1.KeyManager                 = (*TPMKMS)(nil)
+	_ apiv1.Attester                   = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager         = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager    = (*TPMKMS)(nil)
+	_ apiv1.CleaningCertificateManager = (*TPMKMS)(nil)
+	_ deletingCertificateChainManager  = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient          = (*attestationClient)(nil)
 )
