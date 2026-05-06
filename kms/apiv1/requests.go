@@ -364,5 +364,5 @@ type CleanupCertificatesRequest struct {
 	Issuer        string
 	StoreLocation string
 	Store         string
-	SubjectRaw    []byte
+	RawSubject    []byte
 }

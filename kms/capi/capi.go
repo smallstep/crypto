@@ -824,9 +824,9 @@ func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) (
 // FindCertificatesByIssuer returns all certificates in the Windows certificate
 // store that were issued by the given issuer. The URI must contain the "issuer"
 // field; "store-location" and "store" are optional (defaulting to "user" and "My").
-// When subjectRaw is non-empty, only certificates whose raw DER-encoded Subject
+// When rawSubject is non-empty, only certificates whose raw DER-encoded Subject
 // matches are included.
-func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, subjectRaw []byte) ([]*x509.Certificate, error) {
+func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, rawSubject []byte) ([]*x509.Certificate, error) {
 	u, err := parseURI(req.Name)
 	if err != nil {
 		return nil, err
@@ -880,7 +880,7 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, su
 			return nil, fmt.Errorf("could not unmarshal certificate: %w", err)
 		}
 
-		if len(subjectRaw) == 0 || bytes.Equal(x509Cert.RawSubject, subjectRaw) {
+		if len(rawSubject) == 0 || bytes.Equal(x509Cert.RawSubject, rawSubject) {
 			certs = append(certs, x509Cert)
 		}
 		prevCert = certHandle // freed on next findCertificateInStore call

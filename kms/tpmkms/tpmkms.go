@@ -1005,7 +1005,7 @@ func (k *TPMKMS) Cleanup(req *apiv1.CleanupCertificatesRequest) error {
 			"store-location": []string{req.StoreLocation},
 			"store":          []string{req.Store},
 		}).String(),
-	}, req.SubjectRaw)
+	}, req.RawSubject)
 	if err != nil {
 		return fmt.Errorf("failed loading certificates by issuer %q: %w", req.Issuer, err)
 	}
@@ -1600,7 +1600,7 @@ type deletingCertificateManager interface {
 }
 
 type issuerCertificateFinder interface {
-	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, subjectRaw []byte) ([]*x509.Certificate, error)
+	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, rawSubject []byte) ([]*x509.Certificate, error)
 }
 
 type deletingCertificateChainManager interface {
