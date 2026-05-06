@@ -1011,6 +1011,7 @@ func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte)
 		return fmt.Errorf("certificate manager does not support deleting certificates")
 	}
 
+	var deleteErrors []error
 	now := time.Now()
 	for _, cert := range certs {
 		if cert.NotAfter.Before(now) {
@@ -1022,12 +1023,12 @@ func (k *TPMKMS) Cleanup(issuer, storeLocation, store string, subjectRaw []byte)
 			}).String()
 
 			if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteURI}); err != nil {
-				return fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err)
+				deleteErrors = append(deleteErrors, fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err))
 			}
 		}
 	}
 
-	return nil
+	return errors.Join(deleteErrors...)
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
