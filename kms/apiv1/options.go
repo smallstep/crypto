@@ -76,6 +76,17 @@ type CertificateDeleter interface {
 	DeleteCertificate(req *DeleteCertificateRequest) error
 }
 
+// CleaningCertificateManager is an optional interface for KMS implementations
+// that support cleaning up expired certificates from a certificate store.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type CleaningCertificateManager interface {
+	Cleanup(req *CleanupCertificatesRequest) error
+}
+
 // NameValidator is an interface that KeyManager can implement to validate a
 // given name or URI.
 type NameValidator interface {

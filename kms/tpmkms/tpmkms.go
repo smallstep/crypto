@@ -870,6 +870,9 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 			"store":                       []string{store},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
+			"issuer":                      []string{o.issuer},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 		}).String(),
 	})
 }
@@ -950,6 +953,7 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.store != "" {
 		store = o.store
 	}
+
 	skipFindCertificateKey := "false"
 	if o.skipFindCertificateKey {
 		skipFindCertificateKey = "true"
@@ -967,12 +971,68 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		Name: uri.New("capi", url.Values{
 			"store-location":              []string{location},
 			"store":                       []string{store},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 			"skip-find-certificate-key":   []string{skipFindCertificateKey},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
 		}).String(),
 		CertificateChain: req.CertificateChain,
 	})
+}
+
+// Cleanup implements [apiv1.CleaningCertificateManager]. It finds all certificates
+// in the Windows certificate store issued to the subject in req by the issuer in
+// req, and deletes any that have already expired.
+func (k *TPMKMS) Cleanup(req *apiv1.CleanupCertificatesRequest) error {
+	if req == nil {
+		return errors.New("cleanupCertificatesRequest cannot be nil")
+	}
+
+	if !k.usesWindowsCertificateStore() {
+		// currently this API is a no-op on non Windows platforms.
+		return nil
+	}
+
+	finder, ok := k.windowsCertificateManager.(issuerCertificateFinder)
+	if !ok {
+		return fmt.Errorf("certificate manager does not support finding certificates by issuer")
+	}
+
+	certs, err := finder.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
+		Name: uri.New("capi", url.Values{
+			"issuer":         []string{req.Issuer},
+			"store-location": []string{req.StoreLocation},
+			"store":          []string{req.Store},
+		}).String(),
+	}, req.RawSubject)
+	if err != nil {
+		return fmt.Errorf("failed loading certificates by issuer %q: %w", req.Issuer, err)
+	}
+
+	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
+	if !ok {
+		return fmt.Errorf("certificate manager does not support deleting certificates")
+	}
+
+	var deleteErrors []error
+	now := time.Now()
+	for _, cert := range certs {
+		if cert.NotAfter.Before(now) {
+			deleteURI := uri.New("capi", url.Values{
+				"store-location": []string{req.StoreLocation},
+				"store":          []string{req.Store},
+				"issuer":         []string{req.Issuer},
+				"serial":         []string{"0x" + cert.SerialNumber.Text(16)},
+			}).String()
+
+			if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteURI}); err != nil {
+				deleteErrors = append(deleteErrors, fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err))
+			}
+		}
+	}
+
+	return errors.Join(deleteErrors...)
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
@@ -1539,14 +1599,21 @@ type deletingCertificateManager interface {
 	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
 }
 
+type issuerCertificateFinder interface {
+	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, rawSubject []byte) ([]*x509.Certificate, error)
+}
+
 type deletingCertificateChainManager interface {
 	apiv1.CertificateChainManager
 	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
 }
 
-var _ apiv1.KeyManager = (*TPMKMS)(nil)
-var _ apiv1.Attester = (*TPMKMS)(nil)
-var _ apiv1.CertificateManager = (*TPMKMS)(nil)
-var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
-var _ deletingCertificateChainManager = (*TPMKMS)(nil)
-var _ apiv1.AttestationClient = (*attestationClient)(nil)
+var (
+	_ apiv1.KeyManager                 = (*TPMKMS)(nil)
+	_ apiv1.Attester                   = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager         = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager    = (*TPMKMS)(nil)
+	_ apiv1.CleaningCertificateManager = (*TPMKMS)(nil)
+	_ deletingCertificateChainManager  = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient          = (*attestationClient)(nil)
+)
