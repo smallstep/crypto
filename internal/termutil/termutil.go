@@ -73,7 +73,6 @@ func ReadPassword(prompt string) (s []byte, err error) {
 	err = withTerminal(func(in, out *os.File) error {
 		fmt.Fprintf(out, "%s ", prompt)
 		defer clearLine(out)
-		//nolint:gosec // Fd() returns uintptr, conversion to int is safe for file descriptors
 		s, err = term.ReadPassword(int(in.Fd()))
 		return err
 	})
