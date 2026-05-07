@@ -60,7 +60,6 @@ func withTerminal(f func(in, out *os.File) error) error {
 		return f(tty, tty)
 	}
 
-	//nolint:gosec // Fd() returns uintptr, conversion to int is safe for file descriptors
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		return f(os.Stdin, os.Stdin)
 	}
