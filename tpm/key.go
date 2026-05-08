@@ -25,6 +25,7 @@ type Key struct {
 	attestedBy string
 	chain      []*x509.Certificate
 	createdAt  time.Time
+	machineKey bool
 	blobs      *Blobs
 	tpm        *TPM
 }
@@ -69,7 +70,7 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 func (k *Key) Public() crypto.PublicKey {
 	var (
 		err error
-		ctx = context.Background()
+		ctx = withMachineKey(context.Background(), k.machineKey)
 	)
 	if err = k.tpm.open(ctx); err != nil {
 		return nil
@@ -141,6 +142,14 @@ type CreateKeyConfig struct {
 	// Size is used to specify the bit size of the key or elliptic curve. For
 	// example, '256' is used to specify curve P-256.
 	Size int
+	// MachineKey, when true, requests that the underlying private key be
+	// created in the local machine key store rather than in the current
+	// user's key store. On Windows this causes NCRYPT_MACHINE_KEY_FLAG to
+	// be passed to the NCrypt PCP provider on creation, and to be applied
+	// every time the key is subsequently opened. The value is persisted
+	// alongside the key in storage so that load operations use the matching
+	// scope. Has no effect on non-Windows platforms.
+	MachineKey bool
 
 	// TODO(hs): move key name to this struct?
 }
@@ -159,6 +168,10 @@ type AttestKeyConfig struct {
 	// When used with ACME `device-attest-01`, this contains a hash of
 	// the key authorization.
 	QualifyingData []byte
+	// MachineKey, when true, requests that the underlying private key be
+	// created in the local machine key store rather than in the current
+	// user's key store. See [CreateKeyConfig.MachineKey] for details.
+	MachineKey bool
 
 	// TODO(hs): add akName and key name to this struct?
 }
@@ -167,7 +180,7 @@ type AttestKeyConfig struct {
 // a random 10 character name is generated. If a Key with the same name exists,
 // `ErrExists` is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (key *Key, err error) {
-	if err = t.open(goTPMCall(ctx)); err != nil {
+	if err = t.open(withMachineKey(goTPMCall(ctx), config.MachineKey)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -186,8 +199,9 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	createConfig := internalkey.CreateConfig{
-		Algorithm: config.Algorithm,
-		Size:      config.Size,
+		Algorithm:  config.Algorithm,
+		Size:       config.Size,
+		MachineKey: config.MachineKey,
 	}
 	if err := t.validate(&createConfig); err != nil {
 		return nil, fmt.Errorf("invalid key creation parameters: %w", err)
@@ -198,10 +212,11 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 	}
 
 	key = &Key{
-		name:      name,
-		data:      data,
-		createdAt: now,
-		tpm:       t,
+		name:       name,
+		data:       data,
+		createdAt:  now,
+		machineKey: config.MachineKey,
+		tpm:        t,
 	}
 
 	if err := t.store.AddKey(key.toStorage()); err != nil {
@@ -236,7 +251,25 @@ func (w attestValidationWrapper) Validate() error {
 // name is generated. If a Key with the same name exists, `ErrExists` is
 // returned.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (key *Key, err error) {
-	if err = t.open(ctx); err != nil {
+	// Look up the AK before opening attest so we can use its scope for the
+	// attest session. An attested key inherits its AK's scope: the attest
+	// session can only operate in one scope at a time, so the AK and the
+	// new key it certifies must share it. Any explicit
+	// [AttestKeyConfig.MachineKey] that conflicts with the AK's scope is
+	// rejected here rather than failing later inside attest.
+	ak, err := t.store.GetAK(akName)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
+	}
+	if config.MachineKey && !ak.MachineKey {
+		return nil, fmt.Errorf("cannot attest a machine-scope key with user-scope AK %q", akName)
+	}
+	machineKey := ak.MachineKey
+
+	if err = t.open(withMachineKey(ctx, machineKey)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -252,14 +285,6 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		return nil, fmt.Errorf("failed creating key %q: %w", name, ErrExists)
 	case errors.Is(err, storage.ErrNoStorageConfigured):
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
-	}
-
-	ak, err := t.store.GetAK(akName)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
-		}
-		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
 
 	loadedAK, err := t.attestTPM.LoadAK(ak.Data)
@@ -293,6 +318,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		data:       data,
 		attestedBy: akName,
 		createdAt:  now,
+		machineKey: machineKey,
 		tpm:        t,
 	}
 
@@ -372,33 +398,50 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key
 
 // DeleteKey removes the Key identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
+//
+// If the in-TPM deletion fails but the file-store entry is successfully
+// removed, the returned error is wrapped in a [PartialDeleteError] so
+// callers can distinguish "leaked from the TPM but not from the file
+// store" from a complete failure. Cleaning up the file-store entry even
+// on PCP failure prevents repeated retries from re-encountering the same
+// failing entry.
 func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
-	if err := t.open(ctx); err != nil {
+	// Read storage first so we know the key's machine-key scope before
+	// opening attest with the right flag. Cheaper than doing it after
+	// open() because the store load is unconditional anyway.
+	key, getErr := t.store.GetKey(name)
+	if getErr != nil {
+		if errors.Is(getErr, storage.ErrNotFound) {
+			return fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
+		}
+		return fmt.Errorf("failed getting key %q: %w", name, getErr)
+	}
+
+	if err := t.open(withMachineKey(ctx, key.MachineKey)); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
 
-	key, err := t.store.GetKey(name)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
-		}
-		return fmt.Errorf("failed getting key %q: %w", name, err)
-	}
-
-	if err := t.attestTPM.DeleteKey(key.Data); err != nil {
-		return fmt.Errorf("failed deleting key %q: %w", name, err)
-	}
+	attestErr := t.attestTPM.DeleteKey(key.Data)
 
 	if err := t.store.DeleteKey(name); err != nil {
+		if attestErr != nil {
+			return fmt.Errorf("failed deleting key %q from storage after TPM delete failed (%v): %w", name, attestErr, err)
+		}
 		return fmt.Errorf("failed deleting key %q from storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
+		if attestErr != nil {
+			return fmt.Errorf("failed persisting storage after TPM delete failed (%v): %w", attestErr, err)
+		}
 		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
-	return
+	if attestErr != nil {
+		return &PartialDeleteError{Name: name, Underlying: attestErr}
+	}
+	return nil
 }
 
 // Signer returns a crypto.Signer backed by the Key.
@@ -409,7 +452,7 @@ func (k *Key) Signer(ctx context.Context) (crypto.Signer, error) {
 // CertificationParameters returns information about the key that can be used to
 // verify key certification.
 func (k *Key) CertificationParameters(ctx context.Context) (params attest.CertificationParameters, err error) {
-	if err = k.tpm.open(ctx); err != nil {
+	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)
@@ -435,7 +478,7 @@ func (k *Key) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 		return k.blobs, nil
 	}
 
-	if err = k.tpm.open(ctx); err != nil {
+	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)
@@ -459,7 +502,7 @@ func (k *Key) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 // If the public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) (err error) {
-	if err = k.tpm.open(ctx); err != nil {
+	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)
@@ -504,6 +547,7 @@ func (k *Key) toStorage() *storage.Key {
 		AttestedBy: k.attestedBy,
 		Chain:      k.chain,
 		CreatedAt:  k.createdAt.UTC(),
+		MachineKey: k.machineKey,
 	}
 }
 
@@ -516,6 +560,7 @@ func keyFromStorage(sk *storage.Key, t *TPM) *Key {
 		attestedBy: sk.AttestedBy,
 		chain:      sk.Chain,
 		createdAt:  sk.CreatedAt.Local(),
+		machineKey: sk.MachineKey,
 		tpm:        t,
 	}
 }

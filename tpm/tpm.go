@@ -190,6 +190,12 @@ func (t *TPM) open(ctx context.Context) (err error) {
 		return fmt.Errorf("failed initializing command channel: %w", err)
 	}
 
+	// Apply per-call machine-key scope to the attest open config. We hold
+	// t.lock at this point and t.attestTPM is re-created on every open, so
+	// mutating attestConfig here is safe and does not leak across callers.
+	// Always set explicitly so we never carry a previous caller's choice.
+	t.attestConfig.MachineKey = machineKeyFromContext(ctx)
+
 	// if a simulator was set, use it as the backing TPM device.
 	// The simulator is currently only used for testing.
 	if t.simulator != nil {

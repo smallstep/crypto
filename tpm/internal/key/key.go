@@ -106,6 +106,11 @@ type CreateConfig struct {
 	// Size is used to specify the bit size of the key or elliptic curve. For
 	// example, '256' is used to specify curve P-256.
 	Size int
+	// MachineKey, when true, requests that the key be created in the local
+	// machine key store rather than the current user key store. On Windows
+	// this causes NCRYPT_MACHINE_KEY_FLAG to be passed to the underlying
+	// NCrypt PCP provider. Ignored on other platforms.
+	MachineKey bool
 }
 
 func (c *CreateConfig) Validate() error {
@@ -184,8 +189,9 @@ const (
 )
 
 type KeyConfig struct {
-	Algorithm Algorithm
-	Size      int
+	Algorithm  Algorithm
+	Size       int
+	MachineKey bool
 }
 
 var (

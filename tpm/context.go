@@ -37,3 +37,21 @@ func isGoTPMCall(ctx context.Context) bool {
 	v, ok := ctx.Value(goTPMCallContextKey{}).(bool)
 	return ok && v
 }
+
+type machineKeyContextKey struct{}
+
+// withMachineKey annotates ctx with a machine-key flag that the TPM open
+// path consults when initializing the underlying attest.TPM. This lets
+// individual key operations (CreateKey, GetKey/Public/Signer/...,
+// DeleteKey) request machine-scoped vs user-scoped behaviour without
+// turning MachineKey into a per-TPM-instance setting.
+func withMachineKey(ctx context.Context, machineKey bool) context.Context {
+	return context.WithValue(ctx, machineKeyContextKey{}, machineKey)
+}
+
+// machineKeyFromContext returns the machine-key flag annotated on ctx, or
+// false if none is set.
+func machineKeyFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(machineKeyContextKey{}).(bool)
+	return v
+}

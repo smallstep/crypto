@@ -27,6 +27,28 @@ type objectProperties struct {
 	sha1                      string
 	serial                    string
 	issuer                    string
+	// keyScope, if set, is one of "machine" or "user". It controls
+	// whether the underlying private key lives in the local machine key
+	// store or in the current user's key store, and is independent of
+	// where the certificate is stored. When unset, [parseNameURI] derives
+	// it from storeLocation for backwards compatibility (machine cert
+	// store implies machine key scope).
+	keyScope string
+}
+
+// machineKey returns true if the resolved key scope is "machine".
+// When keyScope is unset on the object, the value is derived from
+// storeLocation: "machine" → true, anything else → false.
+func (o objectProperties) machineKey() bool {
+	scope := o.keyScope
+	if scope == "" {
+		if o.storeLocation == "machine" {
+			scope = "machine"
+		} else {
+			scope = "user"
+		}
+	}
+	return scope == "machine"
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
@@ -75,9 +97,19 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		o.serial = u.Get("serial")
 		o.issuer = u.Get("issuer")
 
+		// key-scope is independent of store-location: cert location and
+		// key ownership are orthogonal Windows concepts. See [machineKey]
+		// for the back-compat default when this is unset.
+		o.keyScope = u.Get("key-scope")
+
 		// validation
 		if o.ak && o.attestBy != "" {
 			return o, errors.New(`"ak" and "attest-by" are mutually exclusive`)
+		}
+		switch o.keyScope {
+		case "", "machine", "user":
+		default:
+			return o, fmt.Errorf(`"key-scope" must be "machine" or "user", got %q`, o.keyScope)
 		}
 
 		return

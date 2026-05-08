@@ -557,12 +557,15 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}, nil
 	}
 
+	machineKey := properties.machineKey()
+
 	var key *tpm.Key
 	if properties.attestBy != "" {
 		config := tpm.AttestKeyConfig{
 			Algorithm:      v.Type,
 			Size:           size,
 			QualifyingData: properties.qualifyingData,
+			MachineKey:     machineKey,
 		}
 		key, err = k.tpm.AttestKey(ctx, properties.attestBy, properties.name, config)
 		if err != nil {
@@ -573,8 +576,9 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 	} else {
 		config := tpm.CreateKeyConfig{
-			Algorithm: v.Type,
-			Size:      size,
+			Algorithm:  v.Type,
+			Size:       size,
+			MachineKey: machineKey,
 		}
 		key, err = k.tpm.CreateKey(ctx, properties.name, config)
 		if err != nil {
@@ -598,9 +602,16 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("failed getting signer for key: %w", err)
 	}
 
+	// Preserve key-scope in the returned URI so subsequent CreateSigner /
+	// DeleteKey calls land in the right scope. The bug we hit before was
+	// exactly this: the returned URI had only "name=", so re-opens
+	// defaulted to user scope and failed to find machine-stored keys.
 	createdKeyURI := fmt.Sprintf("tpmkms:name=%s", key.Name())
 	if properties.attestBy != "" {
 		createdKeyURI = fmt.Sprintf("%s;attest-by=%s", createdKeyURI, key.AttestedBy())
+	}
+	if machineKey {
+		createdKeyURI = fmt.Sprintf("%s;key-scope=machine", createdKeyURI)
 	}
 
 	return &apiv1.CreateKeyResponse{

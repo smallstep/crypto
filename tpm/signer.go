@@ -27,7 +27,7 @@ func (s *signer) Public() crypto.PublicKey {
 // The TPM key is loaded lazily, meaning that every call to Sign()
 // will reload the TPM key to be used.
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	ctx := context.Background()
+	ctx := withMachineKey(context.Background(), s.key.machineKey)
 	if err = s.tpm.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
@@ -55,18 +55,21 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 
 // GetSigner returns a crypto.Signer for a TPM Key identified by `name`.
 func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer, err error) {
-	if err = t.open(ctx); err != nil {
+	// Look up the key in the store first so we know its machine-key
+	// scope before opening attest. The store load is unconditional in
+	// open() anyway, so there's no extra round trip here.
+	key, getErr := t.store.GetKey(name)
+	if getErr != nil {
+		if errors.Is(getErr, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, getErr)
+	}
+
+	if err = t.open(withMachineKey(ctx, key.MachineKey)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
-
-	key, err := t.store.GetKey(name)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
-		}
-		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, err)
-	}
 
 	loadedKey, err := t.attestTPM.LoadKey(key.Data)
 	if err != nil {
@@ -85,7 +88,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 
 	csigner = &signer{
 		tpm:    t,
-		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t},
+		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, machineKey: key.MachineKey, tpm: t},
 		public: loadedKey.Public(),
 	}
 
