@@ -12,7 +12,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/ThalesIgnite/crypto11"
+	"github.com/ThalesGroup/crypto11"
 	"github.com/pkg/errors"
 )
 
