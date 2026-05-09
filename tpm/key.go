@@ -264,8 +264,15 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		}
 		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
-	if config.MachineKey && !ak.MachineKey {
-		return nil, fmt.Errorf("cannot attest a machine-scope key with user-scope AK %q", akName)
+	// An attested key inherits its AK's scope. Reject explicit
+	// [AttestKeyConfig.MachineKey] mismatches in either direction so
+	// callers don't get a silently-promoted (or silently-demoted) key.
+	// To opt into "use whatever scope the AK is in," leave
+	// AttestKeyConfig.MachineKey at its zero value AND make sure the AK
+	// is in user scope; for a machine-scope AK, set MachineKey: true
+	// explicitly.
+	if config.MachineKey != ak.MachineKey {
+		return nil, fmt.Errorf("AttestKeyConfig.MachineKey=%v does not match AK %q scope (MachineKey=%v); attested keys inherit their AK's scope", config.MachineKey, akName, ak.MachineKey)
 	}
 	machineKey := ak.MachineKey
 
