@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/ThalesIgnite/crypto11"
+	"github.com/ThalesGroup/crypto11"
 	"github.com/pkg/errors"
 
 	"go.step.sm/crypto/kms/apiv1"

@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.25.0
+go 1.25.1
 
 retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
 
@@ -11,7 +11,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.4.0
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/kms v1.51.1
 	github.com/go-jose/go-jose/v3 v3.0.5
@@ -48,6 +47,7 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
+	github.com/ThalesGroup/crypto11 v1.6.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.7 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
@@ -77,7 +77,7 @@ require (
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/miekg/pkcs11 v1.0.3 // indirect
+	github.com/miekg/pkcs11 v1.1.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
