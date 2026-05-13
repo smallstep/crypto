@@ -557,7 +557,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}, nil
 	}
 
-	machineKey := properties.machineKey()
+	machineKey := properties.isMachineKey()
 
 	var key *tpm.Key
 	if properties.attestBy != "" {

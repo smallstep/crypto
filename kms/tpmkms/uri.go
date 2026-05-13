@@ -36,19 +36,12 @@ type objectProperties struct {
 	keyScope string
 }
 
-// machineKey returns true if the resolved key scope is "machine".
+// isMachineKey returns true if the resolved key scope is "machine".
 // When keyScope is unset on the object, the value is derived from
 // storeLocation: "machine" → true, anything else → false.
-func (o objectProperties) machineKey() bool {
-	scope := o.keyScope
-	if scope == "" {
-		if o.storeLocation == "machine" {
-			scope = "machine"
-		} else {
-			scope = "user"
-		}
-	}
-	return scope == "machine"
+func (o objectProperties) isMachineKey() bool {
+	return o.keyScope == "machine" ||
+		(o.keyScope == "" && o.storeLocation == "machine")
 }
 
 func parseNameURI(nameURI string) (o objectProperties, err error) {
