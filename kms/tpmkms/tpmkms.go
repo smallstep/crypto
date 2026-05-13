@@ -427,7 +427,7 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error
 
 		cm, ok = km.(capiCertificateManager)
 		if !ok {
-			return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
+			return nil, fmt.Errorf("unexpected type %T; expected capiCertificateManager", km)
 		}
 	}
 
