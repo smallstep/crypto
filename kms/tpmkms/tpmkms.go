@@ -986,7 +986,7 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 // the issuer in req, and deletes any that have already expired.
 func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 	if req == nil {
-		return errors.New("cleanupCertificatesRequest cannot be nil")
+		return errors.New("cleanupCredentialsRequest cannot be nil")
 	}
 
 	if k.usesWindowsCertificateStore() {
