@@ -51,6 +51,9 @@ func TestKMS_CleanupCredentials_other(t *testing.T) {
 		{"not implemented", platformKMS, args{&apiv1.CleanupCredentialsRequest{
 			RawSubject: chain[0].RawSubject,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			if platformKMS.Type() == apiv1.TPMKMS {
+				return assert.NoError(t, err)
+			}
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}
