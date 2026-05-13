@@ -55,9 +55,13 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 
 // GetSigner returns a crypto.Signer for a TPM Key identified by `name`.
 func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer, err error) {
-	// Look up the key in the store first so we know its machine-key
-	// scope before opening attest. The store load is unconditional in
-	// open() anyway, so there's no extra round trip here.
+	// We need the key's persisted machine-key scope before t.open so we
+	// can pass it through context. t.open also calls t.store.Load
+	// internally; calling it here explicitly preserves the invariant
+	// that every t.store read happens after a t.store.Load.
+	if err := t.store.Load(); err != nil {
+		return nil, fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
 	key, getErr := t.store.GetKey(name)
 	if getErr != nil {
 		if errors.Is(getErr, storage.ErrNotFound) {

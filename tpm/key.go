@@ -251,32 +251,13 @@ func (w attestValidationWrapper) Validate() error {
 // name is generated. If a Key with the same name exists, `ErrExists` is
 // returned.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (key *Key, err error) {
-	// Look up the AK before opening attest so we can use its scope for the
-	// attest session. An attested key inherits its AK's scope: the attest
-	// session can only operate in one scope at a time, so the AK and the
-	// new key it certifies must share it. Any explicit
-	// [AttestKeyConfig.MachineKey] that conflicts with the AK's scope is
-	// rejected here rather than failing later inside attest.
-	ak, err := t.store.GetAK(akName)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
-		}
-		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
-	}
-	// An attested key inherits its AK's scope. Reject explicit
-	// [AttestKeyConfig.MachineKey] mismatches in either direction so
-	// callers don't get a silently-promoted (or silently-demoted) key.
-	// To opt into "use whatever scope the AK is in," leave
-	// AttestKeyConfig.MachineKey at its zero value AND make sure the AK
-	// is in user scope; for a machine-scope AK, set MachineKey: true
-	// explicitly.
-	if config.MachineKey != ak.MachineKey {
-		return nil, fmt.Errorf("AttestKeyConfig.MachineKey=%v does not match AK %q scope (MachineKey=%v); attested keys inherit their AK's scope", config.MachineKey, akName, ak.MachineKey)
-	}
-	machineKey := ak.MachineKey
-
-	if err = t.open(withMachineKey(ctx, machineKey)); err != nil {
+	// Open with the caller's requested scope. The AK's persisted scope is
+	// validated below — if it doesn't match, we return an error and the
+	// deferred close runs. Doing it this way keeps every t.store read
+	// after the t.store.Load that t.open performs, which matters for
+	// storage implementations whose in-memory state doesn't reflect
+	// on-disk state until Load is called.
+	if err = t.open(withMachineKey(ctx, config.MachineKey)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -293,6 +274,23 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	case errors.Is(err, storage.ErrNoStorageConfigured):
 		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
 	}
+
+	ak, err := t.store.GetAK(akName)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
+	}
+	// An attested key inherits its AK's scope: the attest session can
+	// only operate in one scope at a time, so the AK and the new key it
+	// certifies must share it. Reject explicit [AttestKeyConfig.MachineKey]
+	// mismatches in either direction so callers don't get a
+	// silently-promoted (or silently-demoted) key.
+	if config.MachineKey != ak.MachineKey {
+		return nil, fmt.Errorf("AttestKeyConfig.MachineKey=%v does not match AK %q scope (MachineKey=%v); attested keys inherit their AK's scope", config.MachineKey, akName, ak.MachineKey)
+	}
+	machineKey := ak.MachineKey
 
 	loadedAK, err := t.attestTPM.LoadAK(ak.Data)
 	if err != nil {
@@ -413,9 +411,14 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key
 // on PCP failure prevents repeated retries from re-encountering the same
 // failing entry.
 func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
-	// Read storage first so we know the key's machine-key scope before
-	// opening attest with the right flag. Cheaper than doing it after
-	// open() because the store load is unconditional anyway.
+	// We need the key's persisted machine-key scope before t.open so we
+	// can pass it through context. t.open also calls t.store.Load
+	// internally; calling it here explicitly preserves the invariant that
+	// every t.store read happens after a t.store.Load. Both Loads are
+	// idempotent for the storage implementations in this package.
+	if err := t.store.Load(); err != nil {
+		return fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
 	key, getErr := t.store.GetKey(name)
 	if getErr != nil {
 		if errors.Is(getErr, storage.ErrNotFound) {

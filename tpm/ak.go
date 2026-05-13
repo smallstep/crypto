@@ -282,8 +282,13 @@ func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
 // removed, the returned error is wrapped in a [PartialDeleteError]. See
 // [TPM.DeleteKey] for the rationale.
 func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
-	// Look up first so we know the AK's machine-key scope before opening
-	// attest with the right flag.
+	// We need the AK's persisted machine-key scope before t.open so we
+	// can pass it through context. t.open also calls t.store.Load
+	// internally; calling it here explicitly preserves the invariant that
+	// every t.store read happens after a t.store.Load.
+	if err := t.store.Load(); err != nil {
+		return fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
 	ak, getErr := t.store.GetAK(name)
 	if getErr != nil {
 		if errors.Is(getErr, storage.ErrNotFound) {
