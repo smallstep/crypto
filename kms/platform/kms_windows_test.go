@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -496,6 +497,48 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 			got, err := tt.kms.SearchKeys(tt.args.req)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestKMS_CleanupCredentials_capi(t *testing.T) {
+	capiKMS := mustCAPIKMS(t)
+	// Use an expired certificate
+	chain := mustCreatePlatformCertificate(t, capiKMS,
+		withNoCleanupCertificate(),
+		withTemplateModifier(func(c *x509.Certificate) *x509.Certificate {
+			c.NotBefore = time.Now().Add(-time.Minute).Truncate(time.Second)
+			c.NotAfter = time.Now().Add(-time.Second).Truncate(time.Second)
+			return c
+		}))
+
+	_, err := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: platformCertName,
+	})
+	require.NoError(t, err)
+
+	type args struct {
+		req *apiv1.CleanupCredentialsRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", capiKMS, args{&apiv1.CleanupCredentialsRequest{
+			Issuer:     chain[0].Issuer.CommonName,
+			RawSubject: chain[0].RawSubject,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			_, loadErr := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
+				Name: platformCertName,
+			})
+			return assert.NoError(t, err) && assert.Error(t, loadErr)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, tt.kms.CleanupCredentials(tt.args.req))
 		})
 	}
 }

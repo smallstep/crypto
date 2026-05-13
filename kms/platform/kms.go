@@ -93,6 +93,8 @@ var (
 	_ apiv1.KeyManager              = (*KMS)(nil)
 	_ apiv1.CertificateManager      = (*KMS)(nil)
 	_ apiv1.CertificateChainManager = (*KMS)(nil)
+	_ apiv1.SearchableKeyManager    = (*KMS)(nil)
+	_ apiv1.CredentialsCleaner      = (*KMS)(nil)
 )
 
 type KMS struct {
@@ -291,9 +293,9 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 	return nil, apiv1.NotImplementedError{}
 }
 
-func (k *KMS) Cleanup(req *apiv1.CleanupCertificatesRequest) error {
-	if km, ok := k.backend.(apiv1.CleaningCertificateManager); ok {
-		return km.Cleanup(req)
+func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
+	if km, ok := k.backend.(apiv1.CredentialsCleaner); ok {
+		return km.CleanupCredentials(req)
 	}
 
 	return apiv1.NotImplementedError{}

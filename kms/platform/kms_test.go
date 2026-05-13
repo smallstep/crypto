@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,8 +102,14 @@ func mustReadSigner(t *testing.T, path string) crypto.Signer {
 	return signer
 }
 
-func mustCertificate(t *testing.T, path string) []*x509.Certificate {
+func mustCertificate(t *testing.T, path string, opts ...createFuncOption) []*x509.Certificate {
 	t.Helper()
+
+	o := new(createOptions)
+	o.templateModifier = func(c *x509.Certificate) *x509.Certificate { return c }
+	for _, fn := range opts {
+		fn(o)
+	}
 
 	ca, err := minica.New()
 	require.NoError(t, err)
@@ -110,12 +117,12 @@ func mustCertificate(t *testing.T, path string) []*x509.Certificate {
 	signer, err := keyutil.GenerateDefaultSigner()
 	require.NoError(t, err)
 
-	cert, err := ca.Sign(&x509.Certificate{
+	cert, err := ca.Sign(o.templateModifier(&x509.Certificate{
 		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		PublicKey:   signer.Public(),
 		DNSNames:    []string{"example.com"},
-	})
+	}))
 	require.NoError(t, err)
 
 	if path != "" {
@@ -186,6 +193,7 @@ type createOptions struct {
 	name                 string
 	noCleanup            bool
 	noCleanupCertificate bool
+	templateModifier     func(*x509.Certificate) *x509.Certificate
 }
 
 type createFuncOption func(*createOptions)
@@ -206,6 +214,12 @@ func withNoCleanup() createFuncOption {
 func withNoCleanupCertificate() createFuncOption {
 	return func(co *createOptions) {
 		co.noCleanupCertificate = true
+	}
+}
+
+func withTemplateModifier(fn func(*x509.Certificate) *x509.Certificate) createFuncOption {
+	return func(co *createOptions) {
+		co.templateModifier = fn
 	}
 }
 
@@ -242,6 +256,7 @@ func mustCreatePlatformCertificate(t *testing.T, km *KMS, opts ...createFuncOpti
 	t.Helper()
 
 	o := new(createOptions)
+	o.templateModifier = func(c *x509.Certificate) *x509.Certificate { return c }
 	o.name = platformCertName
 	for _, fn := range opts {
 		fn(o)
@@ -257,12 +272,12 @@ func mustCreatePlatformCertificate(t *testing.T, km *KMS, opts ...createFuncOpti
 	}
 
 	key := mustCreatePlatformKey(t, km, opts...)
-	cert, err := ca.Sign(&x509.Certificate{
+	cert, err := ca.Sign(o.templateModifier(&x509.Certificate{
 		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		PublicKey:   key.PublicKey,
 		DNSNames:    []string{"example.com"},
-	})
+	}))
 	require.NoError(t, err)
 
 	require.NoError(t, km.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{
@@ -1285,6 +1300,39 @@ func TestKMS_SearchKeys(t *testing.T) {
 			got, err := tt.kms.SearchKeys(tt.args.req)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestKMS_CleanupCredentials(t *testing.T) {
+	dir := t.TempDir()
+	softKMS := mustKMS(t, "kms:backend=softkms")
+	// Create an expired certificate
+	chain := mustCertificate(t, filepath.Join(dir, "chain.crt"), withTemplateModifier(func(c *x509.Certificate) *x509.Certificate {
+		c.NotBefore = time.Now().Add(-time.Minute).Truncate(time.Second)
+		c.NotAfter = time.Now().Add(-time.Second).Truncate(time.Second)
+		return c
+	}))
+
+	type args struct {
+		req *apiv1.CleanupCredentialsRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"not implemented", softKMS, args{&apiv1.CleanupCredentialsRequest{
+			Issuer:     chain[0].Issuer.CommonName,
+			RawSubject: chain[0].RawSubject,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, tt.kms.CleanupCredentials(tt.args.req))
 		})
 	}
 }
