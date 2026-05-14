@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -20,9 +21,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
-
-	"github.com/pkg/errors"
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
@@ -1138,6 +1138,41 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
+}
+
+// CleanupCredentials implements [apiv1.CredentialsCleaner]. It finds all
+// certificates in the Windows certificate store issued to the subject in req by
+// the issuer in req, and deletes any that have already expired.
+func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
+	certs, err := k.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
+		Name: uri.New("capi", url.Values{
+			"issuer":         []string{req.Issuer},
+			"store-location": []string{req.StoreLocation},
+			"store":          []string{req.Store},
+		}).String(),
+	}, req.RawSubject)
+	if err != nil {
+		return fmt.Errorf("failed loading certificates by issuer %q: %w", req.Issuer, err)
+	}
+
+	var deleteErrors []error
+	now := time.Now()
+	for _, cert := range certs {
+		if cert.NotAfter.Before(now) {
+			deleteURI := uri.New("capi", url.Values{
+				"store-location": []string{req.StoreLocation},
+				"store":          []string{req.Store},
+				"issuer":         []string{req.Issuer},
+				"serial":         []string{"0x" + cert.SerialNumber.Text(16)},
+			}).String()
+
+			if err := k.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteURI}); err != nil {
+				deleteErrors = append(deleteErrors, fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err))
+			}
+		}
+	}
+
+	return errors.Join(deleteErrors...)
 }
 
 func (k *CAPIKMS) getKeyFlags(u *uriAttributes) (uint32, error) {

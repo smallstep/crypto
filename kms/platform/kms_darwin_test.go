@@ -1,9 +1,12 @@
 package platform
 
 import (
+	"crypto/x509"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.step.sm/crypto/kms/apiv1"
 )
 
 func mustPlatformKMS(t *testing.T) *KMS {
@@ -65,6 +68,38 @@ func Test_transformFromMacKMS(t *testing.T) {
 			got, err := transformFromMacKMS(tt.rawuri)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestKMS_CleanupCredentials_mackms(t *testing.T) {
+	platformKMS := mustPlatformKMS(t)
+	// Use an expired certificate
+	chain := mustCreatePlatformCertificate(t, platformKMS, withTemplateModifier(func(c *x509.Certificate) *x509.Certificate {
+		c.NotBefore = time.Now().Add(-time.Minute).Truncate(time.Second)
+		c.NotAfter = time.Now().Add(-time.Second).Truncate(time.Second)
+		return c
+	}))
+
+	type args struct {
+		req *apiv1.CleanupCredentialsRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"not implemented", platformKMS, args{&apiv1.CleanupCredentialsRequest{
+			Issuer:     chain[0].Issuer.CommonName,
+			RawSubject: chain[0].RawSubject,
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, tt.kms.CleanupCredentials(tt.args.req))
 		})
 	}
 }
