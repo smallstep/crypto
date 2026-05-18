@@ -503,17 +503,27 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 
 func TestKMS_CleanupCredentials_capi(t *testing.T) {
 	capiKMS := mustCAPIKMS(t)
-	// Use an expired certificate
+	// Use an expired certificate. withNoCleanup disables the t.Cleanup hooks
+	// that would otherwise call DeleteKey / DeleteCertificate on the test's
+	// behalf; CleanupCredentials is expected to remove both the certificate
+	// and its CNG private key, so a follow-up DeleteKey would fail with
+	// "not found". The test instead asserts that both have been removed.
 	chain := mustCreatePlatformCertificate(t, capiKMS,
-		withNoCleanupCertificate(),
+		withNoCleanup(),
 		withTemplateModifier(func(c *x509.Certificate) *x509.Certificate {
 			c.NotBefore = time.Now().Add(-time.Minute).Truncate(time.Second)
 			c.NotAfter = time.Now().Add(-time.Second).Truncate(time.Second)
 			return c
 		}))
 
+	// Sanity-check the precondition: both the certificate and the CNG key
+	// exist before CleanupCredentials runs.
 	_, err := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
 		Name: platformCertName,
+	})
+	require.NoError(t, err)
+	_, err = capiKMS.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		Name: platformKeyName,
 	})
 	require.NoError(t, err)
 
@@ -533,7 +543,12 @@ func TestKMS_CleanupCredentials_capi(t *testing.T) {
 			_, loadErr := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
 				Name: platformCertName,
 			})
-			return assert.NoError(t, err) && assert.Error(t, loadErr)
+			_, getErr := capiKMS.GetPublicKey(&apiv1.GetPublicKeyRequest{
+				Name: platformKeyName,
+			})
+			return assert.NoError(t, err) &&
+				assert.Error(t, loadErr, "certificate should be removed") &&
+				assert.Error(t, getErr, "CNG private key should be removed")
 		}},
 	}
 	for _, tt := range tests {

@@ -1095,6 +1095,10 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 	uv := url.Values{}
 	uv.Set("store-location", location)
 	uv.Set("store", store)
+	// Also remove the CNG private key paired with the certificate; TPMKMS-managed
+	// certs have a 1:1 CNG key with no independent use, so leaving the .PCPKSP
+	// blob behind would orphan it on disk.
+	uv.Set("delete-key", "true")
 
 	switch {
 	case o.serial != "":
