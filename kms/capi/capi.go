@@ -436,21 +436,40 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			}
 		}
 	case u.containerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		// Preferred path: open the CNG key against the bound provider,
+		// derive its SubjectKeyID, and look the cert up by SKI. This is
+		// the indexed search Windows is optimized for, and it pins down
+		// *which* key the cert binds to even when several certs share a
+		// container name.
+		//
+		// Fallback path: when the key can't be opened (e.g. the bound
+		// provider is Microsoft Platform Crypto Provider but the cert is
+		// bound to a Microsoft Software KSP container, or the caller
+		// lacks permission on the key), enumerate the store and match
+		// against the cert's CERT_KEY_PROV_INFO container name. The
+		// property is set whenever a cert was stored with key-association
+		// (cryptFindCertificateKeyProvInfo) regardless of provider.
+		key, kpErr := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
 				ContainerNameArg: []string{u.containerName},
 			}).String(),
 		})
-		if err != nil {
-			return nil, err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
-		}
-		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
-			if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
-				return nil, err
+		if kpErr == nil {
+			keyID, err := x509util.GenerateSubjectKeyID(key)
+			if err != nil {
+				return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
+			}
+			if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
+				if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
+					return nil, err
+				}
+			}
+		} else {
+			handle, err = findCertificateByKeyContainerName(st, u.containerName)
+			if err != nil {
+				if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -786,6 +805,14 @@ func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) (
 	chain := []*x509.Certificate{cert}
 	child := cert
 	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
+		// No AuthorityKeyIdentifier means there's nothing to look up: a
+		// self-signed leaf (own-CA, RDP self-cert, our own test fixtures)
+		// or a CA-issued cert from a CA that doesn't emit AKI. Returning
+		// the chain we have is correct; falling through would build an
+		// empty-key-id URI that getCertContext rejects.
+		if len(child.AuthorityKeyId) == 0 {
+			break
+		}
 		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
 		parent, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
 			Name: uri.New(Scheme, url.Values{
@@ -1115,21 +1142,30 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			prevCert = certHandle
 		}
 	case u.containerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		// Mirror the same preferred/fallback split as getCertContext:
+		// open the CNG key for an indexed SKI lookup when possible, and
+		// fall back to enumerating by container-name property when the
+		// key can't be opened by the bound provider (Software KSP keys
+		// from a PCP-bound CAPIKMS, etc.). Without the fallback, the
+		// agent's renewal cleanup leaks one duplicate cert per cycle.
+		if key, kpErr := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
 				ContainerNameArg: []string{u.containerName},
 			}).String(),
-		})
-		if err != nil {
-			return err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return fmt.Errorf("error generating SubjectKeyID: %w", err)
-		}
-		certHandle, err = findCertificateBySubjectKeyID(st, keyID)
-		if err != nil {
-			return err
+		}); kpErr == nil {
+			keyID, err := x509util.GenerateSubjectKeyID(key)
+			if err != nil {
+				return fmt.Errorf("error generating SubjectKeyID: %w", err)
+			}
+			certHandle, err = findCertificateBySubjectKeyID(st, keyID)
+			if err != nil {
+				return err
+			}
+		} else {
+			certHandle, err = findCertificateByKeyContainerName(st, u.containerName)
+			if err != nil {
+				return err
+			}
 		}
 		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
 			return fmt.Errorf("failed removing certificate: %w", err)

@@ -155,6 +155,7 @@ var (
 
 	crypt32                               = windows.MustLoadDLL("crypt32.dll")
 	procCertFindCertificateInStore        = crypt32.MustFindProc("CertFindCertificateInStore")
+	procCertEnumCertificatesInStore       = crypt32.MustFindProc("CertEnumCertificatesInStore")
 	procCryptFindCertificateKeyProvInfo   = crypt32.MustFindProc("CryptFindCertificateKeyProvInfo")
 	procCertGetCertificateContextProperty = crypt32.MustFindProc("CertGetCertificateContextProperty")
 	procCertSetCertificateContextProperty = crypt32.MustFindProc("CertSetCertificateContextProperty")
@@ -194,14 +195,21 @@ type CERT_ID_SERIAL struct {
 	Serial   CERT_ISSUER_SERIAL_NUMBER
 }
 
+// CRYPT_KEY_PROV_INFO mirrors the Win32 struct of the same name. Field
+// alignment matters: dwProvType/dwFlags/cProvParam are 32-bit DWORDs but
+// rgProvParam is a pointer-sized field that must land on its natural
+// alignment, so Go inserts the same 4-byte padding that the C compiler
+// does. See:
+// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-crypt_key_prov_info
 type CRYPT_KEY_PROV_INFO struct {
-	pwszContainerName int
-	pwszProvName      int
-	dwProvType        int
-	dwFlags           int
-	cProvParam        int
-	rgProvParam       int
-	dwKeySpec         int
+	pwszContainerName *uint16
+	pwszProvName      *uint16
+	dwProvType        uint32
+	dwFlags           uint32
+	cProvParam        uint32
+	_                 uint32 // padding to align rgProvParam on 64-bit
+	rgProvParam       uintptr
+	dwKeySpec         uint32
 }
 
 func errNoToStr(e uint32) string {
@@ -601,41 +609,111 @@ func cryptFindCertificatePrivateKey(certContext *windows.CertContext) (uintptr, 
 	return uintptr(kh), nil
 }
 
+// cryptFindCertificateKeyContainerName returns the CNG key container name
+// recorded on certContext's CERT_KEY_PROV_INFO property, or the empty string
+// if the property is absent. Errors reflect a Windows API failure that
+// isn't simply "property not set on this cert".
+//
+// The container name is the same value that NCryptOpenKey accepts as its
+// pwszKeyName; it's set on a cert by CryptFindCertificateKeyProvInfo or
+// equivalent when a cert is bound to a CNG key.
 func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (string, error) {
-	var (
-		length   uint32
-		provInfo *CRYPT_KEY_PROV_INFO
-	)
-
-	r1, _, err := procCertGetCertificateContextProperty.Call(
+	// First call with a nil buffer asks Windows for the required byte
+	// length of the property data.
+	var length uint32
+	r, _, err := procCertGetCertificateContextProperty.Call(
 		uintptr(unsafe.Pointer(certContext)),
 		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
+		0,
 		uintptr(unsafe.Pointer(&length)),
 	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	if r == 0 {
+		// CRYPT_E_NOT_FOUND just means this cert has no KeyProvInfo —
+		// treat as "no container", not an error.
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+		return "", fmt.Errorf("CertGetCertificateContextProperty (length) returned %w", err)
 	}
-	if r1 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r1)))
+	if length == 0 {
+		return "", nil
 	}
 
-	r2, _, err := procCertGetCertificateContextProperty.Call(
+	buf := make([]byte, length)
+	r, _, err = procCertGetCertificateContextProperty.Call(
 		uintptr(unsafe.Pointer(certContext)),
 		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(provInfo)),
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&length)),
 	)
-
-	if !errors.Is(err, windows.Errno(0)) {
+	if r == 0 {
 		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
 	}
 
-	if r2 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r2)))
+	if uintptr(length) < unsafe.Sizeof(CRYPT_KEY_PROV_INFO{}) {
+		return "", fmt.Errorf("CertGetCertificateContextProperty returned %d bytes; expected at least %d", length, unsafe.Sizeof(CRYPT_KEY_PROV_INFO{}))
 	}
 
-	return "", nil
+	provInfo := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
+	if provInfo.pwszContainerName == nil {
+		return "", nil
+	}
+	return windows.UTF16PtrToString(provInfo.pwszContainerName), nil
+}
+
+// certEnumCertificatesInStore wraps CertEnumCertificatesInStore. Pass prev=nil
+// to start enumeration; on each subsequent call pass the handle returned by
+// the previous one. The store frees prev internally before returning the next
+// handle, so callers must not free it themselves. When enumeration is
+// exhausted the function returns (nil, nil).
+func certEnumCertificatesInStore(store windows.Handle, prev *windows.CertContext) (*windows.CertContext, error) {
+	h, _, err := procCertEnumCertificatesInStore.Call(
+		uintptr(store),
+		uintptr(unsafe.Pointer(prev)),
+	)
+	if h == 0 {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return (*windows.CertContext)(unsafe.Pointer(h)), nil
+}
+
+// findCertificateByKeyContainerName walks store and returns the first cert
+// whose CERT_KEY_PROV_INFO container name matches name. The caller owns the
+// returned context and must free it with windows.CertFreeCertificateContext
+// when done. Returns (nil, NotFoundError) when no match exists.
+//
+// Unlike findCertificateBySubjectKeyID this does not require the matching CNG
+// key to be openable by the caller's provider handle — the lookup is purely
+// against cert-context properties — so it works for Software-KSP-backed
+// containers even when the caller's CAPIKMS is bound to a different provider
+// (e.g. the Microsoft Platform Crypto Provider used by tpmkms).
+func findCertificateByKeyContainerName(store windows.Handle, name string) (*windows.CertContext, error) {
+	var prev *windows.CertContext
+	for {
+		h, err := certEnumCertificatesInStore(store, prev)
+		if err != nil {
+			return nil, fmt.Errorf("certEnumCertificatesInStore failed: %w", err)
+		}
+		if h == nil {
+			return nil, apiv1.NotFoundError{Message: fmt.Sprintf("certificate with %s=%q not found", ContainerNameArg, name)}
+		}
+
+		container, err := cryptFindCertificateKeyContainerName(h)
+		switch {
+		case err != nil:
+			// Couldn't read the property on this cert; skip it. Don't
+			// abort enumeration — other certs in the store may match.
+			prev = h
+			continue
+		case container == name:
+			return h, nil
+		default:
+			prev = h
+		}
+	}
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
