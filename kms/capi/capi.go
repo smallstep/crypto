@@ -1188,9 +1188,13 @@ func (k *CAPIKMS) getKeyFlags(u *uriAttributes) (uint32, error) {
 		keyFlags |= NCRYPT_MACHINE_KEY_FLAG
 
 	case UserStoreLocation:
-		if k.providerName == ProviderMSPCP {
-			return 0, fmt.Errorf("user store cannot be used with the %s", ProviderMSPCP)
-		}
+		// MSPCP (the TPM provider) supports user-scoped keys — they're
+		// the default when NCRYPT_MACHINE_KEY_FLAG isn't set. The
+		// previous restriction here also collided with parseURI's
+		// default-fill (it sets storeLocation=UserStoreLocation when
+		// the URI omits the arg), which made every MSPCP key
+		// effectively unreachable through this KMS. Leave keyFlags=0
+		// so NCryptOpenKey targets the calling process's user profile.
 
 	case "":
 
