@@ -531,9 +531,17 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		size = v.Curve
 	}
 
+	machineKey := properties.isMachineKey()
+
 	var privateKey any
 	if properties.ak {
-		ak, err := k.tpm.CreateAK(ctx, properties.name) // NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower levels.
+		// NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower
+		// levels. The AK must honor the requested key-scope: an attested key
+		// inherits its AK's scope (AttestKey enforces this symmetrically), so
+		// a machine-scoped attested key requires a machine-scoped AK. Creating
+		// the AK with the plain (user-default) CreateAK here would make every
+		// machine-scoped attestation fail with a scope mismatch.
+		ak, err := k.tpm.CreateAKWithConfig(ctx, properties.name, tpm.CreateAKConfig{MachineKey: machineKey})
 		if err != nil {
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
@@ -549,15 +557,18 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			privateKey = tpmKey
 		}
 
+		// Preserve key-scope in the returned URI so re-opens use the matching
+		// scope (mirrors the non-AK path below).
 		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
+		if machineKey {
+			createdAKURI = fmt.Sprintf("%s;key-scope=machine", createdAKURI)
+		}
 		return &apiv1.CreateKeyResponse{
 			Name:       createdAKURI,
 			PublicKey:  ak.Public(),
 			PrivateKey: privateKey,
 		}, nil
 	}
-
-	machineKey := properties.isMachineKey()
 
 	var key *tpm.Key
 	if properties.attestBy != "" {
