@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/ThalesIgnite/crypto11"
+	"github.com/ThalesGroup/crypto11"
 )
 
 var yubiHSM2Once sync.Once

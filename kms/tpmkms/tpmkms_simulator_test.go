@@ -2397,7 +2397,7 @@ func TestTPMKMS_SearchKeys(t *testing.T) {
 
 	type fields struct {
 		tpm                       *tpm.TPM
-		windowsCertificateManager apiv1.CertificateChainManager
+		windowsCertificateManager capiCertificateManager
 		opts                      *options
 	}
 	type args struct {
