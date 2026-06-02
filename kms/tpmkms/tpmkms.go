@@ -230,7 +230,7 @@ func ParseOptions(u *uri.URI) []Option {
 // TPMKMS is a KMS implementation backed by a TPM.
 type TPMKMS struct {
 	tpm                       *tpm.TPM
-	windowsCertificateManager apiv1.CertificateChainManager
+	windowsCertificateManager capiCertificateManager
 	opts                      *options
 }
 
@@ -407,7 +407,7 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error
 		}
 	}
 
-	var cm apiv1.CertificateChainManager
+	var cm capiCertificateManager
 
 	// TODO(hs): support a mode in which the TPM storage doesn't rely on JSON on Windows
 	// at all, but directly feeds into OS native storage? Some operations can be NOOPs, such
@@ -428,9 +428,9 @@ func NewWithTPM(ctx context.Context, t *tpm.TPM, opts ...Option) (*TPMKMS, error
 			return nil, fmt.Errorf("failed creating CAPIKMS instance: %w", err)
 		}
 
-		cm, ok = km.(apiv1.CertificateChainManager)
+		cm, ok = km.(capiCertificateManager)
 		if !ok {
-			return nil, fmt.Errorf("unexpected type %T; expected apiv1.CertificateManager", km)
+			return nil, fmt.Errorf("unexpected type %T; expected capiCertificateManager", km)
 		}
 	}
 
@@ -873,6 +873,9 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 			"store":                       []string{store},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
+			"issuer":                      []string{o.issuer},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 		}).String(),
 	})
 }
@@ -953,6 +956,7 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.store != "" {
 		store = o.store
 	}
+
 	skipFindCertificateKey := "false"
 	if o.skipFindCertificateKey {
 		skipFindCertificateKey = "true"
@@ -970,12 +974,30 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		Name: uri.New("capi", url.Values{
 			"store-location":              []string{location},
 			"store":                       []string{store},
+			"friendly-name":               []string{o.friendlyName},
+			"description":                 []string{o.description},
 			"skip-find-certificate-key":   []string{skipFindCertificateKey},
 			"intermediate-store-location": []string{intermediateCAStoreLocation},
 			"intermediate-store":          []string{intermediateCAStore},
 		}).String(),
 		CertificateChain: req.CertificateChain,
 	})
+}
+
+// CleanupCredentials implements [apiv1.CredentialsCleaner]. It finds all
+// certificates in the Windows certificate store issued to the subject in req by
+// the issuer in req, and deletes any that have already expired.
+func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
+	if req == nil {
+		return errors.New("cleanupCredentialsRequest cannot be nil")
+	}
+
+	if k.usesWindowsCertificateStore() {
+		return k.windowsCertificateManager.CleanupCredentials(req)
+	}
+
+	// currently this API is a no-op on non Windows platforms.
+	return nil
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
@@ -1073,12 +1095,7 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 		return errors.New(`at least one of "serial", "key-id", "sha1" or "name" is expected to be set`)
 	}
 
-	dk, ok := k.windowsCertificateManager.(deletingCertificateManager)
-	if !ok {
-		return fmt.Errorf("expected Windows certificate manager to implement DeleteCertificate")
-	}
-
-	if err := dk.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+	if err := k.windowsCertificateManager.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 		Name: uri.New("capi", uv).String(),
 	}); err != nil {
 		return fmt.Errorf("failed deleting certificate using Windows platform cryptography provider: %w", err)
@@ -1537,19 +1554,18 @@ func generateWindowsSubjectKeyID(pub crypto.PublicKey) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-type deletingCertificateManager interface {
-	apiv1.CertificateManager
-	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
-}
-
-type deletingCertificateChainManager interface {
+type capiCertificateManager interface {
 	apiv1.CertificateChainManager
-	DeleteCertificate(req *apiv1.DeleteCertificateRequest) error
+	apiv1.CertificateDeleter
+	apiv1.CredentialsCleaner
 }
 
-var _ apiv1.KeyManager = (*TPMKMS)(nil)
-var _ apiv1.Attester = (*TPMKMS)(nil)
-var _ apiv1.CertificateManager = (*TPMKMS)(nil)
-var _ apiv1.CertificateChainManager = (*TPMKMS)(nil)
-var _ deletingCertificateChainManager = (*TPMKMS)(nil)
-var _ apiv1.AttestationClient = (*attestationClient)(nil)
+var (
+	_ apiv1.KeyManager              = (*TPMKMS)(nil)
+	_ apiv1.Attester                = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager      = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager = (*TPMKMS)(nil)
+	_ apiv1.CredentialsCleaner      = (*TPMKMS)(nil)
+	_ apiv1.CertificateDeleter      = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient       = (*attestationClient)(nil)
+)

@@ -89,9 +89,13 @@ type extendedKeyManager interface {
 	apiv1.CertificateDeleter
 }
 
-var _ apiv1.KeyManager = (*KMS)(nil)
-var _ apiv1.CertificateManager = (*KMS)(nil)
-var _ apiv1.CertificateChainManager = (*KMS)(nil)
+var (
+	_ apiv1.KeyManager              = (*KMS)(nil)
+	_ apiv1.CertificateManager      = (*KMS)(nil)
+	_ apiv1.CertificateChainManager = (*KMS)(nil)
+	_ apiv1.SearchableKeyManager    = (*KMS)(nil)
+	_ apiv1.CredentialsCleaner      = (*KMS)(nil)
+)
 
 type KMS struct {
 	typ              apiv1.Type
@@ -287,6 +291,14 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 	}
 
 	return nil, apiv1.NotImplementedError{}
+}
+
+func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
+	if km, ok := k.backend.(apiv1.CredentialsCleaner); ok {
+		return km.CleanupCredentials(req)
+	}
+
+	return apiv1.NotImplementedError{}
 }
 
 func (k *KMS) patchCreateKeyResponse(resp *apiv1.CreateKeyResponse) (*apiv1.CreateKeyResponse, error) {

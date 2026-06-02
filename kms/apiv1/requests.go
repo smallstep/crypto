@@ -350,3 +350,19 @@ type DeleteKeyRequest struct {
 type DeleteCertificateRequest struct {
 	Name string
 }
+
+// CleanupCredentialsRequest is the parameter used in the CleanupCredentials
+// method of a CredentialsCleaner. It identifies a certificate-store scope
+// (issuer, store location, store name) and a subject for which expired
+// certificates should be removed.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type CleanupCredentialsRequest struct {
+	Issuer        string
+	StoreLocation string
+	Store         string
+	RawSubject    []byte
+}
