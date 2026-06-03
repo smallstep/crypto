@@ -27,8 +27,8 @@ func (s *signer) Public() crypto.PublicKey {
 // The TPM key is loaded lazily, meaning that every call to Sign()
 // will reload the TPM key to be used.
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	ctx := withMachineKey(context.Background(), s.key.machineKey)
-	if err = s.tpm.open(ctx); err != nil {
+	ctx := context.Background()
+	if err = s.tpm.open(ctx, openOptions{machineKey: s.key.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
@@ -70,7 +70,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, getErr)
 	}
 
-	if err = t.open(withMachineKey(ctx, key.MachineKey)); err != nil {
+	if err = t.open(ctx, openOptions{machineKey: key.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)

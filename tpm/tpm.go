@@ -160,10 +160,14 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 	}, nil
 }
 
+type openOptions struct {
+	machineKey bool
+}
+
 // Open readies the TPM for usage and marks it as being
 // in use. This makes using the instance safe for
 // concurrent use.
-func (t *TPM) open(ctx context.Context) (err error) {
+func (t *TPM) open(ctx context.Context, opts openOptions) (err error) {
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
@@ -194,7 +198,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 	// t.lock at this point and t.attestTPM is re-created on every open, so
 	// mutating attestConfig here is safe and does not leak across callers.
 	// Always set explicitly so we never carry a previous caller's choice.
-	t.attestConfig.MachineKey = machineKeyFromContext(ctx)
+	t.attestConfig.MachineKey = opts.machineKey
 
 	// if a simulator was set, use it as the backing TPM device.
 	// The simulator is currently only used for testing.

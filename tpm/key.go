@@ -70,9 +70,9 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 func (k *Key) Public() crypto.PublicKey {
 	var (
 		err error
-		ctx = withMachineKey(context.Background(), k.machineKey)
+		ctx = context.Background()
 	)
-	if err = k.tpm.open(ctx); err != nil {
+	if err = k.tpm.open(ctx, openOptions{k.machineKey}); err != nil {
 		return nil
 	}
 	defer closeTPM(context.Background(), k.tpm, &err)
@@ -180,7 +180,7 @@ type AttestKeyConfig struct {
 // a random 10 character name is generated. If a Key with the same name exists,
 // `ErrExists` is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (key *Key, err error) {
-	if err = t.open(withMachineKey(goTPMCall(ctx), config.MachineKey)); err != nil {
+	if err = t.open(goTPMCall(ctx), openOptions{machineKey: config.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -257,7 +257,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	// after the t.store.Load that t.open performs, which matters for
 	// storage implementations whose in-memory state doesn't reflect
 	// on-disk state until Load is called.
-	if err = t.open(withMachineKey(ctx, config.MachineKey)); err != nil {
+	if err = t.open(openOptions{machineKey: config.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -427,7 +427,7 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed getting key %q: %w", name, getErr)
 	}
 
-	if err := t.open(withMachineKey(ctx, key.MachineKey)); err != nil {
+	if err := t.open(ctx, openOptions{machineKey: key.MachineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -462,7 +462,7 @@ func (k *Key) Signer(ctx context.Context) (crypto.Signer, error) {
 // CertificationParameters returns information about the key that can be used to
 // verify key certification.
 func (k *Key) CertificationParameters(ctx context.Context) (params attest.CertificationParameters, err error) {
-	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
+	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)
@@ -488,7 +488,7 @@ func (k *Key) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 		return k.blobs, nil
 	}
 
-	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
+	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)
@@ -512,7 +512,7 @@ func (k *Key) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 // If the public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (k *Key) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) (err error) {
-	if err = k.tpm.open(withMachineKey(ctx, k.machineKey)); err != nil {
+	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, k.tpm, &err)

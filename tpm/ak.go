@@ -151,7 +151,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 // CreateAKWithConfig creates and stores a new AK with the given config.
 // See [TPM.CreateAK] for the simpler signature.
 func (t *TPM) CreateAKWithConfig(ctx context.Context, name string, config CreateAKConfig) (ak *AK, err error) {
-	if err = t.open(withMachineKey(ctx, config.MachineKey)); err != nil {
+	if err = t.open(ctx, openOptions{machineKey: config.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -297,7 +297,7 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed getting AK %q: %w", name, getErr)
 	}
 
-	if err := t.open(withMachineKey(ctx, ak.MachineKey)); err != nil {
+	if err := t.open(ctx, openOptions{machineKey: ak.MachineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -344,7 +344,7 @@ func (ak *AK) AttestationParameters(ctx context.Context) (params attest.Attestat
 		return *ak.attestParams, nil
 	}
 
-	if err = ak.tpm.open(withMachineKey(ctx, ak.machineKey)); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -369,7 +369,7 @@ type EncryptedCredential attest.EncryptedCredential
 // generated on the same TPM as the EK. This operation is synonymous with
 // TPM2_ActivateCredential.
 func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (secret []byte, err error) {
-	if err := ak.tpm.open(withMachineKey(ctx, ak.machineKey)); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -395,7 +395,7 @@ func (ak *AK) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 		return ak.blobs, nil
 	}
 
-	if err = ak.tpm.open(withMachineKey(ctx, ak.machineKey)); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -419,7 +419,7 @@ func (ak *AK) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 // If the AK public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) (err error) {
-	if err := ak.tpm.open(withMachineKey(ctx, ak.machineKey)); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
