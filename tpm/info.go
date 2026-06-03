@@ -130,7 +130,7 @@ func (t *TPM) Info(ctx context.Context) (info *Info, err error) {
 		return t.info, nil
 	}
 
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)

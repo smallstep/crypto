@@ -205,7 +205,7 @@ func (t *TPM) CreateAKWithConfig(ctx context.Context, name string, config Create
 // GetAK returns the AK identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -229,7 +229,7 @@ var (
 // exists with `permanentIdentifier` as one of the Subject Alternative
 // Names. It returns `ErrNotFound` if it doesn't exist.
 func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifier string) (ak *AK, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -254,7 +254,7 @@ func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifie
 // ListAKs returns a slice of AKs. The result is (currently)
 // not ordered.
 func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
-	if err := t.open(ctx); err != nil {
+	if err := t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)

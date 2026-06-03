@@ -257,7 +257,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	// after the t.store.Load that t.open performs, which matters for
 	// storage implementations whose in-memory state doesn't reflect
 	// on-disk state until Load is called.
-	if err = t.open(openOptions{machineKey: config.MachineKey}); err != nil {
+	if err = t.open(ctx, openOptions{machineKey: config.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -341,7 +341,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 // GetKey returns the Key identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -360,7 +360,7 @@ func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
 // ListKeys returns a slice of Keys. The result is (currently)
 // not ordered.
 func (t *TPM) ListKeys(ctx context.Context) (keys []*Key, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -381,7 +381,7 @@ func (t *TPM) ListKeys(ctx context.Context) (keys []*Key, err error) {
 // GetKeysAttestedBy returns a slice of Keys attested by the AK
 // identified by `akName`. The result is (currently) not ordered.
 func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
