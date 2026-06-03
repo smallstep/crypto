@@ -319,14 +319,14 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 
 	if err := t.store.DeleteAK(name); err != nil {
 		if attestErr != nil {
-			return fmt.Errorf("failed deleting AK %q from storage after TPM delete failed (%v): %w", name, attestErr, err)
+			return fmt.Errorf("failed deleting AK %q from storage after TPM delete failed (%w): %w", name, attestErr, err)
 		}
 		return fmt.Errorf("failed deleting AK %q from storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
 		if attestErr != nil {
-			return fmt.Errorf("failed persisting storage after TPM delete failed (%v): %w", attestErr, err)
+			return fmt.Errorf("failed persisting storage after TPM delete failed (%w): %w", attestErr, err)
 		}
 		return fmt.Errorf("failed persisting storage: %w", err)
 	}
