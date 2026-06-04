@@ -26,14 +26,3 @@ func isInternalCall(ctx context.Context) bool {
 	v, ok := ctx.Value(internalCallContextKey{}).(bool)
 	return ok && v
 }
-
-type goTPMCallContextKey struct{}
-
-func goTPMCall(ctx context.Context) context.Context {
-	return context.WithValue(ctx, goTPMCallContextKey{}, true)
-}
-
-func isGoTPMCall(ctx context.Context) bool {
-	v, ok := ctx.Value(goTPMCallContextKey{}).(bool)
-	return ok && v
-}

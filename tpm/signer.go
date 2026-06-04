@@ -108,7 +108,7 @@ type tss2Signer struct {
 
 func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	ctx := context.Background()
-	if err = s.tpm.open(goTPMCall(ctx), openOptions{}); err != nil {
+	if err = s.tpm.open(ctx, openOptions{direct: true}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
@@ -119,7 +119,7 @@ func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 
 // CreateTSS2Signer returns a crypto.Signer using the given [TPM] and [tss2.TPMKey].
 func CreateTSS2Signer(ctx context.Context, t *TPM, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
-	if err := t.open(goTPMCall(ctx), openOptions{}); err != nil {
+	if err := t.open(ctx, openOptions{direct: true}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
