@@ -132,7 +132,7 @@ func (ak *AK) MarshalJSON() ([]byte, error) {
 
 // CreateAK creates and stores a new AK identified by `name`.
 // If no name is  provided, a random 10 character name is generated.
-// If an AK with the same name exists, `ErrExists` is returned.
+// If an AK with the same name exists, [ErrExists] is returned.
 func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -149,7 +149,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	case err == nil:
 		return nil, fmt.Errorf("failed creating AK %q: %w", name, ErrExists)
 	case errors.Is(err, storage.ErrNoStorageConfigured):
-		return nil, fmt.Errorf("failed creating key %q: %w", name, err)
+		return nil, fmt.Errorf("failed creating AK %q: %w", name, err)
 	}
 
 	akConfig := attest.AKConfig{
@@ -184,7 +184,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	return ak, nil
 }
 
-// GetAK returns the AK identified by `name`. It returns `ErrNotfound`
+// GetAK returns the AK identified by `name`. It returns [ErrNotfound]
 // if it doesn't exist.
 func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
 	if err = t.open(ctx); err != nil {
@@ -194,9 +194,6 @@ func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
 
 	sak, err := t.store.GetAK(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
-		}
 		return nil, fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 
@@ -209,7 +206,7 @@ var (
 
 // GetAKByPermanentIdentifier returns an AK for which a certificate
 // exists with `permanentIdentifier` as one of the Subject Alternative
-// Names. It returns `ErrNotFound` if it doesn't exist.
+// Names. It returns [ErrNotFound] if it doesn't exist.
 func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifier string) (ak *AK, err error) {
 	if err = t.open(ctx); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -256,7 +253,7 @@ func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
 	return
 }
 
-// DeleteAK removes the AK identified by `name`. It returns `ErrNotfound`
+// DeleteAK removes the AK identified by `name`. It returns [ErrNotfound]
 // if it doesn't exist. Keys that were attested by the AK have to be removed
 // before removing the AK, otherwise an error will be returned.
 func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
@@ -267,9 +264,6 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 
 	ak, err := t.store.GetAK(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
-		}
 		return fmt.Errorf("failed getting AK %q: %w", name, err)
 	}
 

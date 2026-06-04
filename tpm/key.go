@@ -165,7 +165,7 @@ type AttestKeyConfig struct {
 
 // CreateKey creates a new Key identified by `name`. If no name is  provided,
 // a random 10 character name is generated. If a Key with the same name exists,
-// `ErrExists` is returned. The Key won't be attested by an AK.
+// [ErrExists] is returned. The Key won't be attested by an AK.
 func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig) (key *Key, err error) {
 	if err = t.open(goTPMCall(ctx)); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
@@ -233,7 +233,7 @@ func (w attestValidationWrapper) Validate() error {
 
 // AttestKey creates a new Key identified by `name` and attested by the AK
 // identified by `akName`. If no name is  provided, a random 10 character
-// name is generated. If a Key with the same name exists, `ErrExists` is
+// name is generated. If a Key with the same name exists, [ErrExists] is
 // returned.
 func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestKeyConfig) (key *Key, err error) {
 	if err = t.open(ctx); err != nil {
@@ -256,9 +256,6 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 
 	ak, err := t.store.GetAK(akName)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting AK %q: %w", akName, ErrNotFound)
-		}
 		return nil, fmt.Errorf("failed getting AK %q: %w", akName, err)
 	}
 
@@ -307,7 +304,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 	return
 }
 
-// GetKey returns the Key identified by `name`. It returns `ErrNotfound`
+// GetKey returns the Key identified by `name`. It returns [ErrNotfound]
 // if it doesn't exist.
 func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
 	if err = t.open(ctx); err != nil {
@@ -317,9 +314,6 @@ func (t *TPM) GetKey(ctx context.Context, name string) (key *Key, err error) {
 
 	skey, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
-		}
 		return nil, fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
@@ -370,7 +364,7 @@ func (t *TPM) GetKeysAttestedBy(ctx context.Context, akName string) (keys []*Key
 	return
 }
 
-// DeleteKey removes the Key identified by `name`. It returns `ErrNotfound`
+// DeleteKey removes the Key identified by `name`. It returns [ErrNotfound]
 // if it doesn't exist.
 func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 	if err := t.open(ctx); err != nil {
@@ -380,9 +374,6 @@ func (t *TPM) DeleteKey(ctx context.Context, name string) (err error) {
 
 	key, err := t.store.GetKey(name)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("failed getting key %q: %w", name, ErrNotFound)
-		}
 		return fmt.Errorf("failed getting key %q: %w", name, err)
 	}
 
