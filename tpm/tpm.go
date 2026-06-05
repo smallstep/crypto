@@ -162,10 +162,10 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 
 type openOptions struct {
 	machineKey bool
-	// direct opens a raw go-tpm command channel (t.rwc) instead of the
+	// useGoTPM opens a raw go-tpm command channel (t.rwc) instead of the
 	// go-attestation backend, for low-level operations such as generating
 	// random bytes, signing, and reading capabilities.
-	direct bool
+	useGoTPM bool
 }
 
 // Open readies the TPM for usage and marks it as being
@@ -221,7 +221,7 @@ func (t *TPM) open(ctx context.Context, opts openOptions) (err error) {
 		// there's a possibility of a nil pointer exception. At the moment,
 		// the only "go-tpm" call is for GetRandom(), but this could change
 		// in the future.
-		if opts.direct {
+		if opts.useGoTPM {
 			rwc, err := open.TPM(t.deviceName)
 			if err != nil {
 				return fmt.Errorf("failed opening TPM: %w", err)

@@ -42,7 +42,7 @@ func (t *TPM) GetCapabilities(ctx context.Context) (caps *Capabilities, err erro
 		return t.caps, nil
 	}
 
-	if err = t.open(ctx, openOptions{direct: true}); err != nil {
+	if err = t.open(ctx, openOptions{useGoTPM: true}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
