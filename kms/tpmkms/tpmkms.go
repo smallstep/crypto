@@ -531,9 +531,17 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		size = v.Curve
 	}
 
+	machineKey := properties.isMachineKey()
+
 	var privateKey any
 	if properties.ak {
-		ak, err := k.tpm.CreateAK(ctx, properties.name) // NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower levels.
+		// NOTE: size is never passed for AKs; it's hardcoded to 2048 in lower
+		// levels. The AK must honor the requested key-scope: an attested key
+		// inherits its AK's scope (AttestKey enforces this symmetrically), so
+		// a machine-scoped attested key requires a machine-scoped AK. Creating
+		// the AK with the plain (user-default) CreateAK here would make every
+		// machine-scoped attestation fail with a scope mismatch.
+		ak, err := k.tpm.CreateAKWithConfig(ctx, properties.name, tpm.CreateAKConfig{MachineKey: machineKey})
 		if err != nil {
 			if errors.Is(err, tpm.ErrExists) {
 				return nil, apiv1.AlreadyExistsError{Message: err.Error()}
@@ -549,7 +557,12 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			privateKey = tpmKey
 		}
 
+		// Preserve key-scope in the returned URI so re-opens use the matching
+		// scope (mirrors the non-AK path below).
 		createdAKURI := fmt.Sprintf("tpmkms:name=%s;ak=true", ak.Name())
+		if machineKey {
+			createdAKURI = fmt.Sprintf("%s;key-scope=machine", createdAKURI)
+		}
 		return &apiv1.CreateKeyResponse{
 			Name:       createdAKURI,
 			PublicKey:  ak.Public(),
@@ -563,6 +576,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			Algorithm:      v.Type,
 			Size:           size,
 			QualifyingData: properties.qualifyingData,
+			MachineKey:     machineKey,
 		}
 		key, err = k.tpm.AttestKey(ctx, properties.attestBy, properties.name, config)
 		if err != nil {
@@ -573,8 +587,9 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 	} else {
 		config := tpm.CreateKeyConfig{
-			Algorithm: v.Type,
-			Size:      size,
+			Algorithm:  v.Type,
+			Size:       size,
+			MachineKey: machineKey,
 		}
 		key, err = k.tpm.CreateKey(ctx, properties.name, config)
 		if err != nil {
@@ -598,9 +613,16 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("failed getting signer for key: %w", err)
 	}
 
+	// Preserve key-scope in the returned URI so subsequent CreateSigner /
+	// DeleteKey calls land in the right scope. The bug we hit before was
+	// exactly this: the returned URI had only "name=", so re-opens
+	// defaulted to user scope and failed to find machine-stored keys.
 	createdKeyURI := fmt.Sprintf("tpmkms:name=%s", key.Name())
 	if properties.attestBy != "" {
 		createdKeyURI = fmt.Sprintf("%s;attest-by=%s", createdKeyURI, key.AttestedBy())
+	}
+	if machineKey {
+		createdKeyURI = fmt.Sprintf("%s;key-scope=machine", createdKeyURI)
 	}
 
 	return &apiv1.CreateKeyResponse{

@@ -41,7 +41,7 @@ func newOpenedTPM(t *testing.T) *TPM {
 	t.Helper()
 	tpm, err := New(WithSimulator(&closeSimulator{}))
 	require.NoError(t, err)
-	err = tpm.open(context.Background())
+	err = tpm.open(context.Background(), openOptions{})
 	require.NoError(t, err)
 	return tpm
 }
@@ -52,7 +52,7 @@ func newCloseErrorTPM(t *testing.T) *TPM {
 		closeErr: errors.New("closeErr"),
 	}))
 	require.NoError(t, err)
-	err = tpm.open(context.Background())
+	err = tpm.open(context.Background(), openOptions{})
 	require.NoError(t, err)
 	tpm.simulator = nil // required to skip returning when similator is configured
 	return tpm

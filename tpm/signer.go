@@ -28,7 +28,7 @@ func (s *signer) Public() crypto.PublicKey {
 // will reload the TPM key to be used.
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	ctx := context.Background()
-	if err = s.tpm.open(ctx); err != nil {
+	if err = s.tpm.open(ctx, openOptions{machineKey: s.key.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
@@ -55,18 +55,25 @@ func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (si
 
 // GetSigner returns a crypto.Signer for a TPM Key identified by `name`.
 func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer, err error) {
-	if err = t.open(ctx); err != nil {
+	// We need the key's persisted machine-key scope before t.open so we
+	// can pass it through context. t.open also calls t.store.Load
+	// internally; calling it here explicitly preserves the invariant
+	// that every t.store read happens after a t.store.Load.
+	if err := t.store.Load(); err != nil {
+		return nil, fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
+	key, getErr := t.store.GetKey(name)
+	if getErr != nil {
+		if errors.Is(getErr, storage.ErrNotFound) {
+			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, getErr)
+	}
+
+	if err = t.open(ctx, openOptions{machineKey: key.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
-
-	key, err := t.store.GetKey(name)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed getting signer for key %q: %w", name, ErrNotFound)
-		}
-		return nil, fmt.Errorf("failed getting signer for key %q: %w", name, err)
-	}
 
 	loadedKey, err := t.attestTPM.LoadKey(key.Data)
 	if err != nil {
@@ -85,7 +92,7 @@ func (t *TPM) GetSigner(ctx context.Context, name string) (csigner crypto.Signer
 
 	csigner = &signer{
 		tpm:    t,
-		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, tpm: t},
+		key:    Key{name: name, data: key.Data, attestedBy: key.AttestedBy, createdAt: key.CreatedAt, machineKey: key.MachineKey, tpm: t},
 		public: loadedKey.Public(),
 	}
 
@@ -101,7 +108,7 @@ type tss2Signer struct {
 
 func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	ctx := context.Background()
-	if err = s.tpm.open(goTPMCall(ctx)); err != nil {
+	if err = s.tpm.open(ctx, openOptions{useGoTPM: true}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, s.tpm, &err)
@@ -112,7 +119,7 @@ func (s *tss2Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 
 // CreateTSS2Signer returns a crypto.Signer using the given [TPM] and [tss2.TPMKey].
 func CreateTSS2Signer(ctx context.Context, t *TPM, key *tss2.TPMKey) (csigner crypto.Signer, err error) {
-	if err := t.open(goTPMCall(ctx)); err != nil {
+	if err := t.open(ctx, openOptions{useGoTPM: true}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)

@@ -160,10 +160,18 @@ func New(opts ...NewTPMOption) (*TPM, error) {
 	}, nil
 }
 
+type openOptions struct {
+	machineKey bool
+	// useGoTPM opens a raw go-tpm command channel (t.rwc) instead of the
+	// go-attestation backend, for low-level operations such as generating
+	// random bytes, signing, and reading capabilities.
+	useGoTPM bool
+}
+
 // Open readies the TPM for usage and marks it as being
 // in use. This makes using the instance safe for
 // concurrent use.
-func (t *TPM) open(ctx context.Context) (err error) {
+func (t *TPM) open(ctx context.Context, opts openOptions) (err error) {
 	// prevent opening the TPM multiple times if Open is called
 	// within the package multiple times.
 	if isInternalCall(ctx) {
@@ -190,6 +198,12 @@ func (t *TPM) open(ctx context.Context) (err error) {
 		return fmt.Errorf("failed initializing command channel: %w", err)
 	}
 
+	// Apply per-call machine-key scope to the attest open config. We hold
+	// t.lock at this point and t.attestTPM is re-created on every open, so
+	// mutating attestConfig here is safe and does not leak across callers.
+	// Always set explicitly so we never carry a previous caller's choice.
+	t.attestConfig.MachineKey = opts.machineKey
+
 	// if a simulator was set, use it as the backing TPM device.
 	// The simulator is currently only used for testing.
 	if t.simulator != nil {
@@ -207,7 +221,7 @@ func (t *TPM) open(ctx context.Context) (err error) {
 		// there's a possibility of a nil pointer exception. At the moment,
 		// the only "go-tpm" call is for GetRandom(), but this could change
 		// in the future.
-		if isGoTPMCall(ctx) {
+		if opts.useGoTPM {
 			rwc, err := open.TPM(t.deviceName)
 			if err != nil {
 				return fmt.Errorf("failed opening TPM: %w", err)

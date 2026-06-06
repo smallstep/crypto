@@ -26,9 +26,18 @@ type AK struct {
 	data         []byte
 	chain        []*x509.Certificate
 	createdAt    time.Time
+	machineKey   bool
 	blobs        *Blobs
 	attestParams *attest.AttestationParameters
 	tpm          *TPM
+}
+
+// CreateAKConfig is used to pass configuration when creating AKs.
+type CreateAKConfig struct {
+	// MachineKey, when true, requests that the AK be created in the local
+	// machine key store rather than in the current user's key store. See
+	// [CreateKeyConfig.MachineKey] for details.
+	MachineKey bool
 }
 
 // Name returns the AK name. The name uniquely
@@ -133,8 +142,16 @@ func (ak *AK) MarshalJSON() ([]byte, error) {
 // CreateAK creates and stores a new AK identified by `name`.
 // If no name is  provided, a random 10 character name is generated.
 // If an AK with the same name exists, `ErrExists` is returned.
+//
+// To request a machine-scoped AK on Windows, use [TPM.CreateAKWithConfig].
 func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
-	if err = t.open(ctx); err != nil {
+	return t.CreateAKWithConfig(ctx, name, CreateAKConfig{})
+}
+
+// CreateAKWithConfig creates and stores a new AK with the given config.
+// See [TPM.CreateAK] for the simpler signature.
+func (t *TPM) CreateAKWithConfig(ctx context.Context, name string, config CreateAKConfig) (ak *AK, err error) {
+	if err = t.open(ctx, openOptions{machineKey: config.MachineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -167,10 +184,11 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 	}
 
 	ak = &AK{
-		name:      name,
-		data:      data,
-		createdAt: now,
-		tpm:       t,
+		name:       name,
+		data:       data,
+		createdAt:  now,
+		machineKey: config.MachineKey,
+		tpm:        t,
 	}
 
 	if err := t.store.AddAK(ak.toStorage()); err != nil {
@@ -187,7 +205,7 @@ func (t *TPM) CreateAK(ctx context.Context, name string) (ak *AK, err error) {
 // GetAK returns the AK identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist.
 func (t *TPM) GetAK(ctx context.Context, name string) (ak *AK, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -211,7 +229,7 @@ var (
 // exists with `permanentIdentifier` as one of the Subject Alternative
 // Names. It returns `ErrNotFound` if it doesn't exist.
 func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifier string) (ak *AK, err error) {
-	if err = t.open(ctx); err != nil {
+	if err = t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -236,7 +254,7 @@ func (t *TPM) GetAKByPermanentIdentifier(ctx context.Context, permanentIdentifie
 // ListAKs returns a slice of AKs. The result is (currently)
 // not ordered.
 func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
-	if err := t.open(ctx); err != nil {
+	if err := t.open(ctx, openOptions{}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
@@ -259,19 +277,30 @@ func (t *TPM) ListAKs(ctx context.Context) (aks []*AK, err error) {
 // DeleteAK removes the AK identified by `name`. It returns `ErrNotfound`
 // if it doesn't exist. Keys that were attested by the AK have to be removed
 // before removing the AK, otherwise an error will be returned.
+//
+// If the in-TPM deletion fails but the file-store entry is successfully
+// removed, the returned error is wrapped in a [PartialDeleteError]. See
+// [TPM.DeleteKey] for the rationale.
 func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
-	if err := t.open(ctx); err != nil {
+	// We need the AK's persisted machine-key scope before t.open so we
+	// can pass it through context. t.open also calls t.store.Load
+	// internally; calling it here explicitly preserves the invariant that
+	// every t.store read happens after a t.store.Load.
+	if err := t.store.Load(); err != nil {
+		return fmt.Errorf("failed loading from TPM storage: %w", err)
+	}
+	ak, getErr := t.store.GetAK(name)
+	if getErr != nil {
+		if errors.Is(getErr, storage.ErrNotFound) {
+			return fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
+		}
+		return fmt.Errorf("failed getting AK %q: %w", name, getErr)
+	}
+
+	if err := t.open(ctx, openOptions{machineKey: ak.MachineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, t, &err)
-
-	ak, err := t.store.GetAK(name)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("failed getting AK %q: %w", name, ErrNotFound)
-		}
-		return fmt.Errorf("failed getting AK %q: %w", name, err)
-	}
 
 	// prevent deleting the AK if the TPM (storage) contains keys that
 	// were attested by it. While keys would still work if the AK were
@@ -286,19 +315,26 @@ func (t *TPM) DeleteAK(ctx context.Context, name string) (err error) {
 		return fmt.Errorf("failed deleting AK %q because %d key(s) exist that were attested by it", name, len(keys))
 	}
 
-	if err := t.attestTPM.DeleteKey(ak.Data); err != nil { // TODO: we could add a DeleteAK to go-attestation; under the hood it's loaded the same as a key though.
-		return fmt.Errorf("failed deleting AK %q: %w", name, err)
-	}
+	attestErr := t.attestTPM.DeleteKey(ak.Data) // TODO: we could add a DeleteAK to go-attestation; under the hood it's loaded the same as a key though.
 
 	if err := t.store.DeleteAK(name); err != nil {
+		if attestErr != nil {
+			return fmt.Errorf("failed deleting AK %q from storage after TPM delete failed (%w): %w", name, attestErr, err)
+		}
 		return fmt.Errorf("failed deleting AK %q from storage: %w", name, err)
 	}
 
 	if err := t.store.Persist(); err != nil {
+		if attestErr != nil {
+			return fmt.Errorf("failed persisting storage after TPM delete failed (%w): %w", attestErr, err)
+		}
 		return fmt.Errorf("failed persisting storage: %w", err)
 	}
 
-	return
+	if attestErr != nil {
+		return &PartialDeleteError{Name: name, Underlying: attestErr}
+	}
+	return nil
 }
 
 // AttestationParameters returns information about the AK, typically used to
@@ -308,7 +344,7 @@ func (ak *AK) AttestationParameters(ctx context.Context) (params attest.Attestat
 		return *ak.attestParams, nil
 	}
 
-	if err = ak.tpm.open(ctx); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -333,7 +369,7 @@ type EncryptedCredential attest.EncryptedCredential
 // generated on the same TPM as the EK. This operation is synonymous with
 // TPM2_ActivateCredential.
 func (ak *AK) ActivateCredential(ctx context.Context, in EncryptedCredential) (secret []byte, err error) {
-	if err := ak.tpm.open(ctx); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return secret, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -359,7 +395,7 @@ func (ak *AK) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 		return ak.blobs, nil
 	}
 
-	if err = ak.tpm.open(ctx); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -383,7 +419,7 @@ func (ak *AK) Blobs(ctx context.Context) (blobs *Blobs, err error) {
 // If the AK public key doesn't match the public key in the first certificate
 // in the chain (the leaf), an error is returned.
 func (ak *AK) SetCertificateChain(ctx context.Context, chain []*x509.Certificate) (err error) {
-	if err := ak.tpm.open(ctx); err != nil {
+	if err = ak.tpm.open(ctx, openOptions{machineKey: ak.machineKey}); err != nil {
 		return fmt.Errorf("failed opening TPM: %w", err)
 	}
 	defer closeTPM(ctx, ak.tpm, &err)
@@ -463,10 +499,11 @@ func (ak *AK) HasValidPermanentIdentifier(permanentIdentifier string) bool {
 // persisting AKs.
 func (ak *AK) toStorage() *storage.AK {
 	return &storage.AK{
-		Name:      ak.name,
-		Data:      ak.data,
-		Chain:     ak.chain,
-		CreatedAt: ak.createdAt.UTC(),
+		Name:       ak.name,
+		Data:       ak.data,
+		Chain:      ak.chain,
+		CreatedAt:  ak.createdAt.UTC(),
+		MachineKey: ak.machineKey,
 	}
 }
 
@@ -474,10 +511,11 @@ func (ak *AK) toStorage() *storage.AK {
 // persisting AKs.
 func akFromStorage(sak *storage.AK, t *TPM) *AK {
 	return &AK{
-		name:      sak.Name,
-		data:      sak.Data,
-		chain:     sak.Chain,
-		createdAt: sak.CreatedAt.Local(),
-		tpm:       t,
+		name:       sak.Name,
+		data:       sak.Data,
+		chain:      sak.Chain,
+		createdAt:  sak.CreatedAt.Local(),
+		machineKey: sak.MachineKey,
+		tpm:        t,
 	}
 }
