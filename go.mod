@@ -21,6 +21,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.22.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
+	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.36
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/go-attestation v0.4.4-0.20260603212853-e1a87a0b07d9
 	github.com/stretchr/testify v1.11.1
@@ -102,6 +103,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260610212136-7ab31c22f7ad // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
