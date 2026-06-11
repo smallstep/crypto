@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"time"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -995,9 +994,10 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	// card prompt during discovery), and CryptFindCertificateKeyProvInfo cannot
 	// discover machine-scoped Platform Crypto Provider keys anyway, so we hand
 	// the CAPI layer the exact key: its CNG container name, the TPM provider,
-	// and whether it lives in the local machine keyset. The container name is
-	// the key name prefixed with "app-" (see prefixKey / go-attestation), which
-	// is how the key was persisted in the PCP KSP.
+	// and its key scope (machine vs user). The container name is the key name
+	// prefixed with "app-" (see prefixKey / go-attestation), which is how the
+	// key was persisted in the PCP KSP. CAPI resolves the keyset from key-scope,
+	// falling back to store-location when key-scope is unset.
 	v := url.Values{
 		"store-location":              []string{location},
 		"store":                       []string{store},
@@ -1010,7 +1010,9 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	if o.name != "" {
 		v.Set("key", tpm.ApplicationKeyName(o.name))
 		v.Set("provider", microsoftPCP)
-		v.Set("key-machine-keyset", strconv.FormatBool(o.isMachineKey()))
+		if o.keyScope != "" {
+			v.Set("key-scope", o.keyScope)
+		}
 	}
 
 	return k.windowsCertificateManager.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{

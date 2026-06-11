@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -82,11 +81,11 @@ const (
 	CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG = uint32(0x00020000)
 	CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   = uint32(0x00040000)
 
-	// Keyset selection flags for CryptFindCertificateKeyProvInfo. When neither
-	// is set the function only searches the current user's key containers, so
-	// a private key stored in the local machine keyset (e.g. a CNG/PCP key
-	// created with NCRYPT_MACHINE_KEY_FLAG) is not found. Setting both searches
-	// the user and machine containers.
+	// Keyset selection flags for CryptFindCertificateKeyProvInfo. Each flag
+	// restricts the search to that container; with neither flag the API
+	// searches both. We restrict explicitly so a machine-scoped certificate's
+	// key (in the local machine keyset, e.g. a CNG/PCP key created with
+	// NCRYPT_MACHINE_KEY_FLAG) is matched rather than missed.
 	CRYPT_FIND_USER_KEYSET_FLAG    = uint32(0x00000001)
 	CRYPT_FIND_MACHINE_KEYSET_FLAG = uint32(0x00000002)
 
@@ -644,13 +643,10 @@ func setCertificateKeyProvInfo(certContext *windows.CertContext, containerName, 
 	}
 
 	// CertSetCertificateContextProperty copies the structure and the strings it
-	// references into the certificate context, so the Go-allocated memory only
-	// needs to stay alive for the duration of the call.
-	err = certSetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, uintptr(unsafe.Pointer(&info)))
-	runtime.KeepAlive(container)
-	runtime.KeepAlive(provider)
-	runtime.KeepAlive(&info)
-	if err != nil {
+	// references into the certificate context, and info (which holds the only
+	// references to container/provider) stays live through the call, so no
+	// runtime.KeepAlive is needed — matching the other cert property helpers.
+	if err := certSetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, uintptr(unsafe.Pointer(&info))); err != nil {
 		return fmt.Errorf("CertSetCertificateContextProperty(CERT_KEY_PROV_INFO_PROP_ID) failed: %w", err)
 	}
 	return nil
