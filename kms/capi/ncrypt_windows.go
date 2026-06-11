@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -80,6 +81,20 @@ const (
 	CRYPT_ACQUIRE_ALLOW_NCRYPT_KEY_FLAG  = uint32(0x00010000)
 	CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG = uint32(0x00020000)
 	CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   = uint32(0x00040000)
+
+	// Keyset selection flags for CryptFindCertificateKeyProvInfo. When neither
+	// is set the function only searches the current user's key containers, so
+	// a private key stored in the local machine keyset (e.g. a CNG/PCP key
+	// created with NCRYPT_MACHINE_KEY_FLAG) is not found. Setting both searches
+	// the user and machine containers.
+	CRYPT_FIND_USER_KEYSET_FLAG    = uint32(0x00000001)
+	CRYPT_FIND_MACHINE_KEYSET_FLAG = uint32(0x00000002)
+
+	// CRYPT_MACHINE_KEYSET marks a CRYPT_KEY_PROV_INFO as referencing a key in
+	// the local machine keyset rather than the current user's. It must be set
+	// in CRYPT_KEY_PROV_INFO.dwFlags when associating a certificate with a
+	// machine-scoped key (e.g. a TPM key created with NCRYPT_MACHINE_KEY_FLAG).
+	CRYPT_MACHINE_KEYSET = uint32(0x00000020)
 
 	CERT_ID_ISSUER_SERIAL_NUMBER = uint32(1)
 	CERT_ID_KEY_IDENTIFIER       = uint32(2)
@@ -194,14 +209,18 @@ type CERT_ID_SERIAL struct {
 	Serial   CERT_ISSUER_SERIAL_NUMBER
 }
 
+// CRYPT_KEY_PROV_INFO mirrors the wincrypt.h structure of the same name. The
+// container/provider names are LPWSTR pointers and the remaining members are
+// DWORDs, so they must be typed as such for the structure to be laid out
+// correctly when passed to CertSetCertificateContextProperty.
 type CRYPT_KEY_PROV_INFO struct {
-	pwszContainerName int
-	pwszProvName      int
-	dwProvType        int
-	dwFlags           int
-	cProvParam        int
-	rgProvParam       int
-	dwKeySpec         int
+	pwszContainerName *uint16
+	pwszProvName      *uint16
+	dwProvType        uint32
+	dwFlags           uint32
+	cProvParam        uint32
+	rgProvParam       uintptr
+	dwKeySpec         uint32
 }
 
 func errNoToStr(e uint32) string {
@@ -569,10 +588,15 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	return (*windows.CertContext)(unsafe.Pointer(h)), nil
 }
 
-func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
+// cryptFindCertificateKeyProvInfo locates the private key matching the
+// certificate and records the association (CERT_KEY_PROV_INFO_PROP_ID) on the
+// certificate context. keysetFlags selects which key containers are searched
+// (CRYPT_FIND_USER_KEYSET_FLAG / CRYPT_FIND_MACHINE_KEYSET_FLAG); when zero the
+// API defaults to the current user's containers only.
+func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext, keysetFlags uint32) error {
 	r, _, err := procCryptFindCertificateKeyProvInfo.Call(
 		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG),
+		uintptr(CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG|keysetFlags),
 		0,
 	)
 
@@ -584,6 +608,51 @@ func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext) error {
 		return fmt.Errorf("private key association failed: %v", errNoToStr(uint32(r)))
 	}
 
+	return nil
+}
+
+// setCertificateKeyProvInfo explicitly associates the certificate with a named
+// private key by attaching a CERT_KEY_PROV_INFO_PROP_ID property to the
+// certificate context. Unlike cryptFindCertificateKeyProvInfo, it does not
+// enumerate key containers to discover the key, so it works for keys that
+// discovery cannot locate — notably machine-scoped Microsoft Platform Crypto
+// Provider (TPM) keys, which live in the local machine keyset
+// (CRYPT_MACHINE_KEYSET) that CryptFindCertificateKeyProvInfo does not search.
+//
+// containerName is the CNG key (container) name, provName the storage provider
+// (e.g. "Microsoft Platform Crypto Provider"), dwFlags carries keyset flags
+// such as CRYPT_MACHINE_KEYSET, and dwKeySpec is the key spec (CNG keys use
+// CERT_NCRYPT_KEY_SPEC).
+func setCertificateKeyProvInfo(certContext *windows.CertContext, containerName, provName string, dwFlags, dwKeySpec uint32) error {
+	container, err := windows.UTF16PtrFromString(containerName)
+	if err != nil {
+		return fmt.Errorf("invalid key container name %q: %w", containerName, err)
+	}
+	var provider *uint16
+	if provName != "" {
+		if provider, err = windows.UTF16PtrFromString(provName); err != nil {
+			return fmt.Errorf("invalid provider name %q: %w", provName, err)
+		}
+	}
+
+	info := CRYPT_KEY_PROV_INFO{
+		pwszContainerName: container,
+		pwszProvName:      provider,
+		dwProvType:        0, // 0 selects a CNG (NCrypt) storage provider
+		dwFlags:           dwFlags,
+		dwKeySpec:         dwKeySpec,
+	}
+
+	// CertSetCertificateContextProperty copies the structure and the strings it
+	// references into the certificate context, so the Go-allocated memory only
+	// needs to stay alive for the duration of the call.
+	err = certSetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, uintptr(unsafe.Pointer(&info)))
+	runtime.KeepAlive(container)
+	runtime.KeepAlive(provider)
+	runtime.KeepAlive(&info)
+	if err != nil {
+		return fmt.Errorf("CertSetCertificateContextProperty(CERT_KEY_PROV_INFO_PROP_ID) failed: %w", err)
+	}
 	return nil
 }
 

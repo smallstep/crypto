@@ -54,6 +54,7 @@ const (
 	IssuerNameArg                = "issuer"
 	KeySpec                      = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
 	SkipFindCertificateKey       = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
+	MachineKeysetArg             = "key-machine-keyset"        // when storing a certificate, associate it with a key in the local machine keyset
 )
 
 const (
@@ -84,6 +85,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 
 type uriAttributes struct {
 	containerName             string
+	providerName              string
 	hash                      []byte
 	storeLocation             string
 	storeName                 string
@@ -97,6 +99,7 @@ type uriAttributes struct {
 	description               string
 	keySpec                   string
 	skipFindCertificateKey    bool
+	machineKeyset             bool
 	pin                       string
 }
 
@@ -127,6 +130,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 
 	return &uriAttributes{
 		containerName:             u.Get(ContainerNameArg),
+		providerName:              u.Get(ProviderNameArg),
 		hash:                      hashValue,
 		storeLocation:             cmp.Or(u.Get(StoreLocationArg), UserStoreLocation),
 		storeName:                 cmp.Or(u.Get(StoreNameArg), MyStore),
@@ -140,6 +144,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		description:               u.Get(DescriptionArg),
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
+		machineKeyset:             u.GetBool(MachineKeysetArg),
 		pin:                       u.Pin(),
 	}, nil
 }
@@ -914,13 +919,35 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	}
 	defer windows.CertFreeCertificateContext(certContext)
 
-	// looking up the certificate private key is performed by default, but is made optional,
-	// so that looking up the private key for e.g. intermediate certificates can be skipped.
-	// If not skipped, looking up a private key can prompt the user to insert/select a smart
-	// card, which is usually not what we want to happen.
-	if !u.skipFindCertificateKey {
+	// Associate the certificate with its private key.
+	switch {
+	case u.containerName != "":
+		// The exact key is known (the caller supplied its container name, and
+		// usually its provider). Associate it explicitly rather than by
+		// discovery. This is required for machine-scoped Microsoft Platform
+		// Crypto Provider (TPM) keys: CryptFindCertificateKeyProvInfo does not
+		// search the local machine keyset and so cannot find them. Explicit
+		// association does not enumerate containers and never prompts for a
+		// smart card, so it runs even when skip-find-certificate-key is set.
+		var flags uint32
+		if u.machineKeyset {
+			flags |= CRYPT_MACHINE_KEYSET
+		}
+		if err := setCertificateKeyProvInfo(certContext, u.containerName, u.providerName, flags, ncryptKeySpec); err != nil {
+			return fmt.Errorf("failed associating certificate with key %q: %w", u.containerName, err)
+		}
+	case !u.skipFindCertificateKey:
+		// No specific key was named, so fall back to discovery. Looking up the
+		// private key can prompt the user to insert/select a smart card, which
+		// is why it is skipped for e.g. intermediate certificates. When the
+		// certificate is stored in the machine location its key may live in the
+		// local machine keyset, so search both keysets.
+		var keysetFlags uint32
+		if u.storeLocation == MachineStoreLocation {
+			keysetFlags = CRYPT_FIND_MACHINE_KEYSET_FLAG | CRYPT_FIND_USER_KEYSET_FLAG
+		}
 		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
-		cryptFindCertificateKeyProvInfo(certContext)
+		cryptFindCertificateKeyProvInfo(certContext, keysetFlags)
 	}
 
 	if u.friendlyName != "" {
@@ -969,6 +996,12 @@ func (k *CAPIKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest)
 			FriendlyNameArg:        []string{u.friendlyName},
 			DescriptionArg:         []string{u.description},
 			SkipFindCertificateKey: []string{strconv.FormatBool(u.skipFindCertificateKey)},
+			// Forward the key association hints so the leaf certificate is
+			// linked to its private key (see StoreCertificate). Intermediates
+			// below have no associated key and intentionally omit these.
+			ContainerNameArg: []string{u.containerName},
+			ProviderNameArg:  []string{u.providerName},
+			MachineKeysetArg: []string{strconv.FormatBool(u.machineKeyset)},
 		}).String(),
 		Certificate: leaf,
 	}); err != nil {
