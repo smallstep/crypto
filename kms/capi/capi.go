@@ -113,6 +113,15 @@ func (u *uriAttributes) isMachineKeyset() bool {
 		(u.keyScope == "" && u.storeLocation == MachineStoreLocation)
 }
 
+// isUserKeyset reports whether the certificate's private key is explicitly
+// scoped to the current user's keyset. Unlike isMachineKeyset it deliberately
+// does not fall back to the store location: when "key-scope" is unset the keyset
+// is left unspecified so key discovery can search both containers, matching
+// CryptFindCertificateKeyProvInfo's historical default.
+func (u *uriAttributes) isUserKeyset() bool {
+	return u.keyScope == UserStoreLocation
+}
+
 func parseURI(rawuri string) (*uriAttributes, error) {
 	u, err := uri.ParseWithScheme(Scheme, rawuri)
 	if err != nil {
@@ -949,11 +958,16 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	case !u.skipFindCertificateKey:
 		// No specific key was named, so fall back to discovery. Looking up the
 		// private key can prompt the user to insert/select a smart card, which
-		// is why it is skipped for e.g. intermediate certificates. Restrict the
-		// search to the keyset that matches the key scope (machine keys live in
-		// the machine keyset, which the default user-only search would miss).
-		keysetFlags := CRYPT_FIND_USER_KEYSET_FLAG
-		if u.isMachineKeyset() {
+		// is why it is skipped for e.g. intermediate certificates. With no
+		// keyset flag CryptFindCertificateKeyProvInfo searches both the user and
+		// machine containers (its documented default); restrict the search only
+		// when the key scope is known, so a machine-scoped key is found while
+		// the legacy both-containers behavior is preserved otherwise.
+		var keysetFlags uint32
+		switch {
+		case u.isUserKeyset():
+			keysetFlags = CRYPT_FIND_USER_KEYSET_FLAG
+		case u.isMachineKeyset():
 			keysetFlags = CRYPT_FIND_MACHINE_KEYSET_FLAG
 		}
 		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
