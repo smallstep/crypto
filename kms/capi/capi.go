@@ -54,6 +54,7 @@ const (
 	IssuerNameArg                = "issuer"
 	KeySpec                      = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
 	SkipFindCertificateKey       = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
+	KeyScopeArg                  = "key-scope"                 // "machine" or "user"; the keyset that holds the certificate's private key (defaults to store-location)
 )
 
 const (
@@ -83,7 +84,8 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]string{
 }
 
 type uriAttributes struct {
-	containerName             string
+	keyContainerName          string
+	providerName              string
 	hash                      []byte
 	storeLocation             string
 	storeName                 string
@@ -97,7 +99,27 @@ type uriAttributes struct {
 	description               string
 	keySpec                   string
 	skipFindCertificateKey    bool
+	keyScope                  string
 	pin                       string
+}
+
+// isMachineKeyset reports whether the certificate's private key lives in the
+// local machine keyset rather than the current user's. The key scope is taken
+// from the "key-scope" argument; when unset it falls back to the certificate
+// store location ("machine" → machine keyset), since cert and key are usually
+// provisioned in the same scope. This mirrors the tpmkms key-scope resolution.
+func (u *uriAttributes) isMachineKeyset() bool {
+	return u.keyScope == MachineStoreLocation ||
+		(u.keyScope == "" && u.storeLocation == MachineStoreLocation)
+}
+
+// isUserKeyset reports whether the certificate's private key is explicitly
+// scoped to the current user's keyset. Unlike isMachineKeyset it deliberately
+// does not fall back to the store location: when "key-scope" is unset the keyset
+// is left unspecified so key discovery can search both containers, matching
+// CryptFindCertificateKeyProvInfo's historical default.
+func (u *uriAttributes) isUserKeyset() bool {
+	return u.keyScope == UserStoreLocation
 }
 
 func parseURI(rawuri string) (*uriAttributes, error) {
@@ -126,7 +148,8 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 	}
 
 	return &uriAttributes{
-		containerName:             u.Get(ContainerNameArg),
+		keyContainerName:          u.Get(ContainerNameArg),
+		providerName:              u.Get(ProviderNameArg),
 		hash:                      hashValue,
 		storeLocation:             cmp.Or(u.Get(StoreLocationArg), UserStoreLocation),
 		storeName:                 cmp.Or(u.Get(StoreNameArg), MyStore),
@@ -140,6 +163,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		description:               u.Get(DescriptionArg),
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
+		keyScope:                  u.Get(KeyScopeArg),
 		pin:                       u.Pin(),
 	}, nil
 }
@@ -435,10 +459,10 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 				return nil, err
 			}
 		}
-	case u.containerName != "":
+	case u.keyContainerName != "":
 		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.containerName},
+				ContainerNameArg: []string{u.keyContainerName},
 			}).String(),
 		})
 		if err != nil {
@@ -532,15 +556,15 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		certHandle *windows.CertContext
 	)
 
-	if u.containerName != "" {
+	if u.keyContainerName != "" {
 		keyFlags, err := k.getKeyFlags(u)
 		if err != nil {
 			return nil, err
 		}
 
-		kh, err = nCryptOpenKey(k.providerHandle, u.containerName, 0, keyFlags)
+		kh, err = nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags)
 		if err != nil {
-			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, u.containerName, err)
+			return nil, fmt.Errorf("unable to open key using %q=%q: %w", ContainerNameArg, u.keyContainerName, err)
 		}
 	} else {
 		// check if a certificate can be located using the URI
@@ -576,7 +600,7 @@ func (k *CAPIKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		}
 	}
 
-	return newCAPISigner(kh, u.containerName, u.pin)
+	return newCAPISigner(kh, u.keyContainerName, u.pin)
 }
 
 func setKeySpec(u *uriAttributes) (uint32, error) {
@@ -615,8 +639,8 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	// generate a random uuid for the container name if it is not present
-	if u.containerName == "" {
-		u.containerName, err = randutil.UUIDv4()
+	if u.keyContainerName == "" {
+		u.keyContainerName, err = randutil.UUIDv4()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate uuid: %w", err)
 		}
@@ -638,7 +662,7 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	// TODO: check whether RSA keys require legacyKeySpec set to AT_KEYEXCHANGE
-	kh, err := nCryptCreatePersistedKey(k.providerHandle, u.containerName, alg, keySpec, keyFlags)
+	kh, err := nCryptCreatePersistedKey(k.providerHandle, u.keyContainerName, alg, keySpec, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create persisted key: %w", err)
 	}
@@ -708,7 +732,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return err
 	}
 
-	if u.containerName == "" {
+	if u.keyContainerName == "" {
 		return fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
@@ -717,7 +741,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return err
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, u.containerName, 0, keyFlags)
+	kh, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags)
 	if err != nil {
 		return fmt.Errorf("unable to open key: %w", err)
 	}
@@ -734,7 +758,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, err
 	}
 
-	if u.containerName == "" {
+	if u.keyContainerName == "" {
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
 
@@ -743,7 +767,7 @@ func (k *CAPIKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 		return nil, err
 	}
 
-	kh, err := nCryptOpenKey(k.providerHandle, u.containerName, 0, keyFlags)
+	kh, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open key: %w", err)
 	}
@@ -914,13 +938,40 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	}
 	defer windows.CertFreeCertificateContext(certContext)
 
-	// looking up the certificate private key is performed by default, but is made optional,
-	// so that looking up the private key for e.g. intermediate certificates can be skipped.
-	// If not skipped, looking up a private key can prompt the user to insert/select a smart
-	// card, which is usually not what we want to happen.
-	if !u.skipFindCertificateKey {
+	// Associate the certificate with its private key.
+	switch {
+	case u.keyContainerName != "":
+		// The exact key is known (the caller supplied its container name, and
+		// usually its provider). Associate it explicitly rather than by
+		// discovery. This is required for machine-scoped Microsoft Platform
+		// Crypto Provider (TPM) keys: CryptFindCertificateKeyProvInfo does not
+		// search the local machine keyset and so cannot find them. Explicit
+		// association does not enumerate containers and never prompts for a
+		// smart card, so it runs even when skip-find-certificate-key is set.
+		var flags uint32
+		if u.isMachineKeyset() {
+			flags |= CRYPT_MACHINE_KEYSET
+		}
+		if err := setCertificateKeyProvInfo(certContext, u.keyContainerName, u.providerName, flags, ncryptKeySpec); err != nil {
+			return fmt.Errorf("failed associating certificate with key %q: %w", u.keyContainerName, err)
+		}
+	case !u.skipFindCertificateKey:
+		// No specific key was named, so fall back to discovery. Looking up the
+		// private key can prompt the user to insert/select a smart card, which
+		// is why it is skipped for e.g. intermediate certificates. With no
+		// keyset flag CryptFindCertificateKeyProvInfo searches both the user and
+		// machine containers (its documented default); restrict the search only
+		// when the key scope is known, so a machine-scoped key is found while
+		// the legacy both-containers behavior is preserved otherwise.
+		var keysetFlags uint32
+		switch {
+		case u.isUserKeyset():
+			keysetFlags = CRYPT_FIND_USER_KEYSET_FLAG
+		case u.isMachineKeyset():
+			keysetFlags = CRYPT_FIND_MACHINE_KEYSET_FLAG
+		}
 		// TODO: not finding the associated private key is not a dealbreaker, but maybe a warning should be issued
-		cryptFindCertificateKeyProvInfo(certContext)
+		cryptFindCertificateKeyProvInfo(certContext, keysetFlags)
 	}
 
 	if u.friendlyName != "" {
@@ -969,6 +1020,12 @@ func (k *CAPIKMS) StoreCertificateChain(req *apiv1.StoreCertificateChainRequest)
 			FriendlyNameArg:        []string{u.friendlyName},
 			DescriptionArg:         []string{u.description},
 			SkipFindCertificateKey: []string{strconv.FormatBool(u.skipFindCertificateKey)},
+			// Forward the key association hints so the leaf certificate is
+			// linked to its private key (see StoreCertificate). Intermediates
+			// below have no associated key and intentionally omit these.
+			ContainerNameArg: []string{u.keyContainerName},
+			ProviderNameArg:  []string{u.providerName},
+			KeyScopeArg:      []string{u.keyScope},
 		}).String(),
 		Certificate: leaf,
 	}); err != nil {
@@ -1114,10 +1171,10 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			}
 			prevCert = certHandle
 		}
-	case u.containerName != "":
+	case u.keyContainerName != "":
 		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
 			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.containerName},
+				ContainerNameArg: []string{u.keyContainerName},
 			}).String(),
 		})
 		if err != nil {

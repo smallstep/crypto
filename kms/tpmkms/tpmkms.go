@@ -989,16 +989,34 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		intermediateCAStore = o.intermediateStore
 	}
 
+	// Associate the stored certificate with the TPM key explicitly. The agent
+	// stores certificates with skip-find-certificate-key set (to avoid a smart
+	// card prompt during discovery), and CryptFindCertificateKeyProvInfo cannot
+	// discover machine-scoped Platform Crypto Provider keys anyway, so we hand
+	// the CAPI layer the exact key: its CNG container name, the TPM provider,
+	// and its key scope (machine vs user). The container name is the key name
+	// prefixed with "app-" (see prefixKey / go-attestation), which is how the
+	// key was persisted in the PCP KSP. CAPI resolves the keyset from key-scope,
+	// falling back to store-location when key-scope is unset.
+	v := url.Values{
+		"store-location":              []string{location},
+		"store":                       []string{store},
+		"friendly-name":               []string{o.friendlyName},
+		"description":                 []string{o.description},
+		"skip-find-certificate-key":   []string{skipFindCertificateKey},
+		"intermediate-store-location": []string{intermediateCAStoreLocation},
+		"intermediate-store":          []string{intermediateCAStore},
+	}
+	if o.name != "" {
+		v.Set("key", tpm.ApplicationKeyName(o.name))
+		v.Set("provider", microsoftPCP)
+		if o.keyScope != "" {
+			v.Set("key-scope", o.keyScope)
+		}
+	}
+
 	return k.windowsCertificateManager.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{
-		Name: uri.New("capi", url.Values{
-			"store-location":              []string{location},
-			"store":                       []string{store},
-			"friendly-name":               []string{o.friendlyName},
-			"description":                 []string{o.description},
-			"skip-find-certificate-key":   []string{skipFindCertificateKey},
-			"intermediate-store-location": []string{intermediateCAStoreLocation},
-			"intermediate-store":          []string{intermediateCAStore},
-		}).String(),
+		Name:             uri.New("capi", v).String(),
 		CertificateChain: req.CertificateChain,
 	})
 }
