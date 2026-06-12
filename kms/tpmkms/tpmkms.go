@@ -851,13 +851,6 @@ func (k *TPMKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([
 }
 
 func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.LoadCertificateRequest) ([]*x509.Certificate, error) {
-	pub, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-		Name: req.Name,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed retrieving public key: %w", err)
-	}
-
 	o, err := parseNameURI(req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
@@ -880,22 +873,45 @@ func (k *TPMKMS) loadCertificateChainFromWindowsCertificateStore(req *apiv1.Load
 		intermediateCAStore = o.intermediateStore
 	}
 
-	subjectKeyID, err := generateWindowsSubjectKeyID(pub)
-	if err != nil {
-		return nil, fmt.Errorf("failed generating subject key id: %w", err)
+	values := url.Values{
+		"store-location":              []string{location},
+		"store":                       []string{store},
+		"intermediate-store-location": []string{intermediateCAStoreLocation},
+		"intermediate-store":          []string{intermediateCAStore},
+		"issuer":                      []string{o.issuer},
+		"friendly-name":               []string{o.friendlyName},
+		"description":                 []string{o.description},
+	}
+
+	// Preferred lookup: derive the SubjectKeyID from the TPM-resident key
+	// and ask CAPI for a SKI-indexed cert lookup. This is exact (pins the
+	// cert to *this* key) and uses Windows' indexed search.
+	//
+	// Fallback: when the key isn't in the TPM — e.g. an unprotected
+	// endpoint whose container lives in the Microsoft Software Key
+	// Storage Provider — ask CAPI to find the cert by its
+	// CERT_KEY_PROV_INFO container name instead. CAPI's containerName
+	// branch handles both providers via its own GetPublicKey-with-fallback,
+	// so we don't need to know the provider here.
+	pub, pubErr := k.GetPublicKey(&apiv1.GetPublicKeyRequest{Name: req.Name})
+	switch {
+	case pubErr == nil:
+		subjectKeyID, err := generateWindowsSubjectKeyID(pub)
+		if err != nil {
+			return nil, fmt.Errorf("failed generating subject key id: %w", err)
+		}
+		values.Set("key-id", subjectKeyID)
+	case errors.Is(pubErr, apiv1.NotFoundError{}):
+		if o.name == "" {
+			return nil, fmt.Errorf("failed retrieving public key: %w", pubErr)
+		}
+		values.Set("key", o.name)
+	default:
+		return nil, fmt.Errorf("failed retrieving public key: %w", pubErr)
 	}
 
 	return k.windowsCertificateManager.LoadCertificateChain(&apiv1.LoadCertificateChainRequest{
-		Name: uri.New("capi", url.Values{
-			"key-id":                      []string{subjectKeyID},
-			"store-location":              []string{location},
-			"store":                       []string{store},
-			"intermediate-store-location": []string{intermediateCAStoreLocation},
-			"intermediate-store":          []string{intermediateCAStore},
-			"issuer":                      []string{o.issuer},
-			"friendly-name":               []string{o.friendlyName},
-			"description":                 []string{o.description},
-		}).String(),
+		Name: uri.New("capi", values).String(),
 	})
 }
 
@@ -1105,11 +1121,19 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 	case o.sha1 != "":
 		uv.Set("sha1", o.sha1)
 	case o.name != "":
+		// Try the SKI-indexed lookup first (works for TPM-resident keys).
+		// Fall back to telling CAPI to find the cert by its
+		// CERT_KEY_PROV_INFO container name when the key isn't in the
+		// TPM — that's the unprotected/Software-KSP case.
 		keyID, err := k.getSubjectKeyID(req.Name)
-		if err != nil {
+		switch {
+		case err == nil:
+			uv.Set("key-id", hex.EncodeToString(keyID))
+		case errors.Is(err, apiv1.NotFoundError{}):
+			uv.Set("key", o.name)
+		default:
 			return fmt.Errorf("error getting key-id: %w", err)
 		}
-		uv.Set("key-id", hex.EncodeToString(keyID))
 	default:
 		return errors.New(`at least one of "serial", "key-id", "sha1" or "name" is expected to be set`)
 	}
