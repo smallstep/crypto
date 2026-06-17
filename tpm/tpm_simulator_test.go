@@ -1168,3 +1168,76 @@ func TestTPMOnlyFailsWithoutStorageWhenRequired(t *testing.T) {
 	_, err = tpm.GetAKByPermanentIdentifier(ctx, "permanent-identifier")
 	require.ErrorIs(t, err, ErrNoStorageConfigured)
 }
+
+// TestKey_MachineKey covers the accessor + the storage round-trip
+// for application keys. The CreateKey config's MachineKey value
+// should land on the in-memory Key.MachineKey() and survive Get /
+// List re-reads (which load through keyFromStorage and the
+// serializedKey JSON, exercising the storage-flag path that
+// kms/tpmkms callers rely on when they pass key-scope=machine).
+func TestKey_MachineKey(t *testing.T) {
+	for _, machine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("machineKey=%v", machine), func(t *testing.T) {
+			tpm := newSimulatedTPM(t)
+			created, err := tpm.CreateKey(context.Background(), "k", CreateKeyConfig{
+				Algorithm:  "RSA",
+				Size:       2048,
+				MachineKey: machine,
+			})
+			require.NoError(t, err)
+			require.Equal(t, machine, created.MachineKey(), "in-memory key after CreateKey")
+
+			// Round-trip via storage by re-reading the key with GetKey.
+			got, err := tpm.GetKey(context.Background(), "k")
+			require.NoError(t, err)
+			require.Equal(t, machine, got.MachineKey(), "key loaded back via GetKey")
+
+			// ListKeys covers the bulk-load path through keyFromStorage.
+			list, err := tpm.ListKeys(context.Background())
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			require.Equal(t, machine, list[0].MachineKey(), "key loaded back via ListKeys")
+		})
+	}
+}
+
+// TestAK_MachineKey covers the same round-trip for AKs.
+// AttestKey is exercised indirectly: AttestKeyConfig.MachineKey
+// must match the AK's MachineKey (the AttestKey contract at
+// key.go:288-293), so this also asserts the attested key
+// inherits the AK's scope on creation.
+func TestAK_MachineKey(t *testing.T) {
+	for _, machine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("machineKey=%v", machine), func(t *testing.T) {
+			tpm := newSimulatedTPM(t)
+			ak, err := tpm.CreateAKWithConfig(context.Background(), "ak", CreateAKConfig{MachineKey: machine})
+			require.NoError(t, err)
+			require.Equal(t, machine, ak.MachineKey(), "in-memory AK after CreateAKWithConfig")
+
+			got, err := tpm.GetAK(context.Background(), "ak")
+			require.NoError(t, err)
+			require.Equal(t, machine, got.MachineKey(), "AK loaded back via GetAK")
+
+			list, err := tpm.ListAKs(context.Background())
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			require.Equal(t, machine, list[0].MachineKey(), "AK loaded back via ListAKs")
+
+			// AttestKey inherits the AK's scope. An attested key
+			// must match — verifies storage round-trip for attested
+			// keys without separate config plumbing.
+			attested, err := tpm.AttestKey(context.Background(), "ak", "ek", AttestKeyConfig{
+				Algorithm:  "RSA",
+				Size:       2048,
+				MachineKey: machine,
+			})
+			require.NoError(t, err)
+			require.Equal(t, machine, attested.MachineKey(), "attested key inherits AK scope")
+			require.Equal(t, "ak", attested.AttestedBy())
+
+			roundTrip, err := tpm.GetKey(context.Background(), "ek")
+			require.NoError(t, err)
+			require.Equal(t, machine, roundTrip.MachineKey(), "attested key loaded back via GetKey")
+		})
+	}
+}

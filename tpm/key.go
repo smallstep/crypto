@@ -64,6 +64,26 @@ func (k *Key) WasAttestedBy(ak *AK) bool {
 	return k.attestedBy == ak.name
 }
 
+// MachineKey reports whether the Key was created with the
+// LocalMachine keyset on Windows (NCRYPT_MACHINE_KEY_FLAG), as
+// opposed to the calling principal's CurrentUser keyset. The flag
+// is set at creation time via [CreateKeyConfig.MachineKey] or, for
+// attested keys, inherited from the attesting AK; it is persisted
+// in storage and survives Get / List round-trips.
+//
+// On non-Windows platforms the machine-vs-user distinction is a
+// no-op at the underlying TPM provider, so MachineKey reflects the
+// caller's recorded intent (typically false) but doesn't change
+// runtime behavior.
+//
+// Callers managing keys across multiple Windows principals (a
+// LocalSystem service plus a per-user task sharing a storage
+// directory) use this flag to decide which scope's NCryptOpenKey
+// flags to pass when opening or deleting the key.
+func (k *Key) MachineKey() bool {
+	return k.machineKey
+}
+
 // Public returns the Key public key. This is backed
 // by a call to the TPM, so it can fail. If it fails,
 // nil is returned.

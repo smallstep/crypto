@@ -60,6 +60,20 @@ func (ak *AK) CreatedAt() time.Time {
 	return ak.createdAt.Truncate(time.Second)
 }
 
+// MachineKey reports whether the AK was created with the
+// LocalMachine keyset on Windows (NCRYPT_MACHINE_KEY_FLAG), as
+// opposed to the calling principal's CurrentUser keyset. The flag
+// is set at creation time via [CreateAKConfig.MachineKey] and is
+// persisted in storage; attested application keys inherit this
+// scope from the AK that certifies them.
+//
+// On non-Windows platforms the machine-vs-user distinction is a
+// no-op at the underlying TPM provider, so MachineKey reflects the
+// caller's recorded intent but doesn't change runtime behavior.
+func (ak *AK) MachineKey() bool {
+	return ak.machineKey
+}
+
 // Certificate returns the AK certificate, if set.
 // Will return nil in case no AK certificate is available.
 func (ak *AK) Certificate() *x509.Certificate {
