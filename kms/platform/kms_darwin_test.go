@@ -91,7 +91,7 @@ func TestKMS_CleanupCredentials_mackms(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"not implemented", platformKMS, args{&apiv1.CleanupCredentialsRequest{
-			Issuer:     chain[0].Issuer.CommonName,
+			Name:       "mackms:issuer=" + chain[0].Issuer.CommonName,
 			RawSubject: chain[0].RawSubject,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})

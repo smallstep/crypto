@@ -352,17 +352,23 @@ type DeleteCertificateRequest struct {
 }
 
 // CleanupCredentialsRequest is the parameter used in the CleanupCredentials
-// method of a CredentialsCleaner. It identifies a certificate-store scope
-// (issuer, store location, store name) and a subject for which expired
-// certificates should be removed.
+// method of a CredentialsCleaner.
+//
+// Name is a KMS URI that encodes the certificate-store scope and behavior. The
+// supported fields depend on the KMS implementation, but generally include the
+// certificate "issuer", the "store-location" and "store" identifying the
+// certificate store, and a "delete-key" flag controlling whether the private
+// key paired with each expired certificate is removed along with it.
+//
+// RawSubject, when non-empty, restricts cleanup to certificates whose
+// DER-encoded Subject matches it. It is kept as a separate field because it is
+// not a string and does not encode well into a URI.
 //
 // # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 type CleanupCredentialsRequest struct {
-	Issuer        string
-	StoreLocation string
-	Store         string
-	RawSubject    []byte
+	Name       string
+	RawSubject []byte
 }

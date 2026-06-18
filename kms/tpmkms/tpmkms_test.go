@@ -253,3 +253,24 @@ func Test_SetPreferredSignatureAlgorithms(t *testing.T) {
 func Test_PreferredSignatureAlgorithms(t *testing.T) {
 	assert.Equal(t, PreferredSignatureAlgorithms(), preferredSignatureAlgorithms)
 }
+
+func Test_shouldFallbackToDirectKeyDelete(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"apiv1 not found", apiv1.NotFoundError{Message: "key not found"}, true},
+		{"wrapped apiv1 not found", fmt.Errorf("deleting: %w", apiv1.NotFoundError{Message: "key not found"}), true},
+		{"tpm not found", fmt.Errorf("failed getting key %q: %w", "key1", tpm.ErrNotFound), true},
+		{"failed loading from TPM storage", errors.New("failed loading from TPM storage: disk gone"), true},
+		{"failed opening TPM", errors.New("failed opening TPM: in use"), true},
+		{"partial delete error", &tpm.PartialDeleteError{Name: "key1", Underlying: errors.New("ncrypt boom")}, false},
+		{"other error", errors.New("failed persisting storage: disk full"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, shouldFallbackToDirectKeyDelete(tt.err))
+		})
+	}
+}

@@ -1215,29 +1215,32 @@ func deleteCertContextAndMaybeKey(certHandle *windows.CertContext, deleteKey boo
 }
 
 // CleanupCredentials implements [apiv1.CredentialsCleaner]. It scans the Windows
-// certificate store identified by req for certificates issued by req.Issuer and
-// removes any that have expired, along with their CNG private keys. When
-// req.RawSubject is non-empty, only certificates whose DER-encoded Subject
-// matches are considered.
+// certificate store identified by req.Name for certificates issued by its
+// "issuer" and removes any that have expired. When req.Name carries
+// "delete-key=true", the CNG private key paired with each expired certificate is
+// removed as well. When req.RawSubject is non-empty, only certificates whose
+// DER-encoded Subject matches are considered.
 func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 	if req == nil {
 		return errors.New("cleanupCredentialsRequest cannot be nil")
 	}
-	if req.Issuer == "" {
+
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return err
+	}
+	if u.issuerName == "" {
 		return fmt.Errorf("%q is required", IssuerNameArg)
 	}
 
-	storeLocation := cmp.Or(req.StoreLocation, UserStoreLocation)
-	storeName := cmp.Or(req.Store, MyStore)
-
 	var certStoreLocation uint32
-	switch storeLocation {
+	switch u.storeLocation {
 	case UserStoreLocation:
 		certStoreLocation = certStoreCurrentUser
 	case MachineStoreLocation:
 		certStoreLocation = certStoreLocalMachine
 	default:
-		return fmt.Errorf("invalid cert store location %q", storeLocation)
+		return fmt.Errorf("invalid cert store location %q", u.storeLocation)
 	}
 
 	st, err := windows.CertOpenStore(
@@ -1245,10 +1248,10 @@ func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error
 		0,
 		0,
 		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(storeName))),
+		uintptr(unsafe.Pointer(wide(u.storeName))),
 	)
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", storeLocation, storeName, err)
+		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
 
 	now := time.Now()
@@ -1259,7 +1262,7 @@ func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error
 	// it was given, which would invalidate the "previous" pointer that the next
 	// CertFindCertificateInStore call expects.
 	for {
-		deleted, err := k.cleanupOnePass(st, req.Issuer, req.RawSubject, now)
+		deleted, err := k.cleanupOnePass(st, u.issuerName, req.RawSubject, u.deleteKey, now)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -1272,13 +1275,13 @@ func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error
 }
 
 // cleanupOnePass walks the store looking for the first expired certificate
-// matching issuer (and rawSubject, if set), deletes it together with its CNG
-// key, and returns deleted=true. When no matching expired certificate is found
-// it returns deleted=false and the caller stops iterating. Errors encountered
-// while inspecting individual certificates are returned with deleted=false so
-// the caller can record them and exit (a persistent inspection error would
-// otherwise spin the outer loop forever).
-func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []byte, now time.Time) (bool, error) {
+// matching issuer (and rawSubject, if set), deletes it (together with its CNG
+// key when deleteKey is true), and returns deleted=true. When no matching
+// expired certificate is found it returns deleted=false and the caller stops
+// iterating. Errors encountered while inspecting individual certificates are
+// returned with deleted=false so the caller can record them and exit (a
+// persistent inspection error would otherwise spin the outer loop forever).
+func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []byte, deleteKey bool, now time.Time) (bool, error) {
 	var prevCert *windows.CertContext
 	for {
 		certHandle, err := findCertificateInStore(st,
@@ -1302,7 +1305,7 @@ func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []
 
 		matchesSubject := len(rawSubject) == 0 || bytes.Equal(x509Cert.RawSubject, rawSubject)
 		if matchesSubject && x509Cert.NotAfter.Before(now) {
-			if err := deleteCertContextAndMaybeKey(certHandle, true); err != nil {
+			if err := deleteCertContextAndMaybeKey(certHandle, deleteKey); err != nil {
 				return false, fmt.Errorf("failed deleting expired certificate (serial %s): %w", x509Cert.SerialNumber.Text(16), err)
 			}
 			return true, nil

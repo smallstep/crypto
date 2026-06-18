@@ -537,7 +537,10 @@ func TestKMS_CleanupCredentials_capi(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", capiKMS, args{&apiv1.CleanupCredentialsRequest{
-			Issuer:     chain[0].Issuer.CommonName,
+			Name: uri.New("capi", url.Values{
+				"issuer":     []string{chain[0].Issuer.CommonName},
+				"delete-key": []string{"true"},
+			}).String(),
 			RawSubject: chain[0].RawSubject,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			_, loadErr := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{

@@ -16,10 +16,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"go.step.sm/crypto/kms/apiv1"
@@ -1021,20 +1023,187 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	})
 }
 
-// CleanupCredentials implements [apiv1.CredentialsCleaner]. It finds all
-// certificates in the Windows certificate store issued to the subject in req by
-// the issuer in req, and deletes any that have already expired.
+// CleanupCredentials implements [apiv1.CredentialsCleaner]. On Windows it finds
+// all certificates in the configured certificate store issued by the "issuer"
+// in req.Name (optionally restricted to req.RawSubject) and deletes any that
+// have already expired. The "store-location" and "store" fields of req.Name
+// override the store configured on the TPMKMS instance.
+//
+// When req.Name carries "delete-key=true", the private key paired with each
+// expired certificate is removed as well: it first attempts a full teardown
+// through [TPMKMS.DeleteKey], which removes both the TPM storage entry and the
+// CNG/NCrypt key container. When DeleteKey cannot act on the key at all — the
+// TPM storage can't be loaded, the key isn't present in storage, or the TPM
+// can't be opened — it falls back to deleting the CNG key container directly
+// while removing the certificate. Without "delete-key=true" only the expired
+// certificates are removed and their keys are left in place.
 func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 	if req == nil {
 		return errors.New("cleanupCredentialsRequest cannot be nil")
 	}
 
-	if k.usesWindowsCertificateStore() {
-		return k.windowsCertificateManager.CleanupCredentials(req)
+	if !k.usesWindowsCertificateStore() {
+		// currently this API is a no-op on non Windows platforms.
+		return nil
 	}
 
-	// currently this API is a no-op on non Windows platforms.
-	return nil
+	o, err := parseNameURI(req.Name)
+	if err != nil {
+		return fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+	if o.issuer == "" {
+		return errors.New(`"issuer" is required`)
+	}
+
+	location := k.opts.windowsCertificateStoreLocation
+	if o.storeLocation != "" {
+		location = o.storeLocation
+	}
+	store := k.opts.windowsCertificateStore
+	if o.store != "" {
+		store = o.store
+	}
+
+	loadURI := uri.New("capi", url.Values{
+		"store-location": []string{location},
+		"store":          []string{store},
+		"issuer":         []string{o.issuer},
+	}).String()
+	certs, err := k.windowsCertificateManager.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{Name: loadURI}, req.RawSubject)
+	if err != nil {
+		return fmt.Errorf("failed loading certificates by issuer %q: %w", o.issuer, err)
+	}
+
+	// Map every managed key's Subject Key Identifier to its TPMKMS URI so an
+	// expired certificate can be traced back to the key that needs deleting.
+	// Only required when the request asks for the keys to be deleted.
+	var keysBySKI map[string]string
+	if o.deleteKey {
+		if keysBySKI, err = k.keyNamesBySubjectKeyID(); err != nil {
+			return fmt.Errorf("failed enumerating keys: %w", err)
+		}
+	}
+
+	now := time.Now()
+	var deleteErrors []error
+	for _, cert := range certs {
+		if !cert.NotAfter.Before(now) {
+			continue
+		}
+
+		// deleteKey indicates whether the CNG key container should be removed
+		// together with the certificate. It's only ever true when the request
+		// asked for it, and then only when the key can't be torn down through
+		// the regular DeleteKey path.
+		deleteKey := false
+		if o.deleteKey {
+			result, err := k.deleteKeyForCertificate(cert, keysBySKI)
+			if err != nil {
+				deleteErrors = append(deleteErrors, err)
+			}
+			deleteKey = result
+		}
+
+		if err := k.deleteCertificateBySerial(location, store, o.issuer, cert.SerialNumber, deleteKey); err != nil {
+			deleteErrors = append(deleteErrors, fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err))
+		}
+	}
+
+	return errors.Join(deleteErrors...)
+}
+
+// deleteKeyForCertificate tears down the key paired with cert. It returns
+// whether the caller must still remove the CNG key container directly when
+// deleting the certificate (fallback path), and any error encountered.
+//
+// When cert maps to a managed key it tries a full teardown via
+// [TPMKMS.DeleteKey]; on success the container is already gone (returns false),
+// and only when DeleteKey couldn't touch the container at all does it ask for a
+// direct deletion (returns true). When cert maps to no managed key — an orphan
+// certificate — it also asks for a direct deletion.
+func (k *TPMKMS) deleteKeyForCertificate(cert *x509.Certificate, keysBySKI map[string]string) (bool, error) {
+	ski, err := x509util.GenerateSubjectKeyID(cert.PublicKey)
+	if err != nil {
+		return false, fmt.Errorf("failed generating key identifier for expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err)
+	}
+
+	name, ok := keysBySKI[hex.EncodeToString(ski)]
+	if !ok {
+		// Orphan certificate: no managed key maps to it, so the container (if
+		// any) must be deleted directly.
+		return true, nil
+	}
+
+	switch err := k.DeleteKey(&apiv1.DeleteKeyRequest{Name: name}); {
+	case err == nil:
+		// DeleteKey removed both the TPM storage entry and the CNG key
+		// container, so only the certificate itself is left to delete.
+		return false, nil
+	case shouldFallbackToDirectKeyDelete(err):
+		// DeleteKey never reached the key container; delete it directly
+		// alongside the certificate.
+		return true, nil
+	default:
+		// DeleteKey acted but failed in some other way; surface the error, but
+		// still remove the certificate without re-deleting the key.
+		return false, fmt.Errorf("failed deleting key for expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err)
+	}
+}
+
+// keyNamesBySubjectKeyID returns a map from the hex-encoded Subject Key
+// Identifier of every non-AK key managed by the TPMKMS to its TPMKMS URI. It is
+// used to trace a certificate back to the key that produced it.
+func (k *TPMKMS) keyNamesBySubjectKeyID() (map[string]string, error) {
+	resp, err := k.SearchKeys(&apiv1.SearchKeysRequest{
+		Query: uri.New(Scheme, url.Values{"ak": []string{"false"}}).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	keysBySKI := make(map[string]string, len(resp.Results))
+	for _, result := range resp.Results {
+		ski, err := x509util.GenerateSubjectKeyID(result.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		keysBySKI[hex.EncodeToString(ski)] = result.Name
+	}
+
+	return keysBySKI, nil
+}
+
+// deleteCertificateBySerial removes the certificate identified by issuer and
+// serial from the configured Windows certificate store, backed by the CAPIKMS
+// instance. When deleteKey is true the paired CNG key container is removed too.
+func (k *TPMKMS) deleteCertificateBySerial(location, store, issuer string, serial *big.Int, deleteKey bool) error {
+	uv := url.Values{}
+	uv.Set("store-location", location)
+	uv.Set("store", store)
+	uv.Set("issuer", issuer)
+	uv.Set("serial", "0x"+serial.Text(16))
+	if deleteKey {
+		uv.Set("delete-key", "true")
+	}
+
+	return k.windowsCertificateManager.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: uri.New("capi", uv).String(),
+	})
+}
+
+// shouldFallbackToDirectKeyDelete reports whether a [TPMKMS.DeleteKey] error
+// means the CNG key container was never touched — the TPM storage couldn't be
+// loaded, the key wasn't present in storage, or the TPM couldn't be opened — so
+// the caller must fall back to deleting the key container directly.
+func shouldFallbackToDirectKeyDelete(err error) bool {
+	var notFound apiv1.NotFoundError
+	if errors.As(err, &notFound) || errors.Is(err, tpm.ErrNotFound) {
+		return true
+	}
+
+	msg := err.Error()
+	return strings.Contains(msg, "failed loading from TPM storage") ||
+		strings.Contains(msg, "failed opening TPM")
 }
 
 // DeleteCertificate deletes a certificate for the key identified by name from the
@@ -1044,6 +1213,11 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 // It's possible to delete a specific certificate for a key by specifying it's SHA1
 // or serial. This is only supported if the instance is configured to use the Windows
 // certificate store.
+//
+// By default only the certificate is removed; the paired CNG private key is left
+// in place, since a key may legitimately outlive a certificate (e.g. reused
+// across renewals). Set "delete-key=true" on the request URI to remove the key
+// along with the certificate.
 //
 // # Experimental
 //
@@ -1113,10 +1287,14 @@ func (k *TPMKMS) deleteCertificateFromWindowsCertificateStore(req *apiv1.DeleteC
 	uv := url.Values{}
 	uv.Set("store-location", location)
 	uv.Set("store", store)
-	// Also remove the CNG private key paired with the certificate; TPMKMS-managed
-	// certs have a 1:1 CNG key with no independent use, so leaving the .PCPKSP
-	// blob behind would orphan it on disk.
-	uv.Set("delete-key", "true")
+	// Only remove the CNG private key paired with the certificate when the
+	// caller explicitly asked for it via "delete-key=true". Deleting the key by
+	// default would be surprising: a key may legitimately outlive a certificate
+	// (e.g. reused across renewals), and the non-Windows certificate store path
+	// keeps the key on disk regardless.
+	if o.deleteKey {
+		uv.Set("delete-key", "true")
+	}
 
 	switch {
 	case o.serial != "":
@@ -1599,6 +1777,7 @@ type capiCertificateManager interface {
 	apiv1.CertificateChainManager
 	apiv1.CertificateDeleter
 	apiv1.CredentialsCleaner
+	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, rawSubject []byte) ([]*x509.Certificate, error)
 }
 
 var (
