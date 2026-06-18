@@ -36,3 +36,13 @@ func prefixAK(name string) string {
 func prefixKey(name string) string {
 	return fmt.Sprintf("app-%s", name)
 }
+
+// ApplicationKeyName returns the name an application key is persisted under by
+// the underlying provider, given its logical name. It prefixes `app-`, matching
+// go-attestation's default. On Windows this is the CNG container name of the
+// key, which is needed to associate a certificate with it in the certificate
+// store. It is the single source of truth shared with callers (e.g. tpmkms)
+// that must reference the persisted key name.
+func ApplicationKeyName(name string) string {
+	return prefixKey(name)
+}
