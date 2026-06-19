@@ -231,6 +231,21 @@ type TPMKMS struct {
 	tpm                       *tpm.TPM
 	windowsCertificateManager capiCertificateManager
 	opts                      *options
+
+	// searchKeysFn, when set, replaces [TPMKMS.SearchKeys] for internal
+	// callers. It exists so the key-enumeration dependent code paths (such as
+	// CleanupCredentials) can be exercised in tests without a live TPM. It
+	// defaults to [TPMKMS.SearchKeys] via [TPMKMS.searchKeys].
+	searchKeysFn func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error)
+}
+
+// searchKeys runs a key search through the testable seam, falling back to the
+// real [TPMKMS.SearchKeys] implementation when no override is configured.
+func (k *TPMKMS) searchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+	if k.searchKeysFn != nil {
+		return k.searchKeysFn(req)
+	}
+	return k.SearchKeys(req)
 }
 
 type algorithmAttributes struct {
@@ -1077,18 +1092,33 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 		return fmt.Errorf("failed loading certificates by issuer %q: %w", o.issuer, err)
 	}
 
+	var deleteErrors []error
+
 	// Map every managed key's Subject Key Identifier to its TPMKMS URI so an
 	// expired certificate can be traced back to the key that needs deleting.
 	// Only required when the request asks for the keys to be deleted.
 	var keysBySKI map[string]string
 	if o.deleteKey {
-		if keysBySKI, err = k.keyNamesBySubjectKeyID(); err != nil {
-			return fmt.Errorf("failed enumerating keys: %w", err)
+		keysBySKI, err = k.keyNamesBySubjectKeyID()
+		var partial *apiv1.PartialError
+		switch {
+		case errors.As(err, &partial):
+			// Some keys couldn't be loaded, but the rest of the inventory is
+			// usable. Keep the partial map: certificates whose key did load go
+			// through the full DeleteKey teardown, and those whose key is
+			// missing fall through to the direct CNG deletion path below.
+			// Record the failures so they're surfaced without blocking cleanup.
+			deleteErrors = append(deleteErrors, partial.Errors...)
+		case err != nil:
+			// The key inventory couldn't be built at all. Don't abort: proceed
+			// with an empty map so every expired certificate falls through to
+			// the direct CNG deletion path, and surface the failure.
+			deleteErrors = append(deleteErrors, fmt.Errorf("failed enumerating keys; falling back to direct key deletion: %w", err))
+			keysBySKI = nil
 		}
 	}
 
 	now := time.Now()
-	var deleteErrors []error
 	for _, cert := range certs {
 		if !cert.NotAfter.Before(now) {
 			continue
@@ -1156,23 +1186,46 @@ func (k *TPMKMS) deleteKeyForCertificate(cert *x509.Certificate, keysBySKI map[s
 // keyNamesBySubjectKeyID returns a map from the hex-encoded Subject Key
 // Identifier of every non-AK key managed by the TPMKMS to its TPMKMS URI. It is
 // used to trace a certificate back to the key that produced it.
+//
+// A best-effort key search may fail to load some keys; in that case it returns
+// the keys it could load together with a [*apiv1.PartialError]. This is not
+// fatal here: the map is still built from the keys that did load, and the
+// partial error is returned so the caller can record it. Certificates whose key
+// could not be loaded simply won't appear in the map and are handled by the
+// caller's orphan/direct-delete path. A non-partial error is returned as-is.
 func (k *TPMKMS) keyNamesBySubjectKeyID() (map[string]string, error) {
-	resp, err := k.SearchKeys(&apiv1.SearchKeysRequest{
+	resp, err := k.searchKeys(&apiv1.SearchKeysRequest{
 		Query: uri.New(Scheme, url.Values{"ak": []string{"false"}}).String(),
 	})
-	if err != nil {
+	var partial *apiv1.PartialError
+	switch {
+	case errors.As(err, &partial):
+		// keep resp and partial; fall through to build the map from whatever
+		// keys were successfully returned.
+	case err != nil:
 		return nil, err
+	}
+
+	errs := make([]error, 0)
+	if partial != nil {
+		errs = append(errs, partial.Errors...)
 	}
 
 	keysBySKI := make(map[string]string, len(resp.Results))
 	for _, result := range resp.Results {
 		ski, err := x509util.GenerateSubjectKeyID(result.PublicKey)
 		if err != nil {
-			return nil, err
+			// Don't drop the rest of the map over one bad public key; record
+			// it and carry on, the same way SearchKeys treats unloadable keys.
+			errs = append(errs, &apiv1.KeyError{Name: result.Name, Err: err})
+			continue
 		}
 		keysBySKI[hex.EncodeToString(ski)] = result.Name
 	}
 
+	if len(errs) > 0 {
+		return keysBySKI, &apiv1.PartialError{Errors: errs}
+	}
 	return keysBySKI, nil
 }
 
@@ -1559,70 +1612,125 @@ func (k *TPMKMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysResp
 	}
 
 	var (
-		name  = u.Get("name")
-		ak    = u.GetBool("ak")
-		hasAK = u.Has("ak")
-		aks   []*tpm.AK
-		keys  []*tpm.Key
+		name        = u.Get("name")
+		ak          = u.GetBool("ak")
+		hasAK       = u.Has("ak")
+		includeAKs  = !hasAK || ak
+		includeKeys = !hasAK || !ak
+		aks         []searchableAK
+		keys        []searchableKey
+		errs        []error
 	)
 
-	var results []apiv1.SearchKeyResult
-
-	// List AKs
-	if !hasAK || (hasAK && ak) {
-		if aks, err = k.tpm.ListAKs(context.Background()); err != nil {
-			return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
-		}
-
-		for _, key := range aks {
-			if name != "" && name != key.Name() {
-				continue
+	// List AKs. A failure to enumerate the AKs is collected as a partial error
+	// rather than aborting: the application keys may still be searchable, and
+	// callers can decide whether the missing AKs matter.
+	if includeAKs {
+		listed, err := k.tpm.ListAKs(context.Background())
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed listing attestation keys: %w", err))
+		} else {
+			aks = make([]searchableAK, len(listed))
+			for i := range listed {
+				aks[i] = listed[i]
 			}
-
-			results = append(results, apiv1.SearchKeyResult{
-				Name: uri.New(Scheme, url.Values{
-					"name": []string{key.Name()},
-					"ak":   []string{"true"},
-				}).String(),
-				PublicKey: key.Public(),
-			})
 		}
 	}
 
-	// List Keys
-	if !hasAK || (hasAK && !ak) {
-		if keys, err = k.tpm.ListKeys(context.Background()); err != nil {
-			return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
-		}
-
-		for _, key := range keys {
-			if name != "" && name != key.Name() {
-				continue
+	// List Keys, same best-effort handling as the AKs above.
+	if includeKeys {
+		listed, err := k.tpm.ListKeys(context.Background())
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed listing keys: %w", err))
+		} else {
+			keys = make([]searchableKey, len(listed))
+			for i := range listed {
+				keys[i] = listed[i]
 			}
-
-			values := url.Values{"name": []string{key.Name()}}
-			if attestedBy := key.AttestedBy(); attestedBy != "" {
-				values.Set("attest-by", attestedBy)
-			}
-			signer, err := key.Signer(context.Background())
-			if err != nil {
-				return nil, fmt.Errorf("searchKeysRequest failed: %w", err)
-			}
-
-			keyURI := uri.New(Scheme, values).String()
-			results = append(results, apiv1.SearchKeyResult{
-				Name:      keyURI,
-				PublicKey: signer.Public(),
-				CreateSignerRequest: apiv1.CreateSignerRequest{
-					SigningKey: keyURI,
-				},
-			})
 		}
 	}
 
-	return &apiv1.SearchKeysResponse{
-		Results: results,
-	}, nil
+	results, buildErrs := buildSearchKeysResults(aks, keys, name)
+	errs = append(errs, buildErrs...)
+
+	resp := &apiv1.SearchKeysResponse{Results: results}
+	if len(errs) > 0 {
+		// Best-effort contract: the successfully loaded keys are returned in
+		// resp alongside a *apiv1.PartialError describing the keys that could
+		// not be loaded. Callers that require completeness can treat any error
+		// as fatal; callers that can make progress with a subset (such as
+		// CleanupCredentials) inspect it with errors.As and keep using resp.
+		return resp, &apiv1.PartialError{Errors: errs}
+	}
+	return resp, nil
+}
+
+// searchableAK and searchableKey are the minimal views of [tpm.AK] and
+// [tpm.Key] needed to build search results. They exist so the best-effort
+// result-building logic can be unit tested with fakes that, for example, fail
+// to produce a signer.
+type searchableAK interface {
+	Name() string
+	Public() crypto.PublicKey
+}
+
+type searchableKey interface {
+	Name() string
+	AttestedBy() string
+	Signer(context.Context) (crypto.Signer, error)
+}
+
+// buildSearchKeysResults converts the listed AKs and keys into search results,
+// filtering by name when set. AKs always yield a result. A key whose signer
+// cannot be loaded (e.g. a corrupt keyset) does not abort the whole search:
+// instead it is recorded as a [*apiv1.KeyError] and the remaining keys are
+// still returned. The returned error slice is empty when everything loaded.
+func buildSearchKeysResults(aks []searchableAK, keys []searchableKey, name string) ([]apiv1.SearchKeyResult, []error) {
+	var (
+		results []apiv1.SearchKeyResult
+		errs    []error
+	)
+
+	for _, ak := range aks {
+		if name != "" && name != ak.Name() {
+			continue
+		}
+		results = append(results, apiv1.SearchKeyResult{
+			Name: uri.New(Scheme, url.Values{
+				"name": []string{ak.Name()},
+				"ak":   []string{"true"},
+			}).String(),
+			PublicKey: ak.Public(),
+		})
+	}
+
+	for _, key := range keys {
+		if name != "" && name != key.Name() {
+			continue
+		}
+
+		values := url.Values{"name": []string{key.Name()}}
+		if attestedBy := key.AttestedBy(); attestedBy != "" {
+			values.Set("attest-by", attestedBy)
+		}
+		keyURI := uri.New(Scheme, values).String()
+
+		signer, err := key.Signer(context.Background())
+		if err != nil {
+			errs = append(errs, &apiv1.KeyError{Name: keyURI, Err: err})
+			continue
+		}
+
+		results = append(results, apiv1.SearchKeyResult{
+			Name:      keyURI,
+			PublicKey: signer.Public(),
+			CreateSignerRequest: apiv1.CreateSignerRequest{
+				SigningKey: keyURI,
+			},
+		})
+	}
+
+	return results, errs
 }
 
 // Close releases the connection to the TPM.

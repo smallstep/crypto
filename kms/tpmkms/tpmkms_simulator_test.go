@@ -2671,3 +2671,106 @@ func TestTPMKMS_CleanupCredentials(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// TestTPMKMS_CleanupCredentials_keyEnumerationDegraded asserts that a degraded
+// key inventory (the regression behind the original NTE_BAD_KEYSET report)
+// never blocks deletion of expired certificates: certs whose key couldn't be
+// enumerated fall through to the direct CNG deletion path, and the enumeration
+// failure is surfaced rather than aborting the cleanup. The key search is
+// injected via the searchKeysFn seam so no live TPM is required.
+func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
+	expired := time.Now().Add(-time.Hour)
+
+	mustSigner := func() crypto.Signer {
+		key, err := keyutil.GenerateKey("RSA", "", 2048)
+		require.NoError(t, err)
+		signer, ok := key.(crypto.Signer)
+		require.True(t, ok)
+		return signer
+	}
+
+	// Two expired certs whose keys are NOT in the (degraded) inventory, so both
+	// must take the orphan/direct-delete path. None map to a loaded key, so
+	// DeleteKey is never invoked and a TPM is unnecessary.
+	failedKey := mustSigner()
+	orphanKey := mustSigner()
+
+	newKMS := func(t *testing.T, searchKeysFn func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error)) (*TPMKMS, *fakeWindowsCertificateManager) {
+		t.Helper()
+		mock := &fakeWindowsCertificateManager{
+			certs: []*x509.Certificate{
+				{SerialNumber: big.NewInt(1), PublicKey: failedKey.Public(), NotAfter: expired},
+				{SerialNumber: big.NewInt(2), PublicKey: orphanKey.Public(), NotAfter: expired},
+			},
+		}
+		k := &TPMKMS{
+			windowsCertificateManager: mock,
+			opts: &options{
+				windowsCertificateStoreLocation: "user",
+				windowsCertificateStore:         "My",
+			},
+			searchKeysFn: searchKeysFn,
+		}
+		return k, mock
+	}
+
+	assertBothDeletedWithKey := func(t *testing.T, mock *fakeWindowsCertificateManager) {
+		t.Helper()
+		require.Len(t, mock.deleteCalls, 2)
+		bySerial := make(map[string]bool, len(mock.deleteCalls))
+		for _, c := range mock.deleteCalls {
+			bySerial[c.serial] = c.deleteKey
+		}
+		assert.True(t, bySerial["0x1"], "cert whose key failed to load must direct-delete its key")
+		assert.True(t, bySerial["0x2"], "orphan cert must direct-delete its key")
+	}
+
+	t.Run("partial enumeration", func(t *testing.T) {
+		badKeyErr := &apiv1.KeyError{Name: "tpmkms:name=failed", Err: errors.New("NTE_BAD_KEYSET")}
+		// The search loads some unrelated key but reports the cert's key as failed.
+		k, mock := newKMS(t, func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+			return &apiv1.SearchKeysResponse{Results: []apiv1.SearchKeyResult{
+					{Name: "tpmkms:name=unrelated", PublicKey: mustSigner().Public()},
+				}},
+				&apiv1.PartialError{Errors: []error{badKeyErr}}
+		})
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer":     []string{"Test CA"},
+				"delete-key": []string{"true"},
+			}).String(),
+		})
+
+		// Both expired certs were still cleaned via the direct path...
+		assertBothDeletedWithKey(t, mock)
+
+		// ...and the partial enumeration failure was surfaced, not swallowed.
+		require.Error(t, err)
+		var ke *apiv1.KeyError
+		require.True(t, errors.As(err, &ke))
+		assert.Equal(t, "tpmkms:name=failed", ke.Name)
+	})
+
+	t.Run("fatal enumeration falls back to direct delete", func(t *testing.T) {
+		boom := errors.New("tpm unavailable")
+		k, mock := newKMS(t, func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+			return nil, boom
+		})
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer":     []string{"Test CA"},
+				"delete-key": []string{"true"},
+			}).String(),
+		})
+
+		// Cleanup still removed both expired certs and their keys directly...
+		assertBothDeletedWithKey(t, mock)
+
+		// ...and the enumeration failure is surfaced with context.
+		require.Error(t, err)
+		assert.ErrorIs(t, err, boom)
+		assert.Contains(t, err.Error(), "falling back to direct key deletion")
+	})
+}

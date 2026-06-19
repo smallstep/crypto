@@ -283,11 +283,25 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 		r := clone(req)
 		r.Query = query
 		resp, err := km.SearchKeys(r)
-		if err != nil {
+
+		// A *apiv1.PartialError means the backend returned usable results
+		// alongside per-key failures; patch and forward those results, keeping
+		// the partial error so callers can still inspect it. Any other error is
+		// fatal.
+		var partial *apiv1.PartialError
+		if err != nil && !errors.As(err, &partial) {
+			return nil, err
+		}
+		if resp == nil {
 			return nil, err
 		}
 
-		return k.patchSearchKeysResponse(resp)
+		patched, patchErr := k.patchSearchKeysResponse(resp)
+		if patchErr != nil {
+			return nil, patchErr
+		}
+
+		return patched, err
 	}
 
 	return nil, apiv1.NotImplementedError{}
