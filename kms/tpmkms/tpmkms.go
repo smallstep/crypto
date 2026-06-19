@@ -1043,8 +1043,11 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 	}
 
 	if !k.usesWindowsCertificateStore() {
-		// currently this API is a no-op on non Windows platforms.
-		return nil
+		// CleanupCredentials is only supported when the TPMKMS is configured to
+		// use the Windows certificate store. Signal that explicitly instead of
+		// silently succeeding, consistent with how the platform KMS reports
+		// unsupported operations.
+		return apiv1.NotImplementedError{}
 	}
 
 	o, err := parseNameURI(req.Name)
@@ -1196,8 +1199,7 @@ func (k *TPMKMS) deleteCertificateBySerial(location, store, issuer string, seria
 // loaded, the key wasn't present in storage, or the TPM couldn't be opened — so
 // the caller must fall back to deleting the key container directly.
 func shouldFallbackToDirectKeyDelete(err error) bool {
-	var notFound apiv1.NotFoundError
-	if errors.As(err, &notFound) || errors.Is(err, tpm.ErrNotFound) {
+	if errors.Is(err, apiv1.NotFoundError{}) || errors.Is(err, tpm.ErrNotFound) {
 		return true
 	}
 

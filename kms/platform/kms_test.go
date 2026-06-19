@@ -1324,7 +1324,7 @@ func TestKMS_CleanupCredentials(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"not implemented", softKMS, args{&apiv1.CleanupCredentialsRequest{
-			Name: uri.New("softkms", url.Values{
+			Name: uri.New("kms", url.Values{
 				"issuer": []string{chain[0].Issuer.CommonName},
 			}).String(),
 			RawSubject: chain[0].RawSubject,

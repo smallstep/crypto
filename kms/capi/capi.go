@@ -1282,6 +1282,10 @@ func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error
 // returned with deleted=false so the caller can record them and exit (a
 // persistent inspection error would otherwise spin the outer loop forever).
 func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []byte, deleteKey bool, now time.Time) (bool, error) {
+	// CertFindCertificateInStore frees the context passed as prevCert on each
+	// call, so the previous iteration's handle must not be freed here; only a
+	// handle we stop walking from (an early return below) needs an explicit
+	// free.
 	var prevCert *windows.CertContext
 	for {
 		certHandle, err := findCertificateInStore(st,
@@ -1293,23 +1297,30 @@ func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []
 			return false, fmt.Errorf("findCertificateInStore failed: %w", err)
 		}
 		if certHandle == nil {
-			// prevCert was freed by the last findCertificateInStore call.
+			// findCertificateInStore returns (nil, nil) when no (further)
+			// certificate matches the issuer: there's nothing left to clean up
+			// and prevCert was already freed by this last call, so just stop.
 			return false, nil
 		}
 
 		x509Cert, err := certContextToX509(certHandle)
 		if err != nil {
+			// We're bailing out without chaining certHandle into another
+			// findCertificateInStore call, so free it explicitly here.
 			windows.CertFreeCertificateContext(certHandle)
 			return false, fmt.Errorf("could not unmarshal certificate: %w", err)
 		}
 
 		matchesSubject := len(rawSubject) == 0 || bytes.Equal(x509Cert.RawSubject, rawSubject)
 		if matchesSubject && x509Cert.NotAfter.Before(now) {
+			// deleteCertContextAndMaybeKey consumes certHandle (the cert delete
+			// frees it), so no explicit free is needed on this path.
 			if err := deleteCertContextAndMaybeKey(certHandle, deleteKey); err != nil {
 				return false, fmt.Errorf("failed deleting expired certificate (serial %s): %w", x509Cert.SerialNumber.Text(16), err)
 			}
 			return true, nil
 		}
+		// Carry certHandle forward; the next findCertificateInStore call frees it.
 		prevCert = certHandle
 	}
 }
