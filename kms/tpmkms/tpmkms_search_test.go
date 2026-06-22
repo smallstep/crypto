@@ -77,12 +77,11 @@ func TestBuildSearchKeysResults(t *testing.T) {
 		require.Len(t, results, 1)
 		assert.Equal(t, "tpmkms:name=good", results[0].Name)
 
-		// ...and the failure is reported as a *apiv1.KeyError naming the key.
+		// ...and the failure is reported with the underlying error wrapped and
+		// the key it concerns named.
 		require.Len(t, errs, 1)
-		var ke *apiv1.KeyError
-		require.True(t, errors.As(errs[0], &ke))
-		assert.Equal(t, "tpmkms:name=bad", ke.Name)
 		assert.ErrorIs(t, errs[0], badErr)
+		assert.Contains(t, errs[0].Error(), "tpmkms:name=bad")
 	})
 
 	t.Run("name filter", func(t *testing.T) {
@@ -111,14 +110,14 @@ func TestTPMKMS_keyNamesBySubjectKeyID(t *testing.T) {
 	require.NoError(t, err)
 	goodSKIHex := hex.EncodeToString(goodSKI)
 
-	t.Run("partial: keeps loaded keys, returns partial error", func(t *testing.T) {
-		badErr := &apiv1.KeyError{Name: "tpmkms:name=bad", Err: errors.New("NTE_BAD_KEYSET")}
+	t.Run("partial: keeps loaded keys, surfaces the failure", func(t *testing.T) {
+		badErr := errors.New("NTE_BAD_KEYSET")
 		k := &TPMKMS{
 			searchKeysFn: func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+				// best-effort: one key loaded, the search also reports a failure.
 				return &apiv1.SearchKeysResponse{
-						Results: []apiv1.SearchKeyResult{{Name: "tpmkms:name=good", PublicKey: goodSigner.Public()}},
-					},
-					&apiv1.PartialError{Errors: []error{badErr}}
+					Results: []apiv1.SearchKeyResult{{Name: "tpmkms:name=good", PublicKey: goodSigner.Public()}},
+				}, badErr
 			},
 		}
 
@@ -128,12 +127,8 @@ func TestTPMKMS_keyNamesBySubjectKeyID(t *testing.T) {
 		require.Len(t, m, 1)
 		assert.Equal(t, "tpmkms:name=good", m[goodSKIHex])
 
-		// ...and the partial failure is surfaced.
-		var pe *apiv1.PartialError
-		require.True(t, errors.As(err, &pe))
-		var ke *apiv1.KeyError
-		require.True(t, errors.As(err, &ke))
-		assert.Equal(t, "tpmkms:name=bad", ke.Name)
+		// ...and the failure is surfaced.
+		assert.ErrorIs(t, err, badErr)
 	})
 
 	t.Run("fatal error is returned as-is", func(t *testing.T) {
@@ -148,7 +143,7 @@ func TestTPMKMS_keyNamesBySubjectKeyID(t *testing.T) {
 		assert.ErrorIs(t, err, boom)
 	})
 
-	t.Run("unusable public key folded into partial error", func(t *testing.T) {
+	t.Run("unusable public key folded into error", func(t *testing.T) {
 		k := &TPMKMS{
 			searchKeysFn: func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
 				return &apiv1.SearchKeysResponse{Results: []apiv1.SearchKeyResult{
@@ -163,8 +158,8 @@ func TestTPMKMS_keyNamesBySubjectKeyID(t *testing.T) {
 		require.Len(t, m, 1)
 		assert.Equal(t, "tpmkms:name=good", m[goodSKIHex])
 
-		// the unusable one becomes a partial error.
-		var pe *apiv1.PartialError
-		require.True(t, errors.As(err, &pe))
+		// the unusable one is surfaced as an error, naming the offending key.
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tpmkms:name=weird")
 	})
 }

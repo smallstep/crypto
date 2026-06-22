@@ -158,55 +158,6 @@ func (e NotFoundError) Is(target error) bool {
 	return ok
 }
 
-// KeyError associates a failure with the specific key that caused it. It is
-// typically collected inside a [PartialError] when an operation iterates over
-// multiple keys and only some of them fail (for example a key whose underlying
-// keyset can no longer be loaded).
-type KeyError struct {
-	// Name identifies the key that failed, usually a KMS URI.
-	Name string
-	// Err is the underlying failure.
-	Err error
-}
-
-func (e *KeyError) Error() string {
-	return fmt.Sprintf("key %q: %v", e.Name, e.Err)
-}
-
-func (e *KeyError) Unwrap() error {
-	return e.Err
-}
-
-// PartialError reports that an operation completed for some items but failed
-// for others. The successful results are returned through the operation's
-// normal return value; the per-item failures are collected in Errors.
-//
-// It is returned, for example, by best-effort key enumeration: callers that
-// can make progress with a subset of the results should check for it with
-// [errors.As] and continue using the returned results, while callers that
-// require completeness can treat it as fatal. The individual failures are
-// available through [errors.Is]/[errors.As] via Unwrap.
-type PartialError struct {
-	// Errors holds the failures that occurred while the operation otherwise
-	// made progress. Each entry is often a [*KeyError].
-	Errors []error
-}
-
-func (e *PartialError) Error() string {
-	switch len(e.Errors) {
-	case 0:
-		return "partial failure"
-	case 1:
-		return fmt.Sprintf("1 item failed: %v", e.Errors[0])
-	default:
-		return fmt.Sprintf("%d items failed: %v", len(e.Errors), errors.Join(e.Errors...))
-	}
-}
-
-func (e *PartialError) Unwrap() []error {
-	return e.Errors
-}
-
 // Type represents the KMS type used.
 type Type string
 

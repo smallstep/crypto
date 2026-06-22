@@ -2726,13 +2726,12 @@ func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
 	}
 
 	t.Run("partial enumeration", func(t *testing.T) {
-		badKeyErr := &apiv1.KeyError{Name: "tpmkms:name=failed", Err: errors.New("NTE_BAD_KEYSET")}
-		// The search loads some unrelated key but reports the cert's key as failed.
+		badKeyErr := errors.New("NTE_BAD_KEYSET")
+		// The search loads some unrelated key but reports a failure for another.
 		k, mock := newKMS(t, func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
 			return &apiv1.SearchKeysResponse{Results: []apiv1.SearchKeyResult{
-					{Name: "tpmkms:name=unrelated", PublicKey: mustSigner().Public()},
-				}},
-				&apiv1.PartialError{Errors: []error{badKeyErr}}
+				{Name: "tpmkms:name=unrelated", PublicKey: mustSigner().Public()},
+			}}, badKeyErr
 		})
 
 		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
@@ -2745,11 +2744,9 @@ func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
 		// Both expired certs were still cleaned via the direct path...
 		assertBothDeletedWithKey(t, mock)
 
-		// ...and the partial enumeration failure was surfaced, not swallowed.
+		// ...and the enumeration failure was surfaced, not swallowed.
 		require.Error(t, err)
-		var ke *apiv1.KeyError
-		require.True(t, errors.As(err, &ke))
-		assert.Equal(t, "tpmkms:name=failed", ke.Name)
+		assert.ErrorIs(t, err, badKeyErr)
 	})
 
 	t.Run("fatal enumeration falls back to direct delete", func(t *testing.T) {
@@ -2771,6 +2768,6 @@ func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
 		// ...and the enumeration failure is surfaced with context.
 		require.Error(t, err)
 		assert.ErrorIs(t, err, boom)
-		assert.Contains(t, err.Error(), "falling back to direct key deletion")
+		assert.Contains(t, err.Error(), "fall back to direct key deletion")
 	})
 }
