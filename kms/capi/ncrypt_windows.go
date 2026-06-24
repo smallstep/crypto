@@ -620,8 +620,8 @@ func cryptFindCertificateKeyProvInfo(certContext *windows.CertContext, keysetFla
 //
 // containerName is the CNG key (container) name, provName the storage provider
 // (e.g. "Microsoft Platform Crypto Provider"), dwFlags carries keyset flags
-// such as CRYPT_MACHINE_KEYSET, and dwKeySpec is the key spec (CNG keys use
-// CERT_NCRYPT_KEY_SPEC).
+// such as CRYPT_MACHINE_KEYSET, and dwKeySpec is the key spec (non-legacy CNG keys use
+// LEGACY_KEY_SPEC_NONE).
 func setCertificateKeyProvInfo(certContext *windows.CertContext, containerName, provName string, dwFlags, dwKeySpec uint32) error {
 	container, err := windows.UTF16PtrFromString(containerName)
 	if err != nil {
