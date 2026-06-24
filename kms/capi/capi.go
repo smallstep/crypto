@@ -54,6 +54,7 @@ const (
 	IssuerNameArg                = "issuer"
 	KeySpec                      = "key-spec"                  // 0, 1, 2; none/NONE, at_keyexchange/AT_KEYEXCHANGE, at_signature/AT_SIGNATURE
 	SkipFindCertificateKey       = "skip-find-certificate-key" // skips looking up certificate private key when storing a certificate
+	DeleteKeyArg                 = "delete-key"                // when "true" on a DeleteCertificate URI, also deletes the CNG key associated with the certificate
 	KeyScopeArg                  = "key-scope"                 // "machine" or "user"; the keyset that holds the certificate's private key (defaults to store-location)
 )
 
@@ -99,6 +100,7 @@ type uriAttributes struct {
 	description               string
 	keySpec                   string
 	skipFindCertificateKey    bool
+	deleteKey                 bool
 	keyScope                  string
 	pin                       string
 }
@@ -163,6 +165,7 @@ func parseURI(rawuri string) (*uriAttributes, error) {
 		description:               u.Get(DescriptionArg),
 		keySpec:                   u.Get(KeySpec),
 		skipFindCertificateKey:    u.GetBool(SkipFindCertificateKey),
+		deleteKey:                 u.GetBool(DeleteKeyArg),
 		keyScope:                  u.Get(KeyScopeArg),
 		pin:                       u.Pin(),
 	}, nil
@@ -1122,19 +1125,13 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			return nil
 		}
 
-		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
-			return fmt.Errorf("failed removing certificate: %w", err)
-		}
-		return nil
+		return deleteCertContextAndMaybeKey(certHandle, u.deleteKey)
 	case len(u.keyID) > 0:
 		certHandle, err = findCertificateBySubjectKeyID(st, u.keyID)
 		if err != nil {
 			return err
 		}
-		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
-			return fmt.Errorf("failed removing certificate: %w", err)
-		}
-		return nil
+		return deleteCertContextAndMaybeKey(certHandle, u.deleteKey)
 	case u.issuerName != "" && u.serialNumber != nil:
 		// TODO: Replace this search with a CERT_ID + CERT_ISSUER_SERIAL_NUMBER search instead
 		// https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
@@ -1163,11 +1160,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			}
 
 			if bytes.Equal(x509Cert.SerialNumber.Bytes(), serialBytes) {
-				if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
-					return fmt.Errorf("failed removing certificate: %w", err)
-				}
-
-				return nil
+				return deleteCertContextAndMaybeKey(certHandle, u.deleteKey)
 			}
 			prevCert = certHandle
 		}
@@ -1188,48 +1181,148 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		if err != nil {
 			return err
 		}
-		if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
-			return fmt.Errorf("failed removing certificate: %w", err)
-		}
-		return nil
+		return deleteCertContextAndMaybeKey(certHandle, u.deleteKey)
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
 }
 
-// CleanupCredentials implements [apiv1.CredentialsCleaner]. It finds all
-// certificates in the Windows certificate store issued to the subject in req by
-// the issuer in req, and deletes any that have already expired.
-func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
-	certs, err := k.FindCertificatesByIssuer(&apiv1.LoadCertificateRequest{
-		Name: uri.New("capi", url.Values{
-			"issuer":         []string{req.Issuer},
-			"store-location": []string{req.StoreLocation},
-			"store":          []string{req.Store},
-		}).String(),
-	}, req.RawSubject)
-	if err != nil {
-		return fmt.Errorf("failed loading certificates by issuer %q: %w", req.Issuer, err)
-	}
-
-	var deleteErrors []error
-	now := time.Now()
-	for _, cert := range certs {
-		if cert.NotAfter.Before(now) {
-			deleteURI := uri.New("capi", url.Values{
-				"store-location": []string{req.StoreLocation},
-				"store":          []string{req.Store},
-				"issuer":         []string{req.Issuer},
-				"serial":         []string{"0x" + cert.SerialNumber.Text(16)},
-			}).String()
-
-			if err := k.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteURI}); err != nil {
-				deleteErrors = append(deleteErrors, fmt.Errorf("failed deleting expired certificate (serial %s): %w", cert.SerialNumber.Text(16), err))
+// deleteCertContextAndMaybeKey removes the certificate referenced by certHandle
+// from its store, and when deleteKey is true also removes the CNG private key
+// associated with it. The key is removed first so that, if either step fails,
+// the certificate remains and a subsequent pass can retry the cleanup; deleting
+// the cert first risks orphaning the key once the cert is no longer reachable
+// to look up its CRYPT_KEY_PROV_INFO.
+//
+// certHandle is consumed: CertDeleteCertificateFromStore always frees the
+// context (per Microsoft docs); on the bail-out path before the cert delete we
+// free it explicitly.
+func deleteCertContextAndMaybeKey(certHandle *windows.CertContext, deleteKey bool) error {
+	if deleteKey {
+		// best effort: a cert without a CNG-backed key shouldn't fail the call.
+		if kh, err := cryptFindCertificatePrivateKey(certHandle); err == nil {
+			if err := nCryptDeleteKey(kh); err != nil {
+				windows.CertFreeCertificateContext(certHandle)
+				return fmt.Errorf("failed removing CNG private key: %w", err)
 			}
 		}
 	}
 
-	return errors.Join(deleteErrors...)
+	if err := windows.CertDeleteCertificateFromStore(certHandle); err != nil {
+		return fmt.Errorf("failed removing certificate: %w", err)
+	}
+	return nil
+}
+
+// CleanupCredentials implements [apiv1.CredentialsCleaner]. It scans the Windows
+// certificate store identified by req.Name for certificates issued by its
+// "issuer" and removes any that have expired. When req.Name carries
+// "delete-key=true", the CNG private key paired with each expired certificate is
+// removed as well. When req.RawSubject is non-empty, only certificates whose
+// DER-encoded Subject matches are considered.
+func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
+	if req == nil {
+		return errors.New("cleanupCredentialsRequest cannot be nil")
+	}
+
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return err
+	}
+	if u.issuerName == "" {
+		return fmt.Errorf("%q is required", IssuerNameArg)
+	}
+
+	var certStoreLocation uint32
+	switch u.storeLocation {
+	case UserStoreLocation:
+		certStoreLocation = certStoreCurrentUser
+	case MachineStoreLocation:
+		certStoreLocation = certStoreLocalMachine
+	default:
+		return fmt.Errorf("invalid cert store location %q", u.storeLocation)
+	}
+
+	st, err := windows.CertOpenStore(
+		certStoreProvSystem,
+		0,
+		0,
+		certStoreLocation,
+		uintptr(unsafe.Pointer(wide(u.storeName))),
+	)
+	if err != nil {
+		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+	}
+
+	now := time.Now()
+	var errs []error
+
+	// Restart the enumeration after each deletion to avoid juggling cert-context
+	// lifetimes across a delete: CertDeleteCertificateFromStore frees the context
+	// it was given, which would invalidate the "previous" pointer that the next
+	// CertFindCertificateInStore call expects.
+	for {
+		deleted, err := k.cleanupOnePass(st, u.issuerName, req.RawSubject, u.deleteKey, now)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if !deleted {
+			break
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+// cleanupOnePass walks the store looking for the first expired certificate
+// matching issuer (and rawSubject, if set), deletes it (together with its CNG
+// key when deleteKey is true), and returns deleted=true. When no matching
+// expired certificate is found it returns deleted=false and the caller stops
+// iterating. Errors encountered while inspecting individual certificates are
+// returned with deleted=false so the caller can record them and exit (a
+// persistent inspection error would otherwise spin the outer loop forever).
+func (k *CAPIKMS) cleanupOnePass(st windows.Handle, issuer string, rawSubject []byte, deleteKey bool, now time.Time) (bool, error) {
+	// CertFindCertificateInStore frees the context passed as prevCert on each
+	// call, so the previous iteration's handle must not be freed here; only a
+	// handle we stop walking from (an early return below) needs an explicit
+	// free.
+	var prevCert *windows.CertContext
+	for {
+		certHandle, err := findCertificateInStore(st,
+			encodingX509ASN|encodingPKCS7,
+			0,
+			findIssuerStr,
+			uintptr(unsafe.Pointer(wide(issuer))), prevCert)
+		if err != nil {
+			return false, fmt.Errorf("findCertificateInStore failed: %w", err)
+		}
+		if certHandle == nil {
+			// findCertificateInStore returns (nil, nil) when no (further)
+			// certificate matches the issuer: there's nothing left to clean up
+			// and prevCert was already freed by this last call, so just stop.
+			return false, nil
+		}
+
+		x509Cert, err := certContextToX509(certHandle)
+		if err != nil {
+			// We're bailing out without chaining certHandle into another
+			// findCertificateInStore call, so free it explicitly here.
+			windows.CertFreeCertificateContext(certHandle)
+			return false, fmt.Errorf("could not unmarshal certificate: %w", err)
+		}
+
+		matchesSubject := len(rawSubject) == 0 || bytes.Equal(x509Cert.RawSubject, rawSubject)
+		if matchesSubject && x509Cert.NotAfter.Before(now) {
+			// deleteCertContextAndMaybeKey consumes certHandle (the cert delete
+			// frees it), so no explicit free is needed on this path.
+			if err := deleteCertContextAndMaybeKey(certHandle, deleteKey); err != nil {
+				return false, fmt.Errorf("failed deleting expired certificate (serial %s): %w", x509Cert.SerialNumber.Text(16), err)
+			}
+			return true, nil
+		}
+		// Carry certHandle forward; the next findCertificateInStore call frees it.
+		prevCert = certHandle
+	}
 }
 
 func (k *CAPIKMS) getKeyFlags(u *uriAttributes) (uint32, error) {
@@ -1357,4 +1450,7 @@ func validateIntermediateCertificate(c *x509.Certificate) error {
 	return nil
 }
 
-var _ apiv1.CertificateManager = (*CAPIKMS)(nil)
+var (
+	_ apiv1.CertificateManager = (*CAPIKMS)(nil)
+	_ apiv1.CredentialsCleaner = (*CAPIKMS)(nil)
+)

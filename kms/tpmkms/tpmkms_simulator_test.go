@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,6 +30,7 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/tpm"
 	tpmp "go.step.sm/crypto/tpm"
@@ -2501,4 +2503,271 @@ func TestTPMKMS_CreateKey_machineScopedAKAttestation(t *testing.T) {
 		Bits:               1024,
 	})
 	require.Error(t, err)
+}
+
+// fakeDeleteCall records a DeleteCertificate invocation made against the fake
+// Windows certificate manager.
+type fakeDeleteCall struct {
+	serial    string
+	deleteKey bool
+}
+
+// fakeWindowsCertificateManager is a minimal capiCertificateManager used to
+// drive TPMKMS.CleanupCredentials without a real Windows certificate store.
+type fakeWindowsCertificateManager struct {
+	certs       []*x509.Certificate
+	findErr     error
+	deleteErr   error
+	deleteCalls []fakeDeleteCall
+}
+
+func (m *fakeWindowsCertificateManager) FindCertificatesByIssuer(*apiv1.LoadCertificateRequest, []byte) ([]*x509.Certificate, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	return m.certs, nil
+}
+
+func (m *fakeWindowsCertificateManager) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
+	u, err := uri.ParseWithScheme("capi", req.Name)
+	if err != nil {
+		return err
+	}
+	m.deleteCalls = append(m.deleteCalls, fakeDeleteCall{
+		serial:    u.Get("serial"),
+		deleteKey: u.GetBool("delete-key"),
+	})
+	return m.deleteErr
+}
+
+func (m *fakeWindowsCertificateManager) LoadCertificateChain(*apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
+	return nil, nil
+}
+func (m *fakeWindowsCertificateManager) StoreCertificateChain(*apiv1.StoreCertificateChainRequest) error {
+	return nil
+}
+func (m *fakeWindowsCertificateManager) CleanupCredentials(*apiv1.CleanupCredentialsRequest) error {
+	return nil
+}
+
+func TestTPMKMS_CleanupCredentials(t *testing.T) {
+	ctx := context.Background()
+
+	expired := time.Now().Add(-time.Hour)
+	valid := time.Now().Add(time.Hour)
+
+	certFor := func(serial int64, pub crypto.PublicKey, notAfter time.Time) *x509.Certificate {
+		return &x509.Certificate{
+			SerialNumber: big.NewInt(serial),
+			PublicKey:    pub,
+			NotAfter:     notAfter,
+		}
+	}
+
+	// setup builds a fresh simulated TPM with two managed keys plus an orphan
+	// public key, and a fake certificate manager listing: a managed expired
+	// cert (serial 1), an orphan expired cert (serial 2), and a managed but
+	// still-valid cert (serial 3).
+	setup := func(t *testing.T) (*TPMKMS, *fakeWindowsCertificateManager, *tpmp.TPM) {
+		t.Helper()
+		sim := newSimulatedTPM(t)
+
+		key1, err := sim.CreateKey(ctx, "key1", tpmp.CreateKeyConfig{Algorithm: "RSA", Size: 2048})
+		require.NoError(t, err)
+		signer1, err := key1.Signer(ctx)
+		require.NoError(t, err)
+
+		key2, err := sim.CreateKey(ctx, "key2", tpmp.CreateKeyConfig{Algorithm: "RSA", Size: 2048})
+		require.NoError(t, err)
+		signer2, err := key2.Signer(ctx)
+		require.NoError(t, err)
+
+		orphanKey, err := keyutil.GenerateKey("RSA", "", 2048)
+		require.NoError(t, err)
+		orphanSigner, ok := orphanKey.(crypto.Signer)
+		require.True(t, ok)
+
+		mock := &fakeWindowsCertificateManager{
+			certs: []*x509.Certificate{
+				certFor(1, signer1.Public(), expired),
+				certFor(2, orphanSigner.Public(), expired),
+				certFor(3, signer2.Public(), valid),
+			},
+		}
+
+		k := &TPMKMS{
+			tpm:                       sim,
+			windowsCertificateManager: mock,
+			opts: &options{
+				windowsCertificateStoreLocation: "user",
+				windowsCertificateStore:         "My",
+			},
+		}
+
+		return k, mock, sim
+	}
+
+	deleteKeyBySerial := func(calls []fakeDeleteCall) map[string]bool {
+		m := make(map[string]bool, len(calls))
+		for _, c := range calls {
+			m[c.serial] = c.deleteKey
+		}
+		return m
+	}
+
+	t.Run("delete-key=true", func(t *testing.T) {
+		k, mock, sim := setup(t)
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer":     []string{"Test CA"},
+				"delete-key": []string{"true"},
+			}).String(),
+		})
+		require.NoError(t, err)
+
+		// The managed key behind the expired cert was fully torn down; the key
+		// behind the still-valid cert remains.
+		_, err = sim.GetKey(ctx, "key1")
+		assert.ErrorIs(t, err, tpm.ErrNotFound)
+		_, err = sim.GetKey(ctx, "key2")
+		assert.NoError(t, err)
+
+		// Only the two expired certs are deleted, each with the expected delete-key flag.
+		require.Len(t, mock.deleteCalls, 2)
+		bySerial := deleteKeyBySerial(mock.deleteCalls)
+		assert.False(t, bySerial["0x1"], "managed key already removed by DeleteKey, cert delete must not set delete-key")
+		assert.True(t, bySerial["0x2"], "orphan cert must fall back to direct CNG key deletion")
+	})
+
+	t.Run("delete-key=false", func(t *testing.T) {
+		k, mock, sim := setup(t)
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer": []string{"Test CA"},
+			}).String(),
+		})
+		require.NoError(t, err)
+
+		// No keys are deleted when delete-key isn't requested.
+		_, err = sim.GetKey(ctx, "key1")
+		assert.NoError(t, err)
+		_, err = sim.GetKey(ctx, "key2")
+		assert.NoError(t, err)
+
+		// Both expired certs are deleted, none requesting key deletion.
+		require.Len(t, mock.deleteCalls, 2)
+		bySerial := deleteKeyBySerial(mock.deleteCalls)
+		assert.False(t, bySerial["0x1"])
+		assert.False(t, bySerial["0x2"])
+	})
+
+	t.Run("missing issuer", func(t *testing.T) {
+		k, _, _ := setup(t)
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{"delete-key": []string{"true"}}).String(),
+		})
+		assert.Error(t, err)
+	})
+}
+
+// TestTPMKMS_CleanupCredentials_keyEnumerationDegraded asserts that a degraded
+// key inventory (the regression behind the original NTE_BAD_KEYSET report)
+// never blocks deletion of expired certificates: certs whose key couldn't be
+// enumerated fall through to the direct CNG deletion path, and the enumeration
+// failure is surfaced rather than aborting the cleanup. The key search is
+// injected via the searchKeysFn seam so no live TPM is required.
+func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
+	expired := time.Now().Add(-time.Hour)
+
+	mustSigner := func() crypto.Signer {
+		key, err := keyutil.GenerateKey("RSA", "", 2048)
+		require.NoError(t, err)
+		signer, ok := key.(crypto.Signer)
+		require.True(t, ok)
+		return signer
+	}
+
+	// Two expired certs whose keys are NOT in the (degraded) inventory, so both
+	// must take the orphan/direct-delete path. None map to a loaded key, so
+	// DeleteKey is never invoked and a TPM is unnecessary.
+	failedKey := mustSigner()
+	orphanKey := mustSigner()
+
+	newKMS := func(t *testing.T, searchKeysFn func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error)) (*TPMKMS, *fakeWindowsCertificateManager) {
+		t.Helper()
+		mock := &fakeWindowsCertificateManager{
+			certs: []*x509.Certificate{
+				{SerialNumber: big.NewInt(1), PublicKey: failedKey.Public(), NotAfter: expired},
+				{SerialNumber: big.NewInt(2), PublicKey: orphanKey.Public(), NotAfter: expired},
+			},
+		}
+		k := &TPMKMS{
+			windowsCertificateManager: mock,
+			opts: &options{
+				windowsCertificateStoreLocation: "user",
+				windowsCertificateStore:         "My",
+			},
+			searchKeysFn: searchKeysFn,
+		}
+		return k, mock
+	}
+
+	assertBothDeletedWithKey := func(t *testing.T, mock *fakeWindowsCertificateManager) {
+		t.Helper()
+		require.Len(t, mock.deleteCalls, 2)
+		bySerial := make(map[string]bool, len(mock.deleteCalls))
+		for _, c := range mock.deleteCalls {
+			bySerial[c.serial] = c.deleteKey
+		}
+		assert.True(t, bySerial["0x1"], "cert whose key failed to load must direct-delete its key")
+		assert.True(t, bySerial["0x2"], "orphan cert must direct-delete its key")
+	}
+
+	t.Run("partial enumeration", func(t *testing.T) {
+		badKeyErr := errors.New("NTE_BAD_KEYSET")
+		// The search loads some unrelated key but reports a failure for another.
+		k, mock := newKMS(t, func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+			return &apiv1.SearchKeysResponse{Results: []apiv1.SearchKeyResult{
+				{Name: "tpmkms:name=unrelated", PublicKey: mustSigner().Public()},
+			}}, badKeyErr
+		})
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer":     []string{"Test CA"},
+				"delete-key": []string{"true"},
+			}).String(),
+		})
+
+		// Both expired certs were still cleaned via the direct path...
+		assertBothDeletedWithKey(t, mock)
+
+		// ...and the enumeration failure was surfaced, not swallowed.
+		require.Error(t, err)
+		assert.ErrorIs(t, err, badKeyErr)
+	})
+
+	t.Run("fatal enumeration falls back to direct delete", func(t *testing.T) {
+		boom := errors.New("tpm unavailable")
+		k, mock := newKMS(t, func(*apiv1.SearchKeysRequest) (*apiv1.SearchKeysResponse, error) {
+			return nil, boom
+		})
+
+		err := k.CleanupCredentials(&apiv1.CleanupCredentialsRequest{
+			Name: uri.New(Scheme, url.Values{
+				"issuer":     []string{"Test CA"},
+				"delete-key": []string{"true"},
+			}).String(),
+		})
+
+		// Cleanup still removed both expired certs and their keys directly...
+		assertBothDeletedWithKey(t, mock)
+
+		// ...and the enumeration failure is surfaced with context.
+		require.Error(t, err)
+		assert.ErrorIs(t, err, boom)
+		assert.Contains(t, err.Error(), "fall back to direct key deletion")
+	})
 }

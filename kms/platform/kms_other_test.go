@@ -49,11 +49,11 @@ func TestKMS_CleanupCredentials_other(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"not implemented", platformKMS, args{&apiv1.CleanupCredentialsRequest{
+			Name: uri.New("kms", url.Values{
+				"issuer": []string{chain[0].Issuer.CommonName},
+			}).String(),
 			RawSubject: chain[0].RawSubject,
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
-			if platformKMS.Type() == apiv1.TPMKMS {
-				return assert.NoError(t, err)
-			}
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}

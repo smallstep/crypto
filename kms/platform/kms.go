@@ -283,22 +283,45 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 		r := clone(req)
 		r.Query = query
 		resp, err := km.SearchKeys(r)
-		if err != nil {
+
+		// SearchKeys is best-effort: the backend may return usable results
+		// alongside an error describing the keys it couldn't load. For the
+		// tpmkms backend this happens when a key's signer can't be loaded — a
+		// corrupt or unreadable TPM or PCP/CNG keyset (e.g. NTE_BAD_KEYSET on
+		// Windows, or a CNG container removed out of band) — or when the TPM
+		// can't be enumerated at all. Forward whatever results came back (after
+		// patching their URIs) together with that error, so callers can use the
+		// subset and still see what failed. Only a response we can't patch is
+		// fatal.
+		if resp == nil {
 			return nil, err
 		}
 
-		return k.patchSearchKeysResponse(resp)
+		patched, patchErr := k.patchSearchKeysResponse(resp)
+		if patchErr != nil {
+			return nil, patchErr
+		}
+
+		return patched, err
 	}
 
 	return nil, apiv1.NotImplementedError{}
 }
 
 func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
-	if km, ok := k.backend.(apiv1.CredentialsCleaner); ok {
-		return km.CleanupCredentials(req)
+	km, ok := k.backend.(apiv1.CredentialsCleaner)
+	if !ok {
+		return apiv1.NotImplementedError{}
 	}
 
-	return apiv1.NotImplementedError{}
+	name, err := k.transformToURI(req.Name)
+	if err != nil {
+		return err
+	}
+
+	r := clone(req)
+	r.Name = name
+	return km.CleanupCredentials(r)
 }
 
 func (k *KMS) patchCreateKeyResponse(resp *apiv1.CreateKeyResponse) (*apiv1.CreateKeyResponse, error) {

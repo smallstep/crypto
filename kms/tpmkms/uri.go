@@ -27,6 +27,10 @@ type objectProperties struct {
 	sha1                      string
 	serial                    string
 	issuer                    string
+	// deleteKey, when true on a CleanupCredentials URI, requests that the
+	// private key paired with each expired certificate is removed along with
+	// the certificate.
+	deleteKey bool
 	// keyScope, if set, is one of "machine" or "user". It controls
 	// whether the underlying private key lives in the local machine key
 	// store or in the current user's key store, and is independent of
@@ -89,6 +93,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		o.sha1 = u.Get("sha1")
 		o.serial = u.Get("serial")
 		o.issuer = u.Get("issuer")
+		o.deleteKey = u.GetBool("delete-key")
 
 		// key-scope is independent of store-location: cert location and
 		// key ownership are orthogonal Windows concepts. See [machineKey]
