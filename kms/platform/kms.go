@@ -284,11 +284,15 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 		r.Query = query
 		resp, err := km.SearchKeys(r)
 
-		// SearchKeys is best-effort: it may return usable results alongside an
-		// error describing the keys it couldn't load. Forward whatever results
-		// came back (after patching their URIs) together with that error, so
-		// callers can use the subset and still see what failed. Only a response
-		// we can't patch is fatal.
+		// SearchKeys is best-effort: the backend may return usable results
+		// alongside an error describing the keys it couldn't load. For the
+		// tpmkms backend this happens when a key's signer can't be loaded — a
+		// corrupt or unreadable TPM or PCP/CNG keyset (e.g. NTE_BAD_KEYSET on
+		// Windows, or a CNG container removed out of band) — or when the TPM
+		// can't be enumerated at all. Forward whatever results came back (after
+		// patching their URIs) together with that error, so callers can use the
+		// subset and still see what failed. Only a response we can't patch is
+		// fatal.
 		if resp == nil {
 			return nil, err
 		}

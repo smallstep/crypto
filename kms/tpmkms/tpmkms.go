@@ -1581,6 +1581,16 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 //   - "tpmkms:name=my-name;ak=true" will only return the AK with the selected name
 //   - "tpmkms:name=my-name;ak=false" will only return the application key with the selected name
 //
+// SearchKeys is best-effort. Enumerating the keys (ListKeys/ListAKs) or loading
+// an individual key's signer can fail when the TPM can't be opened, its backing
+// storage can't be read, or a key's material is corrupt or no longer present —
+// for example a Windows PCP/CNG keyset reporting NTE_BAD_KEYSET, or a CNG key
+// container removed out of band. Rather than failing the whole search over one
+// bad key, it returns the keys it could load together with a joined error
+// describing the ones it could not. Callers that need every key should treat a
+// non-nil error as fatal; callers that can work with a subset (e.g. credential
+// cleanup) can use the returned results regardless.
+//
 // # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
