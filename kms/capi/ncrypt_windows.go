@@ -70,7 +70,6 @@ const (
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
 	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
-	ncryptKeySpec     = 0xFFFFFFFF // CERT_NCRYPT_KEY_SPEC
 
 	BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 	BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB"
@@ -107,8 +106,9 @@ const (
 	CERT_SIMPLE_NAME_STR     = uint32(1)
 	CERT_X500_NAME_STR       = uint32(3)
 
-	AT_KEYEXCHANGE = uint32(1)
-	AT_SIGNATURE   = uint32(2)
+	LEGACY_KEY_SPEC_NONE = uint32(0)
+	AT_KEYEXCHANGE       = uint32(1)
+	AT_SIGNATURE         = uint32(2)
 
 	// Legacy CryptoAPI flags
 	bCryptPadPKCS1 = uint32(2)

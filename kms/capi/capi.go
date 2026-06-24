@@ -952,7 +952,7 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		if u.isMachineKeyset() {
 			flags |= CRYPT_MACHINE_KEYSET
 		}
-		if err := setCertificateKeyProvInfo(certContext, u.keyContainerName, u.providerName, flags, ncryptKeySpec); err != nil {
+		if err := setCertificateKeyProvInfo(certContext, u.keyContainerName, u.providerName, flags, LEGACY_KEY_SPEC_NONE); err != nil {
 			return fmt.Errorf("failed associating certificate with key %q: %w", u.keyContainerName, err)
 		}
 	case !u.skipFindCertificateKey:
