@@ -187,6 +187,8 @@ const (
 	// PlatformKMS is the KMS implementation that uses TPMKMS on Windows and
 	// Linux and MacKMS on macOS.
 	PlatformKMS Type = "kms"
+	// ScalewayKMS is a KMS implementation using Scaleway Key Manager.
+	ScalewayKMS Type = "scwkms"
 )
 
 // TypeOf returns the type of of the given uri.
@@ -213,7 +215,7 @@ func (t Type) Validate() error {
 	switch typ {
 	case DefaultKMS, SoftKMS: // Go crypto based kms.
 		return nil
-	case CloudKMS, AmazonKMS, AzureKMS: // Cloud based kms.
+	case CloudKMS, AmazonKMS, AzureKMS, ScalewayKMS: // Cloud based kms.
 		return nil
 	case YubiKey, PKCS11, TPMKMS: // Hardware based kms.
 		return nil
