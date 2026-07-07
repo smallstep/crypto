@@ -18,17 +18,43 @@ import (
 	"go.step.sm/crypto/tpm/tss2"
 )
 
+// parseTestURI parses rawURI as a tpmkms URI, or returns nil for "".
+func parseTestURI(t *testing.T, rawURI string) *uri.URI {
+	t.Helper()
+	if rawURI == "" {
+		return nil
+	}
+	u, err := uri.ParseWithScheme(Scheme, rawURI)
+	require.NoError(t, err)
+	return u
+}
+
+// assertCacheDisabled applies dirOpts to a fresh dirstore and asserts whether an
+// out-of-band delete by a second handle is reflected (cache disabled) or masked
+// (cache enabled) on the reader's next read.
+func assertCacheDisabled(t *testing.T, dirOpts []storage.DirstoreOption, disabled bool) {
+	t.Helper()
+
+	dir := t.TempDir()
+	writer := storage.NewDirstore(dir)
+	require.NoError(t, writer.AddAK(&storage.AK{Name: "ak"}))
+
+	reader := storage.NewDirstore(dir, dirOpts...)
+	_, err := reader.GetAK("ak") // populate the cache when enabled
+	require.NoError(t, err)
+
+	require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
+
+	_, err = reader.GetAK("ak")
+	if disabled {
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
 func TestParseDirstoreOptions(t *testing.T) {
 	t.Parallel()
-
-	parse := func(t *testing.T, rawURI string) *uri.URI {
-		if rawURI == "" {
-			return nil
-		}
-		u, err := uri.ParseWithScheme(Scheme, rawURI)
-		require.NoError(t, err)
-		return u
-	}
 
 	tests := []struct {
 		name string
@@ -46,23 +72,38 @@ func TestParseDirstoreOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			assertCacheDisabled(t, parseDirstoreOptions(parseTestURI(t, tt.uri)), tt.reflectsDelete)
+		})
+	}
+}
 
-			dir := t.TempDir()
-			writer := storage.NewDirstore(dir)
-			require.NoError(t, writer.AddAK(&storage.AK{Name: "ak"}))
+// TestResolveStorageDirectory covers the directory + cache-size resolution that
+// New performs: the URI's storage-directory wins over opts.StorageDirectory,
+// which wins over the default "tpm", and storage-cache-size threads through.
+func TestResolveStorageDirectory(t *testing.T) {
+	t.Parallel()
 
-			reader := storage.NewDirstore(dir, parseDirstoreOptions(parse(t, tt.uri))...)
-			_, err := reader.GetAK("ak") // populate the cache when enabled
-			require.NoError(t, err)
+	tests := []struct {
+		name          string
+		opts          apiv1.Options
+		uri           string
+		wantDir       string
+		cacheDisabled bool
+	}{
+		{"default", apiv1.Options{}, "", "tpm", false},
+		{"opts-directory", apiv1.Options{StorageDirectory: "opts-dir"}, "", "opts-dir", false},
+		{"uri-directory", apiv1.Options{}, "tpmkms:storage-directory=uri-dir", "uri-dir", false},
+		{"uri-overrides-opts", apiv1.Options{StorageDirectory: "opts-dir"}, "tpmkms:storage-directory=uri-dir", "uri-dir", false},
+		{"cache-disabled-keeps-opts-dir", apiv1.Options{StorageDirectory: "opts-dir"}, "tpmkms:storage-cache-size=0", "opts-dir", true},
+		{"uri-directory-and-cache", apiv1.Options{}, "tpmkms:storage-directory=uri-dir;storage-cache-size=0", "uri-dir", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-			require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
-
-			_, err = reader.GetAK("ak")
-			if tt.reflectsDelete {
-				require.ErrorIs(t, err, storage.ErrNotFound)
-			} else {
-				require.NoError(t, err)
-			}
+			dir, dirOpts := resolveStorageDirectory(tt.opts, parseTestURI(t, tt.uri))
+			require.Equal(t, tt.wantDir, dir)
+			assertCacheDisabled(t, dirOpts, tt.cacheDisabled)
 		})
 	}
 }

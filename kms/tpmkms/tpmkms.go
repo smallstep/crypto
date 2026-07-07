@@ -200,6 +200,24 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	return opts
 }
 
+// resolveStorageDirectory returns the TPM storage directory and dirstore
+// options that [New] uses for the given options and parsed URI. The directory
+// precedence is: a storage-directory in the URI wins, otherwise
+// opts.StorageDirectory, otherwise the default "tpm". The dirstore options
+// (e.g. the cache size) come from the URI via parseDirstoreOptions.
+func resolveStorageDirectory(opts apiv1.Options, u *uri.URI) (string, []storage.DirstoreOption) {
+	directory := "tpm" // store TPM objects in a relative tpm directory by default.
+	if opts.StorageDirectory != "" {
+		directory = opts.StorageDirectory
+	}
+	if u != nil {
+		if d := u.Get("storage-directory"); d != "" {
+			directory = d
+		}
+	}
+	return directory, parseDirstoreOptions(u)
+}
+
 // parseDirstoreOptions returns the [storage.DirstoreOption]s encoded in the
 // URI. It currently supports storage-cache-size, the maximum size in bytes of
 // the dirstore's in-memory read cache; setting it to 0 (or any negative value)
@@ -404,18 +422,14 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		uriOptions = ParseOptions(u)
 	}
 
-	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
-	if opts.StorageDirectory != "" {
-		storageDirectory = opts.StorageDirectory
-	}
+	storageDirectory, dirstoreOptions := resolveStorageDirectory(opts, u)
 	tpmOpts := []tpm.NewTPMOption{
-		tpm.WithStore(storage.NewDirstore(storageDirectory, parseDirstoreOptions(u)...)),
+		tpm.WithStore(storage.NewDirstore(storageDirectory, dirstoreOptions...)),
 	}
 	if u != nil {
-		// When the URI carries its own storage-directory this appends a second
-		// WithStore that overrides the default above; ParseTPMOptions applies
-		// the same dirstore options.
-		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
+		if device := u.Get("device"); device != "" {
+			tpmOpts = append(tpmOpts, tpm.WithDeviceName(device))
+		}
 	}
 
 	t, err := tpm.New(tpmOpts...)
