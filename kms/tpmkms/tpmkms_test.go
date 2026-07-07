@@ -12,9 +12,60 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
+	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
 )
+
+func TestParseDirstoreOptions(t *testing.T) {
+	t.Parallel()
+
+	parse := func(t *testing.T, rawURI string) *uri.URI {
+		if rawURI == "" {
+			return nil
+		}
+		u, err := uri.ParseWithScheme(Scheme, rawURI)
+		require.NoError(t, err)
+		return u
+	}
+
+	tests := []struct {
+		name string
+		uri  string
+		// reflectsDelete is true when the resulting store has caching disabled,
+		// so a blob deleted by another handle is observed on the next read.
+		reflectsDelete bool
+	}{
+		{"nil-uri", "", false},
+		{"no-cache-param", "tpmkms:storage-directory=x", false},
+		{"cache-disabled", "tpmkms:storage-cache-size=0", true},
+		{"cache-custom", "tpmkms:storage-cache-size=4096", false},
+		{"negative-ignored", "tpmkms:storage-cache-size=-1", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writer := storage.NewDirstore(dir)
+			require.NoError(t, writer.AddAK(&storage.AK{Name: "ak"}))
+
+			reader := storage.NewDirstore(dir, parseDirstoreOptions(parse(t, tt.uri))...)
+			_, err := reader.GetAK("ak") // populate the cache when enabled
+			require.NoError(t, err)
+
+			require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
+
+			_, err = reader.GetAK("ak")
+			if tt.reflectsDelete {
+				require.ErrorIs(t, err, storage.ErrNotFound)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
 
 func TestNew(t *testing.T) {
 	type args struct {

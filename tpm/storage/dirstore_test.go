@@ -37,6 +37,74 @@ func Test_inverseTransform(t *testing.T) {
 	assert.Equal(t, "/path/to/file", got)
 }
 
+func TestNewDirstore_cacheSize(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		store := NewDirstore(t.TempDir())
+		assert.Equal(t, uint64(defaultCacheSizeMax), store.store.CacheSizeMax)
+	})
+
+	t.Run("custom", func(t *testing.T) {
+		t.Parallel()
+		store := NewDirstore(t.TempDir(), WithCacheSize(4096))
+		assert.Equal(t, uint64(4096), store.store.CacheSizeMax)
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+		store := NewDirstore(t.TempDir(), WithCacheSize(0))
+		assert.Equal(t, uint64(0), store.store.CacheSizeMax)
+	})
+}
+
+// TestDirstore_noCacheReflectsOutOfBandDelete verifies that with caching
+// disabled a Dirstore reflects a blob deleted by a separate handle, whereas the
+// default cached store keeps serving the stale value it previously read. This
+// is the property that lets the agent probe an AK blob and observe its deletion
+// without rebuilding the store handle.
+func TestDirstore_noCacheReflectsOutOfBandDelete(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cached serves stale read", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writer := NewDirstore(dir)
+		require.NoError(t, writer.AddAK(&AK{Name: "ak"}))
+
+		reader := NewDirstore(dir)
+		ak, err := reader.GetAK("ak") // populates reader's cache
+		require.NoError(t, err)
+		require.Equal(t, "ak", ak.Name)
+
+		require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
+
+		// The cached reader still reports the AK as present.
+		ak, err = reader.GetAK("ak")
+		require.NoError(t, err)
+		require.Equal(t, "ak", ak.Name)
+	})
+
+	t.Run("uncached reflects delete", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writer := NewDirstore(dir)
+		require.NoError(t, writer.AddAK(&AK{Name: "ak"}))
+
+		reader := NewDirstore(dir, WithCacheSize(0))
+		ak, err := reader.GetAK("ak")
+		require.NoError(t, err)
+		require.Equal(t, "ak", ak.Name)
+
+		require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
+
+		// The uncached reader reflects the current on-disk state.
+		_, err = reader.GetAK("ak")
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+}
+
 func TestDirstore_KeyOperations(t *testing.T) {
 	t.Parallel()
 

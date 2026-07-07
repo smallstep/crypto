@@ -195,7 +195,22 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 		opts = append(opts, tpm.WithDeviceName(device))
 	}
 	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
-		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
+		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory, parseDirstoreOptions(u)...)))
+	}
+	return opts
+}
+
+// parseDirstoreOptions returns the [storage.DirstoreOption]s encoded in the
+// URI. It currently supports storage-cache-size, the maximum size in bytes of
+// the dirstore's in-memory read cache; setting it to 0 disables caching so
+// every read reflects the current on-disk state. A negative value is ignored.
+func parseDirstoreOptions(u *uri.URI) []storage.DirstoreOption {
+	if u == nil {
+		return nil
+	}
+	var opts []storage.DirstoreOption
+	if size := u.GetInt("storage-cache-size"); size != nil && *size >= 0 {
+		opts = append(opts, storage.WithCacheSize(uint64(*size)))
 	}
 	return opts
 }
@@ -371,24 +386,29 @@ const (
 // your use case, use a tpm.TPM instance instead.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	var uriOptions []Option
+	var u *uri.URI
+
+	// Parse the URI up front so the default store below can honor any storage
+	// options it carries (e.g. storage-cache-size).
+	if opts.URI != "" {
+		if u, err = uri.ParseWithScheme(Scheme, opts.URI); err != nil {
+			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
+		}
+		uriOptions = ParseOptions(u)
+	}
 
 	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
 	if opts.StorageDirectory != "" {
 		storageDirectory = opts.StorageDirectory
 	}
 	tpmOpts := []tpm.NewTPMOption{
-		tpm.WithStore(storage.NewDirstore(storageDirectory)),
+		tpm.WithStore(storage.NewDirstore(storageDirectory, parseDirstoreOptions(u)...)),
 	}
-
-	// Get other options from URI
-	if opts.URI != "" {
-		u, err := uri.ParseWithScheme(Scheme, opts.URI)
-		if err != nil {
-			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
-		}
-
+	if u != nil {
+		// When the URI carries its own storage-directory this appends a second
+		// WithStore that overrides the default above; ParseTPMOptions applies
+		// the same dirstore options.
 		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
-		uriOptions = ParseOptions(u)
 	}
 
 	t, err := tpm.New(tpmOpts...)
