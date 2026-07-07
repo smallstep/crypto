@@ -202,15 +202,22 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 
 // parseDirstoreOptions returns the [storage.DirstoreOption]s encoded in the
 // URI. It currently supports storage-cache-size, the maximum size in bytes of
-// the dirstore's in-memory read cache; setting it to 0 disables caching so
-// every read reflects the current on-disk state. A negative value is ignored.
+// the dirstore's in-memory read cache; setting it to 0 (or any negative value)
+// disables caching so every read reflects the current on-disk state.
 func parseDirstoreOptions(u *uri.URI) []storage.DirstoreOption {
 	if u == nil {
 		return nil
 	}
 	var opts []storage.DirstoreOption
-	if size := u.GetInt("storage-cache-size"); size != nil && *size >= 0 {
-		opts = append(opts, storage.WithCacheSize(uint64(*size)))
+	if size := u.GetInt("storage-cache-size"); size != nil {
+		// A negative size is meaningless for a cache budget; treat it as 0
+		// (disabled) rather than silently keeping the default — less surprising
+		// than ignoring it.
+		cacheSize := uint64(0)
+		if *size > 0 {
+			cacheSize = uint64(*size)
+		}
+		opts = append(opts, storage.WithCacheSize(cacheSize))
 	}
 	return opts
 }

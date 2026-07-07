@@ -41,7 +41,7 @@ func TestParseDirstoreOptions(t *testing.T) {
 		{"no-cache-param", "tpmkms:storage-directory=x", false},
 		{"cache-disabled", "tpmkms:storage-cache-size=0", true},
 		{"cache-custom", "tpmkms:storage-cache-size=4096", false},
-		{"negative-ignored", "tpmkms:storage-cache-size=-1", false},
+		{"negative-disables", "tpmkms:storage-cache-size=-1", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
