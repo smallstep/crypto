@@ -88,6 +88,12 @@ func NewDirstore(directory string, opts ...DirstoreOption) *Dirstore {
 	}
 }
 
+// CacheSize returns the maximum size, in bytes, of the in-memory read cache the
+// Dirstore keeps in front of the on-disk store. Zero means caching is disabled.
+func (s *Dirstore) CacheSize() uint64 {
+	return s.store.CacheSizeMax
+}
+
 func (s *Dirstore) ListKeys() ([]*Key, error) {
 	var result = make([]*Key, 0)
 	c := s.store.KeysPrefix(keyPrefix, nil)

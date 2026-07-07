@@ -108,6 +108,51 @@ func TestResolveStorageDirectory(t *testing.T) {
 	}
 }
 
+// TestNew_storeConstruction drives New and asserts the storage directory and
+// cache size it actually builds the backing dirstore with, via the newDirstore
+// seam. It is the end-to-end counterpart to TestResolveStorageDirectory.
+func TestNew_storeConstruction(t *testing.T) {
+	// New mutates the package-level newDirstore seam, so run serially.
+	orig := newDirstore
+	t.Cleanup(func() { newDirstore = orig })
+
+	tests := []struct {
+		name    string
+		opts    apiv1.Options
+		wantDir string
+		// wantCache is the expected CacheSize; when defaultCache is set, only
+		// that caching stays enabled is asserted (no coupling to the constant).
+		wantCache    uint64
+		defaultCache bool
+	}{
+		{"opts directory, default cache", apiv1.Options{StorageDirectory: "opts-dir"}, "opts-dir", 0, true},
+		{"uri overrides opts directory", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-directory=uri-dir"}, "uri-dir", 0, true},
+		{"cache disabled", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-cache-size=0"}, "opts-dir", 0, false},
+		{"cache custom", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-cache-size=4096"}, "opts-dir", 4096, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotDir string
+			var gotStore *storage.Dirstore
+			newDirstore = func(dir string, opts ...storage.DirstoreOption) *storage.Dirstore {
+				gotDir = dir
+				gotStore = orig(dir, opts...)
+				return gotStore
+			}
+
+			_, err := New(context.Background(), tt.opts)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDir, gotDir)
+			require.NotNil(t, gotStore)
+			if tt.defaultCache {
+				require.NotZero(t, gotStore.CacheSize(), "expected caching enabled by default")
+			} else {
+				require.Equal(t, tt.wantCache, gotStore.CacheSize())
+			}
+		})
+	}
+}
+
 func TestNew(t *testing.T) {
 	type args struct {
 		opts apiv1.Options

@@ -200,6 +200,10 @@ func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
 	return opts
 }
 
+// newDirstore constructs the dirstore backing a [New] TPMKMS. It is a package
+// var so tests can observe the storage directory and options New resolves.
+var newDirstore = storage.NewDirstore
+
 // resolveStorageDirectory returns the TPM storage directory and dirstore
 // options that [New] uses for the given options and parsed URI. The directory
 // precedence is: a storage-directory in the URI wins, otherwise
@@ -424,7 +428,7 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 
 	storageDirectory, dirstoreOptions := resolveStorageDirectory(opts, u)
 	tpmOpts := []tpm.NewTPMOption{
-		tpm.WithStore(storage.NewDirstore(storageDirectory, dirstoreOptions...)),
+		tpm.WithStore(newDirstore(storageDirectory, dirstoreOptions...)),
 	}
 	if u != nil {
 		if device := u.Get("device"); device != "" {
