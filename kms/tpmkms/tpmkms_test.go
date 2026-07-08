@@ -77,37 +77,6 @@ func TestParseDirstoreOptions(t *testing.T) {
 	}
 }
 
-// TestResolveStorageDirectory covers the directory + cache-size resolution that
-// New performs: the URI's storage-directory wins over opts.StorageDirectory,
-// which wins over the default "tpm", and storage-cache-size threads through.
-func TestResolveStorageDirectory(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		opts          apiv1.Options
-		uri           string
-		wantDir       string
-		cacheDisabled bool
-	}{
-		{"default", apiv1.Options{}, "", "tpm", false},
-		{"opts-directory", apiv1.Options{StorageDirectory: "opts-dir"}, "", "opts-dir", false},
-		{"uri-directory", apiv1.Options{}, "tpmkms:storage-directory=uri-dir", "uri-dir", false},
-		{"uri-overrides-opts", apiv1.Options{StorageDirectory: "opts-dir"}, "tpmkms:storage-directory=uri-dir", "uri-dir", false},
-		{"cache-disabled-keeps-opts-dir", apiv1.Options{StorageDirectory: "opts-dir"}, "tpmkms:storage-cache-size=0", "opts-dir", true},
-		{"uri-directory-and-cache", apiv1.Options{}, "tpmkms:storage-directory=uri-dir;storage-cache-size=0", "uri-dir", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			dir, dirOpts := resolveStorageDirectory(tt.opts, parseTestURI(t, tt.uri))
-			require.Equal(t, tt.wantDir, dir)
-			assertCacheDisabled(t, dirOpts, tt.cacheDisabled)
-		})
-	}
-}
-
 // TestNew_storeConstruction drives New and asserts the storage directory and
 // cache size it actually builds the backing dirstore with, via the newDirstore
 // seam. It is the end-to-end counterpart to TestResolveStorageDirectory.
@@ -125,6 +94,7 @@ func TestNew_storeConstruction(t *testing.T) {
 		wantCache    uint64
 		defaultCache bool
 	}{
+		{"default directory and cache", apiv1.Options{}, "tpm", 0, true},
 		{"opts directory, default cache", apiv1.Options{StorageDirectory: "opts-dir"}, "opts-dir", 0, true},
 		{"uri overrides opts directory", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-directory=uri-dir"}, "uri-dir", 0, true},
 		{"cache disabled", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-cache-size=0"}, "opts-dir", 0, false},

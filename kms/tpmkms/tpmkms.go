@@ -190,36 +190,40 @@ func WithWindowsIntermediateStore(store, location string) Option {
 // ParseTPMOptions is a helper method that returns a slice of [tpm.NewTPMOption]
 // for the given URI.
 func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
-	var opts []tpm.NewTPMOption
-	if device := u.Get("device"); device != "" {
-		opts = append(opts, tpm.WithDeviceName(device))
-	}
-	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
-		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory, parseDirstoreOptions(u)...)))
-	}
-	return opts
+	return tpmOptionsForURI(u, "")
 }
 
-// newDirstore constructs the dirstore backing a [New] TPMKMS. It is a package
-// var so tests can observe the storage directory and options New resolves.
+// newDirstore constructs the dirstore backing the TPM. It is a package var so
+// tests can observe the storage directory and options it is built with.
 var newDirstore = storage.NewDirstore
 
-// resolveStorageDirectory returns the TPM storage directory and dirstore
-// options that [New] uses for the given options and parsed URI. The directory
-// precedence is: a storage-directory in the URI wins, otherwise
-// opts.StorageDirectory, otherwise the default "tpm". The dirstore options
-// (e.g. the cache size) come from the URI via parseDirstoreOptions.
-func resolveStorageDirectory(opts apiv1.Options, u *uri.URI) (string, []storage.DirstoreOption) {
-	directory := "tpm" // store TPM objects in a relative tpm directory by default.
-	if opts.StorageDirectory != "" {
-		directory = opts.StorageDirectory
-	}
+// tpmOptionsForURI returns the [tpm.NewTPMOption]s encoded in u — the device
+// name and a dirstore (with any storage-cache-size applied). It is the single
+// place that turns a URI into TPM options, shared by [ParseTPMOptions] and
+// [New].
+//
+// The store is built from the URI's storage-directory when present, otherwise
+// from defaultStorageDirectory; when both are empty no store option is added,
+// so the caller falls back to tpm.New's default store. The dirstore is created
+// through newDirstore so tests can observe it.
+func tpmOptionsForURI(u *uri.URI, defaultStorageDirectory string) []tpm.NewTPMOption {
+	var device, directory string
 	if u != nil {
-		if d := u.Get("storage-directory"); d != "" {
-			directory = d
-		}
+		device = u.Get("device")
+		directory = u.Get("storage-directory")
 	}
-	return directory, parseDirstoreOptions(u)
+	if directory == "" {
+		directory = defaultStorageDirectory
+	}
+
+	var opts []tpm.NewTPMOption
+	if device != "" {
+		opts = append(opts, tpm.WithDeviceName(device))
+	}
+	if directory != "" {
+		opts = append(opts, tpm.WithStore(newDirstore(directory, parseDirstoreOptions(u)...)))
+	}
+	return opts
 }
 
 // parseDirstoreOptions returns the [storage.DirstoreOption]s encoded in the
@@ -417,8 +421,6 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	var uriOptions []Option
 	var u *uri.URI
 
-	// Parse the URI up front so the default store below can honor any storage
-	// options it carries (e.g. storage-cache-size).
 	if opts.URI != "" {
 		if u, err = uri.ParseWithScheme(Scheme, opts.URI); err != nil {
 			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
@@ -426,17 +428,15 @@ func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 		uriOptions = ParseOptions(u)
 	}
 
-	storageDirectory, dirstoreOptions := resolveStorageDirectory(opts, u)
-	tpmOpts := []tpm.NewTPMOption{
-		tpm.WithStore(newDirstore(storageDirectory, dirstoreOptions...)),
-	}
-	if u != nil {
-		if device := u.Get("device"); device != "" {
-			tpmOpts = append(tpmOpts, tpm.WithDeviceName(device))
-		}
+	// Store TPM objects in a relative "tpm" directory by default; a
+	// storage-directory in the URI takes precedence (handled in
+	// tpmOptionsForURI).
+	storageDirectory := "tpm"
+	if opts.StorageDirectory != "" {
+		storageDirectory = opts.StorageDirectory
 	}
 
-	t, err := tpm.New(tpmOpts...)
+	t, err := tpm.New(tpmOptionsForURI(u, storageDirectory)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new TPM: %w", err)
 	}
