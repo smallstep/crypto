@@ -43,18 +43,55 @@ func inverseTransform(pathKey *diskv.PathKey) (key string) {
 	return
 }
 
+// defaultCacheSizeMax is the default upper bound, in bytes, for the in-memory
+// cache the backing diskv store keeps in front of the on-disk files.
+const defaultCacheSizeMax = 1024 * 1024
+
+// dirstoreOptions holds the configurable settings for a [Dirstore].
+type dirstoreOptions struct {
+	cacheSizeMax uint64
+}
+
+// DirstoreOption configures a [Dirstore] created with [NewDirstore].
+type DirstoreOption func(*dirstoreOptions)
+
+// WithCacheSize sets the maximum size, in bytes, of the in-memory cache the
+// [Dirstore] keeps in front of the on-disk store. A value of 0 disables
+// caching entirely, so every read hits disk.
+//
+// Disabling the cache is useful when the backing directory may be mutated by
+// another handle out of band (for example, a stale key blob deleted by a
+// separate store instance): with caching enabled a previously read value would
+// still be served from memory, whereas an uncached store always reflects the
+// current on-disk state.
+func WithCacheSize(size uint64) DirstoreOption {
+	return func(o *dirstoreOptions) {
+		o.cacheSizeMax = size
+	}
+}
+
 // NewDirstore creates a new instance of a Direstore.
-func NewDirstore(directory string) *Dirstore {
+func NewDirstore(directory string, opts ...DirstoreOption) *Dirstore {
+	o := &dirstoreOptions{cacheSizeMax: defaultCacheSizeMax}
+	for _, opt := range opts {
+		opt(o)
+	}
 	return &Dirstore{
 		store: diskv.New(diskv.Options{
 			BasePath:          directory,
 			AdvancedTransform: advancedTransform,
 			InverseTransform:  inverseTransform,
-			CacheSizeMax:      1024 * 1024,
+			CacheSizeMax:      o.cacheSizeMax,
 			// TODO(hs): add TempDir for atomic operations?
 		}),
 		directory: directory,
 	}
+}
+
+// CacheSize returns the maximum size, in bytes, of the in-memory read cache the
+// Dirstore keeps in front of the on-disk store. Zero means caching is disabled.
+func (s *Dirstore) CacheSize() uint64 {
+	return s.store.CacheSizeMax
 }
 
 func (s *Dirstore) ListKeys() ([]*Key, error) {

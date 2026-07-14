@@ -190,12 +190,60 @@ func WithWindowsIntermediateStore(store, location string) Option {
 // ParseTPMOptions is a helper method that returns a slice of [tpm.NewTPMOption]
 // for the given URI.
 func ParseTPMOptions(u *uri.URI) []tpm.NewTPMOption {
+	return tpmOptionsForURI(u, "")
+}
+
+// newDirstore constructs the dirstore backing the TPM. It is a package var so
+// tests can observe the storage directory and options it is built with.
+var newDirstore = storage.NewDirstore
+
+// tpmOptionsForURI returns the [tpm.NewTPMOption]s encoded in u — the device
+// name and a dirstore (with any storage-cache-size applied). It is the single
+// place that turns a URI into TPM options, shared by [ParseTPMOptions] and
+// [New].
+//
+// The store is built from the URI's storage-directory when present, otherwise
+// from defaultStorageDirectory; when both are empty no store option is added,
+// so the caller falls back to tpm.New's default store. The dirstore is created
+// through newDirstore so tests can observe it.
+func tpmOptionsForURI(u *uri.URI, defaultStorageDirectory string) []tpm.NewTPMOption {
+	var device, directory string
+	if u != nil {
+		device = u.Get("device")
+		directory = u.Get("storage-directory")
+	}
+	if directory == "" {
+		directory = defaultStorageDirectory
+	}
+
 	var opts []tpm.NewTPMOption
-	if device := u.Get("device"); device != "" {
+	if device != "" {
 		opts = append(opts, tpm.WithDeviceName(device))
 	}
-	if storageDirectory := u.Get("storage-directory"); storageDirectory != "" {
-		opts = append(opts, tpm.WithStore(storage.NewDirstore(storageDirectory)))
+	if directory != "" {
+		opts = append(opts, tpm.WithStore(newDirstore(directory, parseDirstoreOptions(u)...)))
+	}
+	return opts
+}
+
+// parseDirstoreOptions returns the [storage.DirstoreOption]s encoded in the
+// URI. It currently supports storage-cache-size, the maximum size in bytes of
+// the dirstore's in-memory read cache; setting it to 0 (or any negative value)
+// disables caching so every read reflects the current on-disk state.
+func parseDirstoreOptions(u *uri.URI) []storage.DirstoreOption {
+	if u == nil {
+		return nil
+	}
+	var opts []storage.DirstoreOption
+	if size := u.GetInt("storage-cache-size"); size != nil {
+		// A negative size is meaningless for a cache budget; treat it as 0
+		// (disabled) rather than silently keeping the default — less surprising
+		// than ignoring it.
+		cacheSize := uint64(0)
+		if *size > 0 {
+			cacheSize = uint64(*size)
+		}
+		opts = append(opts, storage.WithCacheSize(cacheSize))
 	}
 	return opts
 }
@@ -371,27 +419,24 @@ const (
 // your use case, use a tpm.TPM instance instead.
 func New(ctx context.Context, opts apiv1.Options) (kms *TPMKMS, err error) {
 	var uriOptions []Option
+	var u *uri.URI
 
-	storageDirectory := "tpm" // store TPM objects in a relative tpm directory by default.
-	if opts.StorageDirectory != "" {
-		storageDirectory = opts.StorageDirectory
-	}
-	tpmOpts := []tpm.NewTPMOption{
-		tpm.WithStore(storage.NewDirstore(storageDirectory)),
-	}
-
-	// Get other options from URI
 	if opts.URI != "" {
-		u, err := uri.ParseWithScheme(Scheme, opts.URI)
-		if err != nil {
+		if u, err = uri.ParseWithScheme(Scheme, opts.URI); err != nil {
 			return nil, fmt.Errorf("failed parsing %q as URI: %w", opts.URI, err)
 		}
-
-		tpmOpts = append(tpmOpts, ParseTPMOptions(u)...)
 		uriOptions = ParseOptions(u)
 	}
 
-	t, err := tpm.New(tpmOpts...)
+	// Store TPM objects in a relative "tpm" directory by default; a
+	// storage-directory in the URI takes precedence (handled in
+	// tpmOptionsForURI).
+	storageDirectory := "tpm"
+	if opts.StorageDirectory != "" {
+		storageDirectory = opts.StorageDirectory
+	}
+
+	t, err := tpm.New(tpmOptionsForURI(u, storageDirectory)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating new TPM: %w", err)
 	}

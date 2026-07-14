@@ -12,9 +12,116 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
+	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
 )
+
+// parseTestURI parses rawURI as a tpmkms URI, or returns nil for "".
+func parseTestURI(t *testing.T, rawURI string) *uri.URI {
+	t.Helper()
+	if rawURI == "" {
+		return nil
+	}
+	u, err := uri.ParseWithScheme(Scheme, rawURI)
+	require.NoError(t, err)
+	return u
+}
+
+// assertCacheDisabled applies dirOpts to a fresh dirstore and asserts whether an
+// out-of-band delete by a second handle is reflected (cache disabled) or masked
+// (cache enabled) on the reader's next read.
+func assertCacheDisabled(t *testing.T, dirOpts []storage.DirstoreOption, disabled bool) {
+	t.Helper()
+
+	dir := t.TempDir()
+	writer := storage.NewDirstore(dir)
+	require.NoError(t, writer.AddAK(&storage.AK{Name: "ak"}))
+
+	reader := storage.NewDirstore(dir, dirOpts...)
+	_, err := reader.GetAK("ak") // populate the cache when enabled
+	require.NoError(t, err)
+
+	require.NoError(t, writer.DeleteAK("ak")) // out-of-band delete
+
+	_, err = reader.GetAK("ak")
+	if disabled {
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
+func TestParseDirstoreOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		uri  string
+		// reflectsDelete is true when the resulting store has caching disabled,
+		// so a blob deleted by another handle is observed on the next read.
+		reflectsDelete bool
+	}{
+		{"nil-uri", "", false},
+		{"no-cache-param", "tpmkms:storage-directory=x", false},
+		{"cache-disabled", "tpmkms:storage-cache-size=0", true},
+		{"cache-custom", "tpmkms:storage-cache-size=4096", false},
+		{"negative-disables", "tpmkms:storage-cache-size=-1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assertCacheDisabled(t, parseDirstoreOptions(parseTestURI(t, tt.uri)), tt.reflectsDelete)
+		})
+	}
+}
+
+// TestNew_storeConstruction drives New and asserts the storage directory and
+// cache size it actually builds the backing dirstore with, via the newDirstore
+// seam. It is the end-to-end counterpart to TestResolveStorageDirectory.
+func TestNew_storeConstruction(t *testing.T) {
+	// New mutates the package-level newDirstore seam, so run serially.
+	orig := newDirstore
+	t.Cleanup(func() { newDirstore = orig })
+
+	tests := []struct {
+		name    string
+		opts    apiv1.Options
+		wantDir string
+		// wantCache is the expected CacheSize; when defaultCache is set, only
+		// that caching stays enabled is asserted (no coupling to the constant).
+		wantCache    uint64
+		defaultCache bool
+	}{
+		{"default directory and cache", apiv1.Options{}, "tpm", 0, true},
+		{"opts directory, default cache", apiv1.Options{StorageDirectory: "opts-dir"}, "opts-dir", 0, true},
+		{"uri overrides opts directory", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-directory=uri-dir"}, "uri-dir", 0, true},
+		{"cache disabled", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-cache-size=0"}, "opts-dir", 0, false},
+		{"cache custom", apiv1.Options{StorageDirectory: "opts-dir", URI: "tpmkms:storage-cache-size=4096"}, "opts-dir", 4096, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotDir string
+			var gotStore *storage.Dirstore
+			newDirstore = func(dir string, opts ...storage.DirstoreOption) *storage.Dirstore {
+				gotDir = dir
+				gotStore = orig(dir, opts...)
+				return gotStore
+			}
+
+			_, err := New(context.Background(), tt.opts)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDir, gotDir)
+			require.NotNil(t, gotStore)
+			if tt.defaultCache {
+				require.NotZero(t, gotStore.CacheSize(), "expected caching enabled by default")
+			} else {
+				require.Equal(t, tt.wantCache, gotStore.CacheSize())
+			}
+		})
+	}
+}
 
 func TestNew(t *testing.T) {
 	type args struct {
