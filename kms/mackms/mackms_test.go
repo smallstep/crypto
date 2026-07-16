@@ -578,6 +578,125 @@ func Test_parseURI(t *testing.T) {
 	}
 }
 
+func Test_parseCertURI(t *testing.T) {
+	type args struct {
+		rawuri                    string
+		useDataProtectionKeychain bool
+		requireValue              bool
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *certAttributes
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok label", args{"mackms:label=the-label", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok bare label", args{"the-label", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok label simple uri", args{"mackms:the-label", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok uppercase scheme", args{"MACKMS:label=the-label", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok serial hex", args{"mackms:serial=0x0102", false, true}, &certAttributes{serialNumber: big.NewInt(0x0102)}, assert.NoError},
+		{"ok serial decimal", args{"mackms:serial=123456", false, true}, &certAttributes{serialNumber: big.NewInt(123456)}, assert.NoError},
+		{"ok label and serial", args{"mackms:label=the-label;serial=0x01", false, true}, &certAttributes{label: "the-label", serialNumber: big.NewInt(1)}, assert.NoError},
+		{"ok cn", args{"mackms:cn=My+Cert", false, true}, &certAttributes{commonName: "My Cert"}, assert.NoError},
+		{"ok cn percent encoded", args{"mackms:cn=My%20Cert", false, true}, &certAttributes{commonName: "My Cert"}, assert.NoError},
+		{"ok subject components", args{"mackms:cn=leaf;o=Smallstep;ou=Eng;l=San+Francisco;st=California;c=US", false, true}, &certAttributes{
+			commonName:         "leaf",
+			organization:       []string{"Smallstep"},
+			organizationalUnit: []string{"Eng"},
+			locality:           []string{"San Francisco"},
+			province:           []string{"California"},
+			country:            []string{"US"},
+		}, assert.NoError},
+		{"ok repeated ou", args{"mackms:ou=a;ou=b", false, true}, &certAttributes{organizationalUnit: []string{"a", "b"}}, assert.NoError},
+		{"ok label serial and cn", args{"mackms:label=the-label;serial=0x01;cn=leaf", false, true}, &certAttributes{label: "the-label", serialNumber: big.NewInt(1), commonName: "leaf"}, assert.NoError},
+		{"ok empty subject values", args{"mackms:label=the-label;o=;ou=", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok empty cn with label", args{"mackms:cn=;label=the-label", false, true}, &certAttributes{label: "the-label"}, assert.NoError},
+		{"ok keychain", args{"mackms:label=the-label;keychain=dataProtection", false, true}, &certAttributes{label: "the-label", keychain: "dataProtection", useDataProtectionKeychain: true}, assert.NoError},
+		{"ok default data protection", args{"mackms:label=the-label", true, true}, &certAttributes{label: "the-label", useDataProtectionKeychain: true}, assert.NoError},
+		{"ok no require value", args{"mackms:", false, false}, &certAttributes{}, assert.NoError},
+		{"ok bare cn is a label", args{"mackms:cn", false, true}, &certAttributes{label: "cn"}, assert.NoError},
+		{"ok bare cn equal is a label", args{"mackms:cn=", false, true}, &certAttributes{label: "cn"}, assert.NoError},
+		{"fail require value", args{"mackms:", false, true}, nil, assert.Error},
+		{"fail keychain only", args{"mackms:keychain=login", false, true}, nil, assert.Error},
+		{"fail bad serial", args{"mackms:serial=010a020b030z", false, true}, nil, assert.Error},
+		{"fail parse", args{"mackms:%label=the-label", false, true}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseCertURI(tt.args.rawuri, tt.args.useDataProtectionKeychain, tt.args.requireValue)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_certAttributes_hasSubjectQuery(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs *certAttributes
+		want  bool
+	}{
+		{"empty", &certAttributes{}, false},
+		{"label and serial only", &certAttributes{label: "the-label", serialNumber: big.NewInt(1), keychain: "login"}, false},
+		{"cn", &certAttributes{commonName: "leaf"}, true},
+		{"o", &certAttributes{organization: []string{"Smallstep"}}, true},
+		{"ou", &certAttributes{organizationalUnit: []string{"Eng"}}, true},
+		{"l", &certAttributes{locality: []string{"San Francisco"}}, true},
+		{"st", &certAttributes{province: []string{"California"}}, true},
+		{"c", &certAttributes{country: []string{"US"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.attrs.hasSubjectQuery())
+		})
+	}
+}
+
+func Test_certAttributes_matchesSubject(t *testing.T) {
+	cert := &x509.Certificate{Subject: pkix.Name{
+		CommonName:         "leaf",
+		Organization:       []string{"Smallstep"},
+		OrganizationalUnit: []string{"Eng", "Platform"},
+		Locality:           []string{"San Francisco"},
+		Province:           []string{"California"},
+		Country:            []string{"US"},
+	}}
+
+	tests := []struct {
+		name  string
+		attrs *certAttributes
+		cert  *x509.Certificate
+		want  bool
+	}{
+		{"ok empty query", &certAttributes{label: "the-label"}, cert, true},
+		{"ok cn", &certAttributes{commonName: "leaf"}, cert, true},
+		{"ok all components", &certAttributes{
+			commonName:         "leaf",
+			organization:       []string{"Smallstep"},
+			organizationalUnit: []string{"Eng", "Platform"},
+			locality:           []string{"San Francisco"},
+			province:           []string{"California"},
+			country:            []string{"US"},
+		}, cert, true},
+		{"ok ou subset", &certAttributes{organizationalUnit: []string{"Platform"}}, cert, true},
+		{"fail cn", &certAttributes{commonName: "other"}, cert, false},
+		{"fail cn case sensitive", &certAttributes{commonName: "Leaf"}, cert, false},
+		{"fail ou case sensitive", &certAttributes{organizationalUnit: []string{"eng"}}, cert, false},
+		{"fail and semantics", &certAttributes{commonName: "leaf", organizationalUnit: []string{"Marketing"}}, cert, false},
+		{"fail ou superset", &certAttributes{organizationalUnit: []string{"Eng", "Marketing"}}, cert, false},
+		{"fail o", &certAttributes{organization: []string{"Other"}}, cert, false},
+		{"fail l", &certAttributes{locality: []string{"New York"}}, cert, false},
+		{"fail st", &certAttributes{province: []string{"New York"}}, cert, false},
+		{"fail c", &certAttributes{country: []string{"ES"}}, cert, false},
+		{"fail empty subject", &certAttributes{commonName: "leaf"}, &x509.Certificate{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.attrs.matchesSubject(tt.cert))
+		})
+	}
+}
+
 func Test_parseECDSAPublicKey(t *testing.T) {
 	p256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
@@ -954,6 +1073,127 @@ func TestMacKMS_LoadCertificate_sort(t *testing.T) {
 	assert.Equal(t, cert2, cert)
 }
 
+func TestMacKMS_LoadCertificate_bySubject(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-" + suffix
+
+	now := time.Now().Truncate(time.Second)
+	cert1, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-1-" + suffix,
+			Organization:       []string{"TestOrg"},
+			OrganizationalUnit: []string{"Engineering"},
+			Locality:           []string{"San Francisco"},
+			Province:           []string{"California"},
+			Country:            []string{"US"},
+		},
+		PublicKey: key.Public(),
+		NotBefore: now,
+	})
+	require.NoError(t, err)
+
+	cert2, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-2-" + suffix,
+			Organization:       []string{"TestOrg"},
+			OrganizationalUnit: []string{"Engineering", "Platform"},
+			Locality:           []string{"New York"},
+			Province:           []string{"New York"},
+			Country:            []string{"US"},
+		},
+		PublicKey: key.Public(),
+		NotBefore: now.Add(-time.Second),
+	})
+	require.NoError(t, err)
+
+	cert3, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-3-" + suffix,
+			Organization:       []string{"OtherOrg"},
+			OrganizationalUnit: []string{"Sales"},
+			Country:            []string{"ES"},
+		},
+		PublicKey: key.Public(),
+		NotBefore: now.Add(-2 * time.Second),
+	})
+	require.NoError(t, err)
+
+	kms := &MacKMS{}
+	for _, crt := range []*x509.Certificate{cert1, cert2, cert3} {
+		require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name: "mackms:label=" + label, Certificate: crt,
+		}))
+		t.Cleanup(func() { deleteCertificate(t, label, crt) })
+	}
+
+	isNotFound := func(t assert.TestingT, err error, i ...any) bool {
+		return assert.ErrorIs(t, err, apiv1.NotFoundError{}, i...)
+	}
+
+	type args struct {
+		req *apiv1.LoadCertificateRequest
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      *x509.Certificate
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok cn", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";cn=" + cert2.Subject.CommonName,
+		}}, cert2, assert.NoError},
+		{"ok ou", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";ou=Platform",
+		}}, cert2, assert.NoError},
+		{"ok ou repeated", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";ou=Engineering;ou=Platform",
+		}}, cert2, assert.NoError},
+		{"ok ou multiple matches", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";ou=Engineering",
+		}}, cert1, assert.NoError},
+		{"ok o", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";o=OtherOrg",
+		}}, cert3, assert.NoError},
+		{"ok l with spaces", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";l=San+Francisco",
+		}}, cert1, assert.NoError},
+		{"ok st and c", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";st=New+York;c=US",
+		}}, cert2, assert.NoError},
+		{"ok cn only", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:cn=" + cert1.Subject.CommonName,
+		}}, cert1, assert.NoError},
+		{"ok serial and o", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:serial=" + hex.EncodeToString(cert3.SerialNumber.Bytes()) + ";o=OtherOrg",
+		}}, cert3, assert.NoError},
+		{"fail serial and o", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:serial=" + hex.EncodeToString(cert3.SerialNumber.Bytes()) + ";o=TestOrg",
+		}}, nil, isNotFound},
+		{"fail ou", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";ou=Marketing",
+		}}, nil, isNotFound},
+		{"fail ou case sensitive", args{&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label + ";ou=engineering",
+		}}, nil, isNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &MacKMS{}
+			got, err := k.LoadCertificate(tt.args.req)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestMacKMS_StoreCertificate(t *testing.T) {
 	testName := t.Name()
 
@@ -1151,7 +1391,10 @@ func TestMacKMS_LoadCertificateChain(t *testing.T) {
 	require.NoError(t, err)
 
 	cert, err := ca.Sign(&x509.Certificate{
-		Subject:        pkix.Name{CommonName: testName + "@example.com"},
+		Subject: pkix.Name{
+			CommonName:         testName + "@example.com",
+			OrganizationalUnit: []string{"Engineering"},
+		},
 		EmailAddresses: []string{testName + "@example.com"},
 		PublicKey:      key.Public(),
 	})
@@ -1192,12 +1435,21 @@ func TestMacKMS_LoadCertificateChain(t *testing.T) {
 		{"ok label and serial", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
 			Name: "mackms:labeld=" + cert.Subject.CommonName + ";serial=" + hex.EncodeToString(cert.SerialNumber.Bytes()),
 		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
+		{"ok cn", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:cn=" + cert.Subject.CommonName,
+		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
+		{"ok label and ou", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:label=" + cert.Subject.CommonName + ";ou=Engineering",
+		}}, []*x509.Certificate{cert, ca.Intermediate}, assert.NoError},
 		{"ok self-signed", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
 			Name: "mackms:label=" + ca.Root.Subject.CommonName,
 		}}, []*x509.Certificate{ca.Root}, assert.NoError},
 		{"fail name", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{}}, nil, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "mackms:"}}, nil, assert.Error},
 		{"fail missing", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{Name: "mackms:label=missing-" + testName}}, nil, assert.Error},
+		{"fail ou", &MacKMS{}, args{&apiv1.LoadCertificateChainRequest{
+			Name: "mackms:label=" + cert.Subject.CommonName + ";ou=Marketing",
+		}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
