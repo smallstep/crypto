@@ -698,7 +698,18 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 }
 
 // DeleteCertificate deletes the certificate referenced by the URI in the
-// request name.
+// request name. It deletes at most one certificate.
+//
+// Valid names (URIs) are:
+//   - mackms:label=test@example.com
+//   - mackms:serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:cn=My+Cert;ou=Engineering
+//
+// When subject components ("cn", "o", "ou", "l", "st", "c") are present, the
+// certificate is first located using the same selection rules as
+// [MacKMS.LoadCertificate], and then deleted by its serial number and, when
+// available, its subject key identifier.
 //
 // # Experimental
 //
@@ -718,6 +729,27 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		security.KSecClass:      security.KSecClassCertificate,
 		security.KSecMatchLimit: security.KSecMatchLimitOne,
 	}
+
+	serialNumber := u.serialNumber
+	if u.hasSubjectQuery() {
+		// The keychain cannot match individual subject components. Find the
+		// matching certificate first, using the same selection rules as
+		// LoadCertificate, and delete it by its serial number and, when
+		// available, its subject key identifier.
+		cert, err := loadCertificate(u, nil)
+		if err != nil {
+			return fmt.Errorf("mackms DeleteCertificate failed: %w", apiv1Error(err))
+		}
+		serialNumber = cert.SerialNumber
+		if len(cert.SubjectKeyId) > 0 {
+			cfSubjectKeyID, err := cf.NewData(cert.SubjectKeyId)
+			if err != nil {
+				return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
+			}
+			defer cfSubjectKeyID.Release()
+			query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
+		}
+	}
 	if u.label != "" {
 		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
@@ -726,8 +758,8 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		defer cfLabel.Release()
 		query[security.KSecAttrLabel] = cfLabel
 	}
-	if u.serialNumber != nil {
-		cfSerial, err := cf.NewData(encodeSerialNumber(u.serialNumber))
+	if serialNumber != nil {
+		cfSerial, err := cf.NewData(encodeSerialNumber(serialNumber))
 		if err != nil {
 			return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
 		}
