@@ -1698,6 +1698,117 @@ func TestMacKMS_DeleteCertificate(t *testing.T) {
 	}
 }
 
+func TestMacKMS_DeleteCertificate_bySubject(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-del-" + suffix
+
+	certA, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-a-" + suffix,
+			OrganizationalUnit: []string{"Platform"},
+		},
+		PublicKey: key.Public(),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, certA.SubjectKeyId)
+
+	certB, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-b-" + suffix,
+			OrganizationalUnit: []string{"Engineering"},
+		},
+		PublicKey: key.Public(),
+	})
+	require.NoError(t, err)
+
+	// Create a self-signed certificate without a subject key identifier to
+	// exercise the delete by serial number only. Go only generates the subject
+	// key identifier automatically for CAs.
+	now := time.Now()
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 64))
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: serial.Add(serial, big.NewInt(1)),
+		Subject: pkix.Name{
+			CommonName:         testName + "-c-" + suffix,
+			OrganizationalUnit: []string{"NoSKID"},
+		},
+		NotBefore: now.Add(-time.Hour),
+		NotAfter:  now.Add(time.Hour),
+		KeyUsage:  x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	require.NoError(t, err)
+	certC, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+	require.Empty(t, certC.SubjectKeyId)
+
+	serialURI := func(cert *x509.Certificate) string {
+		return "mackms:serial=0x" + hex.EncodeToString(cert.SerialNumber.Bytes())
+	}
+	existsCheck := func(cert *x509.Certificate) {
+		kms := &MacKMS{}
+		_, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{Name: serialURI(cert)})
+		assert.NoError(t, err)
+	}
+	notExistsCheck := func(cert *x509.Certificate) {
+		kms := &MacKMS{}
+		_, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{Name: serialURI(cert)})
+		assert.ErrorIs(t, err, apiv1.NotFoundError{})
+	}
+
+	kms := &MacKMS{}
+	for _, crt := range []*x509.Certificate{certA, certB, certC} {
+		require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name: "mackms:label=" + label, Certificate: crt,
+		}))
+	}
+	t.Cleanup(func() {
+		// The certificates are deleted by the test itself; this only removes
+		// the leftovers if the test fails early.
+		kms := &MacKMS{}
+		for _, crt := range []*x509.Certificate{certA, certB, certC} {
+			_ = kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: serialURI(crt)})
+		}
+	})
+
+	// Delete by subject removes only the matching certificate.
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: "mackms:label=" + label + ";ou=Platform",
+	}))
+	notExistsCheck(certA)
+	existsCheck(certB)
+	existsCheck(certC)
+
+	// Delete a certificate without a subject key identifier.
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: "mackms:label=" + label + ";ou=NoSKID",
+	}))
+	notExistsCheck(certC)
+	existsCheck(certB)
+
+	// Fail to delete if no certificate matches the subject.
+	err = kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: "mackms:label=" + label + ";ou=Marketing",
+	})
+	assert.ErrorIs(t, err, apiv1.NotFoundError{})
+	existsCheck(certB)
+
+	// Delete using only subject components.
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: "mackms:cn=" + certB.Subject.CommonName,
+	}))
+	notExistsCheck(certB)
+}
+
 func Test_apiv1Error(t *testing.T) {
 	type args struct {
 		err error
