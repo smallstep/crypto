@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 
@@ -63,7 +64,7 @@ func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 		return k.Public(), nil
 	case x25519.PrivateKey:
 		return k.Public(), nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey, *mldsa.PublicKey:
 		return k, nil
 	case crypto.Signer:
 		return k.Public(), nil
@@ -87,7 +88,7 @@ func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 // GenerateKey generates a key of the given type (kty).
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 	switch kty {
-	case "EC", "RSA", "OKP":
+	case "EC", "RSA", "OKP", "MLDSA":
 		return GenerateSigner(kty, crv, size)
 	case "oct":
 		return generateOctKey(size)
@@ -122,6 +123,8 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 		return generateRSAKey(size)
 	case "OKP":
 		return generateOKPKey(crv)
+	case "MLDSA":
+		return mldsa.GenerateSigner(crv)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
@@ -134,7 +137,8 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	case *rsa.PublicKey, *rsa.PrivateKey,
 		*ecdsa.PublicKey, *ecdsa.PrivateKey,
 		ed25519.PublicKey, ed25519.PrivateKey,
-		x25519.PublicKey, x25519.PrivateKey:
+		x25519.PublicKey, x25519.PrivateKey,
+		*mldsa.PublicKey, *mldsa.PrivateKey:
 		return in, nil
 	case []byte:
 		return in, nil
@@ -189,6 +193,12 @@ func Equal(x, y any) bool {
 		return ok && xx.Equal(yy)
 	case x25519.PrivateKey:
 		yy, ok := y.(x25519.PrivateKey)
+		return ok && xx.Equal(yy)
+	case *mldsa.PublicKey:
+		yy, ok := y.(*mldsa.PublicKey)
+		return ok && xx.Equal(yy)
+	case *mldsa.PrivateKey:
+		yy, ok := y.(*mldsa.PrivateKey)
 		return ok && xx.Equal(yy)
 	case []byte: // special case for symmetric keys
 		yy, ok := y.([]byte)

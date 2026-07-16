@@ -24,6 +24,7 @@ import (
 
 	fileutils "go.step.sm/crypto/internal/utils/file"
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 
@@ -558,7 +559,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 	var p *pem.Block
 	var isPrivateKey bool
 	switch k := in.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, *mldsa.PublicKey:
 		b, err := x509.MarshalPKIXPublicKey(k)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -626,6 +627,18 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 				Type:  "PRIVATE KEY",
 				Bytes: b,
 			}
+		}
+	case *mldsa.PrivateKey:
+		// ML-DSA keys are always serialized as PKCS#8.
+		isPrivateKey = true
+		ctx.pkcs8 = true
+		b, err := x509.MarshalPKCS8PrivateKey(k)
+		if err != nil {
+			return nil, err
+		}
+		p = &pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: b,
 		}
 	case *x509.Certificate:
 		p = &pem.Block{
