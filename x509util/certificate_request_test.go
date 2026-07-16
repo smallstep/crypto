@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"go.step.sm/crypto/internal/testutil"
 )
 
 func TestNewCertificateRequest(t *testing.T) {
@@ -408,6 +410,7 @@ func TestCertificateRequest_GetCertificateRequest(t *testing.T) {
 				got.RawSubject = nil
 				got.RawSubjectPublicKeyInfo = nil
 				got.RawTBSCertificateRequest = nil
+				testutil.ClearRawSignatureAlgorithmFromCSR(got)
 				got.Attributes = nil //nolint:staticcheck // testing legacy behavior
 			}
 			if !reflect.DeepEqual(got, tt.want) {
@@ -861,6 +864,7 @@ func TestCreateCertificateRequest(t *testing.T) {
 				tt.want.Attributes = got.Attributes //nolint:staticcheck // testing legacy behavior
 				tt.want.Extensions = got.Extensions
 				tt.want.Signature = got.Signature
+				testutil.ClearRawSignatureAlgorithmFromCSR(got)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateCertificateRequest() = %v, want %v", got, tt.want)
