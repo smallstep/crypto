@@ -26,6 +26,8 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
+
+	"go.step.sm/crypto/internal/testutil"
 )
 
 type keyType int
@@ -1228,6 +1230,7 @@ func TestParseCertificateRequest(t *testing.T) {
 				got.RawSubject = nil
 				got.RawSubjectPublicKeyInfo = nil
 				got.RawTBSCertificateRequest = nil
+				testutil.ClearRawSignatureAlgorithmFromCSR(got)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseCertificateRequest() = \n%#v, want \n%#v", got, tt.want)
@@ -1301,6 +1304,7 @@ func TestReadCertificateRequest(t *testing.T) {
 				got.RawSubject = nil
 				got.RawSubjectPublicKeyInfo = nil
 				got.RawTBSCertificateRequest = nil
+				testutil.ClearRawSignatureAlgorithmFromCSR(got)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReadCertificateRequest() = \n%#v, want \n%#v", got, tt.want)

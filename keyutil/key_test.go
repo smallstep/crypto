@@ -87,7 +87,7 @@ func (eofReader) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
 
-func verifyKeyPair(h crypto.Hash, priv, pub interface{}) error {
+func verifyKeyPair(h crypto.Hash, priv, pub any) error {
 	s, ok := priv.(crypto.Signer)
 	if !ok {
 		return fmt.Errorf("type %T is not a crypto.Signer", priv)
@@ -97,7 +97,12 @@ func verifyKeyPair(h crypto.Hash, priv, pub interface{}) error {
 	if h == crypto.Hash(0) {
 		sum = []byte("a message")
 	} else {
-		sum = h.New().Sum([]byte("a message"))
+		hash := h.New()
+		_, err := hash.Write([]byte("a message"))
+		if err != nil {
+			return fmt.Errorf("hash.Write() error = %w", err)
+		}
+		sum = hash.Sum(nil)
 	}
 	sig, err := s.Sign(randReader, sum, h)
 	if err != nil {
