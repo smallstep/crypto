@@ -52,6 +52,23 @@ const Scheme = string(apiv1.MacKMS)
 // the keys.
 var DefaultTag = "com.smallstep.crypto"
 
+// authPolicy describes the user-authorization requirement enforced by the
+// Secure Enclave for a key's signing operations.
+type authPolicy int
+
+const (
+	// authPolicyNone disables user-authorization. The Secure Enclave signs
+	// without prompting.
+	authPolicyNone authPolicy = iota
+	// authPolicyUserPresence maps to kSecAccessControlUserPresence: any of
+	// Touch ID, Apple Watch, or device passcode satisfies the requirement.
+	authPolicyUserPresence
+	// authPolicyUserVerification maps to kSecAccessControlBiometryCurrentSet:
+	// Touch ID against the currently enrolled biometric set. The key is
+	// invalidated if the biometric enrollment changes.
+	authPolicyUserVerification
+)
+
 type keyAttributes struct {
 	label            string
 	tag              string
@@ -59,6 +76,9 @@ type keyAttributes struct {
 	retry            bool
 	useSecureEnclave bool
 	useBiometrics    bool
+	authPolicy       authPolicy
+	authReuse        time.Duration
+	authReason       string
 	sigAlgorithm     apiv1.SignatureAlgorithm
 	keySize          int
 }
@@ -75,6 +95,9 @@ func (k *keyAttributes) retryAttributes() *keyAttributes {
 		label:            k.label,
 		hash:             k.hash,
 		useSecureEnclave: k.useSecureEnclave,
+		authPolicy:       k.authPolicy,
+		authReuse:        k.authReuse,
+		authReason:       k.authReason,
 		retry:            false,
 	}
 }
@@ -120,6 +143,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //   - mackms:label=my-name;tag=com.smallstep.crypto
 //   - mackms;label=my-name;tag=
 //   - mackms;label=my-name;se=true;bio=true
+//   - mackms:label=my-name;se=true;policy=user-presence;cache=60s
 //
 // GetPublicKey and CreateSigner accepts the above URIs as well as the following
 // ones:
@@ -137,8 +161,23 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 //     Secure Enclave. This option requires the application to be code-signed
 //     with the appropriate entitlements.
 //   - "bio" is a boolean value. If set to true, sign and verify operations
-//     require Touch ID or Face ID. This options requires the key to be in the
-//     Secure Enclave.
+//     require Touch ID or Face ID against the currently enrolled biometric
+//     set. This option requires the key to be in the Secure Enclave. Equivalent
+//     to policy=user-verification.
+//   - "policy" sets the user-authorization requirement enforced by the Secure
+//     Enclave. Requires se=true. Valid values:
+//     "none" (default) — no prompt;
+//     "user-presence" — kSecAccessControlUserPresence (Touch ID, Apple Watch,
+//     or device passcode);
+//     "user-verification" — kSecAccessControlBiometryCurrentSet (Touch ID
+//     against the currently enrolled set; the key is invalidated if the
+//     biometric enrollment changes).
+//   - "cache" is a Go duration string (e.g. "60s"). When set, a successful
+//     authorization is cached for this long before the user is re-prompted.
+//     Maps to LAContext.touchIDAuthenticationAllowableReuseDuration; macOS
+//     clamps values larger than 300s.
+//   - "reason" is the localizedReason shown in the macOS authentication
+//     prompt. Only meaningful when policy is set.
 //   - "hash" corresponds with kSecAttrApplicationLabel. It is the SHA-1 of the
 //     DER representation of an RSA public key using the PKCS #1 format or the
 //     SHA-1 of the uncompressed ECDSA point according to SEC 1, Version 2.0,
@@ -190,7 +229,7 @@ func (k *MacKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 		return nil, fmt.Errorf("mackms GetPublicKey failed: %w", err)
 	}
 
-	key, err := getPrivateKey(u)
+	key, err := getPrivateKey(u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms GetPublicKey failed: %w", apiv1Error(err))
 	}
@@ -251,6 +290,14 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		defer cfTag.Release()
 		keyAttributesDict[security.KSecAttrApplicationTag] = cfTag
 	}
+	// Authorization policies require a Secure Enclave key — there's no
+	// software-only fallback that can enforce the policy at the hardware
+	// level. Reject the combination at creation time rather than silently
+	// downgrading.
+	if !u.useSecureEnclave && u.authPolicy != authPolicyNone {
+		return nil, fmt.Errorf("createKeyRequest: authorization policies require the Secure Enclave (se=true)")
+	}
+
 	if u.useSecureEnclave {
 		// After the first unlock, the data remains accessible until the next
 		// restart. This is recommended for items that need to be accessed by
@@ -260,9 +307,15 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		//
 		// TODO: make this a configuration option
 		flags := security.KSecAccessControlPrivateKeyUsage
-		if u.useBiometrics {
+		switch {
+		case u.authPolicy == authPolicyUserVerification, u.useBiometrics:
+			// bio=true is preserved as a backwards-compatible alias for
+			// policy=user-verification.
 			flags |= security.KSecAccessControlAnd
 			flags |= security.KSecAccessControlBiometryCurrentSet
+		case u.authPolicy == authPolicyUserPresence:
+			flags |= security.KSecAccessControlAnd
+			flags |= security.KSecAccessControlUserPresence
 		}
 		access, err := security.SecAccessControlCreateWithFlags(
 			security.KSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -337,6 +390,18 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 	if u.useBiometrics {
 		name.Values.Set("bio", "true")
 	}
+	switch u.authPolicy {
+	case authPolicyUserPresence:
+		name.Values.Set("policy", "user-presence")
+	case authPolicyUserVerification:
+		name.Values.Set("policy", "user-verification")
+	}
+	if u.authReuse > 0 {
+		name.Values.Set("cache", u.authReuse.String())
+	}
+	if u.authReason != "" {
+		name.Values.Set("reason", u.authReason)
+	}
 
 	return &apiv1.CreateKeyResponse{
 		Name:      name.String(),
@@ -359,7 +424,7 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
 	}
 
-	key, err := getPrivateKey(u)
+	key, err := getPrivateKey(u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mackms CreateSigner failed: %w", apiv1Error(err))
 	}
@@ -778,7 +843,7 @@ func deleteItem(dict cf.Dictionary, hash []byte) error {
 	return nil
 }
 
-func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
+func getPrivateKey(u *keyAttributes, laCtx *security.LAContextRef) (*security.SecKeyRef, error) {
 	dict := cf.Dictionary{
 		security.KSecClass:        security.KSecClassKey,
 		security.KSecAttrKeyClass: security.KSecAttrKeyClassPrivate,
@@ -814,6 +879,9 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 	} else {
 		dict[security.KSecUseDataProtectionKeychain] = cf.False
 	}
+	if laCtx != nil {
+		dict[security.KSecUseAuthenticationContext] = laCtx
+	}
 
 	// Get the query from the keychain
 	query, err := cf.NewDictionary(dict)
@@ -827,7 +895,7 @@ func getPrivateKey(u *keyAttributes) (*security.SecKeyRef, error) {
 		// If not found retry without the tag if it wasn't set.
 		if errors.Is(err, security.ErrNotFound) {
 			if ru := u.retryAttributes(); ru != nil {
-				return getPrivateKey(ru)
+				return getPrivateKey(ru, laCtx)
 			}
 		}
 		return nil, fmt.Errorf("macOS SecItemCopyMatching failed: %w", err)
@@ -1232,6 +1300,7 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 
 	// With regular values, uris look like this:
 	// mackms:label=my-key;tag=my-tag;hash=010a...;se=true;bio=true
+	// mackms:label=my-key;se=true;policy=user-presence;cache=60s
 	label := u.Get("label")
 	if label == "" {
 		return nil, fmt.Errorf("error parsing %q: label is required", rawuri)
@@ -1240,14 +1309,40 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	if tag == "" && !u.Has("tag") {
 		tag = DefaultTag
 	}
-	return &keyAttributes{
+
+	attrs := &keyAttributes{
 		label:            label,
 		tag:              tag,
 		hash:             u.GetEncoded("hash"),
 		retry:            !u.Has("tag"),
 		useSecureEnclave: u.GetBool("se"),
 		useBiometrics:    u.GetBool("bio"),
-	}, nil
+		authReason:       u.Get("reason"),
+	}
+
+	switch strings.ToLower(u.Get("policy")) {
+	case "", "none":
+		// leave authPolicyNone
+	case "user-presence":
+		attrs.authPolicy = authPolicyUserPresence
+	case "user-verification":
+		attrs.authPolicy = authPolicyUserVerification
+	default:
+		return nil, fmt.Errorf("error parsing %q: unknown policy %q", rawuri, u.Get("policy"))
+	}
+
+	if d := u.Get("cache"); d != "" {
+		cache, err := time.ParseDuration(d)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing %q: invalid cache duration: %w", rawuri, err)
+		}
+		if cache < 0 {
+			return nil, fmt.Errorf("error parsing %q: cache duration must be non-negative", rawuri)
+		}
+		attrs.authReuse = cache
+	}
+
+	return attrs, nil
 }
 
 func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (*certAttributes, error) {
