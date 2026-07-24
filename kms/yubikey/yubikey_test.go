@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 
@@ -46,6 +47,7 @@ type stubPivKey struct {
 	serial        uint32
 	serialErr     error
 	closeErr      error
+	closed        int
 }
 
 type symmetricAlgorithm int
@@ -263,6 +265,7 @@ func (s *stubPivKey) Attest(slot piv.Slot) (*x509.Certificate, error) {
 }
 
 func (s *stubPivKey) Close() error {
+	s.closed++
 	return s.closeErr
 }
 
@@ -322,6 +325,16 @@ func TestNew(t *testing.T) {
 			"Yubico YubiKey OTP+FIDO+CCID 01",
 		}, nil
 	}
+	okBuiltInReaderPivCards := func() ([]string, error) {
+		return []string{
+			"Broadcom Corp Contacted SmartCard 0",
+			"Broadcom Corp Contactless SmartCard 0",
+			"Yubico Yubikey 4 OTP+U2F+CCID 0",
+		}, nil
+	}
+	okOtherReaderPivCards := func() ([]string, error) {
+		return []string{"Nitrokey Nitrokey 3 [CCID/ICCD Interface] 00 00"}, nil
+	}
 	failPivCards := func() ([]string, error) {
 		return nil, errors.New("error reading cards")
 	}
@@ -330,6 +343,14 @@ func TestNew(t *testing.T) {
 	}
 
 	okPivOpen := func(card string) (pivKey, error) {
+		return yk, nil
+	}
+	// okYubiKeyPivOpen fails on the readers that don't identify a YubiKey, the
+	// way an empty reader fails in the smart card service.
+	okYubiKeyPivOpen := func(card string) (pivKey, error) {
+		if !isYubiKey(card) {
+			return nil, errors.New("connecting to smart card: the smart card has been removed, so further communication is not possible")
+		}
 		return yk, nil
 	}
 	failPivOpen := func(card string) (pivKey, error) {
@@ -403,6 +424,16 @@ func TestNew(t *testing.T) {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		{"ok with built-in reader", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okBuiltInReaderPivCards
+			pivOpen = okYubiKeyPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico Yubikey 4 OTP+U2F+CCID 0", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with other reader", args{ctx, apiv1.Options{}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okOtherReaderPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", card: "Nitrokey Nitrokey 3 [CCID/ICCD Interface] 00 00", managementKey: piv.DefaultManagementKey}, false},
 		{"fail uri", args{ctx, apiv1.Options{URI: "badschema:"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
@@ -460,6 +491,303 @@ func TestNew(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNew_cardSafety verifies that New does not connect to the readers built in
+// a laptop, even if a card in them could be opened, as opening a card takes
+// exclusive access to it.
+func TestNew_cardSafety(t *testing.T) {
+	pOpen := pivOpen
+	pCards := pivCards
+	t.Cleanup(func() {
+		pivMap = sync.Map{}
+		pivOpen = pOpen
+		pivCards = pCards
+	})
+
+	yk := newStubPivKey(t, ECDSA)
+
+	var opened []string
+	pivMap = sync.Map{}
+	pivCards = func() ([]string, error) {
+		return []string{
+			"Broadcom Corp Contacted SmartCard 0",
+			"Broadcom Corp Contactless SmartCard 0",
+			"Yubico Yubikey 4 OTP+U2F+CCID 0",
+		}, nil
+	}
+	pivOpen = func(card string) (pivKey, error) {
+		opened = append(opened, card)
+		return yk, nil
+	}
+
+	k, err := New(t.Context(), apiv1.Options{})
+	require.NoError(t, err)
+	assert.Equal(t, "Yubico Yubikey 4 OTP+U2F+CCID 0", k.card)
+	assert.Equal(t, []string{"Yubico Yubikey 4 OTP+U2F+CCID 0"}, opened)
+}
+
+func Test_selectCard(t *testing.T) {
+	pOpen := pivOpen
+	t.Cleanup(func() {
+		pivMap = sync.Map{}
+		pivOpen = pOpen
+	})
+
+	const (
+		contacted     = "Broadcom Corp Contacted SmartCard 0"
+		contactless   = "Broadcom Corp Contactless SmartCard 0"
+		yubiKey       = "Yubico Yubikey 4 OTP+U2F+CCID 0"
+		otherYubiKey  = "Yubico YubiKey OTP+FIDO+CCID 01"
+		brokenYubiKey = "Yubico YubiKey OTP+FIDO+CCID 02"
+		nitroKey      = "Nitrokey Nitrokey 3 [CCID/ICCD Interface] 00 00"
+	)
+
+	keys := map[string]*stubPivKey{}
+	for card, serial := range map[string]uint32{
+		contacted:    100001,
+		contactless:  100002,
+		yubiKey:      112233,
+		otherYubiKey: 332211,
+		nitroKey:     445566,
+	} {
+		k := newStubPivKey(t, ECDSA)
+		k.serial = serial
+		keys[card] = k
+	}
+	// A YubiKey that cannot report its serial number.
+	keys[brokenYubiKey] = newStubPivKey(t, ECDSA)
+	keys[brokenYubiKey].serialErr = errors.New("error getting serial number")
+
+	type args struct {
+		cards  []string
+		serial string
+	}
+	tests := []struct {
+		name       string
+		args       args
+		open       []string
+		want       string
+		wantOpened []string
+		wantClosed map[string]int
+		wantCached []string
+		wantErr    bool
+	}{
+		{"ok", args{[]string{yubiKey}, ""},
+			[]string{yubiKey}, yubiKey,
+			[]string{yubiKey}, nil, []string{yubiKey}, false},
+		{"ok with built-in reader", args{[]string{contacted, contactless, yubiKey}, ""},
+			[]string{contacted, contactless, yubiKey}, yubiKey,
+			[]string{yubiKey}, nil, []string{yubiKey}, false},
+		{"ok with built-in reader and serial", args{[]string{contacted, contactless, yubiKey}, "112233"},
+			[]string{contacted, contactless, yubiKey}, yubiKey,
+			[]string{yubiKey}, nil, []string{yubiKey}, false},
+		{"ok with built-in readers only", args{[]string{contacted, contactless}, ""},
+			[]string{contacted, contactless}, contacted,
+			[]string{contacted}, nil, []string{contacted}, false},
+		{"ok with multiple yubikeys", args{[]string{yubiKey, otherYubiKey}, ""},
+			[]string{yubiKey, otherYubiKey}, yubiKey,
+			[]string{yubiKey}, nil, []string{yubiKey}, false},
+		{"ok with multiple yubikeys and serial", args{[]string{yubiKey, otherYubiKey}, "332211"},
+			[]string{yubiKey, otherYubiKey}, otherYubiKey,
+			[]string{yubiKey, otherYubiKey}, map[string]int{yubiKey: 1}, []string{otherYubiKey}, false},
+		{"ok with other reader", args{[]string{nitroKey}, ""},
+			[]string{nitroKey}, nitroKey,
+			[]string{nitroKey}, nil, []string{nitroKey}, false},
+		{"ok with other reader and serial before a yubikey", args{[]string{nitroKey, yubiKey}, "445566"},
+			[]string{nitroKey, yubiKey}, nitroKey,
+			[]string{yubiKey, nitroKey}, map[string]int{yubiKey: 1}, []string{nitroKey}, false},
+		{"ok with yubikey that cannot be opened", args{[]string{nitroKey, yubiKey}, ""},
+			[]string{nitroKey}, nitroKey,
+			[]string{yubiKey, nitroKey}, nil, []string{nitroKey}, false},
+		{"ok with one yubikey that cannot be opened", args{[]string{contacted, yubiKey, otherYubiKey}, ""},
+			[]string{contacted, otherYubiKey}, otherYubiKey,
+			[]string{yubiKey, otherYubiKey}, nil, []string{otherYubiKey}, false},
+		{"ok with yubikey that cannot report its serial", args{[]string{brokenYubiKey, yubiKey}, "112233"},
+			[]string{brokenYubiKey, yubiKey}, yubiKey,
+			[]string{brokenYubiKey, yubiKey}, map[string]int{brokenYubiKey: 1}, []string{yubiKey}, false},
+		{"ok with serial behind a reader that cannot be opened", args{[]string{contacted, nitroKey}, "445566"},
+			[]string{nitroKey}, nitroKey,
+			[]string{contacted, nitroKey}, nil, []string{nitroKey}, false},
+		{"fail no cards", args{[]string{}, ""},
+			nil, "",
+			nil, nil, nil, true},
+		{"fail no yubikey in readers", args{[]string{contacted, contactless}, ""},
+			nil, "",
+			[]string{contacted}, nil, nil, true},
+		{"fail yubikey that cannot be opened", args{[]string{contacted, yubiKey}, ""},
+			nil, "",
+			[]string{yubiKey, contacted}, nil, nil, true},
+		{"fail serial not found", args{[]string{contacted, yubiKey}, "999999"},
+			[]string{contacted, yubiKey}, "",
+			[]string{yubiKey, contacted}, map[string]int{contacted: 1, yubiKey: 1}, nil, true},
+		{"fail serial not found with a reader that cannot be opened", args{[]string{contacted, yubiKey}, "999999"},
+			[]string{yubiKey}, "",
+			[]string{yubiKey, contacted}, map[string]int{yubiKey: 1}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pivMap = sync.Map{}
+			for _, k := range keys {
+				k.closed = 0
+			}
+
+			var opened []string
+			pivOpen = func(card string) (pivKey, error) {
+				opened = append(opened, card)
+				if !slices.Contains(tt.open, card) {
+					return nil, errors.New("connecting to smart card: the smart card has been removed, so further communication is not possible")
+				}
+				return keys[card], nil
+			}
+
+			got, card, err := selectCard(tt.args.cards, tt.args.serial)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("selectCard() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.want == "" {
+				assert.Nil(t, got)
+			} else {
+				assert.Equal(t, keys[tt.want], got)
+			}
+			assert.Equal(t, tt.want, card)
+			assert.Equal(t, tt.wantOpened, opened)
+
+			for name, k := range keys {
+				assert.Equal(t, tt.wantClosed[name], k.closed, "unexpected number of closes of %q", name)
+			}
+
+			var cached []string
+			pivMap.Range(func(k, _ any) bool {
+				cached = append(cached, k.(string))
+				return true
+			})
+			assert.ElementsMatch(t, tt.wantCached, cached)
+		})
+	}
+}
+
+// Test_selectCard_serialNotFound verifies that the error returned when no
+// YubiKey has the given serial number always names the readers that were
+// scanned, even when one of them cannot be opened. An empty reader built in a
+// laptop is the one that fails to open, and an error blaming only that reader,
+// with no mention of the YubiKey that we did read, is the error reported in
+// smallstep/crypto#649.
+func Test_selectCard_serialNotFound(t *testing.T) {
+	pOpen := pivOpen
+	t.Cleanup(func() {
+		pivMap = sync.Map{}
+		pivOpen = pOpen
+	})
+
+	const (
+		contacted = "Broadcom Corp Contacted SmartCard 0"
+		yubiKey   = "Yubico Yubikey 4 OTP+U2F+CCID 0"
+	)
+
+	yk := newStubPivKey(t, ECDSA)
+	yk.serial = 112233
+
+	tests := []struct {
+		name    string
+		open    []string
+		wantErr string
+	}{
+		{"all readers open", []string{contacted, yubiKey},
+			`failed to find key with serial number 999999 in the readers "Yubico Yubikey 4 OTP+U2F+CCID 0", "Broadcom Corp Contacted SmartCard 0"`},
+		{"built-in reader cannot be opened", []string{yubiKey},
+			`failed to find key with serial number 999999 in the readers "Yubico Yubikey 4 OTP+U2F+CCID 0", "Broadcom Corp Contacted SmartCard 0": error opening yubikey in reader "Broadcom Corp Contacted SmartCard 0": error opening card`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pivMap = sync.Map{}
+			pivOpen = func(card string) (pivKey, error) {
+				if !slices.Contains(tt.open, card) {
+					return nil, errors.New("error opening card")
+				}
+				return yk, nil
+			}
+
+			got, card, err := selectCard([]string{contacted, yubiKey}, "999999")
+			assert.EqualError(t, err, tt.wantErr)
+			assert.Nil(t, got)
+			assert.Empty(t, card)
+		})
+	}
+}
+
+// Test_selectCard_serialReadError verifies that the error returned when no
+// YubiKey has the given serial number reports a serial number that we could
+// not read: a reader skipped because its serial read failed must not be listed
+// as scanned with no trace of the failure.
+func Test_selectCard_serialReadError(t *testing.T) {
+	pOpen := pivOpen
+	t.Cleanup(func() {
+		pivMap = sync.Map{}
+		pivOpen = pOpen
+	})
+
+	const (
+		yubiKey       = "Yubico Yubikey 4 OTP+U2F+CCID 0"
+		brokenYubiKey = "Yubico YubiKey OTP+FIDO+CCID 02"
+	)
+
+	yk := newStubPivKey(t, ECDSA)
+	yk.serial = 112233
+	broken := newStubPivKey(t, ECDSA)
+	broken.serialErr = errors.New("error getting serial number")
+	keys := map[string]*stubPivKey{yubiKey: yk, brokenYubiKey: broken}
+
+	pivMap = sync.Map{}
+	pivOpen = func(card string) (pivKey, error) {
+		return keys[card], nil
+	}
+
+	got, card, err := selectCard([]string{brokenYubiKey, yubiKey}, "999999")
+	assert.EqualError(t, err, `failed to find key with serial number 999999 in the readers "Yubico YubiKey OTP+FIDO+CCID 02", "Yubico Yubikey 4 OTP+U2F+CCID 0": error reading the serial number in reader "Yubico YubiKey OTP+FIDO+CCID 02": error getting serial number`)
+	assert.Nil(t, got)
+	assert.Empty(t, card)
+	assert.Equal(t, 1, broken.closed)
+	assert.Equal(t, 1, yk.closed)
+}
+
+// Test_selectCard_cached verifies that the connections loaded from the cache are
+// never closed, as they are in use by another YubiKey.
+func Test_selectCard_cached(t *testing.T) {
+	pOpen := pivOpen
+	t.Cleanup(func() {
+		pivMap = sync.Map{}
+		pivOpen = pOpen
+	})
+
+	const (
+		yubiKey      = "Yubico Yubikey 4 OTP+U2F+CCID 0"
+		otherYubiKey = "Yubico YubiKey OTP+FIDO+CCID 01"
+	)
+
+	yk := newStubPivKey(t, ECDSA)
+	otherYk := newStubPivKey(t, ECDSA)
+	otherYk.serial = 332211
+
+	pivMap = sync.Map{}
+	pivMap.Store(yubiKey, yk)
+	pivMap.Store(otherYubiKey, otherYk)
+	pivOpen = func(card string) (pivKey, error) {
+		t.Errorf("pivOpen(%q) called, want the connection from the cache", card)
+		return nil, errors.New("error opening card")
+	}
+
+	got, card, err := selectCard([]string{yubiKey, otherYubiKey}, "332211")
+	require.NoError(t, err)
+	assert.Equal(t, otherYk, got)
+	assert.Equal(t, otherYubiKey, card)
+	assert.Zero(t, yk.closed)
+	assert.Zero(t, otherYk.closed)
+
+	v, ok := pivMap.Load(yubiKey)
+	assert.True(t, ok)
+	assert.Equal(t, yk, v)
 }
 
 func TestYubiKey_LoadCertificate(t *testing.T) {
