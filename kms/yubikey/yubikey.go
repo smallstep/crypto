@@ -717,7 +717,8 @@ type syncSigner struct {
 func (s *syncSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	m.Lock()
 	defer m.Unlock()
-	return s.Signer.Sign(rand, digest, opts)
+	sig, err := s.Signer.Sign(rand, digest, opts)
+	return sig, wrapTouchHint(err)
 }
 
 // syncDecrypter wraps a crypto.Decrypter with a mutex to avoid the error "smart
@@ -730,7 +731,27 @@ type syncDecrypter struct {
 func (s *syncDecrypter) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 	m.Lock()
 	defer m.Unlock()
-	return s.Decrypter.Decrypt(rand, msg, opts)
+	plaintext, err := s.Decrypter.Decrypt(rand, msg, opts)
+	return plaintext, wrapTouchHint(err)
+}
+
+// wrapTouchHint annotates a 0x6982 "security status not satisfied" card error
+// with a hint that the slot's touch policy may be waiting for a physical touch.
+// The status word is not touch-specific -- it can also mean an unsatisfied PIN
+// or, without the mutex above, concurrent access -- so the hint is conditional.
+//
+// The status is detected through an anonymous interface because piv-go's error
+// type is unexported. If a future piv-go release exposes a sentinel for this
+// status, this can become a plain errors.Is check.
+func wrapTouchHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	var sc interface{ Status() uint16 }
+	if errors.As(err, &sc) && sc.Status() == 0x6982 {
+		return fmt.Errorf("%w; if the key's slot has a touch policy, touch the blinking YubiKey and retry", err)
+	}
+	return err
 }
 
 var _ apiv1.CertificateManager = (*YubiKey)(nil)
