@@ -666,41 +666,32 @@ func cryptFindCertificatePrivateKey(certContext *windows.CertContext) (uintptr, 
 	return uintptr(kh), nil
 }
 
+// cryptFindCertificateKeyContainerName returns the key container name recorded
+// in the certificate's CERT_KEY_PROV_INFO property, or "" when the certificate
+// has no private-key association. It reads the property and never opens the
+// key, so it succeeds even when the key the property names no longer exists.
 func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (string, error) {
-	var (
-		length   uint32
-		provInfo *CRYPT_KEY_PROV_INFO
-	)
+	var size uint32
 
-	r1, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&length)),
-	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
-	}
-	if r1 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r1)))
+	err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, nil, &size)
+	if err != nil {
+		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+			return "", nil
+		}
+		return "", err
 	}
 
-	r2, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(provInfo)),
-	)
-
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	if size < uint32(unsafe.Sizeof(CRYPT_KEY_PROV_INFO{})) {
+		return "", fmt.Errorf("CERT_KEY_PROV_INFO property size %d smaller than struct", size)
 	}
 
-	if r2 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r2)))
+	buf := make([]byte, size)
+	if err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, &buf[0], &size); err != nil {
+		return "", err
 	}
 
-	return "", nil
+	info := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
+	return windows.UTF16PtrToString(info.pwszContainerName), nil
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
