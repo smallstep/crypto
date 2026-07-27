@@ -41,6 +41,19 @@ type SearchableKeyManager interface {
 	SearchKeys(req *SearchKeysRequest) (*SearchKeysResponse, error)
 }
 
+// CertificateSearcher is an optional interface for KMS implementations that
+// can enumerate the certificates in a certificate store together with
+// provider metadata about each certificate's private-key association.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type CertificateSearcher interface {
+	KeyManager
+	SearchCertificates(req *SearchCertificatesRequest) (*SearchCertificatesResponse, error)
+}
+
 // Decrypter is an interface implemented by KMSes that are used
 // in operations that require decryption
 type Decrypter interface {

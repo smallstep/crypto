@@ -372,3 +372,30 @@ type CleanupCredentialsRequest struct {
 	Name       string
 	RawSubject []byte
 }
+
+// SearchCertificatesRequest is the parameter used in the SearchCertificates
+// method of a CertificateSearcher.
+//
+// Name is a KMS URI selecting the certificate store to enumerate. For capi
+// the "store-location" ("machine" or "user") and "store" (e.g. "My")
+// attributes select the store, matching DeleteCertificate and
+// CleanupCredentials.
+type SearchCertificatesRequest struct {
+	Name string
+}
+
+// SearchCertificatesResult is one certificate from a SearchCertificates
+// enumeration. KeyContainerName is the CNG/CAPI key container recorded in the
+// certificate's key-provider metadata; it is empty when the certificate has
+// no private-key association. It is read from the certificate's properties,
+// not by opening the key, so it is populated even when the referenced key no
+// longer exists.
+type SearchCertificatesResult struct {
+	Certificate      *x509.Certificate
+	KeyContainerName string
+}
+
+// SearchCertificatesResponse is the response of a SearchCertificates call.
+type SearchCertificatesResponse struct {
+	Results []SearchCertificatesResult
+}
