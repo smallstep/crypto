@@ -45,6 +45,12 @@ type SearchableKeyManager interface {
 // can enumerate the certificates in a certificate store together with
 // provider metadata about each certificate's private-key association.
 //
+// SearchCertificates is best-effort: on a mid-enumeration failure the
+// returned response may still be non-nil and hold the certificates
+// enumerated before the failure, together with a non-nil error describing
+// what went wrong. Callers wanting those partial results must check the
+// response before (or regardless of) the error.
+//
 // # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later

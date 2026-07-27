@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -505,36 +506,29 @@ func TestKMS_SearchCertificates_capi(t *testing.T) {
 	capiKMS := mustCAPIKMS(t)
 	chain := mustCreatePlatformCertificate(t, capiKMS)
 
-	type args struct {
-		req *apiv1.SearchCertificatesRequest
-	}
-	tests := []struct {
-		name      string
-		kms       *KMS
-		args      args
-		assertion assert.ErrorAssertionFunc
-	}{
-		{"ok", capiKMS, args{&apiv1.SearchCertificatesRequest{
-			Name: "kms:",
-		}}, assert.NoError},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.kms.SearchCertificates(tt.args.req)
-			require.NoError(t, err)
-			tt.assertion(t, err)
+	got, err := capiKMS.SearchCertificates(&apiv1.SearchCertificatesRequest{
+		Name: "kms:",
+	})
+	require.NoError(t, err)
 
-			var found *apiv1.SearchCertificatesResult
-			for i := range got.Results {
-				if got.Results[i].Certificate.SerialNumber.Cmp(chain[0].SerialNumber) == 0 {
-					found = &got.Results[i]
-					break
-				}
-			}
-			require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
-			assert.Equal(t, chain[0].Raw, found.Certificate.Raw)
-		})
+	var found *apiv1.SearchCertificateResult
+	for i := range got.Results {
+		if got.Results[i].Certificate.SerialNumber.Cmp(chain[0].SerialNumber) == 0 {
+			found = &got.Results[i]
+			break
+		}
 	}
+	require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
+	assert.Equal(t, chain[0].Raw, found.Certificate.Raw)
+
+	// mustCreatePlatformCertificate stores the leaf under platformCertName
+	// ("kms:name=test-<suffix>"), which transformToCAPIKMS carries through
+	// unchanged into the capi "key" attribute used to associate the
+	// certificate with its private key. So the container name recorded on
+	// the certificate is exactly platformCertName's "name" value, and we can
+	// assert equality rather than just non-emptiness.
+	wantContainerName := strings.TrimPrefix(platformCertName, "kms:name=")
+	assert.Equal(t, wantContainerName, found.KeyContainerName)
 }
 
 func TestKMS_CleanupCredentials_capi(t *testing.T) {

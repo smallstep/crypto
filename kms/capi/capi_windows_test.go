@@ -43,6 +43,13 @@ func TestCAPIKMS_SearchCertificates_user(t *testing.T) {
 	cert, err := x509.ParseCertificate(der)
 	require.NoError(t, err)
 
+	// Computed up front (it depends only on cert.Raw) so the cleanup below
+	// can be registered right after the certificate is stored, rather than
+	// after a later require that could fail and skip it.
+	fp, err := fingerprint.New(cert.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	require.NoError(t, err)
+	deleteName := "capi:store-location=user;store=My;sha1=" + fp
+
 	k := &CAPIKMS{}
 
 	// skip-find-certificate-key=true stores the certificate with no
@@ -52,20 +59,16 @@ func TestCAPIKMS_SearchCertificates_user(t *testing.T) {
 		Name:        storeName,
 		Certificate: cert,
 	}))
-
-	fp, err := fingerprint.New(cert.Raw, crypto.SHA1, fingerprint.HexFingerprint)
-	require.NoError(t, err)
-	deleteName := "capi:store-location=user;store=My;sha1=" + fp
-	defer func() {
+	t.Cleanup(func() {
 		assert.NoError(t, k.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: deleteName}))
-	}()
+	})
 
 	resp, err := k.SearchCertificates(&apiv1.SearchCertificatesRequest{
 		Name: "capi:store-location=user;store=My",
 	})
 	require.NoError(t, err)
 
-	var found *apiv1.SearchCertificatesResult
+	var found *apiv1.SearchCertificateResult
 	for i := range resp.Results {
 		if resp.Results[i].Certificate.SerialNumber.Cmp(cert.SerialNumber) == 0 {
 			found = &resp.Results[i]

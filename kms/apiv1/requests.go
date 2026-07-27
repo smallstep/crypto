@@ -380,22 +380,37 @@ type CleanupCredentialsRequest struct {
 // the "store-location" ("machine" or "user") and "store" (e.g. "My")
 // attributes select the store, matching DeleteCertificate and
 // CleanupCredentials.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type SearchCertificatesRequest struct {
 	Name string
 }
 
-// SearchCertificatesResult is one certificate from a SearchCertificates
+// SearchCertificateResult is one certificate from a SearchCertificates
 // enumeration. KeyContainerName is the CNG/CAPI key container recorded in the
 // certificate's key-provider metadata; it is empty when the certificate has
 // no private-key association. It is read from the certificate's properties,
 // not by opening the key, so it is populated even when the referenced key no
 // longer exists.
-type SearchCertificatesResult struct {
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type SearchCertificateResult struct {
 	Certificate      *x509.Certificate
 	KeyContainerName string
 }
 
 // SearchCertificatesResponse is the response of a SearchCertificates call.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
 type SearchCertificatesResponse struct {
-	Results []SearchCertificatesResult
+	Results []SearchCertificateResult
 }

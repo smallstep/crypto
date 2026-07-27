@@ -331,6 +331,12 @@ func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 // translates its request name. The response carries only certificates and a
 // key-container name, neither of which encodes a KMS URI, so no response
 // translation is needed.
+//
+// SearchCertificates is best-effort: on a mid-enumeration failure the backend
+// may return a non-nil response holding the certificates enumerated before
+// the failure, together with the error describing it. That response is
+// returned unmodified alongside the error, so callers wanting the partial
+// results must check the response before the error.
 func (k *KMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	km, ok := k.backend.(apiv1.CertificateSearcher)
 	if !ok {

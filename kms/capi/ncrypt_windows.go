@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -69,7 +70,7 @@ const (
 	findProperty            = compareProp << compareShift                     // CERT_FIND_PROPERTY
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
-	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
+	signatureKeyUsage = 0x80 // CERT_DIGITAL_SIGNATURE_KEY_USAGE
 
 	BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 	BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB"
@@ -691,7 +692,18 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 	}
 
 	info := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
-	return windows.UTF16PtrToString(info.pwszContainerName), nil
+
+	// info.pwszContainerName is an interior pointer into buf, and buf is a
+	// []byte the garbage collector treats as pointer-free (it never scans it
+	// for references), so nothing keeps buf alive once info is read. Without
+	// runtime.KeepAlive, buf could be collected while UTF16PtrToString is
+	// still walking the UTF-16 string through info.pwszContainerName. This
+	// differs from setCertificateKeyProvInfo's write path, where the Win32
+	// call itself copies the string before returning, so no such window
+	// exists there.
+	name := windows.UTF16PtrToString(info.pwszContainerName)
+	runtime.KeepAlive(buf)
+	return name, nil
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
@@ -710,7 +722,7 @@ func certSetCertificateContextProperty(certContext *windows.CertContext, propID 
 
 func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val string) error {
 	data := CRYPTOAPI_BLOB{
-		len: uint32(len(val)+1) * 2,
+		len:  uint32(len(val)+1) * 2,
 		data: uintptr(unsafe.Pointer(wide(val))),
 	}
 
@@ -719,7 +731,7 @@ func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val strin
 
 func cryptSetCertificateDescription(certContext *windows.CertContext, val string) error {
 	data := CRYPTOAPI_BLOB{
-		len: uint32(len(val)+1) * 2,
+		len:  uint32(len(val)+1) * 2,
 		data: uintptr(unsafe.Pointer(wide(val))),
 	}
 

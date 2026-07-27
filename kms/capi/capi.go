@@ -18,7 +18,6 @@ import (
 	"io"
 	"math/big"
 	"net/url"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -213,11 +212,7 @@ type CAPIKMS struct {
 // enumeration call. Cloning first means callers may use the returned
 // certificate after certHandle itself is gone.
 func certContextToX509(certHandle *windows.CertContext) (*x509.Certificate, error) {
-	var der []byte
-	slice := (*reflect.SliceHeader)(unsafe.Pointer(&der))
-	slice.Data = uintptr(unsafe.Pointer(certHandle.EncodedCert))
-	slice.Len = int(certHandle.Length)
-	slice.Cap = int(certHandle.Length)
+	der := unsafe.Slice(certHandle.EncodedCert, certHandle.Length)
 	return x509.ParseCertificate(bytes.Clone(der))
 }
 
@@ -931,8 +926,8 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 // certificate, reads the CNG/CAPI key container recorded in its
 // CERT_KEY_PROV_INFO property. It never opens a key handle, so a certificate
 // whose associated key no longer exists is still returned, with its recorded
-// container name; a certificate is skipped only when its properties cannot be
-// read at all.
+// container name; a certificate is skipped when its properties cannot be read
+// at all, or when its DER encoding cannot be parsed.
 func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	if req == nil {
 		return nil, errors.New("searchCertificatesRequest cannot be nil")
@@ -972,7 +967,7 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	var (
-		results  []apiv1.SearchCertificatesResult
+		results  []apiv1.SearchCertificateResult
 		prevCert *windows.CertContext
 		enumErr  error
 	)
@@ -1004,7 +999,7 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 			continue
 		}
 
-		results = append(results, apiv1.SearchCertificatesResult{
+		results = append(results, apiv1.SearchCertificateResult{
 			Certificate:      x509Cert,
 			KeyContainerName: containerName,
 		})
