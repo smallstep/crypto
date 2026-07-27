@@ -501,6 +501,42 @@ func TestKMS_SearchKeys_capi(t *testing.T) {
 	}
 }
 
+func TestKMS_SearchCertificates_capi(t *testing.T) {
+	capiKMS := mustCAPIKMS(t)
+	chain := mustCreatePlatformCertificate(t, capiKMS)
+
+	type args struct {
+		req *apiv1.SearchCertificatesRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok", capiKMS, args{&apiv1.SearchCertificatesRequest{
+			Name: "kms:",
+		}}, assert.NoError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.kms.SearchCertificates(tt.args.req)
+			require.NoError(t, err)
+			tt.assertion(t, err)
+
+			var found *apiv1.SearchCertificatesResult
+			for i := range got.Results {
+				if got.Results[i].Certificate.SerialNumber.Cmp(chain[0].SerialNumber) == 0 {
+					found = &got.Results[i]
+					break
+				}
+			}
+			require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
+			assert.Equal(t, chain[0].Raw, found.Certificate.Raw)
+		})
+	}
+}
+
 func TestKMS_CleanupCredentials_capi(t *testing.T) {
 	capiKMS := mustCAPIKMS(t)
 	// Use an expired certificate. withNoCleanup disables the t.Cleanup hooks
