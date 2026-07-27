@@ -204,13 +204,21 @@ type CAPIKMS struct {
 	pin            string
 }
 
+// certContextToX509 parses the DER encoding held by a certificate context
+// into an *x509.Certificate. The bytes are cloned before parsing: x509.Certificate
+// aliases the slice it is given (Raw, RawTBSCertificate, RawSubject, and the
+// other Raw* fields, plus each Extension's Value, all point back into it), and
+// certHandle's underlying buffer is only valid until the certificate context
+// is freed — which for an enumeration cursor happens on the very next
+// enumeration call. Cloning first means callers may use the returned
+// certificate after certHandle itself is gone.
 func certContextToX509(certHandle *windows.CertContext) (*x509.Certificate, error) {
 	var der []byte
 	slice := (*reflect.SliceHeader)(unsafe.Pointer(&der))
 	slice.Data = uintptr(unsafe.Pointer(certHandle.EncodedCert))
 	slice.Len = int(certHandle.Length)
 	slice.Cap = int(certHandle.Length)
-	return x509.ParseCertificate(der)
+	return x509.ParseCertificate(bytes.Clone(der))
 }
 
 func unmarshalRSA(buf []byte) (*rsa.PublicKey, error) {
@@ -958,6 +966,10 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 	if err != nil {
 		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
+	// Unlike the other store-opening call sites in this file, SearchCertificates
+	// runs on every certificate issuance in long-running callers, so an
+	// unclosed store handle here is an unbounded leak rather than a one-off.
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	var (
 		results  []apiv1.SearchCertificatesResult
