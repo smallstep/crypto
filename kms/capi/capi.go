@@ -916,6 +916,91 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 	return certs, nil
 }
 
+// SearchCertificates implements [apiv1.CertificateSearcher]. It enumerates
+// every certificate in the Windows certificate store identified by req.Name
+// ("store-location" and "store" select the store, defaulting to "user" and
+// "My", matching DeleteCertificate and CleanupCredentials) and, for each
+// certificate, reads the CNG/CAPI key container recorded in its
+// CERT_KEY_PROV_INFO property. It never opens a key handle, so a certificate
+// whose associated key no longer exists is still returned, with its recorded
+// container name; a certificate is skipped only when its properties cannot be
+// read at all.
+func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	if req == nil {
+		return nil, errors.New("searchCertificatesRequest cannot be nil")
+	}
+	if req.Name == "" {
+		return nil, errors.New("searchCertificatesRequest.Name cannot be empty")
+	}
+
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	var certStoreLocation uint32
+	switch u.storeLocation {
+	case UserStoreLocation:
+		certStoreLocation = certStoreCurrentUser
+	case MachineStoreLocation:
+		certStoreLocation = certStoreLocalMachine
+	default:
+		return nil, fmt.Errorf("invalid cert store location %q", u.storeLocation)
+	}
+
+	st, err := windows.CertOpenStore(
+		certStoreProvSystem,
+		0,
+		0,
+		certStoreLocation,
+		uintptr(unsafe.Pointer(wide(u.storeName))),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+	}
+
+	var (
+		results  []apiv1.SearchCertificatesResult
+		prevCert *windows.CertContext
+		enumErr  error
+	)
+	for {
+		certHandle, err := windows.CertEnumCertificatesInStore(st, prevCert)
+		if err != nil {
+			if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+				// End of store; prevCert was freed by this call per the Windows API contract.
+				break
+			}
+			// A real enumeration failure: prevCert was still freed by this call, but
+			// the store may hold unvisited certificates, so what we have is partial.
+			enumErr = fmt.Errorf("CertEnumCertificatesInStore failed: %w", err)
+			break
+		}
+		if certHandle == nil {
+			// prevCert was freed by this call per the Windows API contract.
+			break
+		}
+		prevCert = certHandle // freed on next CertEnumCertificatesInStore call
+
+		x509Cert, err := certContextToX509(certHandle)
+		if err != nil {
+			continue
+		}
+
+		containerName, err := cryptFindCertificateKeyContainerName(certHandle)
+		if err != nil {
+			continue
+		}
+
+		results = append(results, apiv1.SearchCertificatesResult{
+			Certificate:      x509Cert,
+			KeyContainerName: containerName,
+		})
+	}
+
+	return &apiv1.SearchCertificatesResponse{Results: results}, enumErr
+}
+
 func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	u, err := parseURI(req.Name)
 	if err != nil {
