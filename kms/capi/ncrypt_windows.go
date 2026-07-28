@@ -241,6 +241,14 @@ func errNoToStr(e uint32) string {
 	}
 }
 
+// isNotFound reports whether err is the CRYPT_E_NOT_FOUND status CryptoAPI
+// returns when a certificate or a certificate property simply is not there, as
+// opposed to a failure to look for it.
+func isNotFound(err error) bool {
+	var errno windows.Errno
+	return errors.As(err, &errno) && uint32(errno) == CRYPT_E_NOT_FOUND
+}
+
 // wide returns a pointer to a uint16 representing the equivalent
 // to a Windows LPCWSTR.
 func wide(s string) *uint16 {
@@ -579,7 +587,7 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	)
 	if h == 0 {
 		// Actual error, or simply not found?
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -675,7 +683,7 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 
 	err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 		return "", err
@@ -776,7 +784,7 @@ func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string,
 
 	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 
@@ -802,7 +810,7 @@ func cryptFindCertificateDescription(certContext *windows.CertContext) (string, 
 
 	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 

@@ -970,19 +970,17 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 		enumErr  error
 	)
 	for {
+		// CertEnumCertificatesInStore returns a nil context, and so a non-nil
+		// error, both at the end of the store and on failure; either way it has
+		// already freed prevCert.
 		certHandle, err := windows.CertEnumCertificatesInStore(st, prevCert)
 		if err != nil {
-			if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
-				// End of store; prevCert was freed by this call per the Windows API contract.
-				break
+			if isNotFound(err) {
+				break // end of store
 			}
-			// A real enumeration failure: prevCert was still freed by this call, but
-			// the store may hold unvisited certificates, so what we have is partial.
+			// A real enumeration failure: the store may hold unvisited
+			// certificates, so what we have is partial.
 			enumErr = fmt.Errorf("CertEnumCertificatesInStore failed: %w", err)
-			break
-		}
-		if certHandle == nil {
-			// prevCert was freed by this call per the Windows API contract.
 			break
 		}
 		prevCert = certHandle // freed on next CertEnumCertificatesInStore call
