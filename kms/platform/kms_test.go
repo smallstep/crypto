@@ -1356,6 +1356,9 @@ func TestKMS_SearchCertificates(t *testing.T) {
 		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
+		// A nil request must be rejected rather than panic in clone(req),
+		// whichever backend is configured.
+		{"nil request", softKMS, args{nil}, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
