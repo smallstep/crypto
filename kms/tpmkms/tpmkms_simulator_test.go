@@ -2550,6 +2550,10 @@ func (m *fakeWindowsCertificateManager) CleanupCredentials(*apiv1.CleanupCredent
 	return nil
 }
 
+func (m *fakeWindowsCertificateManager) SearchCertificates(*apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	return nil, nil
+}
+
 func TestTPMKMS_CleanupCredentials(t *testing.T) {
 	ctx := context.Background()
 

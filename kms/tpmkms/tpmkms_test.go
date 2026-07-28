@@ -361,6 +361,18 @@ func Test_PreferredSignatureAlgorithms(t *testing.T) {
 	assert.Equal(t, PreferredSignatureAlgorithms(), preferredSignatureAlgorithms)
 }
 
+// TestTPMKMS_SearchCertificates_notImplemented asserts that a TPMKMS not
+// configured to use the Windows certificate store (the default, and the only
+// possibility off Windows) reports SearchCertificates as unsupported instead
+// of silently returning no results.
+func TestTPMKMS_SearchCertificates_notImplemented(t *testing.T) {
+	k := &TPMKMS{}
+
+	got, err := k.SearchCertificates(&apiv1.SearchCertificatesRequest{Name: "tpmkms:"})
+	assert.Nil(t, got)
+	assert.ErrorIs(t, err, apiv1.NotImplementedError{})
+}
+
 func Test_shouldFallbackToDirectKeyDelete(t *testing.T) {
 	tests := []struct {
 		name string

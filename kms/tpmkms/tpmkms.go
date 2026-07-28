@@ -1182,6 +1182,54 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 	return errors.Join(deleteErrors...)
 }
 
+// SearchCertificates implements [apiv1.CertificateSearcher]. On Windows it
+// enumerates every certificate in the configured certificate store, together
+// with the CNG/CAPI key container associated with each one, delegating to the
+// same Windows certificate-store manager used by CleanupCredentials,
+// LoadCertificateChain, and StoreCertificateChain. The "store-location" and
+// "store" fields of req.Name override the store configured on the TPMKMS
+// instance.
+//
+// SearchCertificates is best-effort: on a mid-enumeration failure the
+// returned response may still be non-nil and hold the certificates
+// enumerated before the failure, together with a non-nil error describing
+// what went wrong. Callers wanting those partial results must check the
+// response before (or regardless of) the error.
+func (k *TPMKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	if req == nil {
+		return nil, errors.New("searchCertificatesRequest cannot be nil")
+	}
+
+	if !k.usesWindowsCertificateStore() {
+		// SearchCertificates is only supported when the TPMKMS is configured to
+		// use the Windows certificate store. Signal that explicitly instead of
+		// silently succeeding, consistent with how the platform KMS reports
+		// unsupported operations.
+		return nil, apiv1.NotImplementedError{}
+	}
+
+	o, err := parseNameURI(req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing %q: %w", req.Name, err)
+	}
+
+	location := k.opts.windowsCertificateStoreLocation
+	if o.storeLocation != "" {
+		location = o.storeLocation
+	}
+	store := k.opts.windowsCertificateStore
+	if o.store != "" {
+		store = o.store
+	}
+
+	searchURI := uri.New("capi", url.Values{
+		"store-location": []string{location},
+		"store":          []string{store},
+	}).String()
+
+	return k.windowsCertificateManager.SearchCertificates(&apiv1.SearchCertificatesRequest{Name: searchURI})
+}
+
 // deleteKeyForCertificate tears down the key paired with cert. It returns
 // whether the caller must still remove the CNG key container directly when
 // deleting the certificate (fallback path), and any error encountered.
@@ -1923,6 +1971,7 @@ type capiCertificateManager interface {
 	apiv1.CertificateChainManager
 	apiv1.CertificateDeleter
 	apiv1.CredentialsCleaner
+	SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error)
 	FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, rawSubject []byte) ([]*x509.Certificate, error)
 }
 
@@ -1933,5 +1982,6 @@ var (
 	_ apiv1.CertificateChainManager = (*TPMKMS)(nil)
 	_ apiv1.CredentialsCleaner      = (*TPMKMS)(nil)
 	_ apiv1.CertificateDeleter      = (*TPMKMS)(nil)
+	_ apiv1.CertificateSearcher     = (*TPMKMS)(nil)
 	_ apiv1.AttestationClient       = (*attestationClient)(nil)
 )

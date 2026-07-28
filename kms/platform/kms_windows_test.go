@@ -20,6 +20,7 @@ import (
 
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/tpm"
 	"go.step.sm/crypto/tpm/available"
 )
 
@@ -529,6 +530,63 @@ func TestKMS_SearchCertificates_capi(t *testing.T) {
 	// assert equality rather than just non-emptiness.
 	wantContainerName := strings.TrimPrefix(platformCertName, "kms:name=")
 	assert.Equal(t, wantContainerName, found.KeyContainerName)
+}
+
+// TestKMS_SearchCertificates_platform constructs the platform KMS the way the
+// production consumer (the agent's certificate sweep) does: a default "kms:"
+// URI with no backend argument. newKMS resolves that to the TPMKMS backend
+// (kms_windows.go's newKMS, case apiv1.PlatformKMS/DefaultKMS/apiv1.TPMKMS),
+// not CAPIKMS, which is exactly the configuration TestKMS_SearchCertificates_capi
+// above does not exercise. Before TPMKMS grew its own SearchCertificates
+// method, this configuration silently returned apiv1.NotImplementedError{}
+// from every call, so the sweep never found anything to delete.
+//
+// This test requires a TPM (real or virtual) with the Windows Platform Crypto
+// Provider available; it no-ops via mustPlatformKMS/mustCreatePlatformCertificate's
+// SkipTests() guard when none is present, matching every other platformKMS
+// test in this package. It only ever runs on a TPM-equipped Windows host or
+// CI runner.
+func TestKMS_SearchCertificates_platform(t *testing.T) {
+	platformKMS := mustPlatformKMS(t)
+	if platformKMS.SkipTests() {
+		t.Skip("no TPM available")
+	}
+	require.Equal(t, apiv1.TPMKMS, platformKMS.Type(), "default kms: URI must resolve to the TPMKMS backend")
+
+	chain := mustCreatePlatformCertificate(t, platformKMS, withNoCleanupCertificate())
+
+	got, err := platformKMS.SearchCertificates(&apiv1.SearchCertificatesRequest{
+		Name: "kms:",
+	})
+	require.NoError(t, err)
+
+	var found *apiv1.SearchCertificateResult
+	for i := range got.Results {
+		if got.Results[i].Certificate.SerialNumber.Cmp(chain[0].SerialNumber) == 0 {
+			found = &got.Results[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
+	assert.Equal(t, chain[0].Raw, found.Certificate.Raw)
+
+	// mustCreatePlatformCertificate stores the leaf under platformCertName
+	// ("kms:name=test-<suffix>"). On the TPMKMS/CNG path the certificate is
+	// associated with the CNG container tpm.ApplicationKeyName persists the
+	// key under (the "app-" prefixed logical key name; see
+	// storeCertificateChainToWindowsCertificateStore), not the bare name CAPI
+	// uses directly, so the expected container name differs from the capi
+	// test above.
+	wantContainerName := tpm.ApplicationKeyName(strings.TrimPrefix(platformCertName, "kms:name="))
+	assert.Equal(t, wantContainerName, found.KeyContainerName)
+
+	require.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+		Name: platformCertName,
+	}))
+	_, err = platformKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: platformCertName,
+	})
+	assert.Error(t, err, "certificate should be removed")
 }
 
 func TestKMS_CleanupCredentials_capi(t *testing.T) {
