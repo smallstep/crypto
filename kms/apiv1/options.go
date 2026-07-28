@@ -49,7 +49,9 @@ type SearchableKeyManager interface {
 // returned response may still be non-nil and hold the certificates
 // enumerated before the failure, together with a non-nil error describing
 // what went wrong. Callers wanting those partial results must check the
-// response before (or regardless of) the error.
+// response before (or regardless of) the error. A failure to read one
+// certificate's key metadata is reported on that result's Err field rather
+// than failing the search or dropping the certificate.
 //
 // # Experimental
 //

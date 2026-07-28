@@ -926,8 +926,10 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 // certificate, reads the CNG/CAPI key container recorded in its
 // CERT_KEY_PROV_INFO property. It never opens a key handle, so a certificate
 // whose associated key no longer exists is still returned, with its recorded
-// container name; a certificate is skipped when its properties cannot be read
-// at all, or when its DER encoding cannot be parsed.
+// container name. A certificate whose key-provider metadata cannot be read is
+// returned too, with the failure recorded on the result's Err field; only a
+// certificate whose DER encoding cannot be parsed is skipped, there being no
+// certificate to report.
 func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	if req == nil {
 		return nil, errors.New("searchCertificatesRequest cannot be nil")
@@ -994,14 +996,16 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 			continue
 		}
 
+		// A certificate with no key association at all reads back as ("", nil),
+		// so an error here means the association exists but could not be
+		// interpreted — precisely the kind of broken credential a caller
+		// sweeping the store is looking for. Report it on the result instead of
+		// dropping the certificate.
 		containerName, err := cryptFindCertificateKeyContainerName(certHandle)
-		if err != nil {
-			continue
-		}
-
 		results = append(results, apiv1.SearchCertificateResult{
 			Certificate:      x509Cert,
 			KeyContainerName: containerName,
+			Err:              err,
 		})
 	}
 

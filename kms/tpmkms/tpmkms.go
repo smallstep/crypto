@@ -1194,7 +1194,9 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 // returned response may still be non-nil and hold the certificates
 // enumerated before the failure, together with a non-nil error describing
 // what went wrong. Callers wanting those partial results must check the
-// response before (or regardless of) the error.
+// response before (or regardless of) the error. A certificate whose key
+// metadata could not be read is reported with that failure on its result's Err
+// field rather than dropped.
 //
 // The platform wrapper's URI transform unconditionally injects
 // "skip-find-certificate-key=true" into every Windows request, including
