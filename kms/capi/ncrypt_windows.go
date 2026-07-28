@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -693,17 +692,38 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 
 	info := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
 
-	// info.pwszContainerName is an interior pointer into buf, and buf is a
-	// []byte the garbage collector treats as pointer-free (it never scans it
-	// for references), so nothing keeps buf alive once info is read. Without
-	// runtime.KeepAlive, buf could be collected while UTF16PtrToString is
-	// still walking the UTF-16 string through info.pwszContainerName. This
-	// differs from setCertificateKeyProvInfo's write path, where the Win32
-	// call itself copies the string before returning, so no such window
-	// exists there.
-	name := windows.UTF16PtrToString(info.pwszContainerName)
-	runtime.KeepAlive(buf)
-	return name, nil
+	return utf16StringInBuffer(buf, info.pwszContainerName)
+}
+
+// utf16StringInBuffer decodes the NUL-terminated UTF-16 string p points at,
+// reading it out of buf rather than dereferencing p. CryptoAPI returns
+// properties such as CERT_KEY_PROV_INFO as a self-contained blob: the string
+// members point at bytes appended after the struct, inside the buffer the
+// caller supplied. Going through buf keeps every read bounds-checked against
+// the size the API reported, and keeps the backing array reachable while it is
+// being read, so the decoded string never outlives what it was decoded from.
+func utf16StringInBuffer(buf []byte, p *uint16) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+
+	off := uintptr(unsafe.Pointer(p)) - uintptr(unsafe.Pointer(&buf[0]))
+	if off >= uintptr(len(buf)) || off%2 != 0 {
+		// A pointer before buf underflows to a very large offset, so this one
+		// check rejects both directions.
+		return "", errors.New("string does not point into the property buffer")
+	}
+
+	s := make([]uint16, 0, (uintptr(len(buf))-off)/2)
+	for i := off; i+1 < uintptr(len(buf)); i += 2 {
+		c := binary.LittleEndian.Uint16(buf[i:])
+		if c == 0 {
+			return windows.UTF16ToString(s), nil
+		}
+		s = append(s, c)
+	}
+
+	return "", errors.New("unterminated string in the property buffer")
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
