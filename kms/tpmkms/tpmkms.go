@@ -1195,6 +1195,12 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 // enumerated before the failure, together with a non-nil error describing
 // what went wrong. Callers wanting those partial results must check the
 // response before (or regardless of) the error.
+//
+// The platform wrapper's URI transform unconditionally injects
+// "skip-find-certificate-key=true" into every Windows request, including
+// searches; parseNameURI parses it into o.skipFindCertificateKey same as for
+// any other operation, but it is meaningful only for certificate-to-key
+// association during store and is accepted and unused here.
 func (k *TPMKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	if req == nil {
 		return nil, errors.New("searchCertificatesRequest cannot be nil")

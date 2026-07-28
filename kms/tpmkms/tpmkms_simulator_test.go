@@ -2519,6 +2519,11 @@ type fakeWindowsCertificateManager struct {
 	findErr     error
 	deleteErr   error
 	deleteCalls []fakeDeleteCall
+
+	// searchReq records the last request handed to SearchCertificates.
+	searchReq  *apiv1.SearchCertificatesRequest
+	searchResp *apiv1.SearchCertificatesResponse
+	searchErr  error
 }
 
 func (m *fakeWindowsCertificateManager) FindCertificatesByIssuer(*apiv1.LoadCertificateRequest, []byte) ([]*x509.Certificate, error) {
@@ -2550,8 +2555,24 @@ func (m *fakeWindowsCertificateManager) CleanupCredentials(*apiv1.CleanupCredent
 	return nil
 }
 
-func (m *fakeWindowsCertificateManager) SearchCertificates(*apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
-	return nil, nil
+// SearchCertificates records the request it was called with and, unless a
+// test configures searchResp/searchErr, returns a canned non-nil response
+// with one result. It never returns the bug shape (nil, nil) — a caller that
+// asserts nothing about the response would fail on the populated
+// KeyContainerName rather than passing vacuously.
+func (m *fakeWindowsCertificateManager) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	m.searchReq = req
+	if m.searchErr != nil {
+		return m.searchResp, m.searchErr
+	}
+	if m.searchResp != nil {
+		return m.searchResp, nil
+	}
+	return &apiv1.SearchCertificatesResponse{
+		Results: []apiv1.SearchCertificateResult{
+			{Certificate: &x509.Certificate{SerialNumber: big.NewInt(1)}, KeyContainerName: "app-fake"},
+		},
+	}, nil
 }
 
 func TestTPMKMS_CleanupCredentials(t *testing.T) {
