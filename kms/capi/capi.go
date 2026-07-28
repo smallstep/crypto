@@ -995,11 +995,11 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 		// interpreted — precisely the kind of broken credential a caller
 		// sweeping the store is looking for. Report it on the result instead of
 		// dropping the certificate.
-		containerName, err := cryptFindCertificateKeyContainerName(certHandle)
+		keyName, err := cryptFindCertificateKeyContainerName(certHandle)
 		results = append(results, apiv1.SearchCertificateResult{
-			Certificate:      x509Cert,
-			KeyContainerName: containerName,
-			Err:              err,
+			Certificate: x509Cert,
+			KeyName:     keyName,
+			Err:         err,
 		})
 	}
 

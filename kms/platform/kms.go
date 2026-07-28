@@ -329,7 +329,7 @@ func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 // implementation, if it has one. req.Name is translated from a "kms:" URI to
 // the backend's URI scheme before delegating, the same way CleanupCredentials
 // translates its request name. The response carries only certificates and a
-// key-container name, neither of which encodes a KMS URI, so no response
+// bare key name, neither of which encodes a KMS URI, so no response
 // translation is needed. Per-certificate metadata failures reported on a
 // result's Err field are passed through untouched as well.
 //

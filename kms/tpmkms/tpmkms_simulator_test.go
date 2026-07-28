@@ -2558,8 +2558,8 @@ func (m *fakeWindowsCertificateManager) CleanupCredentials(*apiv1.CleanupCredent
 // SearchCertificates records the request it was called with and, unless a
 // test configures searchResp/searchErr, returns a canned non-nil response
 // with one result. It never returns the bug shape (nil, nil) — a caller that
-// asserts nothing about the response would fail on the populated
-// KeyContainerName rather than passing vacuously.
+// asserts nothing about the response would fail on the populated KeyName
+// rather than passing vacuously.
 func (m *fakeWindowsCertificateManager) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	m.searchReq = req
 	if m.searchErr != nil {
@@ -2570,7 +2570,7 @@ func (m *fakeWindowsCertificateManager) SearchCertificates(req *apiv1.SearchCert
 	}
 	return &apiv1.SearchCertificatesResponse{
 		Results: []apiv1.SearchCertificateResult{
-			{Certificate: &x509.Certificate{SerialNumber: big.NewInt(1)}, KeyContainerName: "app-fake"},
+			{Certificate: &x509.Certificate{SerialNumber: big.NewInt(1)}, KeyName: "app-fake"},
 		},
 	}, nil
 }

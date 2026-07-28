@@ -525,11 +525,11 @@ func TestKMS_SearchCertificates_capi(t *testing.T) {
 	// mustCreatePlatformCertificate stores the leaf under platformCertName
 	// ("kms:name=test-<suffix>"), which transformToCAPIKMS carries through
 	// unchanged into the capi "key" attribute used to associate the
-	// certificate with its private key. So the container name recorded on
-	// the certificate is exactly platformCertName's "name" value, and we can
+	// certificate with its private key. So the key name recorded on the
+	// certificate is exactly platformCertName's "name" value, and we can
 	// assert equality rather than just non-emptiness.
-	wantContainerName := strings.TrimPrefix(platformCertName, "kms:name=")
-	assert.Equal(t, wantContainerName, found.KeyContainerName)
+	wantKeyName := strings.TrimPrefix(platformCertName, "kms:name=")
+	assert.Equal(t, wantKeyName, found.KeyName)
 }
 
 // TestKMS_SearchCertificates_platform constructs the platform KMS the way the
@@ -575,10 +575,10 @@ func TestKMS_SearchCertificates_platform(t *testing.T) {
 	// associated with the CNG container tpm.ApplicationKeyName persists the
 	// key under (the "app-" prefixed logical key name; see
 	// storeCertificateChainToWindowsCertificateStore), not the bare name CAPI
-	// uses directly, so the expected container name differs from the capi
-	// test above.
-	wantContainerName := tpm.ApplicationKeyName(strings.TrimPrefix(platformCertName, "kms:name="))
-	assert.Equal(t, wantContainerName, found.KeyContainerName)
+	// uses directly, so the expected key name differs from the capi test
+	// above.
+	wantKeyName := tpm.ApplicationKeyName(strings.TrimPrefix(platformCertName, "kms:name="))
+	assert.Equal(t, wantKeyName, found.KeyName)
 
 	require.NoError(t, platformKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 		Name: platformCertName,

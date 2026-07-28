@@ -94,7 +94,7 @@ func TestCAPIKMS_SearchCertificates_user(t *testing.T) {
 	found := findSearchResult(resp, cert)
 	require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
 	assert.Equal(t, cert.Raw, found.Certificate.Raw)
-	assert.Empty(t, found.KeyContainerName)
+	assert.Empty(t, found.KeyName)
 	assert.NoError(t, found.Err)
 }
 
@@ -129,5 +129,5 @@ func TestCAPIKMS_SearchCertificates_keyContainerName(t *testing.T) {
 	require.NotNil(t, found, "stored certificate not returned by SearchCertificates")
 	assert.Equal(t, cert.Raw, found.Certificate.Raw)
 	assert.NoError(t, found.Err)
-	assert.Equal(t, containerName, found.KeyContainerName)
+	assert.Equal(t, containerName, found.KeyName)
 }
