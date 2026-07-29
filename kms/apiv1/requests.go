@@ -403,6 +403,14 @@ type SearchCertificatesRequest struct {
 type SearchCertificateResult struct {
 	Certificate      *x509.Certificate
 	KeyContainerName string
+
+	// Err is non-nil when the certificate's key-provider metadata could not
+	// be read. Certificate is still valid and KeyContainerName is empty. It
+	// distinguishes a certificate with no private-key association at all
+	// (Err == nil, KeyContainerName == "") from one whose association exists
+	// but cannot be interpreted — a certificate a caller sweeping for broken
+	// credentials most likely wants to see rather than have hidden.
+	Err error
 }
 
 // SearchCertificatesResponse is the response of a SearchCertificates call.

@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -240,6 +239,14 @@ func errNoToStr(e uint32) string {
 	default:
 		return fmt.Sprintf("0x%X", e)
 	}
+}
+
+// isNotFound reports whether err is the CRYPT_E_NOT_FOUND status CryptoAPI
+// returns when a certificate or a certificate property simply is not there, as
+// opposed to a failure to look for it.
+func isNotFound(err error) bool {
+	var errno windows.Errno
+	return errors.As(err, &errno) && uint32(errno) == CRYPT_E_NOT_FOUND
 }
 
 // wide returns a pointer to a uint16 representing the equivalent
@@ -580,7 +587,7 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	)
 	if h == 0 {
 		// Actual error, or simply not found?
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -676,7 +683,7 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 
 	err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 		return "", err
@@ -693,17 +700,38 @@ func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (str
 
 	info := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
 
-	// info.pwszContainerName is an interior pointer into buf, and buf is a
-	// []byte the garbage collector treats as pointer-free (it never scans it
-	// for references), so nothing keeps buf alive once info is read. Without
-	// runtime.KeepAlive, buf could be collected while UTF16PtrToString is
-	// still walking the UTF-16 string through info.pwszContainerName. This
-	// differs from setCertificateKeyProvInfo's write path, where the Win32
-	// call itself copies the string before returning, so no such window
-	// exists there.
-	name := windows.UTF16PtrToString(info.pwszContainerName)
-	runtime.KeepAlive(buf)
-	return name, nil
+	return utf16StringInBuffer(buf, info.pwszContainerName)
+}
+
+// utf16StringInBuffer decodes the NUL-terminated UTF-16 string p points at,
+// reading it out of buf rather than dereferencing p. CryptoAPI returns
+// properties such as CERT_KEY_PROV_INFO as a self-contained blob: the string
+// members point at bytes appended after the struct, inside the buffer the
+// caller supplied. Going through buf keeps every read bounds-checked against
+// the size the API reported, and keeps the backing array reachable while it is
+// being read, so the decoded string never outlives what it was decoded from.
+func utf16StringInBuffer(buf []byte, p *uint16) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+
+	off := uintptr(unsafe.Pointer(p)) - uintptr(unsafe.Pointer(&buf[0]))
+	if off >= uintptr(len(buf)) || off%2 != 0 {
+		// A pointer before buf underflows to a very large offset, so this one
+		// check rejects both directions.
+		return "", errors.New("string does not point into the property buffer")
+	}
+
+	s := make([]uint16, 0, (uintptr(len(buf))-off)/2)
+	for i := off; i+1 < uintptr(len(buf)); i += 2 {
+		c := binary.LittleEndian.Uint16(buf[i:])
+		if c == 0 {
+			return windows.UTF16ToString(s), nil
+		}
+		s = append(s, c)
+	}
+
+	return "", errors.New("unterminated string in the property buffer")
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
@@ -756,7 +784,7 @@ func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string,
 
 	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 
@@ -782,7 +810,7 @@ func cryptFindCertificateDescription(certContext *windows.CertContext) (string, 
 
 	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 

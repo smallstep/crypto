@@ -18,6 +18,7 @@ import (
 	"io"
 	"math/big"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -405,6 +406,49 @@ func (k *CAPIKMS) Close() error {
 	return nil
 }
 
+// openCertStore opens the system certificate store selected by u. The caller
+// owns the returned handle and must close it with windows.CertCloseStore.
+//
+// Closing it with no flags only drops a reference: a certificate context
+// obtained from a store holds its own reference, so the context stays valid
+// after the store is closed and the store is released once the last context is
+// freed. Callers may therefore close with a defer even when they hand a
+// context back to their own caller. Passing CERT_CLOSE_STORE_FORCE_FLAG would
+// not be safe there, as it closes the store regardless of outstanding
+// contexts.
+func openCertStore(u *uriAttributes) (windows.Handle, error) {
+	var certStoreLocation uint32
+	switch u.storeLocation {
+	case UserStoreLocation:
+		certStoreLocation = certStoreCurrentUser
+	case MachineStoreLocation:
+		certStoreLocation = certStoreLocalMachine
+	default:
+		return 0, fmt.Errorf("invalid cert store location %q", u.storeLocation)
+	}
+
+	// CertOpenStore takes the store name as a uintptr, so the conversion below
+	// leaves no Go pointer referring to the string: the garbage collector is
+	// free to reclaim it while the call is in flight. Hold it in a variable and
+	// keep it alive across the call. (The compiler's special case that makes
+	// this safe applies only to a conversion written inside a call to
+	// syscall.Syscall itself, which this is not.)
+	storeName := wide(u.storeName)
+	st, err := windows.CertOpenStore(
+		certStoreProvSystem,
+		0,
+		0,
+		certStoreLocation,
+		uintptr(unsafe.Pointer(storeName)),
+	)
+	runtime.KeepAlive(storeName)
+	if err != nil {
+		return 0, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+	}
+
+	return st, nil
+}
+
 // getCertContext returns a pointer to a X.509 certificate context based on the provided URI
 // callers are responsible for freeing the context
 func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error) {
@@ -413,26 +457,12 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 		return nil, fmt.Errorf("decoded %s has length %d; expected 20 bytes for SHA-1", HashArg, len(u.hash))
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return nil, fmt.Errorf("invalid cert store location %q", u.storeLocation)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))),
-	)
+	st, err := openCertStore(u)
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+		return nil, err
 	}
+	// Safe to close while returning a context: see openCertStore.
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	// if issuer + any of the other fields in the list below is provided, then attempt a second certificate lookup when
 	// lookup by KeyID fails (not found).
@@ -865,26 +895,11 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 		return nil, fmt.Errorf("%q is required", IssuerNameArg)
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return nil, fmt.Errorf("invalid cert store location %q", u.storeLocation)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))),
-	)
+	st, err := openCertStore(u)
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+		return nil, err
 	}
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	var (
 		certs    []*x509.Certificate
@@ -926,8 +941,10 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 // certificate, reads the CNG/CAPI key container recorded in its
 // CERT_KEY_PROV_INFO property. It never opens a key handle, so a certificate
 // whose associated key no longer exists is still returned, with its recorded
-// container name; a certificate is skipped when its properties cannot be read
-// at all, or when its DER encoding cannot be parsed.
+// container name. A certificate whose key-provider metadata cannot be read is
+// returned too, with the failure recorded on the result's Err field; only a
+// certificate whose DER encoding cannot be parsed is skipped, there being no
+// certificate to report.
 func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
 	if req == nil {
 		return nil, errors.New("searchCertificatesRequest cannot be nil")
@@ -941,29 +958,10 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 		return nil, err
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return nil, fmt.Errorf("invalid cert store location %q", u.storeLocation)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))),
-	)
+	st, err := openCertStore(u)
 	if err != nil {
-		return nil, fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+		return nil, err
 	}
-	// Unlike the other store-opening call sites in this file, SearchCertificates
-	// runs on every certificate issuance in long-running callers, so an
-	// unclosed store handle here is an unbounded leak rather than a one-off.
 	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	var (
@@ -972,19 +970,17 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 		enumErr  error
 	)
 	for {
+		// CertEnumCertificatesInStore returns a nil context, and so a non-nil
+		// error, both at the end of the store and on failure; either way it has
+		// already freed prevCert.
 		certHandle, err := windows.CertEnumCertificatesInStore(st, prevCert)
 		if err != nil {
-			if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
-				// End of store; prevCert was freed by this call per the Windows API contract.
-				break
+			if isNotFound(err) {
+				break // end of store
 			}
-			// A real enumeration failure: prevCert was still freed by this call, but
-			// the store may hold unvisited certificates, so what we have is partial.
+			// A real enumeration failure: the store may hold unvisited
+			// certificates, so what we have is partial.
 			enumErr = fmt.Errorf("CertEnumCertificatesInStore failed: %w", err)
-			break
-		}
-		if certHandle == nil {
-			// prevCert was freed by this call per the Windows API contract.
 			break
 		}
 		prevCert = certHandle // freed on next CertEnumCertificatesInStore call
@@ -994,14 +990,16 @@ func (k *CAPIKMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*api
 			continue
 		}
 
+		// A certificate with no key association at all reads back as ("", nil),
+		// so an error here means the association exists but could not be
+		// interpreted — precisely the kind of broken credential a caller
+		// sweeping the store is looking for. Report it on the result instead of
+		// dropping the certificate.
 		containerName, err := cryptFindCertificateKeyContainerName(certHandle)
-		if err != nil {
-			continue
-		}
-
 		results = append(results, apiv1.SearchCertificateResult{
 			Certificate:      x509Cert,
 			KeyContainerName: containerName,
+			Err:              err,
 		})
 	}
 
@@ -1014,15 +1012,14 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 		return err
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return fmt.Errorf("invalid cert store location %q", u.storeLocation)
+	// Opened before the certificate context is built so an unusable store
+	// location fails before any key association work, which may prompt for a
+	// smart card.
+	st, err := openCertStore(u)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	certContext, err := windows.CertCreateCertificateContext(
 		encodingX509ASN|encodingPKCS7,
@@ -1075,16 +1072,6 @@ func (k *CAPIKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 
 	if u.description != "" {
 		cryptSetCertificateDescription(certContext, u.description)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))))
-	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
 	}
 
 	// Add the cert context to the system certificate store
@@ -1171,25 +1158,13 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		return err
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return fmt.Errorf("invalid cert store location %q", u.storeLocation)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))))
+	st, err := openCertStore(u)
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+		return err
 	}
+	// Safe to close while the delete paths below still hold a context: see
+	// openCertStore.
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	var certHandle *windows.CertContext
 
@@ -1325,26 +1300,11 @@ func (k *CAPIKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error
 		return fmt.Errorf("%q is required", IssuerNameArg)
 	}
 
-	var certStoreLocation uint32
-	switch u.storeLocation {
-	case UserStoreLocation:
-		certStoreLocation = certStoreCurrentUser
-	case MachineStoreLocation:
-		certStoreLocation = certStoreLocalMachine
-	default:
-		return fmt.Errorf("invalid cert store location %q", u.storeLocation)
-	}
-
-	st, err := windows.CertOpenStore(
-		certStoreProvSystem,
-		0,
-		0,
-		certStoreLocation,
-		uintptr(unsafe.Pointer(wide(u.storeName))),
-	)
+	st, err := openCertStore(u)
 	if err != nil {
-		return fmt.Errorf("CertOpenStore for the %q store %q returned: %w", u.storeLocation, u.storeName, err)
+		return err
 	}
+	defer func() { _ = windows.CertCloseStore(st, 0) }()
 
 	now := time.Now()
 	var errs []error
