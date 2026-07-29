@@ -934,7 +934,7 @@ func (k *CAPIKMS) FindCertificatesByIssuer(req *apiv1.LoadCertificateRequest, ra
 	return certs, nil
 }
 
-// SearchCertificates implements [apiv1.CertificateSearcher]. It enumerates
+// SearchCertificates implements [apiv1.SearchableCertificateManager]. It enumerates
 // every certificate in the Windows certificate store identified by req.Name
 // ("store-location" and "store" select the store, defaulting to "user" and
 // "My", matching DeleteCertificate and CleanupCredentials) and, for each

@@ -90,12 +90,12 @@ type extendedKeyManager interface {
 }
 
 var (
-	_ apiv1.KeyManager              = (*KMS)(nil)
-	_ apiv1.CertificateManager      = (*KMS)(nil)
-	_ apiv1.CertificateChainManager = (*KMS)(nil)
-	_ apiv1.SearchableKeyManager    = (*KMS)(nil)
-	_ apiv1.CredentialsCleaner      = (*KMS)(nil)
-	_ apiv1.CertificateSearcher     = (*KMS)(nil)
+	_ apiv1.KeyManager                   = (*KMS)(nil)
+	_ apiv1.CertificateManager           = (*KMS)(nil)
+	_ apiv1.CertificateChainManager      = (*KMS)(nil)
+	_ apiv1.SearchableKeyManager         = (*KMS)(nil)
+	_ apiv1.CredentialsCleaner           = (*KMS)(nil)
+	_ apiv1.SearchableCertificateManager = (*KMS)(nil)
 )
 
 type KMS struct {
@@ -325,7 +325,7 @@ func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 	return km.CleanupCredentials(r)
 }
 
-// SearchCertificates delegates to the backend's CertificateSearcher
+// SearchCertificates delegates to the backend's SearchableCertificateManager
 // implementation, if it has one. req.Name is translated from a "kms:" URI to
 // the backend's URI scheme before delegating, the same way CleanupCredentials
 // translates its request name. The response carries only certificates and a
@@ -343,7 +343,7 @@ func (k *KMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.S
 		return nil, errors.New("searchCertificatesRequest cannot be nil")
 	}
 
-	km, ok := k.backend.(apiv1.CertificateSearcher)
+	km, ok := k.backend.(apiv1.SearchableCertificateManager)
 	if !ok {
 		return nil, apiv1.NotImplementedError{}
 	}

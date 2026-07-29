@@ -1182,13 +1182,13 @@ func (k *TPMKMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error 
 	return errors.Join(deleteErrors...)
 }
 
-// SearchCertificates implements [apiv1.CertificateSearcher]. On Windows it
-// enumerates every certificate in the configured certificate store, together
-// with the CNG/CAPI key container associated with each one, delegating to the
-// same Windows certificate-store manager used by CleanupCredentials,
-// LoadCertificateChain, and StoreCertificateChain. The "store-location" and
-// "store" fields of req.Name override the store configured on the TPMKMS
-// instance.
+// SearchCertificates implements [apiv1.SearchableCertificateManager]. On
+// Windows it enumerates every certificate in the configured certificate store,
+// together with the CNG/CAPI key container associated with each one,
+// delegating to the same Windows certificate-store manager used by
+// CleanupCredentials, LoadCertificateChain, and StoreCertificateChain. The
+// "store-location" and "store" fields of req.Name override the store
+// configured on the TPMKMS instance.
 //
 // SearchCertificates is best-effort: on a mid-enumeration failure the
 // returned response may still be non-nil and hold the certificates
@@ -1984,12 +1984,12 @@ type capiCertificateManager interface {
 }
 
 var (
-	_ apiv1.KeyManager              = (*TPMKMS)(nil)
-	_ apiv1.Attester                = (*TPMKMS)(nil)
-	_ apiv1.CertificateManager      = (*TPMKMS)(nil)
-	_ apiv1.CertificateChainManager = (*TPMKMS)(nil)
-	_ apiv1.CredentialsCleaner      = (*TPMKMS)(nil)
-	_ apiv1.CertificateDeleter      = (*TPMKMS)(nil)
-	_ apiv1.CertificateSearcher     = (*TPMKMS)(nil)
-	_ apiv1.AttestationClient       = (*attestationClient)(nil)
+	_ apiv1.KeyManager                   = (*TPMKMS)(nil)
+	_ apiv1.Attester                     = (*TPMKMS)(nil)
+	_ apiv1.CertificateManager           = (*TPMKMS)(nil)
+	_ apiv1.CertificateChainManager      = (*TPMKMS)(nil)
+	_ apiv1.CredentialsCleaner           = (*TPMKMS)(nil)
+	_ apiv1.CertificateDeleter           = (*TPMKMS)(nil)
+	_ apiv1.SearchableCertificateManager = (*TPMKMS)(nil)
+	_ apiv1.AttestationClient            = (*attestationClient)(nil)
 )

@@ -374,7 +374,7 @@ type CleanupCredentialsRequest struct {
 }
 
 // SearchCertificatesRequest is the parameter used in the SearchCertificates
-// method of a CertificateSearcher.
+// method of a SearchableCertificateManager.
 //
 // Name is a KMS URI selecting the certificate store to enumerate. For capi
 // the "store-location" ("machine" or "user") and "store" (e.g. "My")

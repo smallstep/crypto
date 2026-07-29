@@ -41,9 +41,23 @@ type SearchableKeyManager interface {
 	SearchKeys(req *SearchKeysRequest) (*SearchKeysResponse, error)
 }
 
-// CertificateSearcher is an optional interface for KMS implementations that
-// can enumerate the certificates in a certificate store together with
-// provider metadata about each certificate's private-key association.
+// Decrypter is an interface implemented by KMSes that are used
+// in operations that require decryption
+type Decrypter interface {
+	CreateDecrypter(req *CreateDecrypterRequest) (crypto.Decrypter, error)
+}
+
+// CertificateManager is the interface implemented by the KMS that can load and
+// store x509.Certificates.
+type CertificateManager interface {
+	LoadCertificate(req *LoadCertificateRequest) (*x509.Certificate, error)
+	StoreCertificate(req *StoreCertificateRequest) error
+}
+
+// SearchableCertificateManager is an optional interface for KMS
+// implementations that can enumerate the certificates in a certificate store
+// together with provider metadata about each certificate's private-key
+// association.
 //
 // SearchCertificates is best-effort: on a mid-enumeration failure the
 // returned response may still be non-nil and hold the certificates
@@ -57,22 +71,9 @@ type SearchableKeyManager interface {
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
-type CertificateSearcher interface {
-	KeyManager
+type SearchableCertificateManager interface {
+	CertificateManager
 	SearchCertificates(req *SearchCertificatesRequest) (*SearchCertificatesResponse, error)
-}
-
-// Decrypter is an interface implemented by KMSes that are used
-// in operations that require decryption
-type Decrypter interface {
-	CreateDecrypter(req *CreateDecrypterRequest) (crypto.Decrypter, error)
-}
-
-// CertificateManager is the interface implemented by the KMS that can load and
-// store x509.Certificates.
-type CertificateManager interface {
-	LoadCertificate(req *LoadCertificateRequest) (*x509.Certificate, error)
-	StoreCertificate(req *StoreCertificateRequest) error
 }
 
 // CertificateChainManager is the interface implemented by KMS implementations
