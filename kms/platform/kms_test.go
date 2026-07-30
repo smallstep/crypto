@@ -1339,6 +1339,36 @@ func TestKMS_CleanupCredentials(t *testing.T) {
 	}
 }
 
+func TestKMS_SearchCertificates(t *testing.T) {
+	softKMS := mustKMS(t, "kms:backend=softkms")
+
+	type args struct {
+		req *apiv1.SearchCertificatesRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"not implemented", softKMS, args{&apiv1.SearchCertificatesRequest{
+			Name: "kms:",
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
+		}},
+		// A nil request must be rejected rather than panic in clone(req),
+		// whichever backend is configured.
+		{"nil request", softKMS, args{nil}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.kms.SearchCertificates(tt.args.req)
+			tt.assertion(t, err)
+			assert.Nil(t, got)
+		})
+	}
+}
+
 func Test_getBackend(t *testing.T) {
 	type args struct {
 		opts apiv1.Options

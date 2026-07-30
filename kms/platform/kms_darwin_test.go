@@ -72,6 +72,33 @@ func Test_transformFromMacKMS(t *testing.T) {
 	}
 }
 
+func TestKMS_SearchCertificates_mackms(t *testing.T) {
+	platformKMS := mustPlatformKMS(t)
+
+	type args struct {
+		req *apiv1.SearchCertificatesRequest
+	}
+	tests := []struct {
+		name      string
+		kms       *KMS
+		args      args
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"not implemented", platformKMS, args{&apiv1.SearchCertificatesRequest{
+			Name: "kms:",
+		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.kms.SearchCertificates(tt.args.req)
+			tt.assertion(t, err)
+			assert.Nil(t, got)
+		})
+	}
+}
+
 func TestKMS_CleanupCredentials_mackms(t *testing.T) {
 	platformKMS := mustPlatformKMS(t)
 	// Use an expired certificate

@@ -372,3 +372,58 @@ type CleanupCredentialsRequest struct {
 	Name       string
 	RawSubject []byte
 }
+
+// SearchCertificatesRequest is the parameter used in the SearchCertificates
+// method of a SearchableCertificateManager.
+//
+// Name is a KMS URI selecting the certificate store to enumerate. For capi
+// the "store-location" ("machine" or "user") and "store" (e.g. "My")
+// attributes select the store, matching DeleteCertificate and
+// CleanupCredentials.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type SearchCertificatesRequest struct {
+	Name string
+}
+
+// SearchCertificateResult is one certificate from a SearchCertificates
+// enumeration. KeyName names the private key the certificate is associated
+// with, in the KMS's own key namespace: it is the value a KMS URI's key
+// attribute takes, so it can be handed back to the same KMS to address the
+// key. It is empty both when the certificate records no key association and
+// when that association could not be read, which Err tells apart.
+//
+// For capi, KeyName is the CNG/CAPI key container name, the value of the
+// "key" URI attribute. It comes from the certificate's key-provider
+// properties rather than from opening the key, so it is populated even when
+// the key it names no longer exists.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type SearchCertificateResult struct {
+	Certificate *x509.Certificate
+	KeyName     string
+
+	// Err is non-nil when the certificate's key-provider metadata could not
+	// be read. Certificate is still valid and KeyName is empty. It
+	// distinguishes a certificate with no private-key association at all
+	// (Err == nil, KeyName == "") from one whose association exists but
+	// cannot be interpreted — a certificate a caller sweeping for broken
+	// credentials most likely wants to see rather than have hidden.
+	Err error
+}
+
+// SearchCertificatesResponse is the response of a SearchCertificates call.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type SearchCertificatesResponse struct {
+	Results []SearchCertificateResult
+}

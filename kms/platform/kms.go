@@ -90,11 +90,12 @@ type extendedKeyManager interface {
 }
 
 var (
-	_ apiv1.KeyManager              = (*KMS)(nil)
-	_ apiv1.CertificateManager      = (*KMS)(nil)
-	_ apiv1.CertificateChainManager = (*KMS)(nil)
-	_ apiv1.SearchableKeyManager    = (*KMS)(nil)
-	_ apiv1.CredentialsCleaner      = (*KMS)(nil)
+	_ apiv1.KeyManager                   = (*KMS)(nil)
+	_ apiv1.CertificateManager           = (*KMS)(nil)
+	_ apiv1.CertificateChainManager      = (*KMS)(nil)
+	_ apiv1.SearchableKeyManager         = (*KMS)(nil)
+	_ apiv1.CredentialsCleaner           = (*KMS)(nil)
+	_ apiv1.SearchableCertificateManager = (*KMS)(nil)
 )
 
 type KMS struct {
@@ -322,6 +323,39 @@ func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {
 	r := clone(req)
 	r.Name = name
 	return km.CleanupCredentials(r)
+}
+
+// SearchCertificates delegates to the backend's SearchableCertificateManager
+// implementation, if it has one. req.Name is translated from a "kms:" URI to
+// the backend's URI scheme before delegating, the same way CleanupCredentials
+// translates its request name. The response carries only certificates and a
+// bare key name, neither of which encodes a KMS URI, so no response
+// translation is needed. Per-certificate metadata failures reported on a
+// result's Err field are passed through untouched as well.
+//
+// SearchCertificates is best-effort: on a mid-enumeration failure the backend
+// may return a non-nil response holding the certificates enumerated before
+// the failure, together with the error describing it. That response is
+// returned unmodified alongside the error, so callers wanting the partial
+// results must check the response before the error.
+func (k *KMS) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	if req == nil {
+		return nil, errors.New("searchCertificatesRequest cannot be nil")
+	}
+
+	km, ok := k.backend.(apiv1.SearchableCertificateManager)
+	if !ok {
+		return nil, apiv1.NotImplementedError{}
+	}
+
+	name, err := k.transformToURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := clone(req)
+	r.Name = name
+	return km.SearchCertificates(r)
 }
 
 func (k *KMS) patchCreateKeyResponse(resp *apiv1.CreateKeyResponse) (*apiv1.CreateKeyResponse, error) {

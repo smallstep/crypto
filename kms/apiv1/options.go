@@ -54,6 +54,28 @@ type CertificateManager interface {
 	StoreCertificate(req *StoreCertificateRequest) error
 }
 
+// SearchableCertificateManager is an optional interface for KMS
+// implementations that can enumerate the certificates in a certificate store
+// together with provider metadata about each certificate's private-key
+// association.
+//
+// SearchCertificates is best-effort: on a mid-enumeration failure the
+// returned response may still be non-nil and hold the certificates
+// enumerated before the failure, together with a non-nil error describing
+// what went wrong. Callers wanting those partial results must check the
+// response before (or regardless of) the error. A failure to read one
+// certificate's key metadata is reported on that result's Err field rather
+// than failing the search or dropping the certificate.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type SearchableCertificateManager interface {
+	CertificateManager
+	SearchCertificates(req *SearchCertificatesRequest) (*SearchCertificatesResponse, error)
+}
+
 // CertificateChainManager is the interface implemented by KMS implementations
 // that can load certificate chains. The LoadCertificateChain method uses the
 // same request object as the LoadCertificate method of the CertificateManager

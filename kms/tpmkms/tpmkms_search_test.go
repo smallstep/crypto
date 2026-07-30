@@ -3,6 +3,7 @@ package tpmkms
 import (
 	"context"
 	"crypto"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/x509util"
 )
 
@@ -161,5 +163,87 @@ func TestTPMKMS_keyNamesBySubjectKeyID(t *testing.T) {
 		// the unusable one is surfaced as an error, naming the offending key.
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "tpmkms:name=weird")
+	})
+}
+
+// recordingCertificateManager is a minimal capiCertificateManager that only
+// records the request handed to SearchCertificates, so
+// TestTPMKMS_SearchCertificates_delegation can pin the downstream capi URI
+// TPMKMS builds without a live Windows certificate store.
+type recordingCertificateManager struct {
+	gotName string
+}
+
+func (m *recordingCertificateManager) SearchCertificates(req *apiv1.SearchCertificatesRequest) (*apiv1.SearchCertificatesResponse, error) {
+	m.gotName = req.Name
+	return &apiv1.SearchCertificatesResponse{}, nil
+}
+func (m *recordingCertificateManager) FindCertificatesByIssuer(*apiv1.LoadCertificateRequest, []byte) ([]*x509.Certificate, error) {
+	return nil, nil
+}
+func (m *recordingCertificateManager) DeleteCertificate(*apiv1.DeleteCertificateRequest) error {
+	return nil
+}
+func (m *recordingCertificateManager) LoadCertificateChain(*apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
+	return nil, nil
+}
+func (m *recordingCertificateManager) StoreCertificateChain(*apiv1.StoreCertificateChainRequest) error {
+	return nil
+}
+func (m *recordingCertificateManager) CleanupCredentials(*apiv1.CleanupCredentialsRequest) error {
+	return nil
+}
+
+// TestTPMKMS_SearchCertificates_delegation pins the shape of the downstream
+// capi URI TPMKMS.SearchCertificates builds (tpmkms.go's SearchCertificates,
+// ~store-location/store handling). It runs on any host — no TPM or Windows
+// required, since windowsCertificateManager is a plain interface field — and
+// is the only test of this delegation that runs on ubuntu CI; a wrong
+// attribute spelling here would silently search the wrong certificate store,
+// which is exactly the original production symptom (the platform KMS
+// resolving to a backend that never actually searched anything).
+func TestTPMKMS_SearchCertificates_delegation(t *testing.T) {
+	t.Run("request overrides carried through in capi spelling", func(t *testing.T) {
+		mock := &recordingCertificateManager{}
+		k := &TPMKMS{
+			windowsCertificateManager: mock,
+			opts: &options{
+				windowsCertificateStoreLocation: "user",
+				windowsCertificateStore:         "My",
+			},
+		}
+
+		// This mirrors what the platform wrapper's transformToTPMKMS produces
+		// for "kms:store-location=machine;store=My": store-location and store
+		// aren't recognized default keys (see platform/kms.go's isDefaultKey),
+		// so they're carried straight through into the tpmkms: URI unchanged.
+		_, err := k.SearchCertificates(&apiv1.SearchCertificatesRequest{
+			Name: "tpmkms:store-location=machine;store=My",
+		})
+		require.NoError(t, err)
+
+		got, err := uri.ParseWithScheme("capi", mock.gotName)
+		require.NoError(t, err)
+		assert.Equal(t, "machine", got.Get("store-location"))
+		assert.Equal(t, "My", got.Get("store"))
+	})
+
+	t.Run("falls back to instance defaults", func(t *testing.T) {
+		mock := &recordingCertificateManager{}
+		k := &TPMKMS{
+			windowsCertificateManager: mock,
+			opts: &options{
+				windowsCertificateStoreLocation: "user",
+				windowsCertificateStore:         "My",
+			},
+		}
+
+		_, err := k.SearchCertificates(&apiv1.SearchCertificatesRequest{Name: "tpmkms:"})
+		require.NoError(t, err)
+
+		got, err := uri.ParseWithScheme("capi", mock.gotName)
+		require.NoError(t, err)
+		assert.Equal(t, "user", got.Get("store-location"))
+		assert.Equal(t, "My", got.Get("store"))
 	})
 }

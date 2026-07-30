@@ -69,7 +69,7 @@ const (
 	findProperty            = compareProp << compareShift                     // CERT_FIND_PROPERTY
 	findCertID              = compareCertID << compareShift                   // CERT_FIND_CERT_ID
 
-	signatureKeyUsage = 0x80       // CERT_DIGITAL_SIGNATURE_KEY_USAGE
+	signatureKeyUsage = 0x80 // CERT_DIGITAL_SIGNATURE_KEY_USAGE
 
 	BCRYPT_RSAPUBLIC_BLOB = "RSAPUBLICBLOB"
 	BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB"
@@ -239,6 +239,14 @@ func errNoToStr(e uint32) string {
 	default:
 		return fmt.Sprintf("0x%X", e)
 	}
+}
+
+// isNotFound reports whether err is the CRYPT_E_NOT_FOUND status CryptoAPI
+// returns when a certificate or a certificate property simply is not there, as
+// opposed to a failure to look for it.
+func isNotFound(err error) bool {
+	var errno windows.Errno
+	return errors.As(err, &errno) && uint32(errno) == CRYPT_E_NOT_FOUND
 }
 
 // wide returns a pointer to a uint16 representing the equivalent
@@ -579,7 +587,7 @@ func findCertificateInStore(store windows.Handle, enc, findFlags, findType uint3
 	)
 	if h == 0 {
 		// Actual error, or simply not found?
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -666,41 +674,64 @@ func cryptFindCertificatePrivateKey(certContext *windows.CertContext) (uintptr, 
 	return uintptr(kh), nil
 }
 
+// cryptFindCertificateKeyContainerName returns the key container name recorded
+// in the certificate's CERT_KEY_PROV_INFO property, or "" when the certificate
+// has no private-key association. It reads the property and never opens the
+// key, so it succeeds even when the key the property names no longer exists.
 func cryptFindCertificateKeyContainerName(certContext *windows.CertContext) (string, error) {
-	var (
-		length   uint32
-		provInfo *CRYPT_KEY_PROV_INFO
-	)
+	var size uint32
 
-	r1, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(&length)),
-	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
-	}
-	if r1 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r1)))
+	err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, nil, &size)
+	if err != nil {
+		if isNotFound(err) {
+			return "", nil
+		}
+		return "", err
 	}
 
-	r2, _, err := procCertGetCertificateContextProperty.Call(
-		uintptr(unsafe.Pointer(certContext)),
-		uintptr(CERT_KEY_PROV_INFO_PROP_ID),
-		uintptr(0),
-		uintptr(unsafe.Pointer(provInfo)),
-	)
-
-	if !errors.Is(err, windows.Errno(0)) {
-		return "", fmt.Errorf("CertGetCertificateContextProperty returned %w", err)
+	if size < uint32(unsafe.Sizeof(CRYPT_KEY_PROV_INFO{})) {
+		return "", fmt.Errorf("CERT_KEY_PROV_INFO property size %d smaller than struct", size)
 	}
 
-	if r2 == 0 {
-		return "", fmt.Errorf("finding key container name failed: %v", errNoToStr(uint32(r2)))
+	buf := make([]byte, size)
+	if err := certGetCertificateContextProperty(certContext, CERT_KEY_PROV_INFO_PROP_ID, &buf[0], &size); err != nil {
+		return "", err
 	}
 
-	return "", nil
+	info := (*CRYPT_KEY_PROV_INFO)(unsafe.Pointer(&buf[0]))
+
+	return utf16StringInBuffer(buf, info.pwszContainerName)
+}
+
+// utf16StringInBuffer decodes the NUL-terminated UTF-16 string p points at,
+// reading it out of buf rather than dereferencing p. CryptoAPI returns
+// properties such as CERT_KEY_PROV_INFO as a self-contained blob: the string
+// members point at bytes appended after the struct, inside the buffer the
+// caller supplied. Going through buf keeps every read bounds-checked against
+// the size the API reported, and keeps the backing array reachable while it is
+// being read, so the decoded string never outlives what it was decoded from.
+func utf16StringInBuffer(buf []byte, p *uint16) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+
+	off := uintptr(unsafe.Pointer(p)) - uintptr(unsafe.Pointer(&buf[0]))
+	if off >= uintptr(len(buf)) || off%2 != 0 {
+		// A pointer before buf underflows to a very large offset, so this one
+		// check rejects both directions.
+		return "", errors.New("string does not point into the property buffer")
+	}
+
+	s := make([]uint16, 0, (uintptr(len(buf))-off)/2)
+	for i := off; i+1 < uintptr(len(buf)); i += 2 {
+		c := binary.LittleEndian.Uint16(buf[i:])
+		if c == 0 {
+			return windows.UTF16ToString(s), nil
+		}
+		s = append(s, c)
+	}
+
+	return "", errors.New("unterminated string in the property buffer")
 }
 
 func certSetCertificateContextProperty(certContext *windows.CertContext, propID uint32, pvData uintptr) error {
@@ -719,7 +750,7 @@ func certSetCertificateContextProperty(certContext *windows.CertContext, propID 
 
 func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val string) error {
 	data := CRYPTOAPI_BLOB{
-		len: uint32(len(val)+1) * 2,
+		len:  uint32(len(val)+1) * 2,
 		data: uintptr(unsafe.Pointer(wide(val))),
 	}
 
@@ -728,7 +759,7 @@ func cryptSetCertificateFriendlyName(certContext *windows.CertContext, val strin
 
 func cryptSetCertificateDescription(certContext *windows.CertContext, val string) error {
 	data := CRYPTOAPI_BLOB{
-		len: uint32(len(val)+1) * 2,
+		len:  uint32(len(val)+1) * 2,
 		data: uintptr(unsafe.Pointer(wide(val))),
 	}
 
@@ -753,7 +784,7 @@ func cryptFindCertificateFriendlyName(certContext *windows.CertContext) (string,
 
 	err := certGetCertificateContextProperty(certContext, CERT_FRIENDLY_NAME_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 
@@ -779,7 +810,7 @@ func cryptFindCertificateDescription(certContext *windows.CertContext) (string, 
 
 	err := certGetCertificateContextProperty(certContext, CERT_DESCRIPTION_PROP_ID, nil, &size)
 	if err != nil {
-		if errno, ok := err.(windows.Errno); ok && uint32(errno) == CRYPT_E_NOT_FOUND {
+		if isNotFound(err) {
 			return "", nil
 		}
 
