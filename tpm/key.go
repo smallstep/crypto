@@ -461,6 +461,11 @@ func (k *Key) Signer(ctx context.Context) (crypto.Signer, error) {
 
 // CertificationParameters returns information about the key that can be used to
 // verify key certification.
+//
+// The parameters are the ones recorded when the key was created: the
+// TPM2_Certify [TPM.AttestKey] performs, with that call's
+// [AttestKeyConfig.QualifyingData] frozen in as the nonce. Use
+// [Key.Recertify] to obtain parameters over a different nonce.
 func (k *Key) CertificationParameters(ctx context.Context) (params attest.CertificationParameters, err error) {
 	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
@@ -476,6 +481,59 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	params = loadedKey.CertificationParameters()
 
 	return
+}
+
+// Recertify runs a fresh TPM2_Certify over the key using the AK that attested
+// it, binding qualifyingData as the nonce, and returns the resulting
+// parameters. The key itself is untouched: only a new signed statement about
+// it is produced.
+//
+// It exists for protocols that bind a per-transaction challenge into the
+// certification. ACME device-attest-01 derives the expected nonce from the
+// order's keyAuthorization, so proving possession for a second order against
+// the parameters from [Key.CertificationParameters] fails — those carry the
+// first order's nonce. Without re-certification the only way to satisfy a new
+// order is a new key, which rotates the credential and invalidates anything
+// registered against its public key.
+//
+// The key must have been attested by an AK ([Key.WasAttested]), and the TPM
+// must be a 2.0 device.
+func (k *Key) Recertify(ctx context.Context, qualifyingData []byte) (params attest.CertificationParameters, err error) {
+	if !k.WasAttested() {
+		return params, fmt.Errorf("key %q was not attested", k.name)
+	}
+
+	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
+		return params, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer closeTPM(ctx, k.tpm, &err)
+
+	ak, err := k.tpm.store.GetAK(k.attestedBy)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, ErrNotFound)
+		}
+		return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, err)
+	}
+
+	loadedAK, err := k.tpm.attestTPM.LoadAK(ak.Data)
+	if err != nil {
+		return params, fmt.Errorf("failed loading AK %q: %w", k.attestedBy, err)
+	}
+	defer loadedAK.Close(k.tpm.attestTPM)
+
+	loadedKey, err := k.tpm.attestTPM.LoadKey(k.data)
+	if err != nil {
+		return params, fmt.Errorf("failed loading key %q: %w", k.name, err)
+	}
+	defer loadedKey.Close()
+
+	p, err := loadedKey.Recertify(loadedAK, qualifyingData)
+	if err != nil {
+		return params, fmt.Errorf("failed recertifying key %q: %w", k.name, err)
+	}
+
+	return *p, nil
 }
 
 // Blobs returns a container for the private and public key blobs.
