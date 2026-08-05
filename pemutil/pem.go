@@ -638,7 +638,10 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			Bytes: k.Raw,
 		}
 	default:
-		return nil, errors.Errorf("cannot serialize type '%T', value '%v'", k, k)
+		var err error
+		if p, isPrivateKey, err = serialize(in); err != nil {
+			return nil, err
+		}
 	}
 
 	if isPrivateKey {

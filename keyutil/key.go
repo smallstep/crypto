@@ -147,7 +147,7 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	case *ssh.Certificate:
 		return ExtractKey(k.Key)
 	default:
-		return nil, errors.Errorf("cannot extract the key from type '%T'", k)
+		return extractKey(in)
 	}
 }
 

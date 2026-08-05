@@ -90,6 +90,12 @@ const (
 	ECDSAWithSHA512
 	// EdDSA on Curve25519 with a SHA512 digest.
 	PureEd25519
+	// ML-DSA-44 PQ algorithm defined in FIPS 204.
+	MLDSA44
+	// ML-DSA-65 PQ algorithm defined in FIPS 204.
+	MLDSA65
+	// ML-DSA-87 PQ algorithm defined in FIPS 204.
+	MLDSA87
 )
 
 // String returns a string representation of s.
