@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 
@@ -27,6 +28,8 @@ var (
 	DefaultKeySize = 2048
 	// DefaultKeyCurve is the default curve of a private key.
 	DefaultKeyCurve = "P-256"
+	// DefaultKeyAlgorithm is the default algorithm for AKP (ML-DSA) keys.
+	DefaultKeyAlgorithm = mldsa.MLDSA65
 	// DefaultSignatureAlgorithm is the default signature algorithm used on a
 	// certificate with the default key type.
 	DefaultSignatureAlgorithm = x509.ECDSAWithSHA256
@@ -88,7 +91,7 @@ func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 // GenerateKey generates a key of the given type (kty).
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 	switch kty {
-	case "EC", "RSA", "OKP":
+	case "EC", "RSA", "OKP", "AKP":
 		return GenerateSigner(kty, crv, size)
 	case "oct":
 		return generateOctKey(size)
@@ -114,7 +117,8 @@ func GenerateDefaultSigner() (crypto.Signer, error) {
 }
 
 // GenerateSigner creates an asymmetric crypto key that implements
-// crypto.Signer.
+// crypto.Signer. For ML-DSA keys, the crv parameters indicates the algorithm to
+// use.
 func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 	switch kty {
 	case "EC":
@@ -123,6 +127,8 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 		return generateRSAKey(size)
 	case "OKP":
 		return generateOKPKey(crv)
+	case "AKP":
+		return generateAKPKey(crv)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
@@ -251,6 +257,38 @@ func generateOKPKey(crv string) (crypto.Signer, error) {
 	default:
 		return nil, errors.Errorf("missing or invalid value for argument 'crv'. "+
 			"expected 'Ed25519' or 'X25519', but got '%s'", crv)
+	}
+}
+
+func generateAKPKey(alg string) (crypto.Signer, error) {
+	switch alg {
+	case "":
+		key, err := mldsa.GenerateKey(DefaultKeyAlgorithm())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-44":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA44())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-44 key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-65":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA65())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-65 key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-87":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA87())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-87 key: %w", err)
+		}
+		return key, nil
+	default:
+		return nil, errors.Errorf("missing or invalid value for argument 'alg'. "+
+			"expected 'ML-DSA-44', 'ML-DSA-65', or 'ML-DSA-87', but got '%s'", alg)
 	}
 }
 
