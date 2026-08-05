@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/internal/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 
@@ -133,6 +134,7 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	switch k := in.(type) {
 	case *rsa.PublicKey, *rsa.PrivateKey,
 		*ecdsa.PublicKey, *ecdsa.PrivateKey,
+		*mldsa.PublicKey, *mldsa.PrivateKey,
 		ed25519.PublicKey, ed25519.PrivateKey,
 		x25519.PublicKey, x25519.PrivateKey:
 		return in, nil
@@ -147,7 +149,7 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	case *ssh.Certificate:
 		return ExtractKey(k.Key)
 	default:
-		return extractKey(in)
+		return nil, errors.Errorf("cannot extract the key from type '%T'", in)
 	}
 }
 

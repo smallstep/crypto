@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/internal/mldsa"
 	fileutils "go.step.sm/crypto/internal/utils/file"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/x25519"
@@ -558,7 +559,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 	var p *pem.Block
 	var isPrivateKey bool
 	switch k := in.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey, ed25519.PublicKey:
 		b, err := x509.MarshalPKIXPublicKey(k)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -611,12 +612,12 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 				Bytes: b,
 			}
 		}
-	case ed25519.PrivateKey:
+	case ed25519.PrivateKey, *mldsa.PrivateKey:
 		isPrivateKey = true
 		switch {
 		case !ctx.pkcs8 && ctx.openSSH:
 			return SerializeOpenSSHPrivateKey(k, withContext(ctx))
-		default: // Ed25519 keys will use pkcs8 by default
+		default: // Ed25519 and ML-DSA keys will use pkcs8 by default
 			ctx.pkcs8 = true
 			b, err := x509.MarshalPKCS8PrivateKey(k)
 			if err != nil {
@@ -638,10 +639,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 			Bytes: k.Raw,
 		}
 	default:
-		var err error
-		if p, isPrivateKey, err = serialize(in); err != nil {
-			return nil, err
-		}
+		return nil, fmt.Errorf("cannot serialize type '%T', value '%v'", in, in)
 	}
 
 	if isPrivateKey {
