@@ -59,15 +59,7 @@ func Insecure() (revert func()) {
 // PublicKey extracts a public key from a private key.
 func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 	switch k := priv.(type) {
-	case *rsa.PrivateKey:
-		return &k.PublicKey, nil
-	case *ecdsa.PrivateKey:
-		return &k.PublicKey, nil
-	case ed25519.PrivateKey:
-		return k.Public(), nil
-	case x25519.PrivateKey:
-		return k.Public(), nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return k, nil
 	case crypto.Signer:
 		return k.Public(), nil
@@ -173,31 +165,14 @@ func VerifyPair(pub crypto.PublicKey, priv crypto.PrivateKey) error {
 
 // Equal reports if x and y are the same key.
 func Equal(x, y any) bool {
+	if eq, ok := x.(interface{ Equal(crypto.PublicKey) bool }); ok {
+		return eq.Equal(y)
+	}
+	if eq, ok := x.(interface{ Equal(crypto.PrivateKey) bool }); ok {
+		return eq.Equal(y)
+	}
+
 	switch xx := x.(type) {
-	case *ecdsa.PublicKey:
-		yy, ok := y.(*ecdsa.PublicKey)
-		return ok && xx.Equal(yy)
-	case *ecdsa.PrivateKey:
-		yy, ok := y.(*ecdsa.PrivateKey)
-		return ok && xx.Equal(yy)
-	case *rsa.PublicKey:
-		yy, ok := y.(*rsa.PublicKey)
-		return ok && xx.Equal(yy)
-	case *rsa.PrivateKey:
-		yy, ok := y.(*rsa.PrivateKey)
-		return ok && xx.Equal(yy)
-	case ed25519.PublicKey:
-		yy, ok := y.(ed25519.PublicKey)
-		return ok && xx.Equal(yy)
-	case ed25519.PrivateKey:
-		yy, ok := y.(ed25519.PrivateKey)
-		return ok && xx.Equal(yy)
-	case x25519.PublicKey:
-		yy, ok := y.(x25519.PublicKey)
-		return ok && xx.Equal(yy)
-	case x25519.PrivateKey:
-		yy, ok := y.(x25519.PrivateKey)
-		return ok && xx.Equal(yy)
 	case []byte: // special case for symmetric keys
 		yy, ok := y.([]byte)
 		return ok && bytes.Equal(xx, yy)
