@@ -74,6 +74,6 @@ func GenerateKey(params Parameters) (*PrivateKey, error) {
 	return nil, errNotSupported
 }
 
-func Verify(pk *PublicKey, message []byte, signature []byte, opts *Options) error {
+func Verify(pk *PublicKey, message, signature []byte, opts *Options) error {
 	return errNotSupported
 }
