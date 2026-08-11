@@ -528,7 +528,9 @@ func (k *Key) Recertify(ctx context.Context, qualifyingData []byte) (params atte
 	}
 	defer loadedKey.Close()
 
-	p, err := loadedKey.Recertify(loadedAK, qualifyingData)
+	p, err := loadedKey.Recertify(loadedAK, &attest.RecertifyConfig{
+		QualifyingData: qualifyingData,
+	})
 	if err != nil {
 		return params, fmt.Errorf("failed recertifying key %q: %w", k.name, err)
 	}

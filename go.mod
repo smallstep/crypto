@@ -22,7 +22,7 @@ require (
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/schollz/jsonstore v1.1.0
-	github.com/smallstep/go-attestation v0.4.4-0.20260803172805-97f0ab48a939
+	github.com/smallstep/go-attestation v0.4.4-0.20260811141324-45ebbb7a46e6
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.54.0
