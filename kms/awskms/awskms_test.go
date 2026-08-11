@@ -181,10 +181,20 @@ func TestKMS_CreateKey(t *testing.T) {
 				SigningKey: "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936",
 			},
 		}, false},
+		{"ok ed25519", fields{okClient}, args{&apiv1.CreateKeyRequest{
+			Name:               "awskms:name=root",
+			SignatureAlgorithm: apiv1.PureEd25519,
+		}}, &apiv1.CreateKeyResponse{
+			Name:      "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936",
+			PublicKey: key,
+			CreateSignerRequest: apiv1.CreateSignerRequest{
+				SigningKey: "awskms:key-id=be468355-ca7a-40d9-a28b-8ae1c4c7f936",
+			},
+		}, false},
 		{"fail empty", fields{okClient}, args{&apiv1.CreateKeyRequest{}}, nil, true},
 		{"fail unsupported alg", fields{okClient}, args{&apiv1.CreateKeyRequest{
 			Name:               "root",
-			SignatureAlgorithm: apiv1.PureEd25519,
+			SignatureAlgorithm: apiv1.SignatureAlgorithm(100),
 		}}, nil, true},
 		{"fail unsupported bits", fields{okClient}, args{&apiv1.CreateKeyRequest{
 			Name:               "root",
@@ -395,7 +405,7 @@ func Test_getCustomerMasterKeySpecMapping(t *testing.T) {
 		{"ECDSAWithSHA256", args{apiv1.ECDSAWithSHA256, 0}, types.KeySpecEccNistP256, assert.NoError},
 		{"ECDSAWithSHA384", args{apiv1.ECDSAWithSHA384, 0}, types.KeySpecEccNistP384, assert.NoError},
 		{"ECDSAWithSHA512", args{apiv1.ECDSAWithSHA512, 0}, types.KeySpecEccNistP521, assert.NoError},
-		{"fail Ed25519", args{apiv1.PureEd25519, 0}, "", assert.Error},
+		{"Ed25519", args{apiv1.PureEd25519, 0}, types.KeySpecEccNistEdwards25519, assert.NoError},
 		{"fail type switch", args{apiv1.SignatureAlgorithm(100), 0}, "", assert.Error},
 	}
 	for _, tt := range tests {

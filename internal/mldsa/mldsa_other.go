@@ -34,6 +34,10 @@ type Options struct {
 	Context string
 }
 
+func (o *Options) HashFunc() crypto.Hash {
+	return 0
+}
+
 type PrivateKey struct{}
 
 func (sk *PrivateKey) Bytes() []byte {

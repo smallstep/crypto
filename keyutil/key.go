@@ -29,7 +29,7 @@ var (
 	// DefaultKeyCurve is the default curve of a private key.
 	DefaultKeyCurve = "P-256"
 	// DefaultKeyAlgorithm is the default algorithm for AKP (ML-DSA) keys.
-	DefaultKeyAlgorithm = mldsa.MLDSA65
+	DefaultKeyAlgorithm = mldsa.MLDSA44
 	// DefaultSignatureAlgorithm is the default signature algorithm used on a
 	// certificate with the default key type.
 	DefaultSignatureAlgorithm = x509.ECDSAWithSHA256

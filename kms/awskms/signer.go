@@ -5,13 +5,16 @@ package awskms
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
+	"fmt"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/internal/mldsa"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -68,11 +71,33 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 		return nil, err
 	}
 
+	var messageType types.MessageType
+	switch alg {
+	case types.SigningAlgorithmSpecEd25519Sha512:
+		messageType = types.MessageTypeRaw
+		// AWS does not support Ed25519 (ED25519_SHA_512) with messages larger than 4096 bytes
+		if len(digest) > 4096 {
+			return nil, fmt.Errorf("awskms Sign failed: message must have length less than or equal to 4096")
+		}
+	case types.SigningAlgorithmSpecMlDsaShake256:
+		if len(digest) > 4096 {
+			messageType = types.MessageTypeExternalMu
+			digest, err = mldsaMessageHash(s.publicKey, digest, opts)
+			if err != nil {
+				return nil, fmt.Errorf("awskms Sign failed: %w", err)
+			}
+		} else {
+			messageType = types.MessageTypeRaw
+		}
+	default:
+		messageType = types.MessageTypeDigest
+	}
+
 	req := &kms.SignInput{
 		KeyId:            pointer(s.keyID),
 		SigningAlgorithm: alg,
 		Message:          digest,
-		MessageType:      types.MessageTypeDigest,
+		MessageType:      messageType,
 	}
 
 	ctx, cancel := defaultContext()
@@ -120,7 +145,25 @@ func getSigningAlgorithm(key crypto.PublicKey, opts crypto.SignerOpts) (types.Si
 		default:
 			return "", errors.Errorf("unsupported hash function %v", h)
 		}
+	case *mldsa.PublicKey:
+		return types.SigningAlgorithmSpecMlDsaShake256, nil
+	case ed25519.PublicKey:
+		return types.SigningAlgorithmSpecEd25519Sha512, nil
 	default:
 		return "", errors.Errorf("unsupported key type %T", key)
 	}
+}
+
+func mldsaMessageHash(pub crypto.PublicKey, msg []byte, o crypto.SignerOpts) ([]byte, error) {
+	pk, ok := pub.(*mldsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type %T", pub)
+	}
+
+	opts, _ := o.(*mldsa.Options)
+	h, err := mldsa.MessageHash(pk, msg, opts)
+	if err != nil {
+		return nil, err
+	}
+	return h[:], nil
 }
