@@ -84,7 +84,7 @@ func setup(t TBTesting, k *PKCS11) {
 		if err != nil && !errors.Is(errors.Cause(err), apiv1.AlreadyExistsError{
 			Message: tk.Name + " already exists",
 		}) {
-			t.Errorf("PKCS11.GetPublicKey() error = %v", err)
+			t.Errorf("PKCS11.CreateKey() error = %v", err)
 		}
 	}
 
