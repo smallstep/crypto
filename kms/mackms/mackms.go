@@ -92,6 +92,63 @@ type certAttributes struct {
 	serialNumber              *big.Int
 	keychain                  string
 	useDataProtectionKeychain bool
+
+	// Subject distinguished name components (cn, o, ou, l, st, c) used to
+	// filter certificates after retrieving them from the keychain. The
+	// keychain cannot match individual subject components, and it stores some
+	// of the subject values in uppercase.
+	commonName         string
+	organization       []string
+	organizationalUnit []string
+	locality           []string
+	province           []string
+	country            []string
+}
+
+// hasSubjectQuery reports whether at least one subject distinguished name
+// component (cn, o, ou, l, st, c) is set.
+func (u *certAttributes) hasSubjectQuery() bool {
+	return u.commonName != "" || len(u.organization) > 0 ||
+		len(u.organizationalUnit) > 0 || len(u.locality) > 0 ||
+		len(u.province) > 0 || len(u.country) > 0
+}
+
+// matchesSubject reports whether the certificate subject contains all the
+// subject distinguished name components in u. Comparisons are exact and
+// case-sensitive; for multi-valued components every requested value must be
+// present in the certificate subject. It returns true if no components are
+// set.
+func (u *certAttributes) matchesSubject(cert *x509.Certificate) bool {
+	if u.commonName != "" && cert.Subject.CommonName != u.commonName {
+		return false
+	}
+	return containsAll(cert.Subject.Organization, u.organization) &&
+		containsAll(cert.Subject.OrganizationalUnit, u.organizationalUnit) &&
+		containsAll(cert.Subject.Locality, u.locality) &&
+		containsAll(cert.Subject.Province, u.province) &&
+		containsAll(cert.Subject.Country, u.country)
+}
+
+// containsAll reports whether values contains all the elements in want. It
+// returns true if want is empty.
+func containsAll(values, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(values, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// nonEmptyValues returns the values in vs that are not the empty string.
+func nonEmptyValues(vs []string) []string {
+	var values []string
+	for _, v := range vs {
+		if v != "" {
+			values = append(values, v)
+		}
+	}
+	return values
 }
 
 type algorithmAttributes struct {
@@ -376,16 +433,31 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 	}, nil
 }
 
-// LoadCertificate returns an [x509.Certificate] by its label and/or serial
-// number. If multiple certificates match, it will return the certificate with
-// the most recent NotBefore date among those that have already become valid.
-// Future certificates maintain their original order. Expiration is not checked.
-// By default Apple Keychain will use the certificate common name as the label.
+// LoadCertificate returns an [x509.Certificate] by its label, serial number,
+// and/or subject distinguished name components. If multiple certificates
+// match, it will return the certificate with the most recent NotBefore date
+// among those that have already become valid. Future certificates maintain
+// their original order. Expiration is not checked. By default Apple Keychain
+// will use the certificate common name as the label.
 //
 // Valid names (URIs) are:
 //   - mackms:label=test@example.com
 //   - mackms:serial=2c273934eda8454d2595a94497e2395a
 //   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:cn=My+Cert
+//   - mackms:cn=My+Cert;o=Smallstep;ou=Engineering;ou=Platform
+//   - mackms:label=test@example.com;ou=Engineering
+//
+// The "cn" (common name), "o" (organization), "ou" (organizational unit), "l"
+// (locality), "st" (state or province), and "c" (country) attributes select
+// certificates by their subject. All the given components must match using
+// exact, case-sensitive comparison. The "cn" attribute is single-valued; the
+// others can be repeated (e.g. "ou=a;ou=b"), and every given value must be
+// present in the certificate subject. Values must be URL-encoded; spaces are
+// encoded as "+" or "%20". Subject components can be combined with "label" and
+// "serial", which narrow the keychain query. Note that a URI with just an
+// attribute name and no value (e.g. "mackms:cn") is the shorthand for a label
+// with that name, so subject components always require a value.
 //
 // On code-signed applications, it is possible to use the Data Protection
 // Keychain by default if [UseDataProtectionKeychain] is set to true. You can
@@ -399,7 +471,7 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 		return nil, fmt.Errorf("loadCertificateRequest 'name' cannot be empty")
 	}
 
-	// Require label or serial
+	// Require label, serial, or a subject component
 	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, true)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificate failed: %w", err)
@@ -423,6 +495,9 @@ func (k *MacKMS) LoadCertificate(req *apiv1.LoadCertificateRequest) (*x509.Certi
 //   - "mackms:" will use the common name
 //   - "mackms:label=my-label" will use "my-label"
 //   - "mackms:my-label" will use the "my-label"
+//
+// The "serial" attribute and the subject components ("cn", "o", "ou", "l",
+// "st", "c") are ignored when storing a certificate.
 //
 // On code-signed applications, it is possible to use the Data Protection
 // Keychain by default if [UseDataProtectionKeychain] is set to true. You can
@@ -464,23 +539,29 @@ func (k *MacKMS) StoreCertificate(req *apiv1.StoreCertificateRequest) error {
 	return nil
 }
 
-// LoadCertificateChain returns the leaf [x509.Certificate] by its label and/or
-// serial number and its intermediate certificates. If multiple certificates
-// match, it will return the certificate with the most recent NotBefore date
-// among those that have already become valid. Future certificates maintain
-// their original order. Expiration is not checked. By default Apple Keychain
-// will use the certificate common name as the label.
+// LoadCertificateChain returns the leaf [x509.Certificate] by its label,
+// serial number, and/or subject distinguished name components, together with
+// its intermediate certificates. If multiple certificates match, it will
+// return the certificate with the most recent NotBefore date among those that
+// have already become valid. Future certificates maintain their original
+// order. Expiration is not checked. By default Apple Keychain will use the
+// certificate common name as the label.
 //
 // Valid names (URIs) are:
 //   - mackms:label=test@example.com
 //   - mackms:serial=2c273934eda8454d2595a94497e2395a
 //   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:cn=My+Cert;ou=Engineering
+//
+// Subject components select the leaf certificate only; intermediates are
+// located using the authority key identifier. See [MacKMS.LoadCertificate] for
+// the subject component matching rules.
 func (k *MacKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) ([]*x509.Certificate, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("loadCertificateChainRequest 'name' cannot be empty")
 	}
 
-	// Require label or serial
+	// Require label, serial, or a subject component
 	u, err := parseCertURI(req.Name, k.useDataProtectionKeychain, true)
 	if err != nil {
 		return nil, fmt.Errorf("mackms LoadCertificateChain failed: %w", err)
@@ -617,7 +698,25 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 }
 
 // DeleteCertificate deletes the certificate referenced by the URI in the
-// request name.
+// request name. It deletes at most one certificate.
+//
+// Valid names (URIs) are:
+//   - mackms:label=test@example.com
+//   - mackms:serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:label=test@example.com;serial=2c273934eda8454d2595a94497e2395a
+//   - mackms:cn=My+Cert;ou=Engineering
+//
+// When subject components ("cn", "o", "ou", "l", "st", "c") are present, the
+// certificate is first located using the same matching rules as
+// [MacKMS.LoadCertificate], and then deleted by its serial number and, when
+// available, its subject key identifier.
+//
+// If more than one certificate matches, the order used by
+// [MacKMS.LoadCertificate] is inverted, so the certificate it would load is the
+// last one to be deleted. In practice this deletes the oldest certificate that
+// has already become valid, but note that certificates that are not valid yet
+// are ordered last for loading and therefore become the first candidates for
+// deletion.
 //
 // # Experimental
 //
@@ -637,6 +736,27 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		security.KSecClass:      security.KSecClassCertificate,
 		security.KSecMatchLimit: security.KSecMatchLimitOne,
 	}
+
+	serialNumber := u.serialNumber
+	if u.hasSubjectQuery() {
+		// The keychain cannot match individual subject components. Find the
+		// matching certificate first, using the same matching rules as
+		// LoadCertificate but in the opposite order, and delete it by its serial
+		// number and, when available, its subject key identifier.
+		cert, err := loadCertificate(u, nil, withReversedOrder())
+		if err != nil {
+			return fmt.Errorf("mackms DeleteCertificate failed: %w", apiv1Error(err))
+		}
+		serialNumber = cert.SerialNumber
+		if len(cert.SubjectKeyId) > 0 {
+			cfSubjectKeyID, err := cf.NewData(cert.SubjectKeyId)
+			if err != nil {
+				return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
+			}
+			defer cfSubjectKeyID.Release()
+			query[security.KSecAttrSubjectKeyID] = cfSubjectKeyID
+		}
+	}
 	if u.label != "" {
 		cfLabel, err := cf.NewString(u.label)
 		if err != nil {
@@ -645,8 +765,8 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 		defer cfLabel.Release()
 		query[security.KSecAttrLabel] = cfLabel
 	}
-	if u.serialNumber != nil {
-		cfSerial, err := cf.NewData(encodeSerialNumber(u.serialNumber))
+	if serialNumber != nil {
+		cfSerial, err := cf.NewData(encodeSerialNumber(serialNumber))
 		if err != nil {
 			return fmt.Errorf("mackms DeleteCertificate failed: %w", err)
 		}
@@ -1018,7 +1138,36 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return false
 }
 
-func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate, error) {
+var notFoundError = apiv1.NotFoundError{
+	Message: "certificate not found",
+}
+
+// loadCertificateOptions holds the optional behavior of [loadCertificate].
+type loadCertificateOptions struct {
+	reverse bool
+}
+
+// loadCertificateOption modifies the way [loadCertificate] picks a certificate
+// when more than one matches.
+type loadCertificateOption func(*loadCertificateOptions)
+
+// withReversedOrder inverts the order of the matching certificates before one
+// of them is returned, selecting the last certificate instead of the first.
+// Because certificates that are not valid yet are ordered last, they become the
+// first candidates. When all the matching certificates have already become
+// valid, this returns the oldest one instead of the most recent one.
+func withReversedOrder() loadCertificateOption {
+	return func(o *loadCertificateOptions) {
+		o.reverse = true
+	}
+}
+
+func loadCertificate(u *certAttributes, subjectKeyID []byte, opts ...loadCertificateOption) (*x509.Certificate, error) {
+	var options loadCertificateOptions
+	for _, apply := range opts {
+		apply(&options)
+	}
+
 	query := cf.Dictionary{
 		security.KSecClass:      security.KSecClassCertificate,
 		security.KSecMatchLimit: security.KSecMatchLimitAll,
@@ -1069,13 +1218,16 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 	defer ref.Release()
 
 	array := cf.NewArrayRef(ref)
-	if array.Len() == 0 {
-		return nil, apiv1.NotFoundError{
-			Message: "certificate not found",
-		}
-	}
 
-	certs := make([]*x509.Certificate, array.Len())
+	// When looking for certs based on subject components, it is
+	// possible that a search will be performed over all certificates
+	// in the keychain. Looping over those can result in failures to
+	// parse certificates, resulting in an early return. returnOnParseError
+	// ensures the original behavior remains intact for existing calls,
+	// which look for specific certificates (not subject components).
+	returnOnParseError := u.label != "" || u.serialNumber != nil || subjectKeyID != nil
+
+	certs := make([]*x509.Certificate, 0, array.Len())
 	for i := 0; i < array.Len(); i++ {
 		item := array.Get(i)
 		certRef := security.NewSecCertificateRef(item)
@@ -1084,12 +1236,35 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 			return nil, err
 		}
 
-		certs[i], err = x509.ParseCertificate(data.Bytes())
+		cert, err := x509.ParseCertificate(data.Bytes())
 		data.Release()
 		if err != nil {
-			return nil, err
+			if returnOnParseError {
+				return nil, err
+			}
+			continue
+		}
+
+		certs = append(certs, cert)
+	}
+
+	if len(certs) == 0 {
+		return nil, notFoundError
+	}
+
+	// Filter the certificates by the subject distinguished name components
+	// (cn, o, ou, l, st, c) in the uri. The keychain cannot match individual
+	// subject components, and it normalizes the subject values it stores, so
+	// the parsed certificates are filtered instead.
+	if u.hasSubjectQuery() {
+		certs = slices.DeleteFunc(certs, func(cert *x509.Certificate) bool {
+			return !u.matchesSubject(cert)
+		})
+		if len(certs) == 0 {
+			return nil, notFoundError
 		}
 	}
+
 	if len(certs) == 1 {
 		return certs[0], nil
 	}
@@ -1118,7 +1293,15 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 		}
 	})
 
-	return certs[0], nil
+	// Select the last certificate of the sorted order instead of the first one.
+	// A single matching certificate is returned above, so the order only matters
+	// from here on.
+	index := 0
+	if options.reverse {
+		index = len(certs) - 1
+	}
+
+	return certs[index], nil
 }
 
 func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
@@ -1283,16 +1466,45 @@ func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (
 	if err != nil {
 		return nil, fmt.Errorf("error parsing %q: %w", rawuri, err)
 	}
-	if requireValue && label == "" && serialNumber == nil {
-		return nil, fmt.Errorf("error parsing %q: label or serial is required", rawuri)
+
+	// Subject distinguished name components (cn, o, ou, l, st, c) are used to
+	// filter the certificates retrieved from the keychain. Empty values are
+	// ignored, and o, ou, l, st, and c can be repeated (e.g. "ou=a;ou=b").
+	values := uri.Values(u)
+	cn, err := extractCommonName(values)
+	if err != nil {
+		return nil, err
 	}
 
-	return &certAttributes{
+	attrs := &certAttributes{
 		label:                     label,
 		serialNumber:              serialNumber,
 		useDataProtectionKeychain: isDataProtectionKeychain(keychain, useDataProtectionKeychain),
 		keychain:                  keychain,
-	}, nil
+		commonName:                cn,
+		organization:              nonEmptyValues(values["o"]),
+		organizationalUnit:        nonEmptyValues(values["ou"]),
+		locality:                  nonEmptyValues(values["l"]),
+		province:                  nonEmptyValues(values["st"]),
+		country:                   nonEmptyValues(values["c"]),
+	}
+	if requireValue && label == "" && serialNumber == nil && !attrs.hasSubjectQuery() {
+		return nil, fmt.Errorf("error parsing %q: label, serial, or a subject component (cn, o, ou, l, st, c) is required", rawuri)
+	}
+
+	return attrs, nil
+}
+
+func extractCommonName(values url.Values) (string, error) {
+	nonEmptyCommonNames := nonEmptyValues(values["cn"])
+	switch len(nonEmptyCommonNames) {
+	case 0:
+		return "", nil
+	case 1:
+		return nonEmptyCommonNames[0], nil
+	default:
+		return "", errors.New("multiple subject common names specified")
+	}
 }
 
 func parseSearchURI(rawuri string) (*keySearchAttributes, error) {
