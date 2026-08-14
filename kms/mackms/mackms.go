@@ -1431,12 +1431,17 @@ func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (
 	// filter the certificates retrieved from the keychain. Empty values are
 	// ignored, and o, ou, l, st, and c can be repeated (e.g. "ou=a;ou=b").
 	values := uri.Values(u)
+	cn, err := extractCommonName(values)
+	if err != nil {
+		return nil, err
+	}
+
 	attrs := &certAttributes{
 		label:                     label,
 		serialNumber:              serialNumber,
 		useDataProtectionKeychain: isDataProtectionKeychain(keychain, useDataProtectionKeychain),
 		keychain:                  keychain,
-		commonName:                u.Get("cn"),
+		commonName:                cn,
 		organization:              nonEmptyValues(values["o"]),
 		organizationalUnit:        nonEmptyValues(values["ou"]),
 		locality:                  nonEmptyValues(values["l"]),
@@ -1448,6 +1453,18 @@ func parseCertURI(rawuri string, useDataProtectionKeychain, requireValue bool) (
 	}
 
 	return attrs, nil
+}
+
+func extractCommonName(values url.Values) (string, error) {
+	nonEmptyCommonNames := nonEmptyValues(values["cn"])
+	switch len(nonEmptyCommonNames) {
+	case 0:
+		return "", nil
+	case 1:
+		return nonEmptyCommonNames[0], nil
+	default:
+		return "", errors.New("multiple subject common names specified")
+	}
 }
 
 func parseSearchURI(rawuri string) (*keySearchAttributes, error) {

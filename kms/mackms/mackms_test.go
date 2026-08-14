@@ -620,6 +620,7 @@ func Test_parseCertURI(t *testing.T) {
 		{"fail keychain only", args{"mackms:keychain=login", false, true}, nil, assert.Error},
 		{"fail bad serial", args{"mackms:serial=010a020b030z", false, true}, nil, assert.Error},
 		{"fail parse", args{"mackms:%label=the-label", false, true}, nil, assert.Error},
+		{"fail multiple cn components", args{"mackms:cn=one;cn=two", false, true}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
