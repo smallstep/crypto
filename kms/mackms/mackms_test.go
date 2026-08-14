@@ -1967,6 +1967,89 @@ func TestMacKMS_DeleteCertificate_bySubject(t *testing.T) {
 	notExistsCheck(certB)
 }
 
+// TestMacKMS_DeleteCertificate_bySubject_order checks that a subject query
+// matching several certificates deletes them in the opposite order to the one
+// [MacKMS.LoadCertificate] uses, that is, oldest first.
+func TestMacKMS_DeleteCertificate_bySubject_order(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-del-order-" + suffix
+	organizationalUnit := "DeleteOrder" + suffix
+
+	// newest, middle and oldest have all become valid already.
+	now := time.Now().Truncate(time.Second)
+	certs := make([]*x509.Certificate, 3)
+	for i := range certs {
+		crt, err := ca.Sign(&x509.Certificate{
+			Subject: pkix.Name{
+				CommonName:         fmt.Sprintf("%s-%d-%s", testName, i, suffix),
+				OrganizationalUnit: []string{organizationalUnit},
+			},
+			PublicKey: key.Public(),
+			NotBefore: now.Add(-time.Duration(i) * time.Minute),
+		})
+		require.NoError(t, err)
+		certs[i] = crt
+	}
+	newest, middle, oldest := certs[0], certs[1], certs[2]
+
+	serialURI := func(cert *x509.Certificate) string {
+		return "mackms:serial=0x" + hex.EncodeToString(cert.SerialNumber.Bytes())
+	}
+	exists := func(t *testing.T, cert *x509.Certificate) bool {
+		t.Helper()
+		k := &MacKMS{}
+		_, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{Name: serialURI(cert)})
+		return err == nil
+	}
+
+	kms := &MacKMS{}
+	for _, crt := range certs {
+		require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name: "mackms:label=" + label, Certificate: crt,
+		}))
+	}
+	t.Cleanup(func() {
+		// The test deletes the certificates itself; this removes the leftovers
+		// if it fails early.
+		k := &MacKMS{}
+		for _, crt := range certs {
+			_ = k.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: serialURI(crt)})
+		}
+	})
+
+	subjectURI := "mackms:label=" + label + ";ou=" + organizationalUnit
+
+	// Loading keeps returning the most recent certificate, while deleting
+	// removes the oldest one first.
+	got, err := kms.LoadCertificate(&apiv1.LoadCertificateRequest{Name: subjectURI})
+	require.NoError(t, err)
+	assert.Equal(t, newest, got, "LoadCertificate must still return the most recent certificate")
+
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: subjectURI}))
+	assert.False(t, exists(t, oldest), "the oldest certificate should have been deleted first")
+	assert.True(t, exists(t, middle))
+	assert.True(t, exists(t, newest))
+
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: subjectURI}))
+	assert.False(t, exists(t, middle), "the second oldest certificate should have been deleted next")
+	assert.True(t, exists(t, newest))
+
+	require.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: subjectURI}))
+	assert.False(t, exists(t, newest), "the most recent certificate should have been deleted last")
+
+	// Nothing is left to match the subject.
+	err = kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: subjectURI})
+	assert.ErrorIs(t, err, apiv1.NotFoundError{})
+}
+
 func Test_apiv1Error(t *testing.T) {
 	type args struct {
 		err error

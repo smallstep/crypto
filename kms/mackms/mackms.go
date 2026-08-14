@@ -707,9 +707,16 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 //   - mackms:cn=My+Cert;ou=Engineering
 //
 // When subject components ("cn", "o", "ou", "l", "st", "c") are present, the
-// certificate is first located using the same selection rules as
+// certificate is first located using the same matching rules as
 // [MacKMS.LoadCertificate], and then deleted by its serial number and, when
 // available, its subject key identifier.
+//
+// If more than one certificate matches, the order used by
+// [MacKMS.LoadCertificate] is inverted, so the certificate it would load is the
+// last one to be deleted. In practice this deletes the oldest certificate that
+// has already become valid, but note that certificates that are not valid yet
+// are ordered last for loading and therefore become the first candidates for
+// deletion.
 //
 // # Experimental
 //
@@ -733,10 +740,10 @@ func (k *MacKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	serialNumber := u.serialNumber
 	if u.hasSubjectQuery() {
 		// The keychain cannot match individual subject components. Find the
-		// matching certificate first, using the same selection rules as
-		// LoadCertificate, and delete it by its serial number and, when
-		// available, its subject key identifier.
-		cert, err := loadCertificate(u, nil)
+		// matching certificate first, using the same matching rules as
+		// LoadCertificate but in the opposite order, and delete it by its serial
+		// number and, when available, its subject key identifier.
+		cert, err := loadCertificate(u, nil, withReversedOrder())
 		if err != nil {
 			return fmt.Errorf("mackms DeleteCertificate failed: %w", apiv1Error(err))
 		}
@@ -1131,7 +1138,36 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return false
 }
 
-func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate, error) {
+var notFoundError = apiv1.NotFoundError{
+	Message: "certificate not found",
+}
+
+// loadCertificateOptions holds the optional behavior of [loadCertificate].
+type loadCertificateOptions struct {
+	reverse bool
+}
+
+// loadCertificateOption modifies the way [loadCertificate] picks a certificate
+// when more than one matches.
+type loadCertificateOption func(*loadCertificateOptions)
+
+// withReversedOrder inverts the order of the matching certificates before one
+// of them is returned, selecting the last certificate instead of the first.
+// Because certificates that are not valid yet are ordered last, they become the
+// first candidates. When all the matching certificates have already become
+// valid, this returns the oldest one instead of the most recent one.
+func withReversedOrder() loadCertificateOption {
+	return func(o *loadCertificateOptions) {
+		o.reverse = true
+	}
+}
+
+func loadCertificate(u *certAttributes, subjectKeyID []byte, opts ...loadCertificateOption) (*x509.Certificate, error) {
+	var options loadCertificateOptions
+	for _, apply := range opts {
+		apply(&options)
+	}
+
 	query := cf.Dictionary{
 		security.KSecClass:      security.KSecClassCertificate,
 		security.KSecMatchLimit: security.KSecMatchLimitAll,
@@ -1213,9 +1249,7 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 	}
 
 	if len(certs) == 0 {
-		return nil, apiv1.NotFoundError{
-			Message: "certificate not found",
-		}
+		return nil, notFoundError
 	}
 
 	// Filter the certificates by the subject distinguished name components
@@ -1227,9 +1261,7 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 			return !u.matchesSubject(cert)
 		})
 		if len(certs) == 0 {
-			return nil, apiv1.NotFoundError{
-				Message: "certificate not found",
-			}
+			return nil, notFoundError
 		}
 	}
 
@@ -1261,7 +1293,15 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 		}
 	})
 
-	return certs[0], nil
+	// Select the last certificate of the sorted order instead of the first one.
+	// A single matching certificate is returned above, so the order only matters
+	// from here on.
+	index := 0
+	if options.reverse {
+		index = len(certs) - 1
+	}
+
+	return certs[index], nil
 }
 
 func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
