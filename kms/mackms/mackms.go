@@ -1182,13 +1182,16 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 	defer ref.Release()
 
 	array := cf.NewArrayRef(ref)
-	if array.Len() == 0 {
-		return nil, apiv1.NotFoundError{
-			Message: "certificate not found",
-		}
-	}
 
-	certs := make([]*x509.Certificate, array.Len())
+	// When looking for certs based on subject components, it is
+	// possible that a search will be performed over all certificates
+	// in the keychain. Looping over those can result in failures to
+	// parse certificates, resulting in an early return. returnOnParseError
+	// ensures the original behavior remains intact for existing calls,
+	// which look for specific certificates (not subject components).
+	returnOnParseError := u.label != "" || u.serialNumber != nil || subjectKeyID != nil
+
+	certs := make([]*x509.Certificate, 0, array.Len())
 	for i := 0; i < array.Len(); i++ {
 		item := array.Get(i)
 		certRef := security.NewSecCertificateRef(item)
@@ -1197,10 +1200,21 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte) (*x509.Certificate,
 			return nil, err
 		}
 
-		certs[i], err = x509.ParseCertificate(data.Bytes())
+		cert, err := x509.ParseCertificate(data.Bytes())
 		data.Release()
 		if err != nil {
-			return nil, err
+			if returnOnParseError {
+				return nil, err
+			}
+			continue
+		}
+
+		certs = append(certs, cert)
+	}
+
+	if len(certs) == 0 {
+		return nil, apiv1.NotFoundError{
+			Message: "certificate not found",
 		}
 	}
 

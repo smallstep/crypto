@@ -1194,6 +1194,163 @@ func TestMacKMS_LoadCertificate_bySubject(t *testing.T) {
 	}
 }
 
+// unparseableCertificate returns a DER encoded certificate that the Apple
+// Keychain accepts, but that [x509.ParseCertificate] rejects. The
+// subjectAltName extension holds an iPAddress of one byte;
+// [x509.CreateCertificate] copies ExtraExtensions verbatim without validating
+// them.
+//
+// The returned [x509.Certificate] only carries Raw and SerialNumber, which is
+// all that storing and deleting it requires.
+func unparseableCertificate(t *testing.T, commonName string) *x509.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 64))
+	require.NoError(t, err)
+
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: serialNumber.Add(serialNumber, big.NewInt(1)),
+		Subject:      pkix.Name{CommonName: commonName},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtraExtensions: []pkix.Extension{{
+			Id:    []int{2, 5, 29, 17}, // subjectAltName
+			Value: []byte{0x30, 0x03, 0x87, 0x01, 0x01},
+		}},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	require.NoError(t, err)
+
+	// Guard against a future crypto/x509 that accepts this certificate, which
+	// would silently turn the tests below into no-ops.
+	_, err = x509.ParseCertificate(der)
+	require.Error(t, err, "certificate is parseable, this test no longer tests anything")
+
+	return &x509.Certificate{Raw: der, SerialNumber: template.SerialNumber}
+}
+
+// TestMacKMS_LoadCertificate_parseError checks the handling of certificates in
+// the keychain that crypto/x509 cannot parse. A search using only subject
+// components has to look at every certificate in the keychain, so it must skip
+// the ones it cannot parse instead of failing. A search restricted by label or
+// serial number only looks at the certificates the caller asked for, so the
+// parse error is reported rather than hidden, even if subject components are
+// used to narrow the results further.
+func TestMacKMS_LoadCertificate_parseError(t *testing.T) {
+	testName := t.Name()
+	ca, err := minica.New(minica.WithName(testName))
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	suffix, err := randutil.Alphanumeric(8)
+	require.NoError(t, err)
+	label := "test-parse-error-" + suffix
+	organizationalUnit := "ParseError" + suffix
+
+	// A certificate the keychain and crypto/x509 both accept, found by its
+	// subject even though the keychain also holds an unparseable certificate.
+	cert, err := ca.Sign(&x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         testName + "-" + suffix,
+			OrganizationalUnit: []string{organizationalUnit},
+		},
+		PublicKey: key.Public(),
+	})
+	require.NoError(t, err)
+
+	badCert := unparseableCertificate(t, testName+"-bad-"+suffix)
+	badCertSerial := "mackms:serial=0x" + hex.EncodeToString(badCert.SerialNumber.Bytes())
+
+	kms := &MacKMS{}
+	for _, crt := range []*x509.Certificate{cert, badCert} {
+		require.NoError(t, kms.StoreCertificate(&apiv1.StoreCertificateRequest{
+			Name: "mackms:label=" + label, Certificate: crt,
+		}))
+	}
+
+	// An unparseable certificate left in the keychain breaks every search by
+	// subject, so make sure both are always removed. Recovering the panic in
+	// the subtests below keeps this cleanup reachable.
+	t.Cleanup(func() {
+		kms := &MacKMS{}
+		assert.NoError(t, kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: badCertSerial}))
+		deleteCertificate(t, label, cert)
+	})
+
+	// A nil certificate used to reach the subject filter, panicking instead of
+	// being skipped. Turn a panic into a test failure so that the cleanup above
+	// still runs and the keychain is left clean.
+	assertNoPanic := func(t *testing.T) {
+		t.Helper()
+		if r := recover(); r != nil {
+			t.Errorf("unexpected panic: %v", r)
+		}
+	}
+
+	t.Run("subject query skips unparseable certificates", func(t *testing.T) {
+		defer assertNoPanic(t)
+		k := &MacKMS{}
+		got, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: "mackms:ou=" + organizationalUnit,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, cert, got)
+	})
+
+	t.Run("subject query without matches returns not found", func(t *testing.T) {
+		defer assertNoPanic(t)
+		k := &MacKMS{}
+		got, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: "mackms:cn=" + testName + "-missing-" + suffix,
+		})
+		assert.ErrorIs(t, err, apiv1.NotFoundError{})
+		assert.Nil(t, got)
+	})
+
+	t.Run("serial query reports the parse error", func(t *testing.T) {
+		defer assertNoPanic(t)
+		k := &MacKMS{}
+		got, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: badCertSerial,
+		})
+		assert.ErrorContains(t, err, "x509:")
+		assert.NotErrorIs(t, err, apiv1.NotFoundError{})
+		assert.Nil(t, got)
+	})
+
+	t.Run("label query reports the parse error", func(t *testing.T) {
+		defer assertNoPanic(t)
+		k := &MacKMS{}
+		got, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: "mackms:label=" + label,
+		})
+		assert.ErrorContains(t, err, "x509:")
+		assert.NotErrorIs(t, err, apiv1.NotFoundError{})
+		assert.Nil(t, got)
+	})
+
+	// The keychain query is restricted by the serial number, so the caller gets
+	// the parse error instead of a misleading "not found".
+	t.Run("serial query with subject components reports the parse error", func(t *testing.T) {
+		defer assertNoPanic(t)
+		k := &MacKMS{}
+		got, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+			Name: badCertSerial + ";cn=" + testName + "-bad-" + suffix,
+		})
+		assert.ErrorContains(t, err, "x509:")
+		assert.NotErrorIs(t, err, apiv1.NotFoundError{})
+		assert.Nil(t, got)
+	})
+}
+
 func TestMacKMS_StoreCertificate(t *testing.T) {
 	testName := t.Name()
 
