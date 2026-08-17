@@ -7,7 +7,7 @@ retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master bran
 require (
 	cloud.google.com/go/kms v1.33.0
 	filippo.io/edwards25519 v1.2.0
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.22.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.5.0
 	github.com/Masterminds/sprig/v3 v3.3.0
