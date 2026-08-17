@@ -1653,18 +1653,14 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 	}
 
 	// When the request carries qualifying data, certify the key again against
-	// it rather than returning the statement recorded at creation. A caller
-	// that supplies a nonce is proving possession to something that chose that
-	// nonce — an ACME device-attest-01 challenge, say — and the stored
-	// statement carries whatever nonce the key was created with, so it only
-	// ever satisfies the first such challenge. Re-certifying lets one
-	// persisted key answer every subsequent one.
+	// it rather than returning the statement recorded at creation. Re-certifying
+	// lets one persisted key answer every subsequent certification attempt.
 	//
 	// With no qualifying data there is nothing to bind, so the stored
 	// statement is returned unchanged and existing callers are unaffected.
 	var params attest.CertificationParameters
 	if len(properties.qualifyingData) > 0 {
-		params, err = key.Recertify(ctx, properties.qualifyingData)
+		params, err = key.Recertify(ctx, tpm.RecertifyConfig{QualifyingData: properties.qualifyingData})
 		if err != nil {
 			return nil, fmt.Errorf("failed recertifying key %q: %w", key.Name(), err)
 		}

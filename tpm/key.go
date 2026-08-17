@@ -483,24 +483,24 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	return
 }
 
+// RecertifyConfig encapsulates parameters used for re-certifying keys.
+type RecertifyConfig struct {
+	QualifyingData []byte
+}
+
 // Recertify runs a fresh TPM2_Certify over the key using the AK that attested
-// it, binding qualifyingData as the nonce, and returns the resulting
-// parameters. The key itself is untouched: only a new signed statement about
-// it is produced.
+// it, binding qualifyingData to the key and returns the resulting parameters.
+// The key itself is untouched: only a new signed statement about it is produced.
 //
-// It exists for protocols that bind a per-transaction challenge into the
-// certification. ACME device-attest-01 derives the expected nonce from the
-// order's keyAuthorization, so proving possession for a second order against
-// the parameters from [Key.CertificationParameters] fails — those carry the
-// first order's nonce. Without re-certification the only way to satisfy a new
-// order is a new key, which rotates the credential and invalidates anything
-// registered against its public key.
-//
-// The key must have been attested by an AK ([Key.WasAttested]), and the TPM
-// must be a 2.0 device.
-func (k *Key) Recertify(ctx context.Context, qualifyingData []byte) (params attest.CertificationParameters, err error) {
+// The key must have been attested by an AK, and it is only supported on TPM 2.0
+// devices.
+func (k *Key) Recertify(ctx context.Context, config RecertifyConfig) (params attest.CertificationParameters, err error) {
 	if !k.WasAttested() {
 		return params, fmt.Errorf("key %q was not attested", k.name)
+	}
+
+	if len(config.QualifyingData) == 0 {
+		return params, errors.New("qualifying data required")
 	}
 
 	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
@@ -508,7 +508,13 @@ func (k *Key) Recertify(ctx context.Context, qualifyingData []byte) (params atte
 	}
 	defer closeTPM(ctx, k.tpm, &err)
 
-	ak, err := k.tpm.store.GetAK(k.attestedBy)
+	key, err := k.tpm.attestTPM.LoadKey(k.data)
+	if err != nil {
+		return params, fmt.Errorf("failed loading key %q: %w", k.name, err)
+	}
+	defer key.Close()
+
+	storedAK, err := k.tpm.store.GetAK(k.attestedBy)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, ErrNotFound)
@@ -516,26 +522,27 @@ func (k *Key) Recertify(ctx context.Context, qualifyingData []byte) (params atte
 		return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, err)
 	}
 
-	loadedAK, err := k.tpm.attestTPM.LoadAK(ak.Data)
+	ak, err := k.tpm.attestTPM.LoadAK(storedAK.Data)
 	if err != nil {
 		return params, fmt.Errorf("failed loading AK %q: %w", k.attestedBy, err)
 	}
-	defer loadedAK.Close(k.tpm.attestTPM)
+	defer ak.Close(k.tpm.attestTPM)
 
-	loadedKey, err := k.tpm.attestTPM.LoadKey(k.data)
-	if err != nil {
-		return params, fmt.Errorf("failed loading key %q: %w", k.name, err)
-	}
-	defer loadedKey.Close()
-
-	p, err := loadedKey.Recertify(loadedAK, &attest.RecertifyConfig{
-		QualifyingData: qualifyingData,
+	p, err := ak.Recertify(k.tpm.attestTPM, key, &attest.RecertifyConfig{
+		QualifyingData: config.QualifyingData,
 	})
 	if err != nil {
 		return params, fmt.Errorf("failed recertifying key %q: %w", k.name, err)
 	}
 
-	return *p, nil
+	// NOTE: new certification parameters are not persisted. This means
+	// recertification doesn't change the representation of the current
+	// key, so calling [Key.CertificationParameters] will always return
+	// the data from creation time.
+
+	params = *p
+
+	return
 }
 
 // Blobs returns a container for the private and public key blobs.
