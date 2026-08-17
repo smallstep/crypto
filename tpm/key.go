@@ -461,6 +461,11 @@ func (k *Key) Signer(ctx context.Context) (crypto.Signer, error) {
 
 // CertificationParameters returns information about the key that can be used to
 // verify key certification.
+//
+// The parameters are the ones recorded when the key was created: the
+// TPM2_Certify [TPM.AttestKey] performs, with that call's
+// [AttestKeyConfig.QualifyingData] frozen in as the nonce. Use
+// [Key.Recertify] to obtain parameters over a different nonce.
 func (k *Key) CertificationParameters(ctx context.Context) (params attest.CertificationParameters, err error) {
 	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
 		return params, fmt.Errorf("failed opening TPM: %w", err)
@@ -474,6 +479,68 @@ func (k *Key) CertificationParameters(ctx context.Context) (params attest.Certif
 	defer loadedKey.Close()
 
 	params = loadedKey.CertificationParameters()
+
+	return
+}
+
+// RecertifyConfig encapsulates parameters used for re-certifying keys.
+type RecertifyConfig struct {
+	QualifyingData []byte
+}
+
+// Recertify runs a fresh TPM2_Certify over the key using the AK that attested
+// it, binding qualifyingData to the key and returns the resulting parameters.
+// The key itself is untouched: only a new signed statement about it is produced.
+//
+// The key must have been attested by an AK, and it is only supported on TPM 2.0
+// devices.
+func (k *Key) Recertify(ctx context.Context, config RecertifyConfig) (params attest.CertificationParameters, err error) {
+	if !k.WasAttested() {
+		return params, fmt.Errorf("key %q was not attested", k.name)
+	}
+
+	if len(config.QualifyingData) == 0 {
+		return params, errors.New("qualifying data required")
+	}
+
+	if err = k.tpm.open(ctx, openOptions{machineKey: k.machineKey}); err != nil {
+		return params, fmt.Errorf("failed opening TPM: %w", err)
+	}
+	defer closeTPM(ctx, k.tpm, &err)
+
+	key, err := k.tpm.attestTPM.LoadKey(k.data)
+	if err != nil {
+		return params, fmt.Errorf("failed loading key %q: %w", k.name, err)
+	}
+	defer key.Close()
+
+	storedAK, err := k.tpm.store.GetAK(k.attestedBy)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, ErrNotFound)
+		}
+		return params, fmt.Errorf("failed getting AK %q: %w", k.attestedBy, err)
+	}
+
+	ak, err := k.tpm.attestTPM.LoadAK(storedAK.Data)
+	if err != nil {
+		return params, fmt.Errorf("failed loading AK %q: %w", k.attestedBy, err)
+	}
+	defer ak.Close(k.tpm.attestTPM)
+
+	p, err := ak.Recertify(k.tpm.attestTPM, key, &attest.RecertifyConfig{
+		QualifyingData: config.QualifyingData,
+	})
+	if err != nil {
+		return params, fmt.Errorf("failed recertifying key %q: %w", k.name, err)
+	}
+
+	// NOTE: new certification parameters are not persisted. This means
+	// recertification doesn't change the representation of the current
+	// key, so calling [Key.CertificationParameters] will always return
+	// the data from creation time.
+
+	params = *p
 
 	return
 }
