@@ -203,6 +203,7 @@ func TestGenerateDefaultKey(t *testing.T) {
 			}
 		}, false},
 		{"eof", eofReader{}, func(t *testing.T, got interface{}) {
+			t.Helper()
 			if !reflect.DeepEqual(got, nil) {
 				t.Errorf("GenerateDefaultKey() got = %v, want nil", got)
 			}
