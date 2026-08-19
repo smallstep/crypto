@@ -49,13 +49,25 @@ func (s *Signer) Public() crypto.PublicKey {
 // signature will be either a PKCS #1 v1.5 or PSS signature (as indicated by
 // opts). For an ECDSA key, it will be a DER-serialized, ASN.1 signature
 // structure.
+//
+// If the underlying key was created with an authorization policy
+// (policy=user-presence or policy=user-verification), the Secure Enclave
+// will prompt the user before completing this call. The configured reason
+// and cache duration are surfaced via LAContext. Re-prompts within the
+// cache window are suppressed by macOS.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	algo, err := getSecKeyAlgorithm(s.pub, opts)
 	if err != nil {
 		return nil, fmt.Errorf("mackms Sign failed: %w", err)
 	}
 
-	key, err := getPrivateKey(s.keyAttributes)
+	var laCtx *security.LAContextRef
+	if s.keyAttributes.authPolicy != authPolicyNone {
+		laCtx = security.NewLAContext(s.keyAttributes.authReason, s.keyAttributes.authReuse)
+		defer laCtx.Release()
+	}
+
+	key, err := getPrivateKey(s.keyAttributes, laCtx)
 	if err != nil {
 		return nil, fmt.Errorf("mackms Sign failed: %w", err)
 	}
@@ -135,7 +147,13 @@ type ECDH struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later
 // release.
 func (e *ECDH) ECDH(pub *ecdh.PublicKey) ([]byte, error) {
-	key, err := getPrivateKey(e.Signer.keyAttributes)
+	var laCtx *security.LAContextRef
+	if e.Signer.keyAttributes.authPolicy != authPolicyNone {
+		laCtx = security.NewLAContext(e.Signer.keyAttributes.authReason, e.Signer.keyAttributes.authReuse)
+		defer laCtx.Release()
+	}
+
+	key, err := getPrivateKey(e.Signer.keyAttributes, laCtx)
 	if err != nil {
 		return nil, fmt.Errorf("mackms ECDH failed: %w", err)
 	}
