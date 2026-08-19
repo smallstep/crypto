@@ -6,11 +6,9 @@ import (
 	"crypto/mldsa"
 )
 
-// Enabled returns if mdlsa package is implemented. It will return true in Go
-// 1.27+ and false on lower versions.
-func Enabled() bool {
-	return true
-}
+// Supported reports whether ML-DSA is available in the current build. It is
+// true when compiled with Go 1.27 or later.
+const Supported = true
 
 type Options = mldsa.Options
 

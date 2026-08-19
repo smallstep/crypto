@@ -10,11 +10,9 @@ import (
 
 var errNotSupported = errors.New("mldsa is not supported")
 
-// Enabled returns if mdlsa package is implemented. It will return true in Go
-// 1.27+ and false on lower versions.
-func Enabled() bool {
-	return false
-}
+// Supported reports whether ML-DSA is available in the current build. It is
+// false when compiled with a Go toolchain older than 1.27.
+const Supported = false
 
 type Parameters struct{}
 

@@ -67,7 +67,7 @@ func must(args ...interface{}) interface{} {
 func shouldMLDSA(t *testing.T, p mldsa.Parameters) *mldsa.PrivateKey {
 	t.Helper()
 	k, err := mldsa.GenerateKey(p)
-	if mldsa.Enabled() {
+	if mldsa.Supported {
 		require.NoError(t, err)
 	} else {
 		require.Error(t, err)
@@ -326,9 +326,9 @@ func TestGenerateKey(t *testing.T) {
 		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey, crypto.SHA512, false},
 		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey, crypto.Hash(0), false},
 		{"X25519", randReader, args{"OKP", "X25519", 0}, assertKey, crypto.Hash(0), false},
-		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Enabled()},
-		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Enabled()},
-		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Enabled()},
+		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"OCT", zeroReader{}, args{"oct", "", 32}, assertOCT, crypto.Hash(0), false},
 		{"eof EC", eofReader{}, args{"EC", "P-256", 0}, nil, 0, true},
 		{"eof RSA", eofReader{}, args{"RSA", "", 1024}, nil, 0, true},
@@ -422,7 +422,7 @@ func TestGenerateKeyPair(t *testing.T) {
 		}
 	}
 
-	mldsaEnabled := mldsa.Enabled()
+	mldsaEnabled := mldsa.Supported
 	assertMLDSA := func(p mldsa.Parameters) func(t *testing.T, got, got1 any) {
 		if !mldsaEnabled {
 			return assertNil()
@@ -580,7 +580,7 @@ func TestGenerateSigner(t *testing.T) {
 		}
 	}
 
-	mldsaEnabled := mldsa.Enabled()
+	mldsaEnabled := mldsa.Supported
 	assertSignerMLDSA := func() func(t *testing.T, got crypto.Signer) {
 		if !mldsaEnabled {
 			return assertNil()
@@ -710,7 +710,7 @@ func TestVerifyPair(t *testing.T) {
 		{"ecdsa", args{ecdsaKey.Public(), ecdsaKey}, false},
 		{"rsa", args{rsaKey.Public(), rsaKey}, false},
 		{"ed25519", args{ed25519Key.Public(), ed25519Key}, false},
-		{"ml-dsa", args{mldsaKey.Public(), mldsaKey}, !mldsa.Enabled()},
+		{"ml-dsa", args{mldsaKey.Public(), mldsaKey}, !mldsa.Supported},
 		// wrong private type
 		{"fail ecdsa", args{ecdsaKey.Public(), ecdsaKey.Public()}, true},
 		{"fail rsa", args{rsaKey.Public(), rsaKey.Public()}, true},
@@ -783,7 +783,7 @@ func TestEqual(t *testing.T) {
 		if x, ok := key.(x25519.PrivateKey); ok {
 			return x25519.PrivateKey([]byte(x))
 		}
-		if x, ok := key.(*mldsa.PrivateKey); ok && !mldsa.Enabled() {
+		if x, ok := key.(*mldsa.PrivateKey); ok && !mldsa.Supported {
 			return x
 		}
 
@@ -821,12 +821,12 @@ func TestEqual(t *testing.T) {
 		{"ok rsaKey", args{rsaKey, mustCopy(rsaKey)}, true},
 		{"ok ed25519Key", args{ed25519Key, mustCopy(ed25519Key)}, true},
 		{"ok x25519Key", args{x25519Key, mustCopy(x25519Key)}, true},
-		{"ok mldsaKey", args{mldsaKey, mustCopy(mldsaKey)}, mldsa.Enabled()},
+		{"ok mldsaKey", args{mldsaKey, mustCopy(mldsaKey)}, mldsa.Supported},
 		{"ok ecdsaKey pub", args{ecdsaKey.Public(), mustCopy(ecdsaKey).Public()}, true},
 		{"ok rsaKey pub", args{rsaKey.Public(), mustCopy(rsaKey).Public()}, true},
 		{"ok ed25519Key pub", args{ed25519Key.Public(), mustCopy(ed25519Key).Public()}, true},
 		{"ok x25519Key pub", args{x25519Key.Public(), mustCopy(x25519Key).Public()}, true},
-		{"ok mldsaKey pub", args{mldsaKey.Public(), mustCopy(mldsaKey).Public()}, mldsa.Enabled()},
+		{"ok mldsaKey pub", args{mldsaKey.Public(), mustCopy(mldsaKey).Public()}, mldsa.Supported},
 		{"ok []byte", args{[]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}}, true},
 		{"fail ecdsaKey", args{ecdsaKey, mustCopy(ecdsaKey).Public()}, false},
 		{"fail rsaKey", args{rsaKey, mustCopy(rsaKey).Public()}, false},
