@@ -21,7 +21,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.23.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/pkg/errors v0.9.1
-	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.36
+	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.37
 	github.com/schollz/jsonstore v1.1.0
 	github.com/smallstep/go-attestation v0.4.4-0.20260814222900-a849f4e2cd68
 	github.com/stretchr/testify v1.12.0
