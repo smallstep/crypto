@@ -1459,3 +1459,30 @@ Vpmq2Sh/xT5HiFuhf4wJb0bK
 	}
 
 }
+
+func TestWrapTouchHint(t *testing.T) {
+	// A 0x6982 "security status not satisfied" error gets the touch hint, and the
+	// original error stays unwrappable.
+	base := cardStatusErr(0x6982)
+	got := wrapTouchHint(base)
+	assert.Contains(t, got.Error(), "touch")
+	assert.ErrorIs(t, got, base)
+
+	// A different status word is passed through unchanged.
+	other := cardStatusErr(0x6a80)
+	assert.Equal(t, other.Error(), wrapTouchHint(other).Error())
+	assert.NotContains(t, wrapTouchHint(other).Error(), "touch")
+
+	// A nil error stays nil; a plain error without Status() passes through.
+	assert.NoError(t, wrapTouchHint(nil))
+	plain := errors.New("boom")
+	assert.ErrorIs(t, wrapTouchHint(plain), plain)
+	assert.NotContains(t, wrapTouchHint(plain).Error(), "touch")
+}
+
+// cardStatusErr is a minimal card-style error that exposes Status() like piv-go's
+// unexported apduErr, so wrapTouchHint can be tested without hardware.
+type cardStatusErr uint16
+
+func (e cardStatusErr) Error() string  { return fmt.Sprintf("smart card error %04x", uint16(e)) }
+func (e cardStatusErr) Status() uint16 { return uint16(e) }
