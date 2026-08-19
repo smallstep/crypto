@@ -13,9 +13,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/internal/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 
@@ -60,6 +62,17 @@ func must(args ...interface{}) interface{} {
 		panic(err)
 	}
 	return args[0]
+}
+
+func shouldMLDSA(t *testing.T, p mldsa.Parameters) *mldsa.PrivateKey {
+	t.Helper()
+	k, err := mldsa.GenerateKey(p)
+	if mldsa.Supported {
+		require.NoError(t, err)
+	} else {
+		require.Error(t, err)
+	}
+	return k
 }
 
 var randReader = rand.Reader
@@ -118,6 +131,10 @@ func verifyKeyPair(h crypto.Hash, priv, pub any) error {
 		if err := rsa.VerifyPKCS1v15(p, h, sig, sum); err != nil {
 			return fmt.Errorf("rsa.VerifyPKCS1v15 failed")
 		}
+	case *mldsa.PublicKey:
+		if err := mldsa.Verify(p, sum, sig, nil); err != nil {
+			return fmt.Errorf("mldsa.Verify failed")
+		}
 	case ed25519.PublicKey:
 		if !ed25519.Verify(p, sum, sig) {
 			return fmt.Errorf("ed25519.Verify failed")
@@ -152,6 +169,7 @@ func TestPublicKey(t *testing.T) {
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	x25519Pub, x25519Priv, err := x25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
+	mldsaKey := shouldMLDSA(t, mldsa.MLDSA44())
 
 	type args struct {
 		priv interface{}
@@ -170,6 +188,8 @@ func TestPublicKey(t *testing.T) {
 		{"ed25519Public", args{ed25519.PublicKey(ed25519Key[32:])}, ed25519Key.Public(), false},
 		{"x25519", args{x25519Priv}, x25519Pub, false},
 		{"x25519Public", args{x25519Pub}, x25519Pub, false},
+		{"mldsa", args{mldsaKey}, mldsaKey.Public(), false},
+		{"mldsaPublic", args{mldsaKey.PublicKey()}, mldsaKey.Public(), false},
 		{"ecdsaSigner", args{ecdsaSigner}, ecdsaKey.Public(), false},
 		{"fail", args{[]byte("octkey")}, nil, true},
 	}
@@ -306,6 +326,9 @@ func TestGenerateKey(t *testing.T) {
 		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey, crypto.SHA512, false},
 		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey, crypto.Hash(0), false},
 		{"X25519", randReader, args{"OKP", "X25519", 0}, assertKey, crypto.Hash(0), false},
+		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"OCT", zeroReader{}, args{"oct", "", 32}, assertOCT, crypto.Hash(0), false},
 		{"eof EC", eofReader{}, args{"EC", "P-256", 0}, nil, 0, true},
 		{"eof RSA", eofReader{}, args{"RSA", "", 1024}, nil, 0, true},
@@ -399,6 +422,28 @@ func TestGenerateKeyPair(t *testing.T) {
 		}
 	}
 
+	mldsaEnabled := mldsa.Supported
+	assertMLDSA := func(p mldsa.Parameters) func(t *testing.T, got, got1 any) {
+		if !mldsaEnabled {
+			return assertNil()
+		}
+		return func(t *testing.T, got, got1 any) {
+			t.Helper()
+			require.NotNil(t, got)
+			require.NotNil(t, got1)
+
+			pub, ok := got.(*mldsa.PublicKey)
+			require.True(t, ok)
+			assert.Equal(t, p, pub.Parameters())
+
+			priv := got1.(*mldsa.PrivateKey)
+			require.True(t, ok)
+			assert.Equal(t, p, priv.PublicKey().Parameters())
+
+			assert.True(t, pub.Equal(priv.Public()))
+		}
+	}
+
 	type args struct {
 		kty  string
 		crv  string
@@ -415,6 +460,9 @@ func TestGenerateKeyPair(t *testing.T) {
 		{"P-384", randReader, args{"EC", "P-384", 0}, assertKey(crypto.SHA384), false},
 		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey(crypto.SHA512), false},
 		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey(crypto.Hash(0)), false},
+		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertMLDSA(mldsa.MLDSA44()), !mldsaEnabled},
+		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertMLDSA(mldsa.MLDSA65()), !mldsaEnabled},
+		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertMLDSA(mldsa.MLDSA87()), !mldsaEnabled},
 		{"OCT", zeroReader{}, args{"oct", "", 32}, assertNil(), true},
 		{"eof", eofReader{}, args{"EC", "P-256", 0}, assertNil(), true},
 		{"unknown", randReader, args{"EC", "P-128", 0}, assertNil(), true},
@@ -532,6 +580,14 @@ func TestGenerateSigner(t *testing.T) {
 		}
 	}
 
+	mldsaEnabled := mldsa.Supported
+	assertSignerMLDSA := func() func(t *testing.T, got crypto.Signer) {
+		if !mldsaEnabled {
+			return assertNil()
+		}
+		return assertSigner(crypto.Hash(0))
+	}
+
 	type args struct {
 		kty  string
 		crv  string
@@ -547,6 +603,9 @@ func TestGenerateSigner(t *testing.T) {
 		{"P-384", args{"EC", "P-384", 0}, assertSigner(crypto.SHA384), false},
 		{"P-521", args{"EC", "P-521", 0}, assertSigner(crypto.SHA512), false},
 		{"Ed25519", args{"OKP", "Ed25519", 0}, assertSigner(crypto.Hash(0)), false},
+		{"ML-DSA-44", args{"AKP", "ML-DSA-44", 0}, assertSignerMLDSA(), !mldsaEnabled},
+		{"ML-DSA-65", args{"AKP", "ML-DSA-65", 0}, assertSignerMLDSA(), !mldsaEnabled},
+		{"ML-DSA-87", args{"AKP", "ML-DSA-87", 0}, assertSignerMLDSA(), !mldsaEnabled},
 		{"OCT", args{"oct", "", 32}, assertNil(), true},
 		{"unknown", args{"EC", "P-128", 0}, assertNil(), true},
 		{"unknown", args{"FOO", "", 1024}, assertNil(), true},
@@ -568,6 +627,7 @@ func TestExtractKey(t *testing.T) {
 	ecKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
 	edKey := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
 	octKey := must(generateOctKey(64)).([]byte)
+	mldsaKey := shouldMLDSA(t, mldsa.MLDSA44())
 
 	b, _ := pem.Decode([]byte(testCRT))
 	cert, err := x509.ParseCertificate(b.Bytes)
@@ -602,6 +662,8 @@ func TestExtractKey(t *testing.T) {
 		{"EC public key", args{ecKey.Public()}, ecKey.Public(), false},
 		{"OKP private key", args{edKey}, edKey, false},
 		{"OKP public key", args{edKey.Public()}, edKey.Public(), false},
+		{"ML-DSA private key", args{mldsaKey}, mldsaKey, false},
+		{"ML-DSA public key", args{mldsaKey.Public()}, mldsaKey.Public(), false},
 		{"oct key", args{octKey}, octKey, false},
 		{"certificate", args{cert}, cert.PublicKey, false},
 		{"csr", args{csr}, csr.PublicKey, false},
@@ -629,10 +691,12 @@ func TestVerifyPair(t *testing.T) {
 	ecdsaKey := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
 	rsaKey := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	mldsaKey := shouldMLDSA(t, mldsa.MLDSA65())
 
 	ecdsaKey1 := must(generateECKey("P-256")).(*ecdsa.PrivateKey)
 	rsaKey1 := must(generateRSAKey(2048)).(*rsa.PrivateKey)
 	ed25519Key1 := must(generateOKPKey("Ed25519")).(ed25519.PrivateKey)
+	mldsaKey1 := shouldMLDSA(t, mldsa.MLDSA65())
 
 	type args struct {
 		pubkey interface{}
@@ -646,14 +710,17 @@ func TestVerifyPair(t *testing.T) {
 		{"ecdsa", args{ecdsaKey.Public(), ecdsaKey}, false},
 		{"rsa", args{rsaKey.Public(), rsaKey}, false},
 		{"ed25519", args{ed25519Key.Public(), ed25519Key}, false},
+		{"ml-dsa", args{mldsaKey.Public(), mldsaKey}, !mldsa.Supported},
 		// wrong private type
 		{"fail ecdsa", args{ecdsaKey.Public(), ecdsaKey.Public()}, true},
 		{"fail rsa", args{rsaKey.Public(), rsaKey.Public()}, true},
 		{"fail ed25519", args{ed25519Key.Public(), ed25519Key.Public()}, true},
+		{"fail ml-dsa", args{mldsaKey.Public(), mldsaKey.Public()}, true},
 		// wrong private key
 		{"fail ecdsa key", args{ecdsaKey.Public(), ecdsaKey1}, true},
 		{"fail rsa key", args{rsaKey.Public(), rsaKey1}, true},
 		{"fail ed25519 key", args{ed25519Key.Public(), ed25519Key1}, true},
+		{"fail ml-dsa key", args{mldsaKey.Public(), mldsaKey1}, true},
 		// wrong public type
 		{"fail type", args{[]byte("foo"), []byte("foo")}, true},
 	}
@@ -716,6 +783,9 @@ func TestEqual(t *testing.T) {
 		if x, ok := key.(x25519.PrivateKey); ok {
 			return x25519.PrivateKey([]byte(x))
 		}
+		if x, ok := key.(*mldsa.PrivateKey); ok && !mldsa.Supported {
+			return x
+		}
 
 		b, err := x509.MarshalPKCS8PrivateKey(key)
 		if err != nil {
@@ -736,6 +806,7 @@ func TestEqual(t *testing.T) {
 	rsaKey := mustSigner("RSA", "", 2048)
 	ed25519Key := mustSigner("OKP", "Ed25519", 0)
 	x25519Key := mustSigner("OKP", "X25519", 0)
+	mldsaKey := shouldMLDSA(t, mldsa.MLDSA87())
 
 	type args struct {
 		x any
@@ -750,19 +821,23 @@ func TestEqual(t *testing.T) {
 		{"ok rsaKey", args{rsaKey, mustCopy(rsaKey)}, true},
 		{"ok ed25519Key", args{ed25519Key, mustCopy(ed25519Key)}, true},
 		{"ok x25519Key", args{x25519Key, mustCopy(x25519Key)}, true},
+		{"ok mldsaKey", args{mldsaKey, mustCopy(mldsaKey)}, mldsa.Supported},
 		{"ok ecdsaKey pub", args{ecdsaKey.Public(), mustCopy(ecdsaKey).Public()}, true},
 		{"ok rsaKey pub", args{rsaKey.Public(), mustCopy(rsaKey).Public()}, true},
 		{"ok ed25519Key pub", args{ed25519Key.Public(), mustCopy(ed25519Key).Public()}, true},
 		{"ok x25519Key pub", args{x25519Key.Public(), mustCopy(x25519Key).Public()}, true},
+		{"ok mldsaKey pub", args{mldsaKey.Public(), mustCopy(mldsaKey).Public()}, mldsa.Supported},
 		{"ok []byte", args{[]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}}, true},
 		{"fail ecdsaKey", args{ecdsaKey, mustCopy(ecdsaKey).Public()}, false},
 		{"fail rsaKey", args{rsaKey, mustCopy(rsaKey).Public()}, false},
 		{"fail ed25519Key", args{ed25519Key, mustCopy(ed25519Key).Public()}, false},
 		{"fail x25519Key", args{x25519Key, mustCopy(x25519Key).Public()}, false},
+		{"fail mldsaKey", args{mldsaKey, mustCopy(mldsaKey).Public()}, false},
 		{"fail ecdsaKey pub", args{ecdsaKey.Public(), mustCopy(ecdsaKey)}, false},
 		{"fail rsaKey pub", args{rsaKey.Public(), mustCopy(rsaKey)}, false},
 		{"fail ed25519Key pub", args{ed25519Key.Public(), mustCopy(ed25519Key)}, false},
 		{"fail x25519Key pub", args{x25519Key.Public(), mustCopy(x25519Key)}, false},
+		{"fail mldsaKey pub", args{mldsaKey.Public(), mustCopy(mldsaKey)}, false},
 		{"fail []byte", args{[]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}, false},
 		{"fail int", args{1, 2}, false},
 		{"fail string", args{"foo", "foo"}, false},

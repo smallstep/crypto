@@ -42,7 +42,7 @@ var protectionLevelMapping = map[apiv1.ProtectionLevel]kmspb.ProtectionLevel{
 //
 // Cloud KMS does not support SHA384WithRSA, SHA384WithRSAPSS, SHA384WithRSAPSS,
 // ECDSAWithSHA512, and PureEd25519.
-var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]interface{}{
+var signatureAlgorithmMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]interface{}{
 	apiv1.UnspecifiedSignAlgorithm: kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED,
 	apiv1.SHA256WithRSA: map[int]kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm{
 		0:    kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_3072_SHA256,
@@ -66,9 +66,9 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]interface{}{
 	},
 	apiv1.ECDSAWithSHA256: kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
 	apiv1.ECDSAWithSHA384: kmspb.CryptoKeyVersion_EC_SIGN_P384_SHA384,
-}
+})
 
-var cryptoKeyVersionMapping = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]x509.SignatureAlgorithm{
+var cryptoKeyVersionMapping = patchCryptoKeyVersionMapping(map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]x509.SignatureAlgorithm{
 	kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256:        x509.ECDSAWithSHA256,
 	kmspb.CryptoKeyVersion_EC_SIGN_P384_SHA384:        x509.ECDSAWithSHA384,
 	kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_2048_SHA256: x509.SHA256WithRSA,
@@ -79,7 +79,7 @@ var cryptoKeyVersionMapping = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorit
 	kmspb.CryptoKeyVersion_RSA_SIGN_PSS_3072_SHA256:   x509.SHA256WithRSAPSS,
 	kmspb.CryptoKeyVersion_RSA_SIGN_PSS_4096_SHA256:   x509.SHA256WithRSAPSS,
 	kmspb.CryptoKeyVersion_RSA_SIGN_PSS_4096_SHA512:   x509.SHA512WithRSAPSS,
-}
+})
 
 // KeyManagementClient defines the methods on KeyManagementClient that this
 // package will use. This interface will be used for unit testing.

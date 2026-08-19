@@ -10,12 +10,14 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
+	"go.step.sm/crypto/internal/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 
@@ -26,6 +28,8 @@ var (
 	DefaultKeySize = 2048
 	// DefaultKeyCurve is the default curve of a private key.
 	DefaultKeyCurve = "P-256"
+	// DefaultKeyAlgorithm is the default algorithm for AKP (ML-DSA) keys.
+	DefaultKeyAlgorithm = mldsa.MLDSA44
 	// DefaultSignatureAlgorithm is the default signature algorithm used on a
 	// certificate with the default key type.
 	DefaultSignatureAlgorithm = x509.ECDSAWithSHA256
@@ -55,15 +59,7 @@ func Insecure() (revert func()) {
 // PublicKey extracts a public key from a private key.
 func PublicKey(priv interface{}) (crypto.PublicKey, error) {
 	switch k := priv.(type) {
-	case *rsa.PrivateKey:
-		return &k.PublicKey, nil
-	case *ecdsa.PrivateKey:
-		return &k.PublicKey, nil
-	case ed25519.PrivateKey:
-		return k.Public(), nil
-	case x25519.PrivateKey:
-		return k.Public(), nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return k, nil
 	case crypto.Signer:
 		return k.Public(), nil
@@ -87,7 +83,7 @@ func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 // GenerateKey generates a key of the given type (kty).
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 	switch kty {
-	case "EC", "RSA", "OKP":
+	case "EC", "RSA", "OKP", "AKP":
 		return GenerateSigner(kty, crv, size)
 	case "oct":
 		return generateOctKey(size)
@@ -113,7 +109,8 @@ func GenerateDefaultSigner() (crypto.Signer, error) {
 }
 
 // GenerateSigner creates an asymmetric crypto key that implements
-// crypto.Signer.
+// crypto.Signer. For ML-DSA keys, the crv parameters indicates the algorithm to
+// use.
 func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 	switch kty {
 	case "EC":
@@ -122,6 +119,8 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 		return generateRSAKey(size)
 	case "OKP":
 		return generateOKPKey(crv)
+	case "AKP":
+		return generateAKPKey(crv)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
@@ -133,6 +132,7 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	switch k := in.(type) {
 	case *rsa.PublicKey, *rsa.PrivateKey,
 		*ecdsa.PublicKey, *ecdsa.PrivateKey,
+		*mldsa.PublicKey, *mldsa.PrivateKey,
 		ed25519.PublicKey, ed25519.PrivateKey,
 		x25519.PublicKey, x25519.PrivateKey:
 		return in, nil
@@ -147,7 +147,7 @@ func ExtractKey(in interface{}) (interface{}, error) {
 	case *ssh.Certificate:
 		return ExtractKey(k.Key)
 	default:
-		return nil, errors.Errorf("cannot extract the key from type '%T'", k)
+		return nil, errors.Errorf("cannot extract the key from type '%T'", in)
 	}
 }
 
@@ -165,31 +165,14 @@ func VerifyPair(pub crypto.PublicKey, priv crypto.PrivateKey) error {
 
 // Equal reports if x and y are the same key.
 func Equal(x, y any) bool {
+	if eq, ok := x.(interface{ Equal(crypto.PublicKey) bool }); ok {
+		return eq.Equal(y)
+	}
+	if eq, ok := x.(interface{ Equal(crypto.PrivateKey) bool }); ok {
+		return eq.Equal(y)
+	}
+
 	switch xx := x.(type) {
-	case *ecdsa.PublicKey:
-		yy, ok := y.(*ecdsa.PublicKey)
-		return ok && xx.Equal(yy)
-	case *ecdsa.PrivateKey:
-		yy, ok := y.(*ecdsa.PrivateKey)
-		return ok && xx.Equal(yy)
-	case *rsa.PublicKey:
-		yy, ok := y.(*rsa.PublicKey)
-		return ok && xx.Equal(yy)
-	case *rsa.PrivateKey:
-		yy, ok := y.(*rsa.PrivateKey)
-		return ok && xx.Equal(yy)
-	case ed25519.PublicKey:
-		yy, ok := y.(ed25519.PublicKey)
-		return ok && xx.Equal(yy)
-	case ed25519.PrivateKey:
-		yy, ok := y.(ed25519.PrivateKey)
-		return ok && xx.Equal(yy)
-	case x25519.PublicKey:
-		yy, ok := y.(x25519.PublicKey)
-		return ok && xx.Equal(yy)
-	case x25519.PrivateKey:
-		yy, ok := y.(x25519.PrivateKey)
-		return ok && xx.Equal(yy)
 	case []byte: // special case for symmetric keys
 		yy, ok := y.([]byte)
 		return ok && bytes.Equal(xx, yy)
@@ -249,6 +232,38 @@ func generateOKPKey(crv string) (crypto.Signer, error) {
 	default:
 		return nil, errors.Errorf("missing or invalid value for argument 'crv'. "+
 			"expected 'Ed25519' or 'X25519', but got '%s'", crv)
+	}
+}
+
+func generateAKPKey(alg string) (crypto.Signer, error) {
+	switch alg {
+	case "":
+		key, err := mldsa.GenerateKey(DefaultKeyAlgorithm())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-44":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA44())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-44 key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-65":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA65())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-65 key: %w", err)
+		}
+		return key, nil
+	case "ML-DSA-87":
+		key, err := mldsa.GenerateKey(mldsa.MLDSA87())
+		if err != nil {
+			return nil, fmt.Errorf("error generating ML-DSA-87 key: %w", err)
+		}
+		return key, nil
+	default:
+		return nil, errors.Errorf("missing or invalid value for argument 'alg'. "+
+			"expected 'ML-DSA-44', 'ML-DSA-65', or 'ML-DSA-87', but got '%s'", alg)
 	}
 }
 
