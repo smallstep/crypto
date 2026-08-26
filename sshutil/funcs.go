@@ -46,6 +46,18 @@ func RegisterTemplateFunc(name string, fn any) error {
 	return templateFuncs.Register(name, fn)
 }
 
+// ReplaceTemplateFunc registers fn as name whether or not something already
+// answers to it, built in or previously registered.
+//
+// It exists for the case where an application deliberately supersedes a
+// function this library provides, having decided its own is the one its
+// templates should get. [RegisterTemplateFunc] is the right call otherwise: an
+// accidental shadow is a bug worth hearing about, and only the caller knows
+// which of the two this is.
+func ReplaceTemplateFunc(name string, fn any) error {
+	return templateFuncs.Replace(name, fn)
+}
+
 // UnregisterTemplateFunc removes a function registered with
 // [RegisterTemplateFunc] and reports whether one was removed.
 func UnregisterTemplateFunc(name string) bool {

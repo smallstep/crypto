@@ -44,15 +44,8 @@ func NewRegistry(reserved func() map[string]struct{}) *Registry {
 // registry that allowed the substitution would make every template's meaning
 // depend on which packages happened to be linked in.
 func (r *Registry) Register(name string, fn any) error {
-	switch {
-	case name == "":
-		return fmt.Errorf("template function name is required")
-	case fn == nil:
-		return fmt.Errorf("template function %q is nil", name)
-	case reflect.TypeOf(fn).Kind() != reflect.Func:
-		return fmt.Errorf("template function %q is a %s, not a function", name, reflect.TypeOf(fn).Kind())
-	case !validName(name):
-		return fmt.Errorf("template function name %q is not a valid identifier", name)
+	if err := validate(name, fn); err != nil {
+		return err
 	}
 
 	r.once.Do(func() { r.names = r.reserved() })
@@ -66,6 +59,38 @@ func (r *Registry) Register(name string, fn any) error {
 		return fmt.Errorf("template function %q is already registered", name)
 	}
 	r.funcs[name] = fn
+	return nil
+}
+
+// Replace registers fn as name whether or not something already answers to it,
+// built in or previously registered.
+//
+// It exists for the case where an application deliberately supersedes a
+// function this library provides, having decided its own is the one its
+// templates should get. Register is the right call otherwise: an accidental
+// shadow is a bug worth hearing about, and only the caller knows which of the
+// two this is.
+func (r *Registry) Replace(name string, fn any) error {
+	if err := validate(name, fn); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.funcs[name] = fn
+	return nil
+}
+
+func validate(name string, fn any) error {
+	switch {
+	case name == "":
+		return fmt.Errorf("template function name is required")
+	case fn == nil:
+		return fmt.Errorf("template function %q is nil", name)
+	case reflect.TypeOf(fn).Kind() != reflect.Func:
+		return fmt.Errorf("template function %q is a %s, not a function", name, reflect.TypeOf(fn).Kind())
+	case !validName(name):
+		return fmt.Errorf("template function name %q is not a valid identifier", name)
+	}
 	return nil
 }
 
