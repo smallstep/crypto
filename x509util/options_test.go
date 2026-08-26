@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -200,6 +201,92 @@ func TestWithTemplate(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("WithTemplate() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestWithTemplate_cel(t *testing.T) {
+	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com", "foo@foo.com", "bar@foo.com", "::1", "https://foo.com"})
+
+	buf := func(s string) Options {
+		return Options{
+			CertBuffer: bytes.NewBufferString(s),
+		}
+	}
+
+	type args struct {
+		text string
+		data TemplateData
+		cr   *x509.CertificateRequest
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      Options
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"subject", args{`{{cel "Subject.CommonName + \".\" + Subject.Country[0]"}}`, TemplateData{
+			SubjectKey: Subject{
+				CommonName: "example",
+				Country:    []string{"ES"},
+			},
+		}, cr}, buf("example.ES"), assert.NoError},
+		{"sans", args{`{{cel "SANs.filter(s, s.Value.contains(\"foo\")).map(s, s.Value)"}}`, TemplateData{
+			SANsKey: CreateSANs([]string{"foo.com", "foo@foo.com", "::1", "https://foo.com"}),
+		}, cr}, buf("[foo.com, foo@foo.com, https://foo.com]"), assert.NoError},
+		{"token", args{`{{cel "json.encode({'subject':{'commonName': Token.sub}, 'uris':[Token.iss]})"}}`, TemplateData{
+			TokenKey: map[string]any{
+				"iss": "https://iss",
+				"sub": "sub",
+				"nbf": time.Now().Unix(),
+			},
+		}, cr}, buf(`{"subject":{"commonName":"sub"},"uris":["https://iss"]}`), assert.NoError},
+		{"webhoks", args{`{{cel "strings.quote(Webhooks.Device.?Serial.or(Webhooks.Device.?Hostname).orValue('Unknown'))"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"OS":       "Linux",
+					"Hostname": "d1.example.com",
+				},
+			},
+		}, cr}, buf(`"d1.example.com"`), assert.NoError},
+		{"insecure", args{`{{cel "Insecure.CR.EmailAddresses.filter(s, s == Insecure.User.Email).first().value()"}}`, TemplateData{
+			InsecureKey: TemplateData{
+				UserKey: map[string]any{
+					"Email": "bar@foo.com",
+				},
+			},
+		}, cr}, buf("bar@foo.com"), assert.NoError},
+		{"authorizationCrt", args{`{{cel "\"arn:aws:iam:1234567890:role/\" + AuthorizationCrt.Subject.OrganizationalUnit[0].lowerAscii()"}}`, TemplateData{
+			AuthorizationCrtKey: &x509.Certificate{
+				Subject: pkix.Name{OrganizationalUnit: []string{"Eng"}},
+			},
+		}, cr}, buf("arn:aws:iam:1234567890:role/eng"), assert.NoError},
+		{"authorizationChain", args{`{{cel "\"arn:aws:iam:1234567890:role/\" + AuthorizationChain.map(x, x.Subject.OrganizationalUnit[0]).reverse().join('.').lowerAscii()"}}`, TemplateData{
+			AuthorizationChainKey: []*x509.Certificate{
+				{Subject: pkix.Name{OrganizationalUnit: []string{"Eng"}}},
+				{Subject: pkix.Name{OrganizationalUnit: []string{"OpSec"}}},
+			},
+		}, cr}, buf("arn:aws:iam:1234567890:role/opsec.eng"), assert.NoError},
+		{"fail compile", args{`{{cel "MyKey.CommonName"}}`, TemplateData{
+			"MyKey": Subject{CommonName: "example.com"},
+		}, cr}, Options{}, assert.Error},
+		{"fail eval", args{`{{cel "Webhooks.Device.Serial"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"Hostname": "example.com",
+				},
+			},
+		}, cr}, Options{}, assert.Error},
+		{"fail costlimit", args{`{{cel "lists.range(1000)"}}`, TemplateData{
+			SubjectKey: Subject{CommonName: "example.com"},
+		}, cr}, Options{}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got Options
+			fn := WithTemplate(tt.args.text, tt.args.data)
+			tt.assertion(t, fn(tt.args.cr, &got))
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

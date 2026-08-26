@@ -5,10 +5,14 @@ import (
 	"crypto/x509"
 	encoding_asn1 "encoding/asn1"
 	"encoding/base64"
+	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"text/template"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/ext"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
@@ -60,12 +64,75 @@ func getFuncMap(err *TemplateError) template.FuncMap {
 	return funcMap
 }
 
+type celFunc struct {
+	data TemplateData
+	env  *cel.Env
+}
+
+func newCelFunc(data TemplateData) (*celFunc, error) {
+	env, err := cel.NewEnv(
+		// Extensions
+		ext.Strings(), ext.Encoders(), ext.Lists(), ext.Sets(), ext.Network(),
+		cel.OptionalTypes(), // required by regex
+		ext.Regex(),
+		// Types
+		cel.Variable(SubjectKey, cel.ObjectType("x509util.Subject")),
+		cel.Variable(SANsKey, cel.ListType(cel.ObjectType("x509util.SubjectAlternativeName"))),
+		cel.Variable(TokenKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(WebhooksKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(InsecureKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(AuthorizationCrtKey, cel.DynType),
+		cel.Variable(AuthorizationChainKey, cel.ListType(cel.DynType)),
+		cel.Variable(CertificateRequestKey, cel.ObjectType("x509util.CertificateRequest")),
+		ext.NativeTypes(reflect.TypeOf(SubjectAlternativeName{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(Subject{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(Certificate{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(CertificateRequest{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(x509.Certificate{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(x509.CertificateRequest{}), ext.ParseStructTag("cel")),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating CEL environment: %w", err)
+	}
+
+	return &celFunc{
+		data: data,
+		env:  env,
+	}, nil
+}
+
+func (c *celFunc) call(expr string) (string, error) {
+	ast, iss := c.env.Compile(expr)
+	if err := iss.Err(); err != nil {
+		return "", fmt.Errorf("error compiling CEL expression: %w", err)
+	}
+
+	prg, err := c.env.Program(ast, cel.EvalOptions(cel.OptOptimize), cel.CostLimit(1000))
+	if err != nil {
+		return "", fmt.Errorf("error creating CEL program: %w", err)
+	}
+
+	out, _, err := prg.Eval(map[string]any(c.data))
+	if err != nil {
+		return "", fmt.Errorf("error evaluating CEL expresion: %w", err)
+	}
+
+	return fmt.Sprint(out), nil
+}
+
 // WithTemplate is an options that executes the given template text with the
 // given data.
 func WithTemplate(text string, data TemplateData) Option {
 	return func(cr *x509.CertificateRequest, o *Options) error {
+		celfn, err := newCelFunc(data)
+		if err != nil {
+			return err
+		}
+
 		terr := new(TemplateError)
 		funcMap := getFuncMap(terr)
+		funcMap["cel"] = celfn.call
+
 		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {
