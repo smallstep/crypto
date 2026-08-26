@@ -233,7 +233,7 @@ func TestWithTemplate_cel(t *testing.T) {
 		}, cr}, buf("example.ES"), assert.NoError},
 		{"sans", args{`{{cel "SANs.filter(s, s.Value.contains(\"foo\")).map(s, s.Value)"}}`, TemplateData{
 			SANsKey: CreateSANs([]string{"foo.com", "foo@foo.com", "::1", "https://foo.com"}),
-		}, cr}, buf("[foo.com, foo@foo.com, https://foo.com]"), assert.NoError},
+		}, cr}, buf("[foo.com foo@foo.com https://foo.com]"), assert.NoError},
 		{"token", args{`{{cel "json.encode({'subject':{'commonName': Token.sub}, 'uris':[Token.iss]})"}}`, TemplateData{
 			TokenKey: map[string]any{
 				"iss": "https://iss",

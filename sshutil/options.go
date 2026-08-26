@@ -45,6 +45,8 @@ func WithTemplate(text string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
 		funcMap := getFuncMap(terr)
+		funcMap["cel"] = celFunc(data)
+
 		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {

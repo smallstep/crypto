@@ -34,7 +34,7 @@ func mustOID(t *testing.T, s string) x509.OID {
 	return oid
 }
 
-func createCertificateRequest(t *testing.T, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
+func createCertificateRequest(t testing.TB, commonName string, sans []string) (*x509.CertificateRequest, crypto.Signer) {
 	dnsNames, ips, emails, uris := SplitSANs(sans)
 	t.Helper()
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
