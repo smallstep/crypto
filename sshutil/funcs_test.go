@@ -36,9 +36,8 @@ func TestRegisterTemplateFuncErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "built in and cannot be replaced")
 }
 
-// TestRegistriesAreSeparate is the reason there are two entry points rather
-// than one: registering a function for SSH templates must not silently make it
-// available to X.509 ones, and the other way round.
+// TestRegistriesAreSeparate checks that a function registered for one kind of
+// certificate is not available to the other.
 func TestRegistriesAreSeparate(t *testing.T) {
 	require.NoError(t, RegisterTemplateFunc("testSSHOnly", func() string { return "ssh" }))
 	t.Cleanup(func() { UnregisterTemplateFunc("testSSHOnly") })
@@ -60,7 +59,7 @@ func TestRegistriesAreSeparate(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `function "testSSHOnly" not defined`)
 
-	// And an application wanting it in both registers with both.
+	// An application that wants it in both registers with both.
 	require.NoError(t, x509util.RegisterTemplateFunc("testSSHOnly", func() string { return "x509" }))
 	t.Cleanup(func() { x509util.UnregisterTemplateFunc("testSSHOnly") })
 

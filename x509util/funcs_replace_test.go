@@ -7,17 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestReplaceTemplateFunc covers the deliberate override: an application that
-// has decided its own implementation is the one its templates should get says
-// so, rather than the outcome depending on the order two packages happen to
-// touch the function map.
+// TestReplaceTemplateFunc checks that a built-in can be replaced deliberately,
+// but not by [RegisterTemplateFunc].
 func TestReplaceTemplateFunc(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
 
-	// Register refuses a built-in.
 	require.Error(t, RegisterTemplateFunc("toJson", func(any) string { return "replaced" }))
 
-	// Replace takes it.
 	require.NoError(t, ReplaceTemplateFunc("toJson", func(any) string { return "replaced" }))
 	t.Cleanup(func() { UnregisterTemplateFunc("toJson") })
 
@@ -25,7 +21,7 @@ func TestReplaceTemplateFunc(t *testing.T) {
 	require.NoError(t, WithTemplate(`{{ toJson .Subject }}`, TemplateData{})(cr, &o))
 	assert.Equal(t, "replaced", o.CertBuffer.String())
 
-	// And removing it restores the built-in.
+	// Removing it restores the built-in.
 	UnregisterTemplateFunc("toJson")
 	var o2 Options
 	require.NoError(t, WithTemplate(`{{ toJson "x" }}`, TemplateData{})(cr, &o2))

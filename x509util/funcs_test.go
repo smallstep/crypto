@@ -20,9 +20,8 @@ func TestRegisterTemplateFunc(t *testing.T) {
 	assert.Equal(t, "hello!", o.CertBuffer.String())
 }
 
-// TestRegisterTemplateFuncReachesTheData covers the convention the doc comment
-// describes: a function receives only its own arguments, so a template that
-// needs the render data passes it explicitly with $.
+// A function receives only its own arguments, so a template that needs the
+// template data passes it with $.
 func TestRegisterTemplateFuncReachesTheData(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
 
@@ -43,8 +42,8 @@ func TestRegisterTemplateFuncReachesTheData(t *testing.T) {
 		assert.Equal(t, `["a","b"]`, o.CertBuffer.String())
 	})
 
-	// $ is the value the template was executed with, wherever it appears; the
-	// dot is not, which is exactly why the convention is $.
+	// $ is the value the template was executed with wherever it appears; the
+	// dot is not.
 	t.Run("inside a range block", func(t *testing.T) {
 		var o Options
 		text := `{{ range $i, $v := (testPick "custom" $) }}{{ testPick "custom" $ | toJson }}{{ end }}`
@@ -65,7 +64,6 @@ func TestRegisterTemplateFuncErrors(t *testing.T) {
 		{"not a function", "notfn", "a string", "not a function"},
 		{"invalid identifier", "not-an-identifier", func() string { return "" }, "not a valid identifier"},
 		{"leading digit", "1abc", func() string { return "" }, "not a valid identifier"},
-		// A template calling toJson has to get this library's toJson.
 		{"shadows sprig", "toJson", func() string { return "" }, "built in and cannot be replaced"},
 		{"shadows fail", "fail", func() string { return "" }, "built in and cannot be replaced"},
 		{"shadows asn1", "asn1Enc", func() string { return "" }, "built in and cannot be replaced"},
@@ -96,8 +94,7 @@ func TestUnregisterTemplateFunc(t *testing.T) {
 	require.NoError(t, RegisterTemplateFunc("temp", func() string { return "" }))
 	assert.True(t, UnregisterTemplateFunc("temp"))
 
-	// Once removed, a template calling it no longer parses — which is also what
-	// happens to a template rendered before the function is registered.
+	// A template calling a function that is not registered fails to parse.
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
 	var o Options
 	err := WithTemplate(`{{ temp }}`, TemplateData{})(cr, &o)
@@ -105,8 +102,8 @@ func TestUnregisterTemplateFunc(t *testing.T) {
 	assert.Contains(t, err.Error(), `function "temp" not defined`)
 }
 
-// TestBuiltinsAreUnaffected checks that registering does not disturb the
-// functions a template already relies on.
+// TestBuiltinsAreUnaffected checks that registering leaves the built-in
+// functions in place.
 func TestBuiltinsAreUnaffected(t *testing.T) {
 	require.NoError(t, RegisterTemplateFunc("extra", func() string { return "x" }))
 	t.Cleanup(func() { UnregisterTemplateFunc("extra") })

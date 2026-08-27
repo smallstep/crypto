@@ -7,18 +7,11 @@ import (
 	"text/template"
 )
 
-// Registry holds template functions contributed by the application embedding
-// this library, for the functions a certificate template needs that this
-// library cannot provide.
-//
-// The template renderer is a leaf: WithTemplate builds its function map
-// internally and is reached through provisioners the CA constructs for itself,
-// so there is no call path along which an application can pass a function down
-// to it. Registration is how one gets there instead.
+// Registry holds template functions added by the application, for the
+// functions a template needs that this library does not provide.
 type Registry struct {
-	// reserved names the registry refuses, resolved once on first use. It is a
-	// function so a package can describe its own built-ins without this file
-	// needing to know them.
+	// reserved is a function so a package can name its own built-ins without
+	// this file knowing them. It is resolved once, on first use.
 	reserved func() map[string]struct{}
 	once     sync.Once
 	names    map[string]struct{}
@@ -27,22 +20,13 @@ type Registry struct {
 	funcs map[string]any
 }
 
-// NewRegistry returns a registry that refuses to shadow any name the reserved
-// function reports.
+// NewRegistry returns a Registry that refuses any name returned by reserved.
 func NewRegistry(reserved func() map[string]struct{}) *Registry {
 	return &Registry{reserved: reserved, funcs: map[string]any{}}
 }
 
-// Register makes fn available to templates as name.
-//
-// Call it during start-up, before anything is signed: a template rendered
-// before the function is registered fails to parse, because text/template
-// resolves function names when it parses.
-//
-// It refuses to shadow a built-in. A template that calls toJson or fail must
-// get this library's implementation, not one an application replaced, and a
-// registry that allowed the substitution would make every template's meaning
-// depend on which packages happened to be linked in.
+// Register adds fn to the registry. It returns an error if name is already
+// registered or reserved.
 func (r *Registry) Register(name string, fn any) error {
 	if err := validate(name, fn); err != nil {
 		return err
@@ -62,14 +46,8 @@ func (r *Registry) Register(name string, fn any) error {
 	return nil
 }
 
-// Replace registers fn as name whether or not something already answers to it,
-// built in or previously registered.
-//
-// It exists for the case where an application deliberately supersedes a
-// function this library provides, having decided its own is the one its
-// templates should get. Register is the right call otherwise: an accidental
-// shadow is a bug worth hearing about, and only the caller knows which of the
-// two this is.
+// Replace adds fn to the registry, replacing any reserved or previously
+// registered function with the same name.
 func (r *Registry) Replace(name string, fn any) error {
 	if err := validate(name, fn); err != nil {
 		return err
@@ -94,8 +72,8 @@ func validate(name string, fn any) error {
 	return nil
 }
 
-// Unregister removes a previously registered function and reports whether one
-// was removed.
+// Unregister removes a function from the registry. It returns true if a
+// function was removed.
 func (r *Registry) Unregister(name string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -106,8 +84,7 @@ func (r *Registry) Unregister(name string) bool {
 	return true
 }
 
-// Apply adds the registered functions to a function map. Built-ins are already
-// protected at registration, so nothing here can overwrite one.
+// Apply adds the registered functions to funcMap.
 func (r *Registry) Apply(funcMap template.FuncMap) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -116,8 +93,8 @@ func (r *Registry) Apply(funcMap template.FuncMap) {
 	}
 }
 
-// validName reports whether name is usable as a template function name, which
-// text/template requires to be a Go identifier.
+// validName reports whether name is a valid Go identifier, as required by
+// "text/template".
 func validName(name string) bool {
 	for i, c := range name {
 		switch {
