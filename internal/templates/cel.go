@@ -12,6 +12,7 @@ import (
 	"cel.dev/cel-go/common/types/ref"
 	"cel.dev/cel-go/common/types/traits"
 	"cel.dev/cel-go/ext"
+	"cel.dev/cel-go/interpreter"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"go.step.sm/crypto/internal/lru"
@@ -127,7 +128,7 @@ func (e *Environment) Eval(expr string, data map[string]any) (any, error) {
 
 	out, _, err := prg.Eval(data)
 	if err != nil {
-		return nil, fmt.Errorf("error evaluating CEL expression: %w", err)
+		return nil, newEvalError(expr, err)
 	}
 
 	native, err := out.ConvertToNative(anyType)
@@ -136,6 +137,47 @@ func (e *Environment) Eval(expr string, data map[string]any) (any, error) {
 	}
 
 	return normalize(native), nil
+}
+
+// EvalError reports an expression that failed to evaluate. Its message names
+// the expression and not the data, because cel-go builds the value it was
+// working on into the error it returns: a map key taken from a token claim, an
+// index computed from a webhook payload, a struct it could not convert. The
+// message does not say where a value came from — "no such key: Serial" and
+// "no such key: <a token subject>" are the same sentence — so none of it is
+// repeated, and Detail hands it to a caller that has somewhere safe to put it.
+type EvalError struct {
+	// Expr is the expression that failed. It comes from the template, not
+	// from the request, so it is safe to report.
+	Expr string
+
+	detail error
+}
+
+// Error returns a message that carries no template data.
+func (e *EvalError) Error() string {
+	return fmt.Sprintf("error evaluating CEL expression %q", e.Expr)
+}
+
+// Detail returns the error cel-go reported. It can carry values from the
+// template data, so it belongs in a log the operator controls rather than in a
+// response to whoever asked for the certificate.
+//
+// It is deliberately not an Unwrap. An unwrap chain is something a caller's
+// error formatting walks into by accident, and this text should move only when
+// somebody decides that it should.
+func (e *EvalError) Detail() error { return e.detail }
+
+// newEvalError classifies what an evaluation reported. Exceeding the cost limit
+// is the one failure with a remedy the operator can act on, and cel-go reports
+// it with a typed error whose message is fixed and holds no data, so it keeps
+// its text. Everything else is held back in an EvalError.
+func newEvalError(expr string, err error) error {
+	var cancelled interpreter.EvalCancelledError
+	if errors.As(err, &cancelled) && cancelled.Cause == interpreter.CostLimitExceeded {
+		return fmt.Errorf("error evaluating CEL expression %q: %w", expr, err)
+	}
+	return &EvalError{Expr: expr, detail: err}
 }
 
 // normalize rewrites the values ConvertToNative produces that do not render or

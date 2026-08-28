@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"text/template"
@@ -316,6 +317,28 @@ func TestWithTemplate_cel(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestWithTemplate_celTemplateDataFromJSON pins that CEL resolves Subject and
+// SANs after a provisioner's template data has overwritten them. Unmarshaling
+// JSON into a TemplateData rewrites every key it carries, so the values under
+// those keys are not always the x509util structs, and a declared object type
+// would resolve their fields to null instead of failing.
+func TestWithTemplate_celTemplateDataFromJSON(t *testing.T) {
+	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
+
+	data := CreateTemplateData("foo", []string{"foo.com"})
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"Subject": {"CommonName": "example", "Country": ["ES"]},
+		"SANs": [{"Type": "dns", "Value": "a.example.com"}]
+	}`), &data))
+	require.IsType(t, map[string]any{}, data[SubjectKey])
+	require.IsType(t, []any{}, data[SANsKey])
+
+	var o Options
+	text := `{{cel "Subject.CommonName + \".\" + Subject.Country[0]"}} {{cel "SANs.map(s, s.Value)"}}`
+	require.NoError(t, WithTemplate(text, data)(cr, &o))
+	assert.Equal(t, "example.ES [a.example.com]", o.CertBuffer.String())
 }
 
 func TestWithTemplateBase64(t *testing.T) {

@@ -81,8 +81,8 @@ func CELCostLimit() uint64 {
 // celEnv holds a common environment to eval CEL expressions.
 var celEnv = templates.NewEnvironment(100, func() []cel.EnvOption {
 	return append(templates.BaseEnvOptions(),
-		cel.Variable(SubjectKey, cel.ObjectType("x509util.Subject")),
-		cel.Variable(SANsKey, cel.ListType(cel.ObjectType("x509util.SubjectAlternativeName"))),
+		cel.Variable(SubjectKey, cel.DynType),
+		cel.Variable(SANsKey, cel.ListType(cel.DynType)),
 		cel.Variable(TokenKey, cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable(WebhooksKey, cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable(InsecureKey, cel.MapType(cel.StringType, cel.DynType)),

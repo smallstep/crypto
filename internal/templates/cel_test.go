@@ -391,19 +391,19 @@ func TestEnvironment_Eval_error(t *testing.T) {
 			name:     "fail/division-by-zero",
 			env:      newTestEnvironment(10),
 			expr:     `1 / 0`,
-			contains: "error evaluating CEL expression: division by zero",
+			contains: "error evaluating CEL expression \"1 / 0\"",
 		},
 		{
 			name:     "fail/index-out-of-bounds",
 			env:      newTestEnvironment(10),
 			expr:     `[1, 2][5]`,
-			contains: "error evaluating CEL expression: index out of bounds",
+			contains: "error evaluating CEL expression \"[1, 2][5]\"",
 		},
 		{
 			name:     "fail/missing-key",
 			env:      newTestEnvironment(10),
 			expr:     `Token.missing`,
-			contains: "error evaluating CEL expression: no such key: missing",
+			contains: "error evaluating CEL expression \"Token.missing\"",
 		},
 		{
 			name:     "fail/missing-variable",
@@ -445,6 +445,56 @@ func TestEnvironment_Eval_error(t *testing.T) {
 	}
 }
 
+// testCreds is a struct cel-go has no adapter for, so converting it fails with
+// the value formatted into the error.
+type testCreds struct{ Password string }
+
+// TestEnvironment_Eval_errorHoldsBackDetail pins that an evaluation error does
+// not repeat template data. Both of the ways a value reaches one of these
+// errors are covered: a key computed from a claim, which cel-go reports with
+// the same "no such key" sentence it uses for a key written in the expression,
+// and a value it cannot convert at all, which it formats whole.
+func TestEnvironment_Eval_errorHoldsBackDetail(t *testing.T) {
+	e := newTestEnvironment(10)
+
+	t.Run("computed key", func(t *testing.T) {
+		_, err := e.Eval(`Token[Token.email]`, testEnvData())
+		require.Error(t, err)
+		assert.EqualError(t, err, `error evaluating CEL expression "Token[Token.email]"`)
+		assert.NotContains(t, err.Error(), "jane@example.com")
+
+		var evalErr *EvalError
+		require.ErrorAs(t, err, &evalErr)
+		assert.Equal(t, `Token[Token.email]`, evalErr.Expr)
+		assert.ErrorContains(t, evalErr.Detail(), "no such key: jane@example.com")
+	})
+
+	t.Run("unconvertible value", func(t *testing.T) {
+		data := map[string]any{"Token": testCreds{Password: "hunter2"}}
+		_, err := e.Eval(`Token.password`, data)
+		require.Error(t, err)
+		assert.EqualError(t, err, `error evaluating CEL expression "Token.password"`)
+		assert.NotContains(t, err.Error(), "hunter2")
+
+		var evalErr *EvalError
+		require.ErrorAs(t, err, &evalErr)
+		assert.ErrorContains(t, evalErr.Detail(), "hunter2")
+	})
+
+	// Exceeding the cost limit keeps its text: it holds no data, and it is the
+	// one failure the operator can do something about.
+	t.Run("cost limit", func(t *testing.T) {
+		withCostLimit(t, 1)
+		_, err := e.Eval(`Token.email + Token.email`, testEnvData())
+		require.Error(t, err)
+		assert.ErrorContains(t, err, `error evaluating CEL expression "Token.email + Token.email"`)
+		assert.ErrorContains(t, err, "actual cost limit exceeded")
+
+		var evalErr *EvalError
+		assert.NotErrorAs(t, err, &evalErr)
+	})
+}
+
 func TestEnvironment_Func(t *testing.T) {
 	e := newTestEnvironment(10)
 
@@ -478,7 +528,7 @@ func TestEnvironment_Func(t *testing.T) {
 	// data works when the template passes the data as "$".
 	unbound := e.Func(map[string]any{})
 	got, err = unbound(`Subject.commonName + "@" + Token.email`)
-	assert.ErrorContains(t, err, "no such attribute")
+	assert.ErrorContains(t, err, "error evaluating CEL expression")
 	assert.Nil(t, got)
 
 	got, err = unbound(`Subject.commonName + "@" + Token.email`, testEnvData())
