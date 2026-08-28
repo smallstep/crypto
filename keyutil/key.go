@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 
-	"go.step.sm/crypto/internal/mldsa"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/x25519"
 )
 

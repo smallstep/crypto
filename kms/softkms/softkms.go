@@ -13,10 +13,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"go.step.sm/crypto/internal/mldsa"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )

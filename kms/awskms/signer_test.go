@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 
-	"go.step.sm/crypto/internal/mldsa"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 )
 

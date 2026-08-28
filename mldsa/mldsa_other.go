@@ -1,3 +1,10 @@
+// Package mldsa is a temporary package that allows this module to compile with
+// Go 1.26, where crypto/mldsa is not available yet. On Go 1.27 and later it is
+// a thin alias over crypto/mldsa; on older toolchains it provides stubs that
+// report ML-DSA as unsupported.
+//
+// This package will disappear once the lowest supported Go version is 1.27.
+
 //go:build !go1.27
 
 package mldsa
