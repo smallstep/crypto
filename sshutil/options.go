@@ -28,13 +28,19 @@ type Option func(cr CertificateRequest, o *Options) error
 
 // GetFuncMap returns the list of functions used by the templates. It will
 // return all the functions supported by "sprig.TxtFuncMap()" but exclude "env"
-// and "expandenv", removed to avoid the leak of information.
+// and "expandenv", removed to avoid the leak of information. It will also add
+// the "cel" function to evaluate CEL expresions.
+//
+// A func map returned here is not bound to any template data, so a template
+// using it passes the data to "cel" as a final argument:
+//
+//	{{ cel "Token.sub" $ }}
 func GetFuncMap() template.FuncMap {
-	return getFuncMap(new(TemplateError))
+	return getFuncMap(TemplateData{}, new(TemplateError))
 }
 
-func getFuncMap(err *TemplateError) template.FuncMap {
-	funcMap := builtinFuncMap(err)
+func getFuncMap(data TemplateData, err *TemplateError) template.FuncMap {
+	funcMap := builtinFuncMap(data, err)
 	templateFuncs.Apply(funcMap)
 	return funcMap
 }
@@ -44,7 +50,7 @@ func getFuncMap(err *TemplateError) template.FuncMap {
 func WithTemplate(text string, data TemplateData) Option {
 	return func(cr CertificateRequest, o *Options) error {
 		terr := new(TemplateError)
-		funcMap := getFuncMap(terr)
+		funcMap := getFuncMap(data, terr)
 		// Parse template
 		tmpl, err := template.New("template").Funcs(funcMap).Parse(text)
 		if err != nil {

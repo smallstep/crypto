@@ -1,9 +1,14 @@
 package sshutil
 
 import (
+	"crypto/x509"
+	"reflect"
 	"text/template"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/ext"
 	"go.step.sm/crypto/internal/templates"
+	"golang.org/x/crypto/ssh"
 )
 
 // templateFuncs holds the functions registered by the application. It is
@@ -11,7 +16,7 @@ import (
 // does not affect the other.
 var templateFuncs = templates.NewRegistry(func() map[string]struct{} {
 	names := map[string]struct{}{}
-	for name := range builtinFuncMap(new(TemplateError)) {
+	for name := range builtinFuncMap(TemplateData{}, new(TemplateError)) {
 		names[name] = struct{}{}
 	}
 	return names
@@ -41,6 +46,30 @@ func UnregisterTemplateFunc(name string) bool {
 
 // builtinFuncMap returns the functions provided by this package, excluding
 // those registered by the application.
-func builtinFuncMap(err *TemplateError) template.FuncMap {
-	return templates.GetFuncMap(&err.Message)
+func builtinFuncMap(data TemplateData, err *TemplateError) template.FuncMap {
+	funcMap := templates.GetFuncMap(&err.Message)
+	// cel methods
+	funcMap["cel"] = celEnv.Func(data)
+	return funcMap
 }
+
+// celEnv holds a common environment to eval CEL expressions.
+var celEnv = templates.NewEnvironment(100, func() []cel.EnvOption {
+	return append(templates.BaseEnvOptions(),
+		cel.Variable(TypeKey, cel.StringType),
+		cel.Variable(KeyIDKey, cel.StringType),
+		cel.Variable(PrincipalsKey, cel.ListType(cel.StringType)),
+		cel.Variable(ExtensionsKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(CriticalOptionsKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(TokenKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(WebhooksKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(InsecureKey, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(AuthorizationCrtKey, cel.DynType),
+		cel.Variable(AuthorizationChainKey, cel.ListType(cel.DynType)),
+		ext.NativeTypes(reflect.TypeOf(Certificate{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(CertificateRequest{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(ssh.Certificate{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(x509.Certificate{}), ext.ParseStructTag("cel")),
+		ext.NativeTypes(reflect.TypeOf(x509.CertificateRequest{}), ext.ParseStructTag("cel")),
+	)
+})

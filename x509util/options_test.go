@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"reflect"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -60,6 +61,21 @@ func TestGetFuncMap(t *testing.T) {
 			t.Errorf("GetFuncMap() contains the function %s", name)
 		}
 	}
+}
+
+// TestGetFuncMap_cel pins that a func map obtained with GetFuncMap, which is
+// not bound to any template data, evaluates a CEL expression against the data
+// the template passes as "$".
+func TestGetFuncMap_cel(t *testing.T) {
+	tmpl, err := template.New("template").Funcs(GetFuncMap()).Parse(`{{ cel "Token.sub" $ }}`)
+	require.NoError(t, err)
+
+	data := TemplateData{
+		TokenKey: map[string]any{"sub": "8ff6a183"},
+	}
+	buf := new(bytes.Buffer)
+	require.NoError(t, tmpl.Execute(buf, data))
+	assert.Equal(t, "8ff6a183", buf.String())
 }
 
 func TestWithTemplate(t *testing.T) {
@@ -233,7 +249,10 @@ func TestWithTemplate_cel(t *testing.T) {
 		}, cr}, buf("example.ES"), assert.NoError},
 		{"sans", args{`{{cel "SANs.filter(s, s.Value.contains(\"foo\")).map(s, s.Value)"}}`, TemplateData{
 			SANsKey: CreateSANs([]string{"foo.com", "foo@foo.com", "::1", "https://foo.com"}),
-		}, cr}, buf("[foo.com, foo@foo.com, https://foo.com]"), assert.NoError},
+		}, cr}, buf("[foo.com foo@foo.com https://foo.com]"), assert.NoError},
+		{"token with $", args{`{{cel "Token.sub" $}}`, TemplateData{
+			TokenKey: map[string]any{"sub": "sub"},
+		}, cr}, buf("sub"), assert.NoError},
 		{"token", args{`{{cel "json.encode({'subject':{'commonName': Token.sub}, 'uris':[Token.iss]})"}}`, TemplateData{
 			TokenKey: map[string]any{
 				"iss": "https://iss",
@@ -249,6 +268,14 @@ func TestWithTemplate_cel(t *testing.T) {
 				},
 			},
 		}, cr}, buf(`"d1.example.com"`), assert.NoError},
+		{"webhoks with get", args{`{{cel "'hostname:' + Webhooks.Device.get('Hostname') + ', serial:' + Webhooks.Device.get('Serial')"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"OS":       "Linux",
+					"Hostname": "d1.example.com",
+				},
+			},
+		}, cr}, buf("hostname:d1.example.com, serial:"), assert.NoError},
 		{"insecure", args{`{{cel "Insecure.CR.EmailAddresses.filter(s, s == Insecure.User.Email).first().value()"}}`, TemplateData{
 			InsecureKey: TemplateData{
 				UserKey: map[string]any{
