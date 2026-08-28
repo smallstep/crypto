@@ -489,6 +489,7 @@ func TestEnvironment_Eval_errorHoldsBackDetail(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, `error evaluating CEL expression "Token.email + Token.email"`)
 		assert.ErrorContains(t, err, "actual cost limit exceeded")
+		assert.ErrorContains(t, err, "the limit is 1 and can be raised with SetCELCostLimit")
 
 		var evalErr *EvalError
 		assert.NotErrorAs(t, err, &evalErr)

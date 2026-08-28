@@ -35,6 +35,34 @@ type Option func(cr CertificateRequest, o *Options) error
 // using it passes the data to "cel" as a final argument:
 //
 //	{{ cel "Token.sub" $ }}
+//
+// An expression reads the template data through the variables below. A
+// variable the request did not set is absent rather than empty, and reading it
+// fails the evaluation instead of rendering nothing:
+//
+//   - Type: the certificate type, "user" or "host".
+//   - KeyID: the requested key id.
+//   - Principals: the requested principals.
+//   - Extensions: the certificate extensions.
+//   - CriticalOptions: the certificate critical options.
+//   - Token: the claims of the token that authorized the request.
+//   - Webhooks: the data returned by the enriching webhooks, keyed by the name
+//     of the webhook that returned it.
+//   - Insecure: data that has not been verified, holding User, the object the
+//     requester sent, and CR, the certificate request.
+//   - AuthorizationCrt: the certificate that authorized the request.
+//   - AuthorizationChain: the certificate chain that authorized the request.
+//
+// Expressions are evaluated with these CEL extensions enabled: optional types,
+// "strings", "encoders", "lists", "sets", "network", "regex" and two-variable
+// comprehensions. Maps carry one addition, a total accessor that reads an
+// absent or null key as the empty string, for the payloads that hold whatever
+// JSON gave them:
+//
+//	{{ cel "Webhooks.Device.get('Serial')" }}
+//
+// An expression is metered and cancelled once it exceeds a cost ceiling, so a
+// template cannot make signing arbitrarily expensive. See [SetCELCostLimit].
 func GetFuncMap() template.FuncMap {
 	return getFuncMap(TemplateData{}, new(TemplateError))
 }

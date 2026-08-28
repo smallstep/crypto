@@ -175,7 +175,8 @@ func (e *EvalError) Detail() error { return e.detail }
 func newEvalError(expr string, err error) error {
 	var cancelled interpreter.EvalCancelledError
 	if errors.As(err, &cancelled) && cancelled.Cause == interpreter.CostLimitExceeded {
-		return fmt.Errorf("error evaluating CEL expression %q: %w", expr, err)
+		return fmt.Errorf("error evaluating CEL expression %q: %w; the limit is %d and can be raised with SetCELCostLimit",
+			expr, err, costLimit.Load())
 	}
 	return &EvalError{Expr: expr, detail: err}
 }

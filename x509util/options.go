@@ -42,6 +42,32 @@ type Option func(cr *x509.CertificateRequest, o *Options) error
 //
 //	{{ cel "Token.sub" $ }}
 //
+// An expression reads the template data through the variables below. A
+// variable the request did not set is absent rather than empty, and reading it
+// fails the evaluation instead of rendering nothing:
+//
+//   - Subject: the requested subject.
+//   - SANs: the requested subject alternative names, each with Type, Value and
+//     ASN1Value.
+//   - Token: the claims of the token that authorized the request.
+//   - Webhooks: the data returned by the enriching webhooks, keyed by the name
+//     of the webhook that returned it.
+//   - Insecure: data that has not been verified, holding User, the object the
+//     requester sent, and CR, the certificate request.
+//   - AuthorizationCrt: the certificate that authorized the request.
+//   - AuthorizationChain: the certificate chain that authorized the request.
+//
+// Expressions are evaluated with these CEL extensions enabled: optional types,
+// "strings", "encoders", "lists", "sets", "network", "regex" and two-variable
+// comprehensions. Maps carry one addition, a total accessor that reads an
+// absent or null key as the empty string, for the payloads that hold whatever
+// JSON gave them:
+//
+//	{{ cel "Webhooks.Device.get('Serial')" }}
+//
+// An expression is metered and cancelled once it exceeds a cost ceiling, so a
+// template cannot make signing arbitrarily expensive. See [SetCELCostLimit].
+//
 // The following functions encode data using ASN.1:
 //
 //   - asn1Enc: encodes the given string to ASN.1. By default, it will use the
