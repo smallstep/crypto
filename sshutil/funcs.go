@@ -53,6 +53,20 @@ func builtinFuncMap(data TemplateData, err *TemplateError) template.FuncMap {
 	return funcMap
 }
 
+// SetCELCostLimit changes the evaluation cost ceiling for the CEL expressions
+// in certificate templates. It behaves as
+// [go.step.sm/crypto/x509util.SetCELCostLimit] does: the limit is process-wide,
+// shared by X.509 and SSH template evaluation.
+func SetCELCostLimit(limit uint64) {
+	templates.SetCostLimit(limit)
+}
+
+// CELCostLimit returns the current evaluation cost ceiling for the CEL
+// expressions in certificate templates.
+func CELCostLimit() uint64 {
+	return templates.CostLimit()
+}
+
 // celEnv holds a common environment to eval CEL expressions.
 var celEnv = templates.NewEnvironment(100, func() []cel.EnvOption {
 	return append(templates.BaseEnvOptions(),

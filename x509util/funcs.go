@@ -62,6 +62,22 @@ func builtinFuncMap(data TemplateData, err *TemplateError) template.FuncMap {
 	return funcMap
 }
 
+// SetCELCostLimit changes the evaluation cost ceiling for the CEL expressions
+// in certificate templates. The metered cost is the work an expression actually
+// does, so it scales with the data; the default admits collections of several
+// hundred elements while still cancelling runaway expressions. The limit is
+// process-wide, shared by X.509 and SSH template evaluation, and applies to
+// subsequent evaluations, including expressions already compiled.
+func SetCELCostLimit(limit uint64) {
+	templates.SetCostLimit(limit)
+}
+
+// CELCostLimit returns the current evaluation cost ceiling for the CEL
+// expressions in certificate templates.
+func CELCostLimit() uint64 {
+	return templates.CostLimit()
+}
+
 // celEnv holds a common environment to eval CEL expressions.
 var celEnv = templates.NewEnvironment(100, func() []cel.EnvOption {
 	return append(templates.BaseEnvOptions(),

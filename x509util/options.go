@@ -34,7 +34,7 @@ type Option func(cr *x509.CertificateRequest, o *Options) error
 // GetFuncMap returns the list of functions used by the templates. It will
 // return all the functions supported by "sprig.TxtFuncMap()" but exclude "env"
 // and "expandenv", removed to avoid the leak of information. It will also add
-// the "cel" function to evaluate CEL expresions and functions to encode data
+// the "cel" function to evaluate CEL expressions and functions to encode data
 // using ASN.1.
 //
 // A func map returned here is not bound to any template data, so a template

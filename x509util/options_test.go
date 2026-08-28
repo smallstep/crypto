@@ -304,7 +304,7 @@ func TestWithTemplate_cel(t *testing.T) {
 				},
 			},
 		}, cr}, Options{}, assert.Error},
-		{"fail costlimit", args{`{{cel "lists.range(1000)"}}`, TemplateData{
+		{"fail costlimit", args{`{{cel "lists.range(1000000)"}}`, TemplateData{
 			SubjectKey: Subject{CommonName: "example.com"},
 		}, cr}, Options{}, assert.Error},
 	}

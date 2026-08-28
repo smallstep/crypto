@@ -86,29 +86,28 @@ func TestSetCostLimit(t *testing.T) {
 
 func TestSetCostLimit_enforced(t *testing.T) {
 	const expr = `"a" + "b" + "c" + Token.email + Token.email`
+	e := newTestEnvironment(10)
 
 	// The default limit is generous enough for an ordinary expression.
-	got, err := newTestEnvironment(10).Eval(expr, testEnvData())
+	got, err := e.Eval(expr, testEnvData())
 	require.NoError(t, err)
 	assert.Equal(t, "abcjane@example.comjane@example.com", got)
 
-	// A tight limit cancels it. The limit is fixed into the program when it is
-	// compiled, so this needs an environment that has not compiled expr yet.
+	// A tight limit cancels it, even though its program is already cached.
 	withCostLimit(t, 1)
-	_, err = newTestEnvironment(10).Eval(expr, testEnvData())
+	_, err = e.Eval(expr, testEnvData())
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "actual cost limit exceeded")
 
 	// Even a trivial expression is metered, but stays under the limit.
-	got, err = newTestEnvironment(10).Eval(`1`, nil)
+	got, err = e.Eval(`1`, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), got)
 }
 
-// TestSetCostLimit_cachedProgram pins the current behaviour: a program already
-// in the cache keeps the limit it was compiled under. This contradicts the
-// SetCostLimit doc comment, which says the change discards programs compiled
-// under the previous limit — nothing in Environment does that today.
+// TestSetCostLimit_cachedProgram pins that a limit change reaches expressions
+// already cached: a cached program keeps the limit it was compiled under, so
+// Program treats it as a miss and recompiles it under the new limit.
 func TestSetCostLimit_cachedProgram(t *testing.T) {
 	const expr = `"a" + "b" + "c" + Token.email + Token.email`
 	e := newTestEnvironment(10)
@@ -116,15 +115,19 @@ func TestSetCostLimit_cachedProgram(t *testing.T) {
 	got, err := e.Eval(expr, testEnvData())
 	require.NoError(t, err)
 	assert.Equal(t, "abcjane@example.comjane@example.com", got)
+	assert.Equal(t, 1, e.programs.Len())
 
+	// Lowering the limit invalidates the cached program.
 	withCostLimit(t, 1)
+	_, err = e.Eval(expr, testEnvData())
+	assert.ErrorContains(t, err, "actual cost limit exceeded")
+
+	// Restoring it recompiles once more, and evaluation recovers.
+	SetCostLimit(DefaultCostLimit)
 	got, err = e.Eval(expr, testEnvData())
 	require.NoError(t, err)
 	assert.Equal(t, "abcjane@example.comjane@example.com", got)
-
-	// A new expression on the same environment does pick up the new limit.
-	_, err = e.Eval(expr+` + "d"`, testEnvData())
-	assert.ErrorContains(t, err, "actual cost limit exceeded")
+	assert.Equal(t, 1, e.programs.Len())
 }
 
 func TestNewEnvironment(t *testing.T) {
@@ -502,7 +505,14 @@ func TestMapGetFunction(t *testing.T) {
 	})
 	data := map[string]any{
 		"Metadata": map[string]string{"department": "eng"},
-		"Loose":    map[string]any{"s": "x"},
+		"Loose": map[string]any{
+			"s":    "x",
+			"n":    3,
+			"f":    12345.0,
+			"null": nil,
+			"m":    map[string]any{"a": "b"},
+		},
+		"Foo": "Bar",
 	}
 
 	tests := []struct {
@@ -517,8 +527,12 @@ func TestMapGetFunction(t *testing.T) {
 		{"empty-literal", `{}.get("a")`, ""},
 		{"chained", `Metadata.get("department").upperAscii()`, "ENG"},
 		{"total-in-conditional", `Metadata.get("absent") == "" ? "fallback" : "set"`, "fallback"},
-		{"any-map-string-values", `Loose.get("s")`, "x"},
+		{"any-map-string-value", `Loose.get("s")`, "x"},
 		{"any-map-absent", `Loose.get("absent")`, ""},
+		{"any-map-int-value", `Loose.get("n")`, "3"},
+		{"any-map-double-value", `Loose.get("f")`, "12345"},
+		{"any-map-null-value", `Loose.get("null")`, ""},
+		{"any-map-map-value", `Loose.get("m")`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -528,14 +542,8 @@ func TestMapGetFunction(t *testing.T) {
 		})
 	}
 
-	// The overload is declared for map<string, string> only: a non-map receiver
-	// fails at compile time, and a map holding a non-string value fails runtime
-	// overload dispatch before the binding runs.
+	// The overload is declared over map receivers only, so a non-map receiver
+	// still fails at compile time.
 	_, err := e.Eval(`"abc".get("a")`, data)
 	assert.ErrorContains(t, err, "error compiling CEL expression")
-
-	_, err = e.Eval(`Loose.get("n")`, map[string]any{
-		"Loose": map[string]any{"n": 3},
-	})
-	assert.ErrorContains(t, err, "no such overload")
 }

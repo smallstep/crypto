@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -26,13 +27,18 @@ func init() {
 }
 
 // DefaultCostLimit is the evaluation cost ceiling applied unless a caller sets
-// another with [SetCostLimit].
-const DefaultCostLimit = 1000
+// another with [SetCostLimit]. The metered cost is the work an expression
+// actually does, so it scales with the data: iterating an element of a list or
+// map costs a handful of units. The default admits collections of several
+// hundred elements while still cancelling runaway expressions.
+const DefaultCostLimit = 10_000
 
 // CostLimit returns the current evaluation cost ceiling.
 func CostLimit() uint64 { return costLimit.Load() }
 
-// SetCostLimit changes the evaluation cost ceiling.
+// SetCostLimit changes the evaluation cost ceiling. It applies to subsequent
+// evaluations, including expressions already cached: a program compiled under
+// another limit is recompiled on its next use.
 func SetCostLimit(limit uint64) {
 	costLimit.Store(limit)
 }
@@ -48,7 +54,15 @@ type Environment struct {
 	// on the order of 140µs and 280KB — per signature, if it were built inside
 	// the render path.
 	base     func() (*cel.Env, error)
-	programs lru.Cache[string, cel.Program]
+	programs lru.Cache[string, program]
+}
+
+// program pairs a compiled program with the cost limit fixed into it at
+// compile time, so a limit change invalidates the cached entry instead of
+// silently keeping the old ceiling.
+type program struct {
+	prg   cel.Program
+	limit uint64
 }
 
 // NewEnvironment returns an environment built from the given base options. The
@@ -62,7 +76,7 @@ func NewEnvironment(capacity int, baseOptions func() []cel.EnvOption) *Environme
 			}
 			return env, nil
 		}),
-		programs: lru.New[string, cel.Program](capacity),
+		programs: lru.New[string, program](capacity),
 	}
 }
 
@@ -75,8 +89,9 @@ func (e *Environment) Program(expr string) (cel.Program, error) {
 		return nil, err
 	}
 
-	if prg, ok := e.programs.Get(expr); ok {
-		return prg, nil
+	limit := costLimit.Load()
+	if p, ok := e.programs.Get(expr); ok && p.limit == limit {
+		return p.prg, nil
 	}
 
 	ast, iss := env.Compile(expr)
@@ -86,12 +101,12 @@ func (e *Environment) Program(expr string) (cel.Program, error) {
 
 	prg, err := env.Program(ast,
 		cel.EvalOptions(cel.OptOptimize),
-		cel.CostLimit(costLimit.Load()),
+		cel.CostLimit(limit),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating CEL program: %w", err)
 	}
-	e.programs.Put(expr, prg)
+	e.programs.Put(expr, program{prg: prg, limit: limit})
 
 	return prg, nil
 }
@@ -135,6 +150,10 @@ func normalize(v any) any {
 	case structpb.NullValue:
 		return nil
 	case map[any]any:
+		// CEL allows heterogeneous map keys, so distinct keys can print alike —
+		// {1: "a", "1": "b"} yields one "1" entry, and which value survives
+		// depends on map iteration order. String keys, the only kind these
+		// templates produce, never collide.
 		m := make(map[string]any, len(v))
 		for key, value := range v {
 			m[fmt.Sprint(key)] = normalize(value)
@@ -157,16 +176,20 @@ func normalize(v any) any {
 	}
 }
 
-// Func returns the template function that evaluates an expresion with the given
-// data. The function also accepts the data as an optional final argument, which
-// the template passes as "$", for a func map built without data, like the one
-// returned by GetFuncMap.
+// Func returns the template function that evaluates an expression with the
+// given data. The function also accepts the data as an optional final argument,
+// which the template passes as "$", for a func map built without data, like the
+// one returned by GetFuncMap.
 func (e *Environment) Func(data map[string]any) func(string, ...map[string]any) (any, error) {
 	return func(expr string, override ...map[string]any) (any, error) {
-		if len(override) > 0 {
-			return e.Eval(expr, override[len(override)-1])
+		switch len(override) {
+		case 0:
+			return e.Eval(expr, data)
+		case 1:
+			return e.Eval(expr, override[0])
+		default:
+			return nil, errors.New("cel accepts at most one data argument")
 		}
-		return e.Eval(expr, data)
 	}
 }
 
@@ -182,7 +205,7 @@ func BaseEnvOptions() []cel.EnvOption {
 	}
 }
 
-// mapGetFunction declares a total accessor for string maps:
+// mapGetFunction declares a total accessor for string-keyed maps:
 //
 //	metadata.get("department")      // "" when the key is absent
 //
@@ -190,12 +213,16 @@ func BaseEnvOptions() []cel.EnvOption {
 // signing — and the optional form, metadata[?"absent"].orValue(""), is a lot of
 // syntax to demand for the common case. Custom metadata is the one genuinely
 // map-shaped input in the environment, so it gets an accessor that behaves like
-// every other field: absent reads as empty.
+// every other field: absent or null reads as empty. The values are dyn — the
+// maps this is for (webhook payloads, token claims) carry whatever JSON held —
+// so a non-string value converts with CEL's string conversion (a numeric serial
+// reads as its decimal form) instead of failing the signature, and a value with
+// no string form reads as empty.
 func mapGetFunction() cel.EnvOption {
-	strMap := cel.MapType(cel.StringType, cel.StringType)
+	dynMap := cel.MapType(cel.StringType, cel.DynType)
 	return cel.Function("get",
 		cel.MemberOverload("crypto_map_get_string",
-			[]*cel.Type{strMap, cel.StringType}, cel.StringType,
+			[]*cel.Type{dynMap, cel.StringType}, cel.StringType,
 			cel.BinaryBinding(func(m, k ref.Val) ref.Val {
 				mapper, ok := m.(traits.Mapper)
 				if !ok {
@@ -205,10 +232,12 @@ func mapGetFunction() cel.EnvOption {
 				if !found || v == nil {
 					return types.String("")
 				}
-				s, ok := v.Value().(string)
-				if !ok {
+				if _, isNull := v.(types.Null); isNull {
 					return types.String("")
 				}
-				return types.String(s)
+				if s := v.ConvertToType(types.StringType); !types.IsError(s) {
+					return s
+				}
+				return types.String("")
 			})))
 }
