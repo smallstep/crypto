@@ -549,7 +549,7 @@ func (k *YubiKey) getPublicKey(slot piv.Slot) (crypto.PublicKey, error) {
 
 // signatureAlgorithmMapping is a mapping between the step signature algorithm,
 // and bits for RSA keys, with yubikey ones.
-var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]interface{}{
+var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]any{
 	apiv1.UnspecifiedSignAlgorithm: piv.AlgorithmEC256,
 	apiv1.SHA256WithRSA: map[int]piv.Algorithm{
 		0:    piv.AlgorithmRSA2048,

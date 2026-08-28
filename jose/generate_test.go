@@ -15,8 +15,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"testing/cryptotest"
 
-	jose "github.com/go-jose/go-jose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -91,7 +91,7 @@ func TestGenerateJWK(t *testing.T) {
 		size                    int
 		expectedAlg             string
 		expectedSize            int
-		expectedType            interface{}
+		expectedType            any
 		ok                      bool
 	}{
 		{"EC", "", "", "", "", 0, "ES256", 256, &ecdsa.PrivateKey{}, true},
@@ -224,7 +224,7 @@ func TestKeyUsageForCert(t *testing.T) {
 
 func TestGenerateJWKFromPEM(t *testing.T) {
 	t.Parallel()
-	mustKey := func(filename string) interface{} {
+	mustKey := func(filename string) any {
 		key, err := pemutil.Read(filename)
 		require.NoError(t, err)
 		return key
@@ -407,14 +407,7 @@ func (eofReader) Read(buf []byte) (int, error) {
 }
 
 func TestGenerateDefaultKeyPair(t *testing.T) {
-	rr := rand.Reader
-	t.Cleanup(func() {
-		rand.Reader = rr
-		jose.RandReader = rr
-	})
-
-	rand.Reader = mockReader{}
-	jose.RandReader = mockReader{}
+	cryptotest.SetGlobalRandom(t, 0)
 	jwk := mustGenerateJWK(t, "EC", "P-256", "ES256", "sig", "", 0)
 	jwe := mustEncryptJWK(t, jwk, []byte("planned password"))
 
@@ -424,9 +417,9 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 	}
 	jwkPub := jwk.Public()
 
+	cryptotest.SetGlobalRandom(t, 0)
 	type args struct {
 		passphrase []byte
-		randReader io.Reader
 	}
 	tests := []struct {
 		name           string
@@ -436,15 +429,12 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 		want1Decrypted *JSONWebKey
 		wantErr        bool
 	}{
-		{"ok", args{[]byte("planned password"), mockReader{}}, &jwkPub, jwe, jwk, false},
-		{"failEmptyPassword", args{[]byte(""), rr}, nil, nil, nil, true},
-		{"failNilPassword", args{nil, rr}, nil, nil, nil, true},
-		{"failEOF", args{[]byte("planned password"), eofReader{}}, nil, nil, nil, true},
+		{"ok", args{[]byte("planned password")}, &jwkPub, jwe, jwk, false},
+		{"failEmptyPassword", args{[]byte("")}, nil, nil, nil, true},
+		{"failNilPassword", args{nil}, nil, nil, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.args.randReader
-			jose.RandReader = tt.args.randReader
 			got, got1, err := GenerateDefaultKeyPair(tt.args.passphrase)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateDefaultKeyPair() error = %v, wantErr %v", err, tt.wantErr)

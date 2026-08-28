@@ -111,7 +111,7 @@ func Decrypt(data []byte, opts ...Option) ([]byte, error) {
 	// Try with a given password prompter.
 	if ctx.passwordPrompter != nil || PromptPassword != nil {
 		var pass []byte
-		for i := 0; i < MaxDecryptTries; i++ {
+		for range MaxDecryptTries {
 			switch {
 			case ctx.passwordPrompter != nil:
 				if pass, err = ctx.passwordPrompter(ctx.passwordPrompt); err != nil {

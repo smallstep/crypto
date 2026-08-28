@@ -57,7 +57,7 @@ func Insecure() (revert func()) {
 }
 
 // PublicKey extracts a public key from a private key.
-func PublicKey(priv interface{}) (crypto.PublicKey, error) {
+func PublicKey(priv any) (crypto.PublicKey, error) {
 	switch k := priv.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return k, nil
@@ -128,7 +128,7 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 
 // ExtractKey returns the given public or private key or extracts the public key
 // if a x509.Certificate or x509.CertificateRequest is given.
-func ExtractKey(in interface{}) (interface{}, error) {
+func ExtractKey(in any) (any, error) {
 	switch k := in.(type) {
 	case *rsa.PublicKey, *rsa.PrivateKey,
 		*ecdsa.PublicKey, *ecdsa.PrivateKey,
@@ -267,7 +267,7 @@ func generateAKPKey(alg string) (crypto.Signer, error) {
 	}
 }
 
-func generateOctKey(size int) (interface{}, error) {
+func generateOctKey(size int) (any, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	result := make([]byte, size)
 	for i := range result {

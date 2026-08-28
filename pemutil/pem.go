@@ -448,7 +448,7 @@ func ReadCertificateRequest(filename string) (*x509.CertificateRequest, error) {
 }
 
 // Parse returns the key or certificate PEM-encoded in the given bytes.
-func Parse(b []byte, opts ...Options) (interface{}, error) {
+func Parse(b []byte, opts ...Options) (any, error) {
 	// Populate options
 	ctx := newContext("PEM")
 	if err := ctx.apply(opts); err != nil {
@@ -522,7 +522,7 @@ func Parse(b []byte, opts ...Options) (interface{}, error) {
 
 // ParseKey returns the key or the public key of a certificate or certificate
 // signing request in the given PEM-encoded bytes.
-func ParseKey(b []byte, opts ...Options) (interface{}, error) {
+func ParseKey(b []byte, opts ...Options) (any, error) {
 	k, err := Parse(b, opts...)
 	if err != nil {
 		return nil, err
@@ -537,7 +537,7 @@ func ParseKey(b []byte, opts ...Options) (interface{}, error) {
 // Supported keys algorithms are RSA and EC. Supported standards for private
 // keys are PKCS#1, PKCS#8, RFC5915 for EC, and base64-encoded DER for
 // certificates and public keys.
-func Read(filename string, opts ...Options) (interface{}, error) {
+func Read(filename string, opts ...Options) (any, error) {
 	b, err := fileutils.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -550,7 +550,7 @@ func Read(filename string, opts ...Options) (interface{}, error) {
 
 // Serialize will serialize the input to a PEM formatted block and apply
 // modifiers.
-func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
+func Serialize(in any, opts ...Options) (*pem.Block, error) {
 	ctx := new(context)
 	if err := ctx.apply(opts); err != nil {
 		return nil, err
@@ -678,7 +678,7 @@ func Serialize(in interface{}, opts ...Options) (*pem.Block, error) {
 
 // ParseDER parses the given DER-encoded bytes and results the public or private
 // key encoded.
-func ParseDER(b []byte) (interface{}, error) {
+func ParseDER(b []byte) (any, error) {
 	// Try private keys
 	key, err := x509.ParsePKCS8PrivateKey(b)
 	if err != nil {
@@ -701,7 +701,7 @@ func ParseDER(b []byte) (interface{}, error) {
 
 // ParseSSH parses parses a public key from an authorized_keys file used in
 // OpenSSH according to the sshd(8) manual page.
-func ParseSSH(b []byte) (interface{}, error) {
+func ParseSSH(b []byte) (any, error) {
 	key, _, _, _, err := ssh.ParseAuthorizedKey(b)
 	if err != nil {
 		return nil, errors.Wrap(err, "error parsing OpenSSH key")

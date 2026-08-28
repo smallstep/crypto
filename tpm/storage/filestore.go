@@ -169,8 +169,8 @@ func (s *Filestore) ListKeyNames() []string {
 	keys := s.store.Keys()
 	var result = make([]string, 0, len(keys))
 	for _, k := range keys {
-		if strings.HasPrefix(k, keyPrefix) {
-			result = append(result, strings.TrimPrefix(k, keyPrefix))
+		if after, ok := strings.CutPrefix(k, keyPrefix); ok {
+			result = append(result, after)
 		}
 	}
 
@@ -181,8 +181,8 @@ func (s *Filestore) ListAKNames() []string {
 	keys := s.store.Keys()
 	var result = make([]string, 0, len(keys))
 	for _, k := range keys {
-		if strings.HasPrefix(k, akPrefix) {
-			result = append(result, strings.TrimPrefix(k, akPrefix))
+		if after, ok := strings.CutPrefix(k, akPrefix); ok {
+			result = append(result, after)
 		}
 	}
 

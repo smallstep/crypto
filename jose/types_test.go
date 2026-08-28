@@ -108,7 +108,7 @@ func TestTrimPrefix(t *testing.T) {
 }
 
 func TestSignVerify(t *testing.T) {
-	must := func(args ...interface{}) crypto.Signer {
+	must := func(args ...any) crypto.Signer {
 		last := len(args) - 1
 		if err := args[last]; err != nil {
 			t.Fatal(err)

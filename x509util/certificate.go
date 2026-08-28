@@ -41,7 +41,7 @@ type Certificate struct {
 	NameConstraints       *NameConstraints         `json:"nameConstraints"`
 	SignatureAlgorithm    SignatureAlgorithm       `json:"signatureAlgorithm"`
 	PublicKeyAlgorithm    x509.PublicKeyAlgorithm  `json:"-"`
-	PublicKey             interface{}              `json:"-"`
+	PublicKey             any                      `json:"-"`
 }
 
 // NewCertificate creates a new Certificate from an x509.CertificateRequest and

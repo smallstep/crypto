@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.25.8
+go 1.26
 
 retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
 

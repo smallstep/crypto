@@ -256,7 +256,7 @@ func TestVectors(t *testing.T) {
 
 func TestSignVerify(t *testing.T) {
 	iterations := 1000
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		pub, priv, err := GenerateKey(rand.Reader)
 		if err != nil {
 			t.Fatal(err)

@@ -41,7 +41,7 @@ type stubPivKey struct {
 	keyInfoMap    map[piv.Slot]piv.KeyInfo
 	attestMap     map[piv.Slot]*x509.Certificate
 	certMap       map[piv.Slot]*x509.Certificate
-	signerMap     map[piv.Slot]interface{}
+	signerMap     map[piv.Slot]any
 	keyOptionsMap map[piv.Slot]piv.Key
 	serial        uint32
 	serialErr     error
@@ -149,7 +149,7 @@ func newStubPivKey(t *testing.T, alg symmetricAlgorithm) *stubPivKey {
 			piv.SlotSignature: userCert,              // 9c
 			slotAttestation:   attestCA.Intermediate, // f9
 		},
-		signerMap: map[piv.Slot]interface{}{
+		signerMap: map[piv.Slot]any{
 			piv.SlotAuthentication: attSigner,  // 9a
 			piv.SlotSignature:      userSigner, // 9c
 		},

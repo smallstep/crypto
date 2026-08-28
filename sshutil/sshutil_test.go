@@ -77,7 +77,7 @@ func TestCryptoPublicKey(t *testing.T) {
 	skEDKey := generateFakeSKKey(t, edKey)
 
 	type args struct {
-		pub interface{}
+		pub any
 	}
 	tests := []struct {
 		name    string

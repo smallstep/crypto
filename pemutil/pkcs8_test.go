@@ -77,7 +77,7 @@ func TestEncryptDecryptPKCS8(t *testing.T) {
 }
 
 func TestSerialize_PKCS8(t *testing.T) {
-	mustPKIX := func(pub interface{}) *pem.Block {
+	mustPKIX := func(pub any) *pem.Block {
 		b, err := x509.MarshalPKIXPublicKey(pub)
 		require.NoError(t, err)
 		return &pem.Block{
@@ -85,7 +85,7 @@ func TestSerialize_PKCS8(t *testing.T) {
 			Bytes: b,
 		}
 	}
-	mustPKCS8 := func(priv interface{}) *pem.Block {
+	mustPKCS8 := func(priv any) *pem.Block {
 		b, err := x509.MarshalPKCS8PrivateKey(priv)
 		require.NoError(t, err)
 		return &pem.Block{
@@ -106,7 +106,7 @@ func TestSerialize_PKCS8(t *testing.T) {
 	edKeyPub := edKey.(ed25519.PrivateKey).Public()
 
 	type args struct {
-		pub interface{}
+		pub any
 	}
 	tests := []struct {
 		name    string

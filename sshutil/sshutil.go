@@ -17,7 +17,7 @@ import (
 
 // CryptoPublicKey returns the crypto.PublicKey version of an ssh.PublicKey or
 // *agent.Key.
-func CryptoPublicKey(pub interface{}) (crypto.PublicKey, error) {
+func CryptoPublicKey(pub any) (crypto.PublicKey, error) {
 	switch p := pub.(type) {
 	case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey, *dsa.PublicKey:
 		return pub, nil

@@ -57,7 +57,7 @@ func (k *badSSHPublicKey) Type() string                            { return "foo
 func (k *badSSHPublicKey) Marshal() []byte                         { return []byte("bar") }
 func (k *badSSHPublicKey) Verify(_ []byte, _ *ssh.Signature) error { return nil }
 
-func must(args ...interface{}) interface{} {
+func must(args ...any) any {
 	if err := args[len(args)-1]; err != nil {
 		panic(err)
 	}
@@ -75,21 +75,11 @@ func shouldMLDSA(t *testing.T, p mldsa.Parameters) *mldsa.PrivateKey {
 	return k
 }
 
-var randReader = rand.Reader
-
-//nolint:gocritic // ignore sloppy func name due to function signature
-func cleanupRandReader(t *testing.T) {
-	rr := rand.Reader
-	t.Cleanup(func() {
-		rand.Reader = rr
-	})
-}
-
 type zeroReader struct{}
 
 func (zeroReader) Read(buf []byte) (int, error) {
 	for i := range buf {
-		buf[i] = 0
+		buf[i] = 0x00
 	}
 	return len(buf), nil
 }
@@ -117,7 +107,7 @@ func verifyKeyPair(h crypto.Hash, priv, pub any) error {
 		}
 		sum = hash.Sum(nil)
 	}
-	sig, err := s.Sign(randReader, sum, h)
+	sig, err := s.Sign(rand.Reader, sum, h)
 	if err != nil {
 		return fmt.Errorf("%T.Sign() error = %w", s, err)
 	}
@@ -150,7 +140,7 @@ func verifyKeyPair(h crypto.Hash, priv, pub any) error {
 	return nil
 }
 
-func verifyPrivateKey(h crypto.Hash, priv interface{}) error {
+func verifyPrivateKey(h crypto.Hash, priv any) error {
 	s, ok := priv.(crypto.Signer)
 	if !ok {
 		return fmt.Errorf("type %T is not a crypto.Signer", priv)
@@ -172,7 +162,7 @@ func TestPublicKey(t *testing.T) {
 	mldsaKey := shouldMLDSA(t, mldsa.MLDSA44())
 
 	type args struct {
-		priv interface{}
+		priv any
 	}
 	tests := []struct {
 		name    string
@@ -208,29 +198,20 @@ func TestPublicKey(t *testing.T) {
 }
 
 func TestGenerateDefaultKey(t *testing.T) {
-	cleanupRandReader(t)
-
 	tests := []struct {
 		name      string
-		rr        io.Reader
-		assertion func(t *testing.T, got interface{})
+		assertion func(t *testing.T, got any)
 		wantErr   bool
 	}{
-		{"ok", randReader, func(t *testing.T, got interface{}) {
+		{"ok", func(t *testing.T, got any) {
 			t.Helper()
 			if err := verifyPrivateKey(crypto.SHA256, got); err != nil {
 				t.Errorf("GenerateDefaultKey() error = %v", err)
 			}
 		}, false},
-		{"eof", eofReader{}, func(t *testing.T, got interface{}) {
-			if !reflect.DeepEqual(got, nil) {
-				t.Errorf("GenerateDefaultKey() got = %v, want nil", got)
-			}
-		}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.rr
 			got, err := GenerateDefaultKey()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateDefaultKey() error = %v, wantErr %v", err, tt.wantErr)
@@ -242,10 +223,8 @@ func TestGenerateDefaultKey(t *testing.T) {
 }
 
 func TestGenerateDefaultKeyPair(t *testing.T) {
-	cleanupRandReader(t)
-
-	assertKey := func(h crypto.Hash) func(t *testing.T, got, got1 interface{}) {
-		return func(t *testing.T, got, got1 interface{}) {
+	assertKey := func(h crypto.Hash) func(t *testing.T, got, got1 any) {
+		return func(t *testing.T, got, got1 any) {
 			t.Helper()
 			if err := verifyKeyPair(h, got1, got); err != nil {
 				t.Errorf("GenerateDefaultKeyPair() error = %v", err)
@@ -253,30 +232,15 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 		}
 	}
 
-	assertNil := func() func(t *testing.T, got, got1 interface{}) {
-		return func(t *testing.T, got, got1 interface{}) {
-			t.Helper()
-			if !reflect.DeepEqual(got, nil) {
-				t.Errorf("GenerateDefaultKeyPair() got = %v, want nil", got)
-			}
-			if !reflect.DeepEqual(got1, nil) {
-				t.Errorf("GenerateDefaultKeyPair() got1 = %v, want nil", got1)
-			}
-		}
-	}
-
 	tests := []struct {
 		name      string
-		rr        io.Reader
-		assertion func(t *testing.T, got, got1 interface{})
+		assertion func(t *testing.T, got, got1 any)
 		wantErr   bool
 	}{
-		{"ok", randReader, assertKey(crypto.SHA256), false},
-		{"eof", eofReader{}, assertNil(), true},
+		{"ok", assertKey(crypto.SHA256), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.rr
 			got, got1, err := GenerateDefaultKeyPair()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateDefaultKeyPair() error = %v, wantErr %v", err, tt.wantErr)
@@ -288,23 +252,10 @@ func TestGenerateDefaultKeyPair(t *testing.T) {
 }
 
 func TestGenerateKey(t *testing.T) {
-	cleanupRandReader(t)
-
-	assertKey := func(t *testing.T, h crypto.Hash, key interface{}) {
+	assertKey := func(t *testing.T, h crypto.Hash, key any) {
 		t.Helper()
 		if err := verifyPrivateKey(h, key); err != nil {
 			t.Errorf("GenerateKey() error = %v", err)
-		}
-	}
-
-	octKey := make([]byte, 32)
-	for i := range octKey {
-		octKey[i] = 'a'
-	}
-	assertOCT := func(t *testing.T, h crypto.Hash, key interface{}) {
-		t.Helper()
-		if !reflect.DeepEqual(key, octKey) {
-			t.Errorf("GenerateKey() got = %v, want %v", key, octKey)
 		}
 	}
 
@@ -315,33 +266,25 @@ func TestGenerateKey(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
-		rr      io.Reader
 		args    args
-		assert  func(t *testing.T, h crypto.Hash, key interface{})
+		assert  func(t *testing.T, h crypto.Hash, key any)
 		hash    crypto.Hash
 		wantErr bool
 	}{
-		{"P-256", randReader, args{"EC", "P-256", 0}, assertKey, crypto.SHA256, false},
-		{"P-384", randReader, args{"EC", "P-384", 0}, assertKey, crypto.SHA384, false},
-		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey, crypto.SHA512, false},
-		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey, crypto.Hash(0), false},
-		{"X25519", randReader, args{"OKP", "X25519", 0}, assertKey, crypto.Hash(0), false},
-		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
-		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
-		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
-		{"OCT", zeroReader{}, args{"oct", "", 32}, assertOCT, crypto.Hash(0), false},
-		{"eof EC", eofReader{}, args{"EC", "P-256", 0}, nil, 0, true},
-		{"eof RSA", eofReader{}, args{"RSA", "", 1024}, nil, 0, true},
-		{"eof Ed25519", eofReader{}, args{"OKP", "Ed25519", 0}, nil, 0, true},
-		{"eof X25519", eofReader{}, args{"OKP", "X25519", 0}, nil, 0, true},
-		{"eof oct", eofReader{}, args{"oct", "", 32}, nil, 0, true},
-		{"unknown EC curve", randReader, args{"EC", "P-128", 0}, nil, 0, true},
-		{"unknown OKP curve", randReader, args{"OKP", "Edward", 0}, nil, 0, true},
-		{"unknown type", randReader, args{"FOO", "", 1024}, nil, 0, true},
+		{"P-256", args{"EC", "P-256", 0}, assertKey, crypto.SHA256, false},
+		{"P-384", args{"EC", "P-384", 0}, assertKey, crypto.SHA384, false},
+		{"P-521", args{"EC", "P-521", 0}, assertKey, crypto.SHA512, false},
+		{"Ed25519", args{"OKP", "Ed25519", 0}, assertKey, crypto.Hash(0), false},
+		{"X25519", args{"OKP", "X25519", 0}, assertKey, crypto.Hash(0), false},
+		{"ML-DSA-44", args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-65", args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"ML-DSA-87", args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"unknown EC curve", args{"EC", "P-128", 0}, nil, 0, true},
+		{"unknown OKP curve", args{"OKP", "Edward", 0}, nil, 0, true},
+		{"unknown type", args{"FOO", "", 1024}, nil, 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.rr
 			got, err := GenerateKey(tt.args.kty, tt.args.crv, tt.args.size)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateKey() error = %v, wantErr %v", err, tt.wantErr)
@@ -366,8 +309,8 @@ func TestGenerateKey_rsa(t *testing.T) {
 		wantType reflect.Type
 		wantErr  bool
 	}{
-		{"RSA2048", args{"RSA", "", 2048}, reflect.TypeOf(&rsa.PrivateKey{}), false},
-		{"RSA3072", args{"RSA", "", 3072}, reflect.TypeOf(&rsa.PrivateKey{}), false},
+		{"RSA2048", args{"RSA", "", 2048}, reflect.TypeFor[*rsa.PrivateKey](), false},
+		{"RSA3072", args{"RSA", "", 3072}, reflect.TypeFor[*rsa.PrivateKey](), false},
 		{"fail", args{"RSA", "", 1}, nil, true},
 		{"fail size", args{"RSA", "", 1024}, nil, true},
 	}
@@ -398,11 +341,36 @@ func TestGenerateKey_rsa(t *testing.T) {
 	}
 }
 
-func TestGenerateKeyPair(t *testing.T) {
-	cleanupRandReader(t)
+func TestGenerateKey_oct(t *testing.T) {
+	rr := rand.Reader
+	t.Cleanup(func() {
+		rand.Reader = rr
+	})
 
-	assertKey := func(h crypto.Hash) func(t *testing.T, got, got1 interface{}) {
-		return func(t *testing.T, got, got1 interface{}) {
+	t.Run("oct", func(t *testing.T) {
+		k, err := GenerateKey("oct", "", 32)
+		assert.NoError(t, err)
+		assert.Len(t, k, 32)
+	})
+
+	t.Run("oct zero reader", func(t *testing.T) {
+		rand.Reader = zeroReader{}
+		k, err := GenerateKey("oct", "", 8)
+		assert.NoError(t, err)
+		assert.Equal(t, []byte{'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'}, k)
+	})
+
+	t.Run("oct eof reader", func(t *testing.T) {
+		rand.Reader = eofReader{}
+		k, err := GenerateKey("oct", "", 8)
+		assert.Error(t, err)
+		assert.Nil(t, k)
+	})
+}
+
+func TestGenerateKeyPair(t *testing.T) {
+	assertKey := func(h crypto.Hash) func(t *testing.T, got, got1 any) {
+		return func(t *testing.T, got, got1 any) {
 			t.Helper()
 			if err := verifyKeyPair(h, got1, got); err != nil {
 				t.Errorf("GenerateKeyPair() error = %v", err)
@@ -410,8 +378,8 @@ func TestGenerateKeyPair(t *testing.T) {
 		}
 	}
 
-	assertNil := func() func(t *testing.T, got, got1 interface{}) {
-		return func(t *testing.T, got, got1 interface{}) {
+	assertNil := func() func(t *testing.T, got, got1 any) {
+		return func(t *testing.T, got, got1 any) {
 			t.Helper()
 			if !reflect.DeepEqual(got, nil) {
 				t.Errorf("GenerateKeyPair() got = %v, want nil", got)
@@ -451,26 +419,23 @@ func TestGenerateKeyPair(t *testing.T) {
 	}
 	tests := []struct {
 		name      string
-		rr        io.Reader
 		args      args
-		assertion func(t *testing.T, got, got1 interface{})
+		assertion func(t *testing.T, got, got1 any)
 		wantErr   bool
 	}{
-		{"P-256", randReader, args{"EC", "P-256", 0}, assertKey(crypto.SHA256), false},
-		{"P-384", randReader, args{"EC", "P-384", 0}, assertKey(crypto.SHA384), false},
-		{"P-521", randReader, args{"EC", "P-521", 0}, assertKey(crypto.SHA512), false},
-		{"Ed25519", randReader, args{"OKP", "Ed25519", 0}, assertKey(crypto.Hash(0)), false},
-		{"ML-DSA-44", randReader, args{"AKP", "ML-DSA-44", 0}, assertMLDSA(mldsa.MLDSA44()), !mldsaEnabled},
-		{"ML-DSA-65", randReader, args{"AKP", "ML-DSA-65", 0}, assertMLDSA(mldsa.MLDSA65()), !mldsaEnabled},
-		{"ML-DSA-87", randReader, args{"AKP", "ML-DSA-87", 0}, assertMLDSA(mldsa.MLDSA87()), !mldsaEnabled},
-		{"OCT", zeroReader{}, args{"oct", "", 32}, assertNil(), true},
-		{"eof", eofReader{}, args{"EC", "P-256", 0}, assertNil(), true},
-		{"unknown", randReader, args{"EC", "P-128", 0}, assertNil(), true},
-		{"unknown", randReader, args{"FOO", "", 1024}, assertNil(), true},
+		{"P-256", args{"EC", "P-256", 0}, assertKey(crypto.SHA256), false},
+		{"P-384", args{"EC", "P-384", 0}, assertKey(crypto.SHA384), false},
+		{"P-521", args{"EC", "P-521", 0}, assertKey(crypto.SHA512), false},
+		{"Ed25519", args{"OKP", "Ed25519", 0}, assertKey(crypto.Hash(0)), false},
+		{"ML-DSA-44", args{"AKP", "ML-DSA-44", 0}, assertMLDSA(mldsa.MLDSA44()), !mldsaEnabled},
+		{"ML-DSA-65", args{"AKP", "ML-DSA-65", 0}, assertMLDSA(mldsa.MLDSA65()), !mldsaEnabled},
+		{"ML-DSA-87", args{"AKP", "ML-DSA-87", 0}, assertMLDSA(mldsa.MLDSA87()), !mldsaEnabled},
+		{"OCT", args{"oct", "", 32}, assertNil(), true},
+		{"unknown crv", args{"EC", "P-128", 0}, assertNil(), true},
+		{"unknown kty", args{"FOO", "", 1024}, assertNil(), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.rr
 			got, got1, err := GenerateKeyPair(tt.args.kty, tt.args.crv, tt.args.size)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateKeyPair() error = %v, wantErr %v", err, tt.wantErr)
@@ -482,8 +447,8 @@ func TestGenerateKeyPair(t *testing.T) {
 }
 
 func TestGenerateKeyPair_rsa(t *testing.T) {
-	pubType := reflect.TypeOf(&rsa.PublicKey{})
-	privType := reflect.TypeOf(&rsa.PrivateKey{})
+	pubType := reflect.TypeFor[*rsa.PublicKey]()
+	privType := reflect.TypeFor[*rsa.PrivateKey]()
 
 	type args struct {
 		kty  string
@@ -529,29 +494,20 @@ func TestGenerateKeyPair_rsa(t *testing.T) {
 }
 
 func TestGenerateDefaultSigner(t *testing.T) {
-	cleanupRandReader(t)
-
 	tests := []struct {
 		name      string
-		rr        io.Reader
 		assertion func(t *testing.T, got crypto.Signer)
 		wantErr   bool
 	}{
-		{"ok", randReader, func(t *testing.T, got crypto.Signer) {
+		{"ok", func(t *testing.T, got crypto.Signer) {
 			t.Helper()
 			if err := verifyPrivateKey(crypto.SHA256, got); err != nil {
 				t.Errorf("GenerateDefaultSigner() error = %v", err)
 			}
 		}, false},
-		{"eof", eofReader{}, func(t *testing.T, got crypto.Signer) {
-			if !reflect.DeepEqual(got, nil) {
-				t.Errorf("GenerateDefaultSigner() got = %v, want nil", got)
-			}
-		}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rand.Reader = tt.rr
 			got, err := GenerateDefaultSigner()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateDefaultSigner() error = %v, wantErr %v", err, tt.wantErr)
@@ -648,12 +604,12 @@ func TestExtractKey(t *testing.T) {
 	require.NoError(t, err)
 
 	type args struct {
-		in interface{}
+		in any
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{"RSA private key", args{rsaKey}, rsaKey, false},
@@ -699,8 +655,8 @@ func TestVerifyPair(t *testing.T) {
 	mldsaKey1 := shouldMLDSA(t, mldsa.MLDSA65())
 
 	type args struct {
-		pubkey interface{}
-		key    interface{}
+		pubkey any
+		key    any
 	}
 	tests := []struct {
 		name    string

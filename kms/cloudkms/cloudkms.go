@@ -42,7 +42,7 @@ var protectionLevelMapping = map[apiv1.ProtectionLevel]kmspb.ProtectionLevel{
 //
 // Cloud KMS does not support SHA384WithRSA, SHA384WithRSAPSS, SHA384WithRSAPSS,
 // ECDSAWithSHA512, and PureEd25519.
-var signatureAlgorithmMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]interface{}{
+var signatureAlgorithmMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]any{
 	apiv1.UnspecifiedSignAlgorithm: kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED,
 	apiv1.SHA256WithRSA: map[int]kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm{
 		0:    kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_3072_SHA256,
@@ -332,7 +332,7 @@ func (k *CloudKMS) getPublicKeyWithRetries(name string, retries int) (*kmspb.Pub
 			Name: name,
 		})
 	}
-	for i := 0; i < retries; i++ {
+	for i := range retries {
 		response, err := workFn()
 		switch {
 		case err == nil:

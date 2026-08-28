@@ -50,7 +50,7 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 }
 
 // generateKey is used for testing purposes.
-var generateKey = func(kty, crv string, size int) (interface{}, interface{}, error) {
+var generateKey = func(kty, crv string, size int) (any, any, error) {
 	if kty == "RSA" && size == 0 {
 		size = DefaultRSAKeySize
 	}

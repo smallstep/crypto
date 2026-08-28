@@ -49,7 +49,7 @@ func (s *Signer) preloadKey(keyID string) error {
 	defer cancel()
 
 	resp, err := s.client.GetPublicKey(ctx, &kms.GetPublicKeyInput{
-		KeyId: pointer(keyID),
+		KeyId: new(keyID),
 	})
 	if err != nil {
 		return errors.Wrap(err, "awskms GetPublicKey failed")
@@ -94,7 +94,7 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 	}
 
 	req := &kms.SignInput{
-		KeyId:            pointer(s.keyID),
+		KeyId:            new(s.keyID),
 		SigningAlgorithm: alg,
 		Message:          digest,
 		MessageType:      messageType,

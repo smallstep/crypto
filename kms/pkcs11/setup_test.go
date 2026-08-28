@@ -46,10 +46,10 @@ var (
 type TBTesting interface {
 	Helper()
 	Cleanup(f func())
-	Log(args ...interface{})
-	Errorf(format string, args ...interface{})
-	Fatalf(format string, args ...interface{})
-	Skipf(format string, args ...interface{})
+	Log(args ...any)
+	Errorf(format string, args ...any)
+	Fatalf(format string, args ...any)
+	Skipf(format string, args ...any)
 }
 
 func generateCertificate(pub crypto.PublicKey, signer crypto.Signer) (*x509.Certificate, error) {

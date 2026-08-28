@@ -7,7 +7,7 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 )
 
-func patchSignatureAlgorithmMapping(m map[apiv1.SignatureAlgorithm]interface{}) map[apiv1.SignatureAlgorithm]interface{} {
+func patchSignatureAlgorithmMapping(m map[apiv1.SignatureAlgorithm]any) map[apiv1.SignatureAlgorithm]any {
 	m[apiv1.MLDSA44] = types.KeySpecMlDsa44
 	m[apiv1.MLDSA65] = types.KeySpecMlDsa65
 	m[apiv1.MLDSA87] = types.KeySpecMlDsa87

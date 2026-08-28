@@ -648,7 +648,7 @@ func TestCertificateRequest_GetCertificate(t *testing.T) {
 		IPAddresses        MultiIP
 		URIs               MultiURL
 		Extensions         []Extension
-		PublicKey          interface{}
+		PublicKey          any
 		PublicKeyAlgorithm x509.PublicKeyAlgorithm
 		Signature          []byte
 		SignatureAlgorithm SignatureAlgorithm
@@ -716,7 +716,7 @@ func TestCertificateRequest_GetLeafCertificate(t *testing.T) {
 		IPAddresses        MultiIP
 		URIs               MultiURL
 		Extensions         []Extension
-		PublicKey          interface{}
+		PublicKey          any
 		PublicKeyAlgorithm x509.PublicKeyAlgorithm
 		Signature          []byte
 		SignatureAlgorithm SignatureAlgorithm

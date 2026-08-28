@@ -9,7 +9,7 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 )
 
-func patchSignatureAlgorithmMapping(m map[apiv1.SignatureAlgorithm]interface{}) map[apiv1.SignatureAlgorithm]interface{} {
+func patchSignatureAlgorithmMapping(m map[apiv1.SignatureAlgorithm]any) map[apiv1.SignatureAlgorithm]any {
 	m[apiv1.MLDSA44] = kmspb.CryptoKeyVersion_PQ_SIGN_ML_DSA_44
 	m[apiv1.MLDSA65] = kmspb.CryptoKeyVersion_PQ_SIGN_ML_DSA_65
 	m[apiv1.MLDSA87] = kmspb.CryptoKeyVersion_PQ_SIGN_ML_DSA_87

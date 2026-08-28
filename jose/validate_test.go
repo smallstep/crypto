@@ -48,7 +48,7 @@ func TestValidateSSHPOP(t *testing.T) {
 
 	type args struct {
 		certFile string
-		key      interface{}
+		key      any
 	}
 	tests := []struct {
 		name    string
@@ -85,7 +85,7 @@ func TestValidateSSHPOP(t *testing.T) {
 func Test_validateX5(t *testing.T) {
 	type test struct {
 		certs []*x509.Certificate
-		key   interface{}
+		key   any
 		err   error
 	}
 	tests := map[string]func() test{
@@ -145,7 +145,7 @@ func Test_validateX5(t *testing.T) {
 func TestValidateX5T(t *testing.T) {
 	type test struct {
 		certs []*x509.Certificate
-		key   interface{}
+		key   any
 		fp    string
 		err   error
 	}
@@ -213,7 +213,7 @@ func TestValidateX5T(t *testing.T) {
 func TestValidateX5C(t *testing.T) {
 	type test struct {
 		certs []*x509.Certificate
-		key   interface{}
+		key   any
 		err   error
 	}
 	tests := map[string]func() test{

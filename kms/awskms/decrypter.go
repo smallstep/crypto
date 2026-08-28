@@ -55,7 +55,7 @@ func (d *Decrypter) preloadKey() error {
 	defer cancel()
 
 	resp, err := d.client.GetPublicKey(ctx, &kms.GetPublicKeyInput{
-		KeyId: pointer(d.keyID),
+		KeyId: new(d.keyID),
 	})
 	if err != nil {
 		return fmt.Errorf("awskms GetPublicKey failed: %w", err)
@@ -85,7 +85,7 @@ func (d *Decrypter) Decrypt(_ io.Reader, ciphertext []byte, opts crypto.Decrypte
 	}
 
 	req := &kms.DecryptInput{
-		KeyId:               pointer(d.keyID),
+		KeyId:               new(d.keyID),
 		CiphertextBlob:      ciphertext,
 		EncryptionAlgorithm: algorithm,
 	}

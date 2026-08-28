@@ -39,7 +39,7 @@ type KeyManagementClient interface {
 
 // customerMasterKeySpecMapping is a mapping between the step signature algorithm,
 // and bits for RSA keys, with awskms CustomerMasterKeySpec.
-var customerMasterKeySpecMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]interface{}{
+var customerMasterKeySpecMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]any{
 	apiv1.UnspecifiedSignAlgorithm: types.KeySpecEccNistP256,
 	apiv1.SHA256WithRSA: map[int]types.KeySpec{
 		0:    types.KeySpecRsa3072,
@@ -180,12 +180,12 @@ func (k *KMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, 
 	}
 
 	tag := types.Tag{
-		TagKey:   pointer("name"),
-		TagValue: pointer(keyName),
+		TagKey:   new("name"),
+		TagValue: new(keyName),
 	}
 
 	input := &kms.CreateKeyInput{
-		Description: pointer(keyName),
+		Description: new(keyName),
 		KeySpec:     keySpec,
 		Tags:        []types.Tag{tag},
 		KeyUsage:    types.KeyUsageTypeSignVerify,
@@ -230,8 +230,8 @@ func (k *KMS) createKeyAlias(keyID, alias string) error {
 	defer cancel()
 
 	_, err := k.client.CreateAlias(ctx, &kms.CreateAliasInput{
-		AliasName:   pointer("alias/" + alias + "-" + keyID[:8]),
-		TargetKeyId: pointer(keyID),
+		AliasName:   new("alias/" + alias + "-" + keyID[:8]),
+		TargetKeyId: new(keyID),
 	})
 	if err != nil {
 		return errors.Wrap(err, "awskms CreateAlias failed")
@@ -252,8 +252,9 @@ func (k *KMS) Close() error {
 	return nil
 }
 
+//go:fix inline
 func pointer[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 func defaultContext() (context.Context, context.CancelFunc) {

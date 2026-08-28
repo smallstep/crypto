@@ -263,7 +263,7 @@ func NewOpaqueSigner(signer crypto.Signer) OpaqueSigner {
 
 // Verify validates the token payload with the given public key and deserializes
 // the token into the destination.
-func Verify(token *JSONWebToken, publicKey interface{}, dest ...interface{}) error {
+func Verify(token *JSONWebToken, publicKey any, dest ...any) error {
 	if k, ok := publicKey.(x25519.PublicKey); ok {
 		publicKey = X25519Verifier(k)
 	}

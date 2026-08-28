@@ -27,8 +27,10 @@ var now = func() time.Time {
 }
 
 // pointer returns the pointer of v.
+//
+//go:fix inline
 func pointer[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // defaultContext returns the default context used in requests to azure.
