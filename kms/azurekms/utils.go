@@ -5,7 +5,6 @@ package azurekms
 import (
 	"context"
 	"crypto"
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -132,20 +131,16 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 	}
 
 	var curve elliptic.Curve
-	var ecdhCurve ecdh.Curve
 	var curveSize int
 	switch *crv {
 	case azkeys.CurveNameP256:
 		curve = elliptic.P256()
-		ecdhCurve = ecdh.P256()
 		curveSize = 32
 	case azkeys.CurveNameP384:
 		curve = elliptic.P384()
-		ecdhCurve = ecdh.P384()
 		curveSize = 48
 	case azkeys.CurveNameP521:
 		curve = elliptic.P521()
-		ecdhCurve = ecdh.P521()
 		curveSize = 66 // (521/8 + 1)
 	case azkeys.CurveNameP256K:
 		return nil, fmt.Errorf(`invalid EC key: crv %q is not supported`, *crv)
@@ -164,18 +159,7 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 	copy(uncompressed[1:], x)
 	copy(uncompressed[1+len(x):], y)
 
-	// NewPublicKey validates that the point is on the curve
-	if _, err := ecdhCurve.NewPublicKey(uncompressed); err != nil {
-		return nil, fmt.Errorf("invalid EC key: %w", err)
-	}
-
-	key := &ecdsa.PublicKey{
-		Curve: curve,
-		X:     new(big.Int).SetBytes(x),
-		Y:     new(big.Int).SetBytes(y),
-	}
-
-	return key, nil
+	return ecdsa.ParseUncompressedPublicKey(curve, uncompressed)
 }
 
 func rsaPublicKey(n, e []byte) (crypto.PublicKey, error) {

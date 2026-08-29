@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"io"
 	"math/big"
 	"os"
 	"reflect"
@@ -389,21 +388,6 @@ func tempFile(t *testing.T) (*os.File, func()) {
 		f.Close()
 		os.Remove(f.Name())
 	}
-}
-
-type mockReader struct{}
-
-func (mockReader) Read(buf []byte) (int, error) {
-	for i := range buf {
-		buf[i] = byte(i % 256)
-	}
-	return len(buf), nil
-}
-
-type eofReader struct{}
-
-func (eofReader) Read(buf []byte) (int, error) {
-	return 0, io.EOF
 }
 
 func TestGenerateDefaultKeyPair(t *testing.T) {

@@ -123,10 +123,8 @@ func determineDecryptionAlgorithm(key crypto.PublicKey, opts crypto.DecrypterOpt
 			return "", err
 		}
 		rsaOpts = o
-	case *rsa.PKCS1v15DecryptOptions:
-		return "", errors.New("awskms does not support PKCS #1 v1.5 decryption")
 	default:
-		return "", fmt.Errorf("invalid decrypter options type %T", opts)
+		return "", fmt.Errorf("invalid or unsupported decrypter options type %T", opts)
 	}
 
 	switch bitSize := pub.Size() * 8; bitSize {

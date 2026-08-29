@@ -639,13 +639,15 @@ func Test_parseECDSAPrivateKey(t *testing.T) {
 	require.NoError(t, err)
 
 	marshal := func(k *ecdsa.PrivateKey) []byte {
+		priv, err := k.Bytes()
+		require.NoError(t, err)
+		pub, err := k.PublicKey.Bytes()
+		require.NoError(t, err)
 		byteLen := (k.Curve.Params().BitSize + 7) / 8
-		ret := make([]byte, 1+3*byteLen)
-		ret[0] = 4 // uncompressed point
-		k.X.FillBytes(ret[1 : 1+byteLen])
-		k.Y.FillBytes(ret[1+byteLen : 1+2*byteLen])
-		k.D.FillBytes(ret[1+2*byteLen:])
-		return ret
+		b := make([]byte, 1+3*byteLen)
+		copy(b, pub)
+		copy(b[1+2*byteLen:], priv)
+		return b
 	}
 	zeroKey := func(size int) []byte {
 		return make([]byte, size)

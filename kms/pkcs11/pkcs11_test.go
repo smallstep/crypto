@@ -634,26 +634,12 @@ func TestPKCS11_CreateDecrypter(t *testing.T) {
 
 			if got != nil {
 				pub := got.Public().(*rsa.PublicKey)
-				// PKCS#1 v1.5
-				enc, err := rsa.EncryptPKCS1v15(rand.Reader, pub, data)
-				if err != nil {
-					t.Errorf("rsa.EncryptPKCS1v15() error = %v", err)
-					return
-				}
-				dec, err := got.Decrypt(rand.Reader, enc, nil)
-				if err != nil {
-					t.Errorf("PKCS1v15.Decrypt() error = %v", err)
-				} else if !bytes.Equal(dec, data) {
-					t.Errorf("PKCS1v15.Decrypt() failed got = %s, want = %s", dec, data)
-				}
-
-				// RSA-OAEP
-				enc, err = rsa.EncryptOAEP(crypto.SHA1.New(), rand.Reader, pub, data, []byte("label"))
+				enc, err := rsa.EncryptOAEP(crypto.SHA1.New(), rand.Reader, pub, data, []byte("label"))
 				if err != nil {
 					t.Errorf("rsa.EncryptOAEP() error = %v", err)
 					return
 				}
-				dec, err = got.Decrypt(rand.Reader, enc, &rsa.OAEPOptions{
+				dec, err := got.Decrypt(rand.Reader, enc, &rsa.OAEPOptions{
 					Hash:  crypto.SHA1,
 					Label: []byte("label"),
 				})

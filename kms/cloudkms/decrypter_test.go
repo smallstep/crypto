@@ -296,7 +296,7 @@ func TestDecrypter_Decrypt(t *testing.T) {
 			args: args{
 				rand:       rand.Reader,
 				ciphertext: []byte("data"),
-				opts:       &rsa.PKCS1v15DecryptOptions{},
+				opts:       &rsa.PKCS1v15DecryptOptions{}, //nolint:staticcheck // test with deprecated type
 			},
 			wantErr: true,
 		},

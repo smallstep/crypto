@@ -3,6 +3,8 @@ package mldsa
 import (
 	"crypto/sha3"
 	"errors"
+
+	"go.step.sm/crypto/internal/utils/convert"
 )
 
 var (
@@ -10,10 +12,10 @@ var (
 )
 
 func PublicKeyHash(pub *PublicKey) [64]byte {
-	H := sha3.NewSHAKE256()
-	H.Write(pub.Bytes())
+	h := sha3.NewSHAKE256()
+	h.Write(pub.Bytes())
 	var tr [64]byte
-	H.Read(tr[:])
+	h.Read(tr[:])
 	return tr
 }
 
@@ -27,13 +29,13 @@ func MessageHash(pub *PublicKey, msg []byte, opts *Options) ([64]byte, error) {
 		return [64]byte{}, errContextTooLong
 	}
 
-	H := sha3.NewSHAKE256()
-	H.Write(tr[:])
-	H.Write([]byte{0}) // ML-DSA / HashML-DSA domain separator
-	H.Write([]byte{byte(len(opts.Context))})
-	H.Write([]byte(opts.Context))
-	H.Write(msg)
-	var μ [64]byte
-	H.Read(μ[:])
-	return μ, nil
+	h := sha3.NewSHAKE256()
+	h.Write(tr[:])
+	h.Write([]byte{0}) // ML-DSA / HashML-DSA domain separator
+	h.Write([]byte{convert.MustUint8(len(opts.Context))})
+	h.Write([]byte(opts.Context))
+	h.Write(msg)
+	var mu [64]byte
+	h.Read(mu[:])
+	return mu, nil
 }
