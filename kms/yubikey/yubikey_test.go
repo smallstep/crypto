@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -351,7 +352,7 @@ func TestNew(t *testing.T) {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
+		}, &YubiKey{yk: yk, pin: "123456", defaultPIN: true, card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with uri", args{ctx, apiv1.Options{
 			URI: "yubikey:pin-value=111111;management-key=001122334455667788990011223344556677889900112233",
 		}}, func() {
@@ -398,11 +399,18 @@ func TestNew(t *testing.T) {
 			pivCards = okPivCards
 			pivOpen = okPivOpen
 		}, &YubiKey{yk: yk, pin: "222222", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
+		{"ok with missing pin-source", args{ctx, apiv1.Options{
+			URI: "yubikey:pin-source=" + filepath.Join(t.TempDir(), "missing.pin"),
+		}}, func() {
+			pivMap = sync.Map{}
+			pivCards = okPivCards
+			pivOpen = okPivOpen
+		}, &YubiKey{yk: yk, pin: "123456", defaultPIN: true, card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: piv.DefaultManagementKey}, false},
 		{"ok with ManagementKey", args{ctx, apiv1.Options{ManagementKey: "001122334455667788990011223344556677889900112233"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
 			pivOpen = okPivOpen
-		}, &YubiKey{yk: yk, pin: "123456", card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
+		}, &YubiKey{yk: yk, pin: "123456", defaultPIN: true, card: "Yubico YubiKey OTP+FIDO+CCID", managementKey: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33}}, false},
 		{"fail uri", args{ctx, apiv1.Options{URI: "badschema:"}}, func() {
 			pivMap = sync.Map{}
 			pivCards = okPivCards
@@ -1390,6 +1398,140 @@ func Test_syncDecrypter_Decrypt(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, data, plain)
+}
+
+type failingSigner struct {
+	err error
+}
+
+func (f failingSigner) Public() crypto.PublicKey { return nil }
+
+func (f failingSigner) Sign(io.Reader, []byte, crypto.SignerOpts) ([]byte, error) {
+	return nil, f.err
+}
+
+type failingDecrypter struct {
+	err error
+}
+
+func (f failingDecrypter) Public() crypto.PublicKey { return nil }
+
+func (f failingDecrypter) Decrypt(io.Reader, []byte, crypto.DecrypterOpts) ([]byte, error) {
+	return nil, f.err
+}
+
+func Test_wrapPINError(t *testing.T) {
+	pinErr := fmt.Errorf("verify pin: %w", piv.AuthErr{Retries: 2})
+	blockedErr := fmt.Errorf("verify pin: %w", piv.AuthErr{})
+	otherErr := errors.New("some error")
+
+	type args struct {
+		err        error
+		defaultPIN bool
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantHint    bool
+		wantRetries int
+	}{
+		{"wraps auth errors from the default pin", args{pinErr, true}, true, 2},
+		{"wraps blocked pin errors from the default pin", args{blockedErr, true}, true, 0},
+		{"skips auth errors from a provided pin", args{pinErr, false}, false, 0},
+		{"skips other errors", args{otherErr, true}, false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := wrapPINError(tt.args.err, tt.args.defaultPIN)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, tt.args.err)
+			if tt.wantHint {
+				assert.Contains(t, err.Error(), "the YubiKey factory default PIN was tried")
+				var authErr piv.AuthErr
+				require.ErrorAs(t, err, &authErr)
+				assert.Equal(t, tt.wantRetries, authErr.Retries)
+			} else {
+				assert.NotContains(t, err.Error(), "default PIN")
+			}
+		})
+	}
+
+	assert.NoError(t, wrapPINError(nil, true))
+	assert.NoError(t, wrapPINError(nil, false))
+}
+
+func TestYubiKey_CreateSigner_defaultPIN(t *testing.T) {
+	pinErr := fmt.Errorf("verify pin: %w", piv.AuthErr{Retries: 2})
+
+	yk := newStubPivKey(t, ECDSA)
+	yk.signerMap[piv.SlotSignature] = failingSigner{err: pinErr}
+
+	tests := []struct {
+		name       string
+		defaultPIN bool
+		wantHint   bool
+	}{
+		{"hints when the pin was defaulted", true, true},
+		{"does not hint when the pin was provided", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{yk: yk, pin: "123456", defaultPIN: tt.defaultPIN, managementKey: piv.DefaultManagementKey}
+			signer, err := k.CreateSigner(&apiv1.CreateSignerRequest{
+				SigningKey: "yubikey:slot-id=9c",
+			})
+			require.NoError(t, err)
+
+			_, err = signer.Sign(rand.Reader, []byte("digest"), crypto.SHA256)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, pinErr)
+			var authErr piv.AuthErr
+			require.ErrorAs(t, err, &authErr)
+			assert.Equal(t, 2, authErr.Retries)
+			if tt.wantHint {
+				assert.Contains(t, err.Error(), "the YubiKey factory default PIN was tried")
+			} else {
+				assert.NotContains(t, err.Error(), "default PIN")
+			}
+		})
+	}
+}
+
+func TestYubiKey_CreateDecrypter_defaultPIN(t *testing.T) {
+	pinErr := fmt.Errorf("verify pin: %w", piv.AuthErr{Retries: 2})
+
+	yk := newStubPivKey(t, RSA)
+	yk.signerMap[piv.SlotSignature] = failingDecrypter{err: pinErr}
+
+	tests := []struct {
+		name       string
+		defaultPIN bool
+		wantHint   bool
+	}{
+		{"hints when the pin was defaulted", true, true},
+		{"does not hint when the pin was provided", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := &YubiKey{yk: yk, pin: "123456", defaultPIN: tt.defaultPIN, managementKey: piv.DefaultManagementKey}
+			decrypter, err := k.CreateDecrypter(&apiv1.CreateDecrypterRequest{
+				DecryptionKey: "yubikey:slot-id=9c",
+			})
+			require.NoError(t, err)
+
+			_, err = decrypter.Decrypt(rand.Reader, []byte("ciphertext"), nil)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, pinErr)
+			var authErr piv.AuthErr
+			require.ErrorAs(t, err, &authErr)
+			assert.Equal(t, 2, authErr.Retries)
+			if tt.wantHint {
+				assert.Contains(t, err.Error(), "the YubiKey factory default PIN was tried")
+			} else {
+				assert.NotContains(t, err.Error(), "default PIN")
+			}
+		})
+	}
 }
 
 func TestYubicoNewRoots(t *testing.T) {
