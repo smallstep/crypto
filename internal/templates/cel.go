@@ -55,7 +55,7 @@ type Environment struct {
 	// on the order of 140µs and 280KB — per signature, if it were built inside
 	// the render path.
 	base     func() (*cel.Env, error)
-	programs lru.Cache[string, program]
+	programs *lru.Cache[string, program]
 }
 
 // program pairs a compiled program with the cost limit fixed into it at
