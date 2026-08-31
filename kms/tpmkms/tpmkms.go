@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smallstep/go-attestation/attest"
+
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/tpm"
@@ -1650,8 +1652,19 @@ func (k *TPMKMS) CreateAttestation(req *apiv1.CreateAttestationRequest) (*apiv1.
 		return nil, fmt.Errorf("failed getting signer for key %q: %w", properties.name, err)
 	}
 
-	params, err := key.CertificationParameters(ctx)
-	if err != nil {
+	// When the request carries qualifying data, certify the key again against
+	// it rather than returning the statement recorded at creation. Re-certifying
+	// lets one persisted key answer every subsequent certification attempt.
+	//
+	// With no qualifying data there is nothing to bind, so the stored
+	// statement is returned unchanged and existing callers are unaffected.
+	var params attest.CertificationParameters
+	if len(properties.qualifyingData) > 0 {
+		params, err = key.Recertify(ctx, tpm.RecertifyConfig{QualifyingData: properties.qualifyingData})
+		if err != nil {
+			return nil, fmt.Errorf("failed recertifying key %q: %w", key.Name(), err)
+		}
+	} else if params, err = key.CertificationParameters(ctx); err != nil {
 		return nil, fmt.Errorf("failed getting key certification parameters for %q: %w", key.Name(), err)
 	}
 

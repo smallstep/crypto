@@ -3,6 +3,7 @@
 package pkcs11
 
 import (
+	"os"
 	"runtime"
 	"sync"
 
@@ -24,19 +25,35 @@ var softHSM2Once sync.Once
 func mustPKCS11(t TBTesting) *PKCS11 {
 	t.Helper()
 	testModule = "SoftHSM2"
-	if runtime.GOARCH != "amd64" {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Fatalf("softHSM2 test skipped on %s:%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	var path string
+	var paths []string
 	switch runtime.GOOS {
 	case "darwin":
-		path = "/usr/local/lib/softhsm/libsofthsm2.so"
+		paths = []string{
+			"/usr/local/lib/softhsm/libsofthsm2.so",
+			"/opt/homebrew/lib/softhsm/libsofthsm2.so",
+		}
 	case "linux":
-		path = "/usr/lib/softhsm/libsofthsm2.so"
+		paths = []string{
+			"/usr/lib/softhsm/libsofthsm2.so",
+		}
 	default:
 		t.Skipf("softHSM2 test skipped on %s", runtime.GOOS)
 		return nil
+	}
+
+	var path string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		t.Skipf("softHSM2 test skipped on %s: libsofthsm2.so not found", runtime.GOOS)
 	}
 	p11, err := crypto11.Configure(&crypto11.Config{
 		Path:       path,

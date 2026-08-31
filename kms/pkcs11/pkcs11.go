@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/ThalesGroup/crypto11"
@@ -301,8 +302,8 @@ func (k *PKCS11) DeleteKey(u string) error {
 	if err != nil {
 		return errors.Wrap(err, "deleteKey failed")
 	}
-	signer, err := k.p11.FindKeyPair(id, object)
-	if err != nil {
+	signer, err := findKeyPair(k.p11, id, object)
+	if err != nil && !errors.Is(err, apiv1.NotFoundError{}) {
 		return errors.Wrap(err, "deleteKey failed")
 	}
 	if signer == nil {
@@ -361,8 +362,8 @@ func generateKey(ctx P11, req *apiv1.CreateKeyRequest) (crypto11.Signer, error) 
 		return nil, err
 	}
 
-	signer, err := ctx.FindKeyPair(id, object)
-	if err != nil {
+	signer, err := findKeyPair(ctx, id, object)
+	if err != nil && !errors.Is(err, apiv1.NotFoundError{}) {
 		return nil, err
 	}
 	if signer != nil {
@@ -414,14 +415,27 @@ func generateKey(ctx P11, req *apiv1.CreateKeyRequest) (crypto11.Signer, error) 
 	}
 }
 
+func findKeyPair(ctx P11, id, label []byte) (crypto11.Signer, error) {
+	signer, err := ctx.FindKeyPair(id, label)
+	if err != nil {
+		if strings.Contains(err.Error(), "was not found") {
+			return nil, apiv1.NotFoundError{
+				Message: err.Error(),
+			}
+		}
+		return nil, err
+	}
+	return signer, nil
+}
+
 func findSigner(ctx P11, rawuri string) (crypto11.Signer, error) {
 	id, object, err := parseObject(rawuri)
 	if err != nil {
 		return nil, err
 	}
-	signer, err := ctx.FindKeyPair(id, object)
+	signer, err := findKeyPair(ctx, id, object)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error finding key with uri %s", rawuri)
+		return nil, err
 	}
 	if signer == nil {
 		return nil, errors.Errorf("key with uri %s not found", rawuri)
