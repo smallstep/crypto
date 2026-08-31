@@ -252,11 +252,6 @@ func (k *KMS) Close() error {
 	return nil
 }
 
-//go:fix inline
-func pointer[T any](v T) *T {
-	return new(v)
-}
-
 func defaultContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 15*time.Second)
 }
