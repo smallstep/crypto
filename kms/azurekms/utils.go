@@ -123,8 +123,10 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 		return nil, errors.New("invalid EC key: missing x or y values")
 	}
 
-	var curve elliptic.Curve
-	var curveSize int
+	var (
+		curve     elliptic.Curve
+		curveSize int
+	)
 	switch *crv {
 	case azkeys.CurveNameP256:
 		curve = elliptic.P256()
@@ -145,14 +147,19 @@ func ecPublicKey(crv *azkeys.CurveName, x, y []byte) (crypto.PublicKey, error) {
 		return nil, errors.New("invalid EC key: x or y length is not valid")
 	}
 
-	// Validate the point is on the curve using crypto/ecdh
 	// The uncompressed format is 0x04 || x || y
 	uncompressed := make([]byte, 1+len(x)+len(y))
 	uncompressed[0] = 0x04
 	copy(uncompressed[1:], x)
 	copy(uncompressed[1+len(x):], y)
 
-	return ecdsa.ParseUncompressedPublicKey(curve, uncompressed)
+	// ParseUncompressedPublicKey validates that the point is on the curve
+	pub, err := ecdsa.ParseUncompressedPublicKey(curve, uncompressed)
+	if err != nil {
+		return nil, fmt.Errorf("invalid EC key: %w", err)
+	}
+
+	return pub, nil
 }
 
 func rsaPublicKey(n, e []byte) (crypto.PublicKey, error) {
