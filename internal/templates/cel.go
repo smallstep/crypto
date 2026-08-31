@@ -19,7 +19,7 @@ import (
 )
 
 // costLimit bounds the work a single expression may do at evaluation time.
-// Expressions are metered and cancelled once they exceed it, so a template
+// Expressions are metered and canceled once they exceed it, so a template
 // cannot make signing arbitrarily expensive.
 var costLimit atomic.Uint64
 
@@ -31,7 +31,7 @@ func init() {
 // another with [SetCostLimit]. The metered cost is the work an expression
 // actually does, so it scales with the data: iterating an element of a list or
 // map costs a handful of units. The default admits collections of several
-// hundred elements while still cancelling runaway expressions.
+// hundred elements while still canceling runaway expressions.
 const DefaultCostLimit = 10_000
 
 // CostLimit returns the current evaluation cost ceiling.
@@ -51,7 +51,7 @@ var anyType = reflect.TypeFor[any]()
 // registered.
 type Environment struct {
 	// base is built at most once. Constructing an environment registers native
-	// types by reflection and initialises every extension library, which costs
+	// types by reflection and initializes every extension library, which costs
 	// on the order of 140µs and 280KB — per signature, if it were built inside
 	// the render path.
 	base     func() (*cel.Env, error)
@@ -173,8 +173,8 @@ func (e *EvalError) Detail() error { return e.detail }
 // it with a typed error whose message is fixed and holds no data, so it keeps
 // its text. Everything else is held back in an EvalError.
 func newEvalError(expr string, err error) error {
-	var cancelled interpreter.EvalCancelledError
-	if errors.As(err, &cancelled) && cancelled.Cause == interpreter.CostLimitExceeded {
+	var canceled interpreter.EvalCancelledError
+	if errors.As(err, &canceled) && canceled.Cause == interpreter.CostLimitExceeded {
 		return fmt.Errorf("error evaluating CEL expression %q: %w; the limit is %d and can be raised with SetCELCostLimit",
 			expr, err, costLimit.Load())
 	}

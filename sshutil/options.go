@@ -36,9 +36,9 @@ type Option func(cr CertificateRequest, o *Options) error
 //
 //	{{ cel "Token.sub" $ }}
 //
-// An expression reads the template data through the variables below. A
-// variable the request did not set is absent rather than empty, and reading it
-// fails the evaluation instead of rendering nothing:
+// An expression reads the template data through the variables below. A variable
+// the request did not set is absent rather than empty, and reading it fails the
+// evaluation instead of rendering nothing:
 //
 //   - Type: the certificate type, "user" or "host".
 //   - KeyID: the requested key id.
@@ -61,7 +61,7 @@ type Option func(cr CertificateRequest, o *Options) error
 //
 //	{{ cel "Webhooks.Device.get('Serial')" }}
 //
-// An expression is metered and cancelled once it exceeds a cost ceiling, so a
+// An expression is metered and canceled once it exceeds a cost ceiling, so a
 // template cannot make signing arbitrarily expensive. See [SetCELCostLimit].
 func GetFuncMap() template.FuncMap {
 	return getFuncMap(TemplateData{}, new(TemplateError))

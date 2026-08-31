@@ -65,7 +65,7 @@ type Option func(cr *x509.CertificateRequest, o *Options) error
 //
 //	{{ cel "Webhooks.Device.get('Serial')" }}
 //
-// An expression is metered and cancelled once it exceeds a cost ceiling, so a
+// An expression is metered and canceled once it exceeds a cost ceiling, so a
 // template cannot make signing arbitrarily expensive. See [SetCELCostLimit].
 //
 // The following functions encode data using ASN.1:
