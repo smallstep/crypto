@@ -336,8 +336,8 @@ func (k *KeyVault) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespo
 		KeySize: keySize,
 		Curve:   &kt.Curve,
 		KeyOps: []*azkeys.KeyOperation{
-			pointer(azkeys.KeyOperationSign),
-			pointer(azkeys.KeyOperationVerify),
+			new(azkeys.KeyOperationSign),
+			new(azkeys.KeyOperationVerify),
 		},
 		KeyAttributes: &azkeys.KeyAttributes{
 			Enabled:   &valueTrue,

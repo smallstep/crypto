@@ -364,8 +364,8 @@ func TestKeyVault_CreateKey(t *testing.T) {
 			KeySize: e.KeySize,
 			Curve:   new(e.Curve),
 			KeyOps: []*azkeys.KeyOperation{
-				pointer(azkeys.KeyOperationSign),
-				pointer(azkeys.KeyOperationVerify),
+				new(azkeys.KeyOperationSign),
+				new(azkeys.KeyOperationVerify),
 			},
 			KeyAttributes: &azkeys.KeyAttributes{
 				Enabled:   &valueTrue,

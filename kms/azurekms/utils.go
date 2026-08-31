@@ -25,13 +25,6 @@ var now = func() time.Time {
 	return time.Now().UTC()
 }
 
-// pointer returns the pointer of v.
-//
-//go:fix inline
-func pointer[T any](v T) *T {
-	return new(v)
-}
-
 // defaultContext returns the default context used in requests to azure.
 func defaultContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 15*time.Second)
