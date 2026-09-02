@@ -90,7 +90,7 @@ func TestBcryptHash(t *testing.T) {
 func BenchmarkKey(b *testing.B) {
 	pass := []byte("password")
 	salt := []byte("salt")
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = Key(pass, salt, 10, 32)
 	}
 }
