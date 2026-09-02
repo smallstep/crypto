@@ -85,6 +85,10 @@ func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 	switch kty {
 	case "EC", "RSA", "OKP", "AKP":
 		return GenerateSigner(kty, crv, size)
+	case "ML-DSA-44", "ML-DSA-65", "ML-DSA-87":
+		return generateAKPKey(kty)
+	case "Ed25519", "X25519":
+		return generateOKPKey(kty)
 	case "oct":
 		return generateOctKey(size)
 	default:
@@ -121,6 +125,10 @@ func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 		return generateOKPKey(crv)
 	case "AKP":
 		return generateAKPKey(crv)
+	case "ML-DSA-44", "ML-DSA-65", "ML-DSA-87":
+		return generateAKPKey(kty)
+	case "Ed25519", "X25519":
+		return generateOKPKey(kty)
 	default:
 		return nil, errors.Errorf("unrecognized key type: %s", kty)
 	}
