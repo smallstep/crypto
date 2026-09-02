@@ -845,7 +845,7 @@ func (k *CAPIKMS) LoadCertificateChain(req *apiv1.LoadCertificateChainRequest) (
 
 	chain := []*x509.Certificate{cert}
 	child := cert
-	for i := 0; i < maximumIterations; i++ { // loop a maximum number of times
+	for range maximumIterations { // loop a maximum number of times
 		authorityKeyID := hex.EncodeToString(child.AuthorityKeyId)
 		parent, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
 			Name: uri.New(Scheme, url.Values{

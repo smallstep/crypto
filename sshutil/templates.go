@@ -41,8 +41,8 @@ func ValidateTemplateData(data []byte) error {
 	return templates.ValidateTemplateData(data)
 }
 
-// TemplateData is an alias for map[string]interface{}. It represents the data
-// passed to the templates.
+// TemplateData is an alias for map[string]any. It represents the data passed to
+// the templates.
 type TemplateData map[string]any
 
 // CreateTemplateData returns a TemplateData with the given certificate type,

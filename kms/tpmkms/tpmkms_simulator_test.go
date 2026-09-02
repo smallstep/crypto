@@ -142,7 +142,7 @@ func TestTPMKMS_CreateKey_Capabilities(t *testing.T) {
 					Bits:               2048,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -196,7 +196,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               1024,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
@@ -223,7 +223,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               1024,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
@@ -250,7 +250,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               2048,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
@@ -279,7 +279,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					if assert.NotNil(t, r) {
@@ -310,7 +310,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Name: "",
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -342,7 +342,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits: -1,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -363,7 +363,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               2048,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -384,7 +384,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               1024,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -404,7 +404,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -425,7 +425,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               3072,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -446,7 +446,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               1024,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -467,7 +467,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               1024,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -488,7 +488,7 @@ func TestTPMKMS_CreateKey(t *testing.T) {
 					Bits:               2048,
 				},
 			},
-			assertFunc: func(tt assert.TestingT, i1 interface{}, i2 ...interface{}) bool {
+			assertFunc: func(tt assert.TestingT, i1 any, i2 ...any) bool {
 				if assert.IsType(t, &apiv1.CreateKeyResponse{}, i1) {
 					r, _ := i1.(*apiv1.CreateKeyResponse)
 					return assert.Nil(t, r)
@@ -1594,7 +1594,7 @@ type attestationRequest struct {
 	EK           []byte                `json:"ek,omitempty"`
 	EKCerts      [][]byte              `json:"ekCerts,omitempty"`
 	AKCert       []byte                `json:"akCert,omitempty"`
-	AttestParams attestationParameters `json:"params,omitempty"`
+	AttestParams attestationParameters `json:"params"`
 }
 
 type attestationResponse struct {

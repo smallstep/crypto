@@ -225,7 +225,7 @@ func TestKMS_DeleteKey_capi(t *testing.T) {
 	}{
 		{"ok capi", capiKMS, args{&apiv1.DeleteKeyRequest{
 			Name: capiKey.Name,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, getErr := capiKMS.GetPublicKey(&apiv1.GetPublicKeyRequest{
 				Name: capiKey.Name,
 			})
@@ -319,7 +319,7 @@ func TestKMS_StoreCertificate_capi(t *testing.T) {
 		{"ok capi no key", capiKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        platformCertName + "-other",
 			Certificate: chainNoKey[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			t.Cleanup(func() {
 				assert.NoError(t, capiKMS.DeleteCertificate(&apiv1.DeleteCertificateRequest{
 					Name: platformCertName,
@@ -409,7 +409,7 @@ func TestKMS_StoreCertificateChain_capi(t *testing.T) {
 		{"ok capi no key", capiKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             platformCertName + "-other",
 			CertificateChain: chainNoKey,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			// Storing a certificate with no key is not supported on TPMKMS.
 			if capiKMS.Type() == apiv1.TPMKMS {
 				return assert.Error(t, err)
@@ -453,7 +453,7 @@ func TestKMS_DeleteCertificate_capi(t *testing.T) {
 	}{
 		{"ok capi", capiKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: platformCertName,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, loadErr := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
 				Name: platformCertName,
 			})
@@ -630,7 +630,7 @@ func TestKMS_CleanupCredentials_capi(t *testing.T) {
 				"delete-key": []string{"true"},
 			}).String(),
 			RawSubject: chain[0].RawSubject,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, loadErr := capiKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
 				Name: platformCertName,
 			})
