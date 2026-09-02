@@ -80,7 +80,11 @@ func GenerateDefaultKeyPair() (crypto.PublicKey, crypto.PrivateKey, error) {
 	return GenerateKeyPair(DefaultKeyType, DefaultKeyCurve, DefaultKeySize)
 }
 
-// GenerateKey generates a key of the given type (kty).
+// GenerateKey generates a key of the given type (kty), it can be "EC", "RSA",
+// "OKP", "AKP", or "oct". The crv parameter is the curve for EC and OKP keys,
+// and the algorithm to use for AKP (ML-DSA) keys. The values "Ed25519",
+// "X25519", "ML-DSA-44", "ML-DSA-65", and "ML-DSA-87" can also be used as kty,
+// in which case crv is ignored.
 func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 	switch kty {
 	case "EC", "RSA", "OKP", "AKP":
@@ -97,7 +101,10 @@ func GenerateKey(kty, crv string, size int) (crypto.PrivateKey, error) {
 }
 
 // GenerateKeyPair creates an asymmetric crypto keypair using input
-// configuration.
+// configuration. The key type (kty) can be "EC", "RSA", "OKP", or "AKP". The
+// crv parameter is the curve for EC and OKP keys, and the algorithm to use for
+// AKP (ML-DSA) keys. The values "Ed25519", "X25519", "ML-DSA-44", "ML-DSA-65",
+// and "ML-DSA-87" can also be used as kty, in which case crv is ignored.
 func GenerateKeyPair(kty, crv string, size int) (crypto.PublicKey, crypto.PrivateKey, error) {
 	signer, err := GenerateSigner(kty, crv, size)
 	if err != nil {
@@ -113,8 +120,10 @@ func GenerateDefaultSigner() (crypto.Signer, error) {
 }
 
 // GenerateSigner creates an asymmetric crypto key that implements
-// crypto.Signer. For ML-DSA keys, the crv parameters indicates the algorithm to
-// use.
+// crypto.Signer. The key type (kty) can be "EC", "RSA", "OKP", or "AKP". The
+// crv parameter is the curve for EC and OKP keys, and the algorithm to use for
+// AKP (ML-DSA) keys. The values "Ed25519", "X25519", "ML-DSA-44", "ML-DSA-65",
+// and "ML-DSA-87" can also be used as kty, in which case crv is ignored.
 func GenerateSigner(kty, crv string, size int) (crypto.Signer, error) {
 	switch kty {
 	case "EC":
