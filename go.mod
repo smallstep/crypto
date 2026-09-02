@@ -1,6 +1,6 @@
 module go.step.sm/crypto
 
-go 1.26
+go 1.26.0
 
 retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
 
@@ -25,7 +25,7 @@ require (
 	github.com/smallstep/go-attestation v0.4.4-0.20260814222900-a849f4e2cd68
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/mock v0.6.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
