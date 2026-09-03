@@ -99,10 +99,8 @@ func (d *Decrypter) Decrypt(_ io.Reader, ciphertext []byte, opts crypto.Decrypte
 		if err := validateOAEPOptions(o); err != nil {
 			return nil, err
 		}
-	case *rsa.PKCS1v15DecryptOptions:
-		return nil, errors.New("cloudKMS does not support PKCS #1 v1.5 decryption")
 	default:
-		return nil, errors.New("invalid options for Decrypt")
+		return nil, fmt.Errorf("invalid or unsupported decrypter options type %T", opts)
 	}
 
 	req := &kmspb.AsymmetricDecryptRequest{

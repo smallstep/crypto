@@ -108,8 +108,8 @@ func TestWithTemplateBase64(t *testing.T) {
 			TypeKey:            "host",
 			KeyIDKey:           "foo.internal",
 			PrincipalsKey:      []string{"foo.internal", "bar.internal"},
-			ExtensionsKey:      map[string]interface{}{"foo": "bar"},
-			CriticalOptionsKey: map[string]interface{}{"bar": "foo"},
+			ExtensionsKey:      map[string]any{"foo": "bar"},
+			CriticalOptionsKey: map[string]any{"bar": "foo"},
 		}, cr}, Options{
 			CertBuffer: bytes.NewBufferString(`{
 	"type": "host",
@@ -146,7 +146,7 @@ func TestWithTemplateFile(t *testing.T) {
 		PrincipalsKey: []string{"jane", "jane@doe.com"},
 		ExtensionsKey: DefaultExtensions(UserCert),
 		InsecureKey: TemplateData{
-			UserKey: map[string]interface{}{
+			UserKey: map[string]any{
 				"username": "jane",
 			},
 		},

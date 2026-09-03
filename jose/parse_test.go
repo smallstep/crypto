@@ -249,7 +249,7 @@ func TestReadKeyPasswordFile(t *testing.T) {
 
 func TestParseKey(t *testing.T) {
 	t.Parallel()
-	marshal := func(i interface{}) []byte {
+	marshal := func(i any) []byte {
 		b, err := json.Marshal(i)
 		if err != nil {
 			t.Fatal(err)
@@ -706,7 +706,7 @@ func TestParseKeySet(t *testing.T) {
 }
 
 func Test_guessKeyType(t *testing.T) {
-	marshal := func(i interface{}) []byte {
+	marshal := func(i any) []byte {
 		b, err := json.Marshal(i)
 		if err != nil {
 			t.Fatal(err)
@@ -754,7 +754,7 @@ func Test_guessKeyType(t *testing.T) {
 }
 
 func Test_guessSignatureAlgorithm(t *testing.T) {
-	must := func(args ...interface{}) crypto.PrivateKey {
+	must := func(args ...any) crypto.PrivateKey {
 		last := len(args) - 1
 		if err := args[last]; err != nil {
 			t.Fatal(err)

@@ -43,7 +43,7 @@ func TestCreateTemplateData(t *testing.T) {
 			TypeKey:       "user",
 			KeyIDKey:      "john@doe.com",
 			PrincipalsKey: []string{"john", "john@doe.com"},
-			ExtensionsKey: map[string]interface{}{
+			ExtensionsKey: map[string]any{
 				"permit-X11-forwarding":   "",
 				"permit-agent-forwarding": "",
 				"permit-port-forwarding":  "",
@@ -55,13 +55,13 @@ func TestCreateTemplateData(t *testing.T) {
 			TypeKey:       "host",
 			KeyIDKey:      "foo",
 			PrincipalsKey: []string{"foo.internal"},
-			ExtensionsKey: map[string]interface{}(nil),
+			ExtensionsKey: map[string]any(nil),
 		}},
 		{"other", args{100, "foo", []string{"foo.internal"}}, TemplateData{
 			TypeKey:       "",
 			KeyIDKey:      "foo",
 			PrincipalsKey: []string{"foo.internal"},
-			ExtensionsKey: map[string]interface{}(nil),
+			ExtensionsKey: map[string]any(nil),
 		}},
 	}
 	for _, tt := range tests {
@@ -80,9 +80,9 @@ func TestDefaultExtensions(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want map[string]interface{}
+		want map[string]any
 	}{
-		{"user", args{UserCert}, map[string]interface{}{
+		{"user", args{UserCert}, map[string]any{
 			"permit-X11-forwarding":   "",
 			"permit-agent-forwarding": "",
 			"permit-port-forwarding":  "",
@@ -129,19 +129,19 @@ func TestTemplateData_AddExtension(t *testing.T) {
 		want TemplateData
 	}{
 		{"empty", TemplateData{}, args{"key", "value"}, TemplateData{
-			ExtensionsKey: map[string]interface{}{"key": "value"},
+			ExtensionsKey: map[string]any{"key": "value"},
 		}},
 		{"overwrite", TemplateData{
-			ExtensionsKey: map[string]interface{}{"key": "value"},
+			ExtensionsKey: map[string]any{"key": "value"},
 		}, args{"key", "value"}, TemplateData{
-			ExtensionsKey: map[string]interface{}{
+			ExtensionsKey: map[string]any{
 				"key": "value",
 			},
 		}},
 		{"add", TemplateData{
-			ExtensionsKey: map[string]interface{}{"foo": "bar"},
+			ExtensionsKey: map[string]any{"foo": "bar"},
 		}, args{"key", "value"}, TemplateData{
-			ExtensionsKey: map[string]interface{}{
+			ExtensionsKey: map[string]any{
 				"key": "value",
 				"foo": "bar",
 			},
@@ -169,19 +169,19 @@ func TestTemplateData_AddCriticalOption(t *testing.T) {
 		want TemplateData
 	}{
 		{"empty", TemplateData{}, args{"key", "value"}, TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"key": "value"},
+			CriticalOptionsKey: map[string]any{"key": "value"},
 		}},
 		{"overwrite", TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"key": "value"},
+			CriticalOptionsKey: map[string]any{"key": "value"},
 		}, args{"key", "value"}, TemplateData{
-			CriticalOptionsKey: map[string]interface{}{
+			CriticalOptionsKey: map[string]any{
 				"key": "value",
 			},
 		}},
 		{"add", TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"foo": "bar"},
+			CriticalOptionsKey: map[string]any{"foo": "bar"},
 		}, args{"key", "value"}, TemplateData{
-			CriticalOptionsKey: map[string]interface{}{
+			CriticalOptionsKey: map[string]any{
 				"key": "value",
 				"foo": "bar",
 			},
@@ -200,7 +200,7 @@ func TestTemplateData_AddCriticalOption(t *testing.T) {
 func TestTemplateData_Set(t *testing.T) {
 	type args struct {
 		key string
-		v   interface{}
+		v   any
 	}
 	tests := []struct {
 		name string
@@ -228,7 +228,7 @@ func TestTemplateData_Set(t *testing.T) {
 func TestTemplateData_SetInsecure(t *testing.T) {
 	type args struct {
 		key string
-		v   interface{}
+		v   any
 	}
 	tests := []struct {
 		name string
@@ -338,7 +338,7 @@ func TestTemplateData_SetPrincipals(t *testing.T) {
 
 func TestTemplateData_SetExtensions(t *testing.T) {
 	type args struct {
-		e map[string]interface{}
+		e map[string]any
 	}
 	tests := []struct {
 		name string
@@ -346,13 +346,13 @@ func TestTemplateData_SetExtensions(t *testing.T) {
 		args args
 		want TemplateData
 	}{
-		{"ok", TemplateData{}, args{map[string]interface{}{"foo": "bar"}}, TemplateData{
-			ExtensionsKey: map[string]interface{}{"foo": "bar"},
+		{"ok", TemplateData{}, args{map[string]any{"foo": "bar"}}, TemplateData{
+			ExtensionsKey: map[string]any{"foo": "bar"},
 		}},
 		{"overwrite", TemplateData{
-			ExtensionsKey: map[string]interface{}{"foo": "bar"},
-		}, args{map[string]interface{}{"key": "value"}}, TemplateData{
-			ExtensionsKey: map[string]interface{}{"key": "value"},
+			ExtensionsKey: map[string]any{"foo": "bar"},
+		}, args{map[string]any{"key": "value"}}, TemplateData{
+			ExtensionsKey: map[string]any{"key": "value"},
 		}},
 	}
 	for _, tt := range tests {
@@ -367,7 +367,7 @@ func TestTemplateData_SetExtensions(t *testing.T) {
 
 func TestTemplateData_SetCriticalOptions(t *testing.T) {
 	type args struct {
-		e map[string]interface{}
+		e map[string]any
 	}
 	tests := []struct {
 		name string
@@ -375,13 +375,13 @@ func TestTemplateData_SetCriticalOptions(t *testing.T) {
 		args args
 		want TemplateData
 	}{
-		{"ok", TemplateData{}, args{map[string]interface{}{"foo": "bar"}}, TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"foo": "bar"},
+		{"ok", TemplateData{}, args{map[string]any{"foo": "bar"}}, TemplateData{
+			CriticalOptionsKey: map[string]any{"foo": "bar"},
 		}},
 		{"overwrite", TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"foo": "bar"},
-		}, args{map[string]interface{}{"key": "value"}}, TemplateData{
-			CriticalOptionsKey: map[string]interface{}{"key": "value"},
+			CriticalOptionsKey: map[string]any{"foo": "bar"},
+		}, args{map[string]any{"key": "value"}}, TemplateData{
+			CriticalOptionsKey: map[string]any{"key": "value"},
 		}},
 	}
 	for _, tt := range tests {
@@ -396,7 +396,7 @@ func TestTemplateData_SetCriticalOptions(t *testing.T) {
 
 func TestTemplateData_SetToken(t *testing.T) {
 	type args struct {
-		v interface{}
+		v any
 	}
 	tests := []struct {
 		name string
@@ -419,7 +419,7 @@ func TestTemplateData_SetToken(t *testing.T) {
 
 func TestTemplateData_SetUserData(t *testing.T) {
 	type args struct {
-		v interface{}
+		v any
 	}
 	tests := []struct {
 		name string
@@ -482,7 +482,7 @@ func TestTemplateData_SetAuthorizationCertificateChain(t *testing.T) {
 	crt1 := Certificate{Key: mustGeneratePublicKey(t)}
 	crt2 := Certificate{Key: mustGeneratePublicKey(t)}
 	type args struct {
-		crt []interface{}
+		crt []any
 	}
 	tests := []struct {
 		name string
@@ -490,16 +490,16 @@ func TestTemplateData_SetAuthorizationCertificateChain(t *testing.T) {
 		args args
 		want TemplateData
 	}{
-		{"ok", TemplateData{}, args{[]interface{}{crt1, crt2}}, TemplateData{
-			AuthorizationChainKey: []interface{}{crt1, crt2},
+		{"ok", TemplateData{}, args{[]any{crt1, crt2}}, TemplateData{
+			AuthorizationChainKey: []any{crt1, crt2},
 		}},
 		{"overwrite", TemplateData{
-			AuthorizationChainKey: []interface{}{crt1, crt2},
+			AuthorizationChainKey: []any{crt1, crt2},
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
-		}, args{[]interface{}{crt1}}, TemplateData{
-			AuthorizationChainKey: []interface{}{crt1},
+		}, args{[]any{crt1}}, TemplateData{
+			AuthorizationChainKey: []any{crt1},
 			InsecureKey: TemplateData{
 				UserKey: "data",
 			},
@@ -557,7 +557,7 @@ func TestTemplateData_SetCertificateRequest(t *testing.T) {
 func TestTemplateData_SetWebhook(t *testing.T) {
 	type args struct {
 		name string
-		v    interface{}
+		v    any
 	}
 	tests := []struct {
 		name string
@@ -565,9 +565,9 @@ func TestTemplateData_SetWebhook(t *testing.T) {
 		args args
 		want TemplateData
 	}{
-		{"empty", TemplateData{}, args{"foo", "bar"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}},
-		{"overwrite", TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}, args{"foo", "zar"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "zar"}}},
-		{"existing", TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar"}}, args{"bar", "foo"}, TemplateData{WebhooksKey: map[string]interface{}{"foo": "bar", "bar": "foo"}}},
+		{"empty", TemplateData{}, args{"foo", "bar"}, TemplateData{WebhooksKey: map[string]any{"foo": "bar"}}},
+		{"overwrite", TemplateData{WebhooksKey: map[string]any{"foo": "bar"}}, args{"foo", "zar"}, TemplateData{WebhooksKey: map[string]any{"foo": "zar"}}},
+		{"existing", TemplateData{WebhooksKey: map[string]any{"foo": "bar"}}, args{"bar", "foo"}, TemplateData{WebhooksKey: map[string]any{"foo": "bar", "bar": "foo"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

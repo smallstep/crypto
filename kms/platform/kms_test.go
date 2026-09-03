@@ -760,7 +760,7 @@ func TestKMS_DeleteKey(t *testing.T) {
 		// Platform KMS
 		{"ok platform", platformKMS, args{&apiv1.DeleteKeyRequest{
 			Name: platformKey.Name,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, getErr := platformKMS.GetPublicKey(&apiv1.GetPublicKeyRequest{
 				Name: platformKey.Name,
 			})
@@ -776,7 +776,7 @@ func TestKMS_DeleteKey(t *testing.T) {
 		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteKeyRequest{
 			Name: "kms:name=" + url.QueryEscape(keyPath1),
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) &&
 				assert.NoFileExists(t, keyPath1)
 		}},
@@ -785,7 +785,7 @@ func TestKMS_DeleteKey(t *testing.T) {
 		}}, assertNotFoundError},
 		{"fail parseURI", softKMS, args{&apiv1.DeleteKeyRequest{
 			Name: keyPath2,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.Error(t, err) &&
 				assert.FileExists(t, keyPath2)
 		}},
@@ -893,7 +893,7 @@ func TestKMS_StoreCertificate(t *testing.T) {
 		{"ok platform no key", platformKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        platformCertName + "-other",
 			Certificate: chain[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			// Storing a certificate with no key is not supported on TPMKMS.
 			if platformKMS.Type() == apiv1.TPMKMS && runtime.GOOS != "windows" {
 				return assert.Error(t, err)
@@ -915,28 +915,28 @@ func TestKMS_StoreCertificate(t *testing.T) {
 		{"ok softKMS", softKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=" + filepath.Join(dir, "cert.crt"),
 			Certificate: chain[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) &&
 				assert.FileExists(t, filepath.Join(dir, "cert.crt"))
 		}},
 		{"ok softKMS simple", softKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:" + filepath.Join(dir, "intermediate.crt"),
 			Certificate: chain[1],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) &&
 				assert.FileExists(t, filepath.Join(dir, "intermediate.crt"))
 		}},
 		{"ok softKMS overwrite", softKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:" + filepath.Join(dir, "cert.crt"),
 			Certificate: chain[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) &&
 				assert.FileExists(t, filepath.Join(dir, "cert.crt"))
 		}},
 		{"fail parseURI", softKMS, args{&apiv1.StoreCertificateRequest{
 			Name:        "foo:" + filepath.Join(dir, "fail.crt"),
 			Certificate: chain[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.Error(t, err) &&
 				assert.NoFileExists(t, filepath.Join(dir, "fail.crt"))
 		}},
@@ -1040,7 +1040,7 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 		{"ok platform no key", platformKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             platformCertName + "-other",
 			CertificateChain: chain,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			// Storing a certificate with no key is not supported on TPMKMS.
 			if platformKMS.Type() == apiv1.TPMKMS && runtime.GOOS != "windows" {
 				return assert.Error(t, err)
@@ -1071,19 +1071,19 @@ func TestKMS_StoreCertificateChain(t *testing.T) {
 		{"ok softKMS", softKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=" + filepath.Join(dir, "chain.crt"),
 			CertificateChain: chain,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) && assert.FileExists(t, filepath.Join(dir, "chain.crt"))
 		}},
 		{"ok softKMS escape", softKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=" + url.QueryEscape(filepath.Join(dir, "leaf.crt")),
 			CertificateChain: chain[:1],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) && assert.FileExists(t, filepath.Join(dir, "leaf.crt"))
 		}},
 		{"fail parseURI", softKMS, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "foo:name=" + filepath.Join(dir, "other.crt"),
 			CertificateChain: chain,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.Error(t, err) && assert.NoFileExists(t, filepath.Join(dir, "other.crt"))
 		}},
 		{"fail name", softKMS, args{&apiv1.StoreCertificateChainRequest{
@@ -1125,7 +1125,7 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 	}{
 		{"ok platform", platformKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: platformCertName,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, loadErr := platformKMS.LoadCertificate(&apiv1.LoadCertificateRequest{
 				Name: platformCertName,
 			})
@@ -1138,7 +1138,7 @@ func TestKMS_DeleteCertificate(t *testing.T) {
 		// SoftKMS
 		{"ok softKMS", softKMS, args{&apiv1.DeleteCertificateRequest{
 			Name: "kms:name=" + url.QueryEscape(filepath.Join(dir, "chain.crt")),
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.NoError(t, err) &&
 				assert.NoFileExists(t, filepath.Join(dir, "chain.crt"))
 		}},
@@ -1328,7 +1328,7 @@ func TestKMS_CleanupCredentials(t *testing.T) {
 				"issuer": []string{chain[0].Issuer.CommonName},
 			}).String(),
 			RawSubject: chain[0].RawSubject,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}
@@ -1353,7 +1353,7 @@ func TestKMS_SearchCertificates(t *testing.T) {
 	}{
 		{"not implemented", softKMS, args{&apiv1.SearchCertificatesRequest{
 			Name: "kms:",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 		// A nil request must be rejected rather than panic in clone(req),

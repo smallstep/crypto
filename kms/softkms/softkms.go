@@ -16,6 +16,7 @@ import (
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -43,10 +44,13 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 	apiv1.ECDSAWithSHA384:          {"EC", "P-384"},
 	apiv1.ECDSAWithSHA512:          {"EC", "P-521"},
 	apiv1.PureEd25519:              {"OKP", "Ed25519"},
+	apiv1.MLDSA44:                  {"AKP", "ML-DSA-44"},
+	apiv1.MLDSA65:                  {"AKP", "ML-DSA-65"},
+	apiv1.MLDSA87:                  {"AKP", "ML-DSA-87"},
 }
 
 // generateKey is used for testing purposes.
-var generateKey = func(kty, crv string, size int) (interface{}, interface{}, error) {
+var generateKey = func(kty, crv string, size int) (any, any, error) {
 	if kty == "RSA" && size == 0 {
 		size = DefaultRSAKeySize
 	}
@@ -148,7 +152,7 @@ func (k *SoftKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey
 	switch vv := v.(type) {
 	case *x509.Certificate:
 		return vv.PublicKey, nil
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey, ed25519.PublicKey, x25519.PublicKey:
 		return vv, nil
 	case crypto.Signer:
 		return vv.Public(), nil

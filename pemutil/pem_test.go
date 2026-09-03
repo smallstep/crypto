@@ -136,7 +136,7 @@ var files = map[string]testdata{
 	"testdata/nebula.key":                    {x25519PrivateKey, false},
 }
 
-func readOrParseSSH(fn string) (interface{}, error) {
+func readOrParseSSH(fn string) (any, error) {
 	if strings.HasPrefix(fn, "testdata/openssh") && strings.HasSuffix(fn, ".pub.pem") {
 		b, err := os.ReadFile(fn)
 		if err != nil {
@@ -149,7 +149,7 @@ func readOrParseSSH(fn string) (interface{}, error) {
 
 func TestRead(t *testing.T) {
 	var err error
-	var key interface{}
+	var key any
 
 	for fn, td := range files {
 		t.Run(fn, func(t *testing.T) {
@@ -385,7 +385,7 @@ func TestParse(t *testing.T) {
 	type ParseTest struct {
 		in      []byte
 		opts    []Options
-		cmpType interface{}
+		cmpType any
 		err     error
 	}
 	tests := map[string]func(t *testing.T) *ParseTest{
@@ -546,89 +546,89 @@ func TestParse(t *testing.T) {
 //nolint:staticcheck // required for legacy compatibility
 func TestSerialize(t *testing.T) {
 	tests := map[string]struct {
-		in    func() (interface{}, error)
+		in    func() (any, error)
 		pass  string
 		pkcs8 bool
 		file  string
 		err   error
 	}{
 		"unrecognized key type": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return "shake and bake", nil
 			},
 			err: errors.New("cannot serialize type 'string', value 'shake and bake'"),
 		},
 		"RSA Private Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("RSA", "", 2048)
 			},
 		},
 		"RSA Public Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				pub, _, err := keyutil.GenerateKeyPair("RSA", "", 2048)
 				return pub, err
 			},
 		},
 		"EC Private Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 		},
 		"EC Private Key success - encrypt input data": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 			pass: "pass",
 		},
 		"EC Private Key success - encrypt pkcs8 data": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 			pass:  "pass",
 			pkcs8: true,
 		},
 		"EC Public Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				pub, _, err := keyutil.GenerateKeyPair("EC", "P-256", 0)
 				return pub, err
 			},
 		},
 		"OKP Private Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("OKP", "Ed25519", 0)
 			},
 		},
 		"OKP Public Key success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				pub, _, err := keyutil.GenerateKeyPair("OKP", "Ed25519", 0)
 				return pub, err
 			},
 		},
 		"X.509 Certificate success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return ReadCertificate("testdata/ca.crt")
 			},
 		},
 		"X.509 Certificate request success": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return &x509.CertificateRequest{}, nil
 			},
 		},
 		"propagate open key out file error": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 			file: "./fakeDir/test.key",
 			err:  errors.New("error writing ./fakeDir/test.key: no such file or directory"),
 		},
 		"ToFile Success (EC Private Key unencrypted)": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 			file: "./test.key",
 		},
 		"ToFile Success (EC Private Key encrypted)": {
-			in: func() (interface{}, error) {
+			in: func() (any, error) {
 				return keyutil.GenerateKey("EC", "P-256", 0)
 			},
 			pass: "pass",
@@ -806,7 +806,7 @@ func TestParseDER(t *testing.T) {
 	edPrivDer, err := os.ReadFile("testdata/pkcs8/openssl.ed25519.der")
 	require.NoError(t, err)
 
-	toDER := func(k interface{}) []byte {
+	toDER := func(k any) []byte {
 		switch k := k.(type) {
 		case *rsa.PublicKey, *ecdsa.PublicKey:
 			b, err := x509.MarshalPKIXPublicKey(k)
@@ -830,7 +830,7 @@ func TestParseDER(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{"rsa public key", args{toDER(rsaKey.Public())}, rsaKey.Public(), false},
@@ -857,7 +857,7 @@ func TestParseDER(t *testing.T) {
 }
 
 func TestParseKey(t *testing.T) {
-	var key interface{}
+	var key any
 	for fn, td := range files {
 		// skip ssh public keys
 		if strings.HasPrefix(fn, "testdata/openssh") && strings.HasSuffix(fn, ".pub.pem") {
@@ -922,7 +922,7 @@ func TestParseKey_x509(t *testing.T) {
 }
 
 func TestParseSSH(t *testing.T) {
-	var key interface{}
+	var key any
 	for fn, td := range files {
 		if !strings.HasPrefix(fn, "testdata/openssh") || !strings.HasSuffix(fn, ".pub.pem") {
 			continue
@@ -995,7 +995,7 @@ func TestOpenSSH(t *testing.T) {
 }
 
 func TestRead_options(t *testing.T) {
-	mustKey := func(filename string) interface{} {
+	mustKey := func(filename string) any {
 		b, err := os.ReadFile(filename)
 		require.NoError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
@@ -1011,7 +1011,7 @@ func TestRead_options(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{"withPassword", args{"testdata/openssl.p256.enc.pem", []Options{WithPassword([]byte("mypassword"))}}, p256Key, false},
@@ -1117,7 +1117,7 @@ func TestWithMinLengthPasswordFile(t *testing.T) {
 }
 
 func TestRead_promptPassword(t *testing.T) {
-	mustKey := func(filename string) interface{} {
+	mustKey := func(filename string) any {
 		b, err := os.ReadFile(filename)
 		require.NoError(t, err)
 		key, err := ssh.ParseRawPrivateKey(b)
@@ -1133,7 +1133,7 @@ func TestRead_promptPassword(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{"PromptPassword", args{"testdata/openssl.p256.enc.pem", func(s string) ([]byte, error) {
@@ -1163,26 +1163,27 @@ func TestRead_promptPassword(t *testing.T) {
 }
 
 func TestParseCertificateRequest(t *testing.T) {
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), []byte{
+		0x04,
+		// X
+		0x8a, 0x8f, 0x43, 0x2f, 0x2b, 0xa0, 0x94, 0xcc,
+		0x5a, 0x91, 0x2d, 0xf0, 0xd3, 0x40, 0xd4, 0x29,
+		0xd1, 0x9b, 0x79, 0x75, 0xc1, 0xd8, 0xc7, 0xe0,
+		0xea, 0xd5, 0x68, 0x7d, 0xe5, 0xd8, 0x6a, 0x7f,
+		// Y
+		0x51, 0x6e, 0xf7, 0xed, 0x66, 0xe7, 0xe2, 0xca,
+		0x92, 0x00, 0x56, 0xa1, 0x99, 0xa8, 0xee, 0xc2,
+		0x47, 0xd1, 0x1b, 0x92, 0x8c, 0x87, 0x6f, 0xfe,
+		0xc6, 0x70, 0xa4, 0x1a, 0xe4, 0x76, 0x7d, 0xac,
+	})
+	require.NoError(t, err)
+
 	expected := &x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName: "hello.smallstep.com",
 			Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "hello.smallstep.com"}},
 		},
-		PublicKey: &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X: new(big.Int).SetBytes([]byte{
-				0x8a, 0x8f, 0x43, 0x2f, 0x2b, 0xa0, 0x94, 0xcc,
-				0x5a, 0x91, 0x2d, 0xf0, 0xd3, 0x40, 0xd4, 0x29,
-				0xd1, 0x9b, 0x79, 0x75, 0xc1, 0xd8, 0xc7, 0xe0,
-				0xea, 0xd5, 0x68, 0x7d, 0xe5, 0xd8, 0x6a, 0x7f,
-			}),
-			Y: new(big.Int).SetBytes([]byte{
-				0x51, 0x6e, 0xf7, 0xed, 0x66, 0xe7, 0xe2, 0xca,
-				0x92, 0x00, 0x56, 0xa1, 0x99, 0xa8, 0xee, 0xc2,
-				0x47, 0xd1, 0x1b, 0x92, 0x8c, 0x87, 0x6f, 0xfe,
-				0xc6, 0x70, 0xa4, 0x1a, 0xe4, 0x76, 0x7d, 0xac,
-			}),
-		},
+		PublicKey:          pub,
 		PublicKeyAlgorithm: x509.ECDSA,
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		Signature: []byte{
@@ -1240,26 +1241,27 @@ func TestParseCertificateRequest(t *testing.T) {
 }
 
 func TestReadCertificateRequest(t *testing.T) {
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), []byte{
+		0x04,
+		// X
+		0x8a, 0x8f, 0x43, 0x2f, 0x2b, 0xa0, 0x94, 0xcc,
+		0x5a, 0x91, 0x2d, 0xf0, 0xd3, 0x40, 0xd4, 0x29,
+		0xd1, 0x9b, 0x79, 0x75, 0xc1, 0xd8, 0xc7, 0xe0,
+		0xea, 0xd5, 0x68, 0x7d, 0xe5, 0xd8, 0x6a, 0x7f,
+		// Y
+		0x51, 0x6e, 0xf7, 0xed, 0x66, 0xe7, 0xe2, 0xca,
+		0x92, 0x00, 0x56, 0xa1, 0x99, 0xa8, 0xee, 0xc2,
+		0x47, 0xd1, 0x1b, 0x92, 0x8c, 0x87, 0x6f, 0xfe,
+		0xc6, 0x70, 0xa4, 0x1a, 0xe4, 0x76, 0x7d, 0xac,
+	})
+	require.NoError(t, err)
+
 	expected := &x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName: "hello.smallstep.com",
 			Names:      []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "hello.smallstep.com"}},
 		},
-		PublicKey: &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X: new(big.Int).SetBytes([]byte{
-				0x8a, 0x8f, 0x43, 0x2f, 0x2b, 0xa0, 0x94, 0xcc,
-				0x5a, 0x91, 0x2d, 0xf0, 0xd3, 0x40, 0xd4, 0x29,
-				0xd1, 0x9b, 0x79, 0x75, 0xc1, 0xd8, 0xc7, 0xe0,
-				0xea, 0xd5, 0x68, 0x7d, 0xe5, 0xd8, 0x6a, 0x7f,
-			}),
-			Y: new(big.Int).SetBytes([]byte{
-				0x51, 0x6e, 0xf7, 0xed, 0x66, 0xe7, 0xe2, 0xca,
-				0x92, 0x00, 0x56, 0xa1, 0x99, 0xa8, 0xee, 0xc2,
-				0x47, 0xd1, 0x1b, 0x92, 0x8c, 0x87, 0x6f, 0xfe,
-				0xc6, 0x70, 0xa4, 0x1a, 0xe4, 0x76, 0x7d, 0xac,
-			}),
-		},
+		PublicKey:          pub,
 		PublicKeyAlgorithm: x509.ECDSA,
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		Signature: []byte{

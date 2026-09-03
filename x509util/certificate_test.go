@@ -223,13 +223,13 @@ func TestNewCertificate(t *testing.T) {
 			SANsKey: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 			},
-			TokenKey: map[string]interface{}{
+			TokenKey: map[string]any{
 				"iss": "https://iss",
 				"sub": "sub",
 				"nbf": now.Unix(),
 			},
-			WebhooksKey: map[string]interface{}{
-				"Test": map[string]interface{}{
+			WebhooksKey: map[string]any{
+				"Test": map[string]any{
 					"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
 				},
 			},
@@ -294,7 +294,7 @@ func TestNewCertificate(t *testing.T) {
 			SANsKey: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 			},
-			TokenKey: map[string]interface{}{
+			TokenKey: map[string]any{
 				"iss": "https://iss",
 				"sub": "sub",
 			},
@@ -366,7 +366,7 @@ func TestNewCertificate(t *testing.T) {
 }
 
 func TestNewCertificateTemplate(t *testing.T) {
-	marshal := func(t *testing.T, value interface{}, params string) []byte {
+	marshal := func(t *testing.T, value any, params string) []byte {
 		t.Helper()
 		b, err := asn1.MarshalWithParams(value, params)
 		assert.NoError(t, err)
@@ -578,13 +578,13 @@ func TestNewCertificateFromX509(t *testing.T) {
 			SANsKey: []SubjectAlternativeName{
 				{Type: "dns", Value: "foo.com"},
 			},
-			TokenKey: map[string]interface{}{
+			TokenKey: map[string]any{
 				"iss": "https://iss",
 				"sub": "sub",
 				"nbf": now.Unix(),
 			},
-			WebhooksKey: map[string]interface{}{
-				"Test": map[string]interface{}{
+			WebhooksKey: map[string]any{
+				"Test": map[string]any{
 					"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
 				},
 			},
@@ -691,7 +691,7 @@ func TestCertificate_GetCertificate(t *testing.T) {
 		NameConstraints       *NameConstraints
 		SignatureAlgorithm    SignatureAlgorithm
 		PublicKeyAlgorithm    x509.PublicKeyAlgorithm
-		PublicKey             interface{}
+		PublicKey             any
 	}
 	tests := []struct {
 		name   string

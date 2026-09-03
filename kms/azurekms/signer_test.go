@@ -20,9 +20,9 @@ import (
 	"go.step.sm/crypto/kms/apiv1"
 )
 
-type FuncMatcher func(x interface{}) bool
+type FuncMatcher func(x any) bool
 
-func (f FuncMatcher) Matches(x interface{}) bool {
+func (f FuncMatcher) Matches(x any) bool {
 	return f(x)
 }
 
@@ -262,7 +262,7 @@ func TestSigner_Sign(t *testing.T) {
 	}
 	for _, e := range expects {
 		ee := e
-		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x interface{}) bool {
+		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x any) bool {
 			p, ok := x.(azkeys.SignParameters)
 			return ok && *p.Algorithm == ee.alg && bytes.Equal(p.Value, ee.digest)
 		}), nil).Return(e.result, e.err)
@@ -445,7 +445,7 @@ func TestSigner_Sign_signWithRetry(t *testing.T) {
 	}
 	for _, e := range expects {
 		ee := e
-		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x interface{}) bool {
+		client.EXPECT().Sign(gomock.Any(), "my-key", e.keyVersion, FuncMatcher(func(x any) bool {
 			p, ok := x.(azkeys.SignParameters)
 			return ok && *p.Algorithm == ee.alg && bytes.Equal(p.Value, ee.digest)
 		}), nil).Return(e.result, e.err)

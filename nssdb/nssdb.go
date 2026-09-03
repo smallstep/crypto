@@ -485,7 +485,7 @@ func (db *NSSDB) getObjectID(ctx context.Context) (uint32, error) {
 		return 0, fmt.Errorf("failed converting timestamp to uint32: %w", err)
 	}
 
-	for i := 0; i < 0x40000000; i++ {
+	for range 0x40000000 {
 		id &= 0x3fffffff
 		if id == 0 {
 			continue

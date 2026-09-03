@@ -365,13 +365,13 @@ func TestKMS_DeleteKey_tpm(t *testing.T) {
 	}{
 		{"ok key", km, args{&apiv1.DeleteKeyRequest{
 			Name: "kms:name=key-1",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, keyErr := stpm.GetKey(ctx, "key-1")
 			return assert.NoError(t, err) && assert.Error(t, keyErr)
 		}},
 		{"ok ak", km, args{&apiv1.DeleteKeyRequest{
 			Name: "kms:name=ak-1;ak=true",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			_, akErr := stpm.GetAK(ctx, "ak-1")
 			return assert.NoError(t, err) && assert.Error(t, akErr)
 		}},
@@ -486,7 +486,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 		{"ok", km, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=key-1",
 			Certificate: keyChain1[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetKey(ctx, "key-1")
 			require.NoError(t, err)
 			return assert.Equal(t, keyChain1[0], k.Certificate())
@@ -494,7 +494,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 		{"ok overwrite", km, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=key-1",
 			Certificate: keyChain2[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetKey(ctx, "key-1")
 			require.NoError(t, err)
 			return assert.Equal(t, keyChain2[0], k.Certificate())
@@ -502,7 +502,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 		{"ok ak", km, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=ak-1;ak=true",
 			Certificate: akChain1[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 			return assert.Equal(t, akChain1[0], k.Certificate())
@@ -510,7 +510,7 @@ func TestKMS_StoreCertificate_tpm(t *testing.T) {
 		{"ok ak overwrite", km, args{&apiv1.StoreCertificateRequest{
 			Name:        "kms:name=ak-1;ak=true",
 			Certificate: akChain2[0],
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 			return assert.Equal(t, akChain2[0], k.Certificate())
@@ -632,7 +632,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 		{"ok", km, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=key-1",
 			CertificateChain: keyChain1,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetKey(ctx, "key-1")
 			require.NoError(t, err)
 			return assert.Equal(t, keyChain1[0], k.Certificate()) &&
@@ -641,7 +641,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 		{"ok overwrite", km, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=key-1",
 			CertificateChain: keyChain2,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetKey(ctx, "key-1")
 			require.NoError(t, err)
 			return assert.Equal(t, keyChain2[0], k.Certificate()) &&
@@ -650,7 +650,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 		{"ok ak", km, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=ak-1;ak=true",
 			CertificateChain: akChain1,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 			return assert.Equal(t, akChain1[0], k.Certificate()) &&
@@ -659,7 +659,7 @@ func TestKMS_StoreCertificateChain_tpm(t *testing.T) {
 		{"ok ak overwrite", km, args{&apiv1.StoreCertificateChainRequest{
 			Name:             "kms:name=ak-1;ak=true",
 			CertificateChain: akChain2,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 			return assert.Equal(t, akChain2[0], k.Certificate()) &&
@@ -717,14 +717,14 @@ func TestKMS_DeleteCertificate_tpm(t *testing.T) {
 	}{
 		{"ok", km, args{&apiv1.DeleteCertificateRequest{
 			Name: "kms:name=key-1",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetKey(ctx, "key-1")
 			require.NoError(t, err)
 			return assert.Nil(t, k.Certificate()) && assert.Nil(t, k.CertificateChain())
 		}},
 		{"ok ak", km, args{&apiv1.DeleteCertificateRequest{
 			Name: "kms:name=ak-1;ak=true",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			k, err := stpm.GetAK(ctx, "ak-1")
 			require.NoError(t, err)
 			return assert.Nil(t, k.Certificate()) && assert.Nil(t, k.CertificateChain())

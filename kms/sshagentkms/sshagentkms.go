@@ -124,8 +124,8 @@ func NewWrappedSignerFromSSHSigner(signer ssh.Signer) crypto.Signer {
 }
 
 func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
-	if strings.HasPrefix(signingKey, "sshagentkms:") {
-		var key = strings.TrimPrefix(signingKey, "sshagentkms:")
+	if after, ok := strings.CutPrefix(signingKey, "sshagentkms:"); ok {
+		var key = after
 
 		l, err := k.agentClient.List()
 		if err != nil {

@@ -117,14 +117,14 @@ func TestDecrypterDecrypts(t *testing.T) {
 	})
 
 	t.Run("fail/pkcs15", func(t *testing.T) {
-		plain, err := d256.Decrypt(nil, encSHA256, &rsa.PKCS1v15DecryptOptions{})
-		require.EqualError(t, err, "failed determining decryption algorithm: awskms does not support PKCS #1 v1.5 decryption")
+		plain, err := d256.Decrypt(nil, encSHA256, &rsa.PKCS1v15DecryptOptions{}) //nolint:staticcheck // test with deprecated type
+		require.EqualError(t, err, "failed determining decryption algorithm: invalid or unsupported decrypter options type *rsa.PKCS1v15DecryptOptions")
 		require.Empty(t, plain)
 	})
 
 	t.Run("fail/invalid-options", func(t *testing.T) {
 		plain, err := d256.Decrypt(nil, encSHA256, struct{}{})
-		require.EqualError(t, err, "failed determining decryption algorithm: invalid decrypter options type struct {}")
+		require.EqualError(t, err, "failed determining decryption algorithm: invalid or unsupported decrypter options type struct {}")
 		require.Empty(t, plain)
 	})
 

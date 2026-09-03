@@ -16,11 +16,9 @@ func benchmarkSign(b *testing.B, signer crypto.Signer, opts crypto.SignerOpts) {
 	h := hash.New()
 	h.Write([]byte("buggy-coheir-RUBRIC-rabbet-liberal-eaglet-khartoum-stagger"))
 	digest := h.Sum(nil)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = signer.Sign(rand.Reader, digest, opts)
 	}
-	b.StopTimer()
 }
 
 func BenchmarkSignRSA(b *testing.B) {

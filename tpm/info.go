@@ -18,7 +18,7 @@ type Info struct {
 	Interface       Interface       `json:"interface"`
 	Manufacturer    Manufacturer    `json:"manufacturer"`
 	VendorInfo      string          `json:"vendorInfo,omitempty"`
-	FirmwareVersion FirmwareVersion `json:"firmwareVersion,omitempty"`
+	FirmwareVersion FirmwareVersion `json:"firmwareVersion"`
 }
 
 // Version models the TPM specification version supported
