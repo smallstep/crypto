@@ -86,7 +86,7 @@ func TestKMS_SearchCertificates_mackms(t *testing.T) {
 	}{
 		{"not implemented", platformKMS, args{&apiv1.SearchCertificatesRequest{
 			Name: "kms:",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}
@@ -120,7 +120,7 @@ func TestKMS_CleanupCredentials_mackms(t *testing.T) {
 		{"not implemented", platformKMS, args{&apiv1.CleanupCredentialsRequest{
 			Name:       "kms:issuer=" + chain[0].Issuer.CommonName,
 			RawSubject: chain[0].RawSubject,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}

@@ -330,13 +330,13 @@ func Test_notFoundError(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"nil", args{nil}, assert.NoError},
-		{"tpm not found", args{tpm.ErrNotFound}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		{"tpm not found", args{tpm.ErrNotFound}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, i...)
 		}},
-		{"tpm not found wrapped", args{fmt.Errorf("some error: %w", tpm.ErrNotFound)}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		{"tpm not found wrapped", args{fmt.Errorf("some error: %w", tpm.ErrNotFound)}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, i...)
 		}},
-		{"other", args{tpm.ErrExists}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		{"other", args{tpm.ErrExists}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.False(t, errors.Is(err, apiv1.NotFoundError{}), i...)
 		}},
 	}

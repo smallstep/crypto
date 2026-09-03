@@ -153,7 +153,7 @@ func TestNewCertificate(t *testing.T) {
 			PrincipalsKey: []string{"john", "john@doe.com"},
 			ExtensionsKey: DefaultExtensions(UserCert),
 			InsecureKey: TemplateData{
-				"User": map[string]interface{}{"username": "john"},
+				"User": map[string]any{"username": "john"},
 			},
 		})}}, &Certificate{
 			Nonce:           nil,
@@ -183,10 +183,10 @@ func TestNewCertificate(t *testing.T) {
 			PrincipalsKey: []string{"john", "john@doe.com"},
 			ExtensionsKey: DefaultExtensions(UserCert),
 			InsecureKey: TemplateData{
-				"User": map[string]interface{}{"username": "john"},
+				"User": map[string]any{"username": "john"},
 			},
 			WebhooksKey: TemplateData{
-				"Test": map[string]interface{}{"validity": "16h"},
+				"Test": map[string]any{"validity": "16h"},
 			},
 		})}}, &Certificate{
 			Nonce:           nil,

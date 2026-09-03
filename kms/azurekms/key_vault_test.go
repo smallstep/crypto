@@ -360,12 +360,12 @@ func TestKeyVault_CreateKey(t *testing.T) {
 	m := mockClient(t)
 	for _, e := range expects {
 		m.EXPECT().CreateKey(gomock.Any(), "my-key", azkeys.CreateKeyParameters{
-			Kty:     pointer(e.Kty),
+			Kty:     new(e.Kty),
 			KeySize: e.KeySize,
-			Curve:   pointer(e.Curve),
+			Curve:   new(e.Curve),
 			KeyOps: []*azkeys.KeyOperation{
-				pointer(azkeys.KeyOperationSign),
-				pointer(azkeys.KeyOperationVerify),
+				new(azkeys.KeyOperationSign),
+				new(azkeys.KeyOperationVerify),
 			},
 			KeyAttributes: &azkeys.KeyAttributes{
 				Enabled:   &valueTrue,

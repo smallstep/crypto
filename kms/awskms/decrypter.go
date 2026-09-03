@@ -55,7 +55,7 @@ func (d *Decrypter) preloadKey() error {
 	defer cancel()
 
 	resp, err := d.client.GetPublicKey(ctx, &kms.GetPublicKeyInput{
-		KeyId: pointer(d.keyID),
+		KeyId: new(d.keyID),
 	})
 	if err != nil {
 		return fmt.Errorf("awskms GetPublicKey failed: %w", err)
@@ -85,7 +85,7 @@ func (d *Decrypter) Decrypt(_ io.Reader, ciphertext []byte, opts crypto.Decrypte
 	}
 
 	req := &kms.DecryptInput{
-		KeyId:               pointer(d.keyID),
+		KeyId:               new(d.keyID),
 		CiphertextBlob:      ciphertext,
 		EncryptionAlgorithm: algorithm,
 	}
@@ -123,10 +123,8 @@ func determineDecryptionAlgorithm(key crypto.PublicKey, opts crypto.DecrypterOpt
 			return "", err
 		}
 		rsaOpts = o
-	case *rsa.PKCS1v15DecryptOptions:
-		return "", errors.New("awskms does not support PKCS #1 v1.5 decryption")
 	default:
-		return "", fmt.Errorf("invalid decrypter options type %T", opts)
+		return "", fmt.Errorf("invalid or unsupported decrypter options type %T", opts)
 	}
 
 	switch bitSize := pub.Size() * 8; bitSize {

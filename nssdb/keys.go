@@ -2,13 +2,11 @@ package nssdb
 
 import (
 	"context"
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"math/big"
 
 	"golang.org/x/crypto/cryptobyte"
 
@@ -43,21 +41,15 @@ func (obj Object) ToECPublicKey() (*ecdsa.PublicKey, error) {
 	}
 
 	// TODO(areed) parse curve from CKA_EC_PARAMS
-	pk, err := ecdh.P256().NewPublicKey(ecPoint)
-	if err != nil {
-		return nil, fmt.Errorf("parse CKA_EC_POINT: %w", err)
-	}
-	rawKey := pk.Bytes()
-
-	return &ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     big.NewInt(0).SetBytes(rawKey[1:33]),
-		Y:     big.NewInt(0).SetBytes(rawKey[33:]),
-	}, nil
+	return ecdsa.ParseUncompressedPublicKey(elliptic.P256(), ecPoint)
 }
 
 func ecPubKeyToObject(pub *ecdsa.PublicKey, id []byte) (*Object, error) {
-	uncompressedPoint := append(append([]byte{0x04}, pub.X.Bytes()...), pub.Y.Bytes()...)
+	uncompressedPoint, err := pub.Bytes()
+	if err != nil {
+		return nil, err
+	}
+
 	var b cryptobyte.Builder
 	b.AddASN1OctetString(uncompressedPoint)
 	ecPoint, err := b.Bytes()
@@ -111,11 +103,14 @@ type privateKeySubject struct {
 }
 
 func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs ...string) (*Object, error) {
-	pubKey, ok := priv.Public().(*ecdsa.PublicKey)
-	if !ok {
-		return nil, errors.New("failed to get ecdsa public key")
+	d, err := priv.Bytes()
+	if err != nil {
+		return nil, err
 	}
-	pubKeyBytes := append(append([]byte{0x04}, pubKey.X.Bytes()...), pubKey.Y.Bytes()...)
+	uncompressedPoint, err := priv.PublicKey.Bytes()
+	if err != nil {
+		return nil, err
+	}
 
 	obj := &Object{
 		ULongAttributes: map[string]uint32{
@@ -123,7 +118,7 @@ func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs .
 			"CKA_KEY_TYPE": CKK_EC,
 		},
 		Attributes: map[string][]byte{
-			"CKA_VALUE":             priv.D.Bytes(),
+			"CKA_VALUE":             d,
 			"CKA_UNWRAP":            {0},
 			"CKA_SIGN_RECOVER":      {1},
 			"CKA_SENSITIVE":         {1},
@@ -138,7 +133,7 @@ func ecPrivKeyToObject(priv *ecdsa.PrivateKey, name string, id []byte, certCNs .
 			"CKA_SIGN":              {1},
 			"CKA_LOCAL":             {0},
 			"CKA_EC_PARAMS":         ecParams,
-			"CKA_NSS_DB":            pubKeyBytes,
+			"CKA_NSS_DB":            uncompressedPoint,
 			"CKA_TOKEN":             {1},
 			"CKA_LABEL":             []byte(name),
 			"CKA_ALWAYS_SENSITIVE":  {0},

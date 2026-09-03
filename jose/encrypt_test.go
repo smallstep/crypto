@@ -354,7 +354,7 @@ func TestDecrypt(t *testing.T) {
 	encryptedData := []byte(s)
 
 	// Create wrong encrypted data
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	if err := json.Unmarshal([]byte(jwe.FullSerialize()), &m); err != nil {
 		t.Fatal(err)
 	}

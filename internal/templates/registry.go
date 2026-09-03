@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"sync"
 	"text/template"
@@ -88,9 +89,7 @@ func (r *Registry) Unregister(name string) bool {
 func (r *Registry) Apply(funcMap template.FuncMap) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for name, fn := range r.funcs {
-		funcMap[name] = fn
-	}
+	maps.Copy(funcMap, r.funcs)
 }
 
 // validName reports whether name is a valid Go identifier, as required by

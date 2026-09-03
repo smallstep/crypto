@@ -39,7 +39,7 @@ type KeyManagementClient interface {
 
 // customerMasterKeySpecMapping is a mapping between the step signature algorithm,
 // and bits for RSA keys, with awskms CustomerMasterKeySpec.
-var customerMasterKeySpecMapping = map[apiv1.SignatureAlgorithm]interface{}{
+var customerMasterKeySpecMapping = patchSignatureAlgorithmMapping(map[apiv1.SignatureAlgorithm]any{
 	apiv1.UnspecifiedSignAlgorithm: types.KeySpecEccNistP256,
 	apiv1.SHA256WithRSA: map[int]types.KeySpec{
 		0:    types.KeySpecRsa3072,
@@ -80,7 +80,8 @@ var customerMasterKeySpecMapping = map[apiv1.SignatureAlgorithm]interface{}{
 	apiv1.ECDSAWithSHA256: types.KeySpecEccNistP256,
 	apiv1.ECDSAWithSHA384: types.KeySpecEccNistP384,
 	apiv1.ECDSAWithSHA512: types.KeySpecEccNistP521,
-}
+	apiv1.PureEd25519:     types.KeySpecEccNistEdwards25519,
+})
 
 // New creates a new AWSKMS. By default, clients will be created using the
 // credentials in `~/.aws/credentials`, but this can be overridden using the
@@ -179,12 +180,12 @@ func (k *KMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyResponse, 
 	}
 
 	tag := types.Tag{
-		TagKey:   pointer("name"),
-		TagValue: pointer(keyName),
+		TagKey:   new("name"),
+		TagValue: new(keyName),
 	}
 
 	input := &kms.CreateKeyInput{
-		Description: pointer(keyName),
+		Description: new(keyName),
 		KeySpec:     keySpec,
 		Tags:        []types.Tag{tag},
 		KeyUsage:    types.KeyUsageTypeSignVerify,
@@ -229,8 +230,8 @@ func (k *KMS) createKeyAlias(keyID, alias string) error {
 	defer cancel()
 
 	_, err := k.client.CreateAlias(ctx, &kms.CreateAliasInput{
-		AliasName:   pointer("alias/" + alias + "-" + keyID[:8]),
-		TargetKeyId: pointer(keyID),
+		AliasName:   new("alias/" + alias + "-" + keyID[:8]),
+		TargetKeyId: new(keyID),
 	})
 	if err != nil {
 		return errors.Wrap(err, "awskms CreateAlias failed")
@@ -249,10 +250,6 @@ func (k *KMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, error
 // Close closes the connection of the KMS client.
 func (k *KMS) Close() error {
 	return nil
-}
-
-func pointer[T any](v T) *T {
-	return &v
 }
 
 func defaultContext() (context.Context, context.CancelFunc) {

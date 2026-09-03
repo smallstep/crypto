@@ -410,7 +410,7 @@ func TestMacKMS_CreateKey(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", &MacKMS{}, args{&apiv1.CreateKeyRequest{Name: "mackms:label=test-p256"}},
-			func(tt require.TestingT, i1 interface{}, i2 ...interface{}) {
+			func(tt require.TestingT, i1 any, i2 ...any) {
 				require.IsType(tt, &apiv1.CreateKeyResponse{}, i1)
 				resp := i1.(*apiv1.CreateKeyResponse)
 				require.NotEmpty(tt, resp.Name)
@@ -425,7 +425,7 @@ func TestMacKMS_CreateKey(t *testing.T) {
 				require.NotEmpty(tt, u.hash)
 			}, assert.NoError},
 		{"ok no tag", &MacKMS{}, args{&apiv1.CreateKeyRequest{Name: "mackms:label=test-p256-2;tag="}},
-			func(tt require.TestingT, i1 interface{}, i2 ...interface{}) {
+			func(tt require.TestingT, i1 any, i2 ...any) {
 				require.IsType(tt, &apiv1.CreateKeyResponse{}, i1)
 				resp := i1.(*apiv1.CreateKeyResponse)
 				require.NotEmpty(tt, resp.Name)
@@ -472,7 +472,7 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 		}))
 	})
 
-	assertSigner := func(tt require.TestingT, i1 interface{}, i2 ...interface{}) {
+	assertSigner := func(tt require.TestingT, i1 any, i2 ...any) {
 		require.IsType(tt, &Signer{}, i1)
 		signer := i1.(crypto.Signer)
 		require.Equal(tt, resp.PublicKey, signer.Public())
@@ -759,13 +759,15 @@ func Test_parseECDSAPrivateKey(t *testing.T) {
 	require.NoError(t, err)
 
 	marshal := func(k *ecdsa.PrivateKey) []byte {
+		priv, err := k.Bytes()
+		require.NoError(t, err)
+		pub, err := k.PublicKey.Bytes()
+		require.NoError(t, err)
 		byteLen := (k.Curve.Params().BitSize + 7) / 8
-		ret := make([]byte, 1+3*byteLen)
-		ret[0] = 4 // uncompressed point
-		k.X.FillBytes(ret[1 : 1+byteLen])
-		k.Y.FillBytes(ret[1+byteLen : 1+2*byteLen])
-		k.D.FillBytes(ret[1+2*byteLen:])
-		return ret
+		b := make([]byte, 1+3*byteLen)
+		copy(b, pub)
+		copy(b[1+2*byteLen:], priv)
+		return b
 	}
 	zeroKey := func(size int) []byte {
 		return make([]byte, size)
@@ -2059,22 +2061,22 @@ func Test_apiv1Error(t *testing.T) {
 		args      args
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok not found", args{security.ErrNotFound}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok not found", args{security.ErrNotFound}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msg...)
 		}},
-		{"ok not found wrapped", args{fmt.Errorf("something happened: %w", security.ErrNotFound)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok not found wrapped", args{fmt.Errorf("something happened: %w", security.ErrNotFound)}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.NotFoundError{}, msg...)
 		}},
-		{"ok already exists", args{security.ErrAlreadyExists}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok already exists", args{security.ErrAlreadyExists}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.AlreadyExistsError{}, msg...)
 		}},
-		{"ok already exists wrapped", args{fmt.Errorf("something happened: %w", security.ErrAlreadyExists)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok already exists wrapped", args{fmt.Errorf("something happened: %w", security.ErrAlreadyExists)}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, apiv1.AlreadyExistsError{}, msg...)
 		}},
-		{"ok other", args{io.ErrUnexpectedEOF}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok other", args{io.ErrUnexpectedEOF}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, io.ErrUnexpectedEOF, msg...)
 		}},
-		{"ok other wrapped", args{fmt.Errorf("something happened: %w", io.ErrUnexpectedEOF)}, func(t assert.TestingT, err error, msg ...interface{}) bool {
+		{"ok other wrapped", args{fmt.Errorf("something happened: %w", io.ErrUnexpectedEOF)}, func(t assert.TestingT, err error, msg ...any) bool {
 			return assert.ErrorIs(t, err, io.ErrUnexpectedEOF, msg...)
 		}},
 	}

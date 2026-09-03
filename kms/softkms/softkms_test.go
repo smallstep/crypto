@@ -181,49 +181,49 @@ func TestSoftKMS_CreateKey(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        args
-		generateKey func() (interface{}, interface{}, error)
+		generateKey func() (any, any, error)
 		want        *apiv1.CreateKeyResponse
 		wantParams  params
 		wantErr     bool
 	}{
-		{"p256", args{&apiv1.CreateKeyRequest{Name: "p256", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (interface{}, interface{}, error) {
+		{"p256", args{&apiv1.CreateKeyRequest{Name: "p256", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (any, any, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "p256", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256, SigningKey: "p256"}}, params{"EC", "P-256", 0}, false},
-		{"rsa", args{&apiv1.CreateKeyRequest{Name: "rsa3072", SignatureAlgorithm: apiv1.SHA256WithRSA}}, func() (interface{}, interface{}, error) {
+		{"rsa", args{&apiv1.CreateKeyRequest{Name: "rsa3072", SignatureAlgorithm: apiv1.SHA256WithRSA}}, func() (any, any, error) {
 			return rsa2048.Public(), rsa2048, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "rsa3072", PublicKey: rsa2048.Public(), PrivateKey: rsa2048, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: rsa2048, SigningKey: "rsa3072"}}, params{"RSA", "", 0}, false},
-		{"rsa2048", args{&apiv1.CreateKeyRequest{Name: "rsa2048", SignatureAlgorithm: apiv1.SHA256WithRSA, Bits: 2048}}, func() (interface{}, interface{}, error) {
+		{"rsa2048", args{&apiv1.CreateKeyRequest{Name: "rsa2048", SignatureAlgorithm: apiv1.SHA256WithRSA, Bits: 2048}}, func() (any, any, error) {
 			return rsa2048.Public(), rsa2048, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "rsa2048", PublicKey: rsa2048.Public(), PrivateKey: rsa2048, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: rsa2048, SigningKey: "rsa2048"}}, params{"RSA", "", 2048}, false},
-		{"rsaPSS2048", args{&apiv1.CreateKeyRequest{Name: "rsa2048", SignatureAlgorithm: apiv1.SHA256WithRSAPSS, Bits: 2048}}, func() (interface{}, interface{}, error) {
+		{"rsaPSS2048", args{&apiv1.CreateKeyRequest{Name: "rsa2048", SignatureAlgorithm: apiv1.SHA256WithRSAPSS, Bits: 2048}}, func() (any, any, error) {
 			return rsa2048.Public(), rsa2048, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "rsa2048", PublicKey: rsa2048.Public(), PrivateKey: rsa2048, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: rsa2048, SigningKey: "rsa2048"}}, params{"RSA", "", 2048}, false},
-		{"ed25519", args{&apiv1.CreateKeyRequest{Name: "ed25519", SignatureAlgorithm: apiv1.PureEd25519}}, func() (interface{}, interface{}, error) {
+		{"ed25519", args{&apiv1.CreateKeyRequest{Name: "ed25519", SignatureAlgorithm: apiv1.PureEd25519}}, func() (any, any, error) {
 			return edpub, edpriv, nil
 		}, &apiv1.CreateKeyResponse{Name: "ed25519", PublicKey: edpub, PrivateKey: edpriv, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: edpriv, SigningKey: "ed25519"}}, params{"OKP", "Ed25519", 0}, false},
-		{"default", args{&apiv1.CreateKeyRequest{Name: "default"}}, func() (interface{}, interface{}, error) {
+		{"default", args{&apiv1.CreateKeyRequest{Name: "default"}}, func() (any, any, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256, SigningKey: "default"}}, params{"EC", "P-256", 0}, false},
-		{"uri", args{&apiv1.CreateKeyRequest{Name: "softkms:default"}}, func() (interface{}, interface{}, error) {
+		{"uri", args{&apiv1.CreateKeyRequest{Name: "softkms:default"}}, func() (any, any, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256, SigningKey: "default"}}, params{"EC", "P-256", 0}, false},
-		{"path uri", args{&apiv1.CreateKeyRequest{Name: "softkms:path=default"}}, func() (interface{}, interface{}, error) {
+		{"path uri", args{&apiv1.CreateKeyRequest{Name: "softkms:path=default"}}, func() (any, any, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, &apiv1.CreateKeyResponse{Name: "default", PublicKey: p256.Public(), PrivateKey: p256, CreateSignerRequest: apiv1.CreateSignerRequest{Signer: p256, SigningKey: "default"}}, params{"EC", "P-256", 0}, false},
-		{"fail algorithm", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.SignatureAlgorithm(100)}}, func() (interface{}, interface{}, error) {
+		{"fail algorithm", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.SignatureAlgorithm(100)}}, func() (any, any, error) {
 			return p256.Public(), p256, nil //nolint:gocritic // ignore eval order warning
 		}, nil, params{}, true},
-		{"fail generate key", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (interface{}, interface{}, error) {
+		{"fail generate key", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (any, any, error) {
 			return nil, nil, fmt.Errorf("an error")
 		}, nil, params{"EC", "P-256", 0}, true},
-		{"fail no signer", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (interface{}, interface{}, error) {
+		{"fail no signer", args{&apiv1.CreateKeyRequest{Name: "fail", SignatureAlgorithm: apiv1.ECDSAWithSHA256}}, func() (any, any, error) {
 			return 1, 2, nil
 		}, nil, params{"EC", "P-256", 0}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &SoftKMS{}
-			generateKey = func(kty, crv string, size int) (interface{}, interface{}, error) {
+			generateKey = func(kty, crv string, size int) (any, any, error) {
 				if tt.wantParams.kty != kty {
 					t.Errorf("GenerateKey() kty = %s, want %s", kty, tt.wantParams.kty)
 				}
@@ -316,8 +316,8 @@ func Test_generateKey(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      args
-		wantType  interface{}
-		wantType1 interface{}
+		wantType  any
+		wantType1 any
 		wantErr   bool
 	}{
 		{"rsa2048", args{"RSA", "", 0}, &rsa.PublicKey{}, &rsa.PrivateKey{}, false},

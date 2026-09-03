@@ -757,7 +757,7 @@ func TestValidateCaviumRoot(t *testing.T) {
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Referer", "https://www.marvell.com/products/security-solutions/nitrox-hs-adapters/software-key-attestation.html")
 	req.Header.Set("Accept-Language", "en-US")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

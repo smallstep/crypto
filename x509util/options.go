@@ -153,7 +153,7 @@ func asn1Encode(str string) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func asn1Marshal(v interface{}, params ...string) (string, error) {
+func asn1Marshal(v any, params ...string) (string, error) {
 	b, err := encoding_asn1.MarshalWithParams(v, strings.Join(params, ","))
 	if err != nil {
 		return "", err

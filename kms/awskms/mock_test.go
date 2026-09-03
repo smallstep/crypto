@@ -70,7 +70,7 @@ func getOKClient() *MockClient {
 		createKey: func(ctx context.Context, input *kms.CreateKeyInput, opts ...func(*kms.Options)) (*kms.CreateKeyOutput, error) {
 			return &kms.CreateKeyOutput{
 				KeyMetadata: &types.KeyMetadata{
-					KeyId: pointer(keyID),
+					KeyId: new(keyID),
 				},
 			}, nil
 		},

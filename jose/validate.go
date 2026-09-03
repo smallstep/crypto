@@ -19,7 +19,7 @@ import (
 
 // ValidateSSHPOP validates the given SSH certificate and key for use in an
 // sshpop header.
-func ValidateSSHPOP(certFile string, key interface{}) (string, error) {
+func ValidateSSHPOP(certFile string, key any) (string, error) {
 	if certFile == "" {
 		return "", errors.New("ssh certfile cannot be empty")
 	}
@@ -60,7 +60,7 @@ func validateKeyPair(pub crypto.PublicKey, priv crypto.PrivateKey) error {
 	}
 }
 
-func validateX5(certs []*x509.Certificate, key interface{}) error {
+func validateX5(certs []*x509.Certificate, key any) error {
 	if len(certs) == 0 {
 		return errors.New("certs cannot be empty")
 	}
@@ -78,7 +78,7 @@ func validateX5(certs []*x509.Certificate, key interface{}) error {
 
 // ValidateX5C validates the given certificate chain and key for use as a token
 // signer and x5t header.
-func ValidateX5C(certs []*x509.Certificate, key interface{}) ([]string, error) {
+func ValidateX5C(certs []*x509.Certificate, key any) ([]string, error) {
 	if err := validateX5(certs, key); err != nil {
 		return nil, errors.Wrap(err, "ValidateX5C")
 	}
@@ -91,7 +91,7 @@ func ValidateX5C(certs []*x509.Certificate, key interface{}) ([]string, error) {
 
 // ValidateX5T validates the given certificate and key for use as a token signer
 // and x5t header.
-func ValidateX5T(certs []*x509.Certificate, key interface{}) (string, error) {
+func ValidateX5T(certs []*x509.Certificate, key any) (string, error) {
 	if err := validateX5(certs, key); err != nil {
 		return "", errors.Wrap(err, "ValidateX5T")
 	}

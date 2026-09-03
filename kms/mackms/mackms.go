@@ -1628,26 +1628,13 @@ func parseECDSAPrivateKey(raw []byte) (crypto.PublicKey, error) {
 }
 
 func ecdhToECDSAPublicKey(key *ecdh.PublicKey) (*ecdsa.PublicKey, error) {
-	rawKey := key.Bytes()
 	switch key.Curve() {
 	case ecdh.P256():
-		return &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X:     big.NewInt(0).SetBytes(rawKey[1:33]),
-			Y:     big.NewInt(0).SetBytes(rawKey[33:]),
-		}, nil
+		return ecdsa.ParseUncompressedPublicKey(elliptic.P256(), key.Bytes())
 	case ecdh.P384():
-		return &ecdsa.PublicKey{
-			Curve: elliptic.P384(),
-			X:     big.NewInt(0).SetBytes(rawKey[1:49]),
-			Y:     big.NewInt(0).SetBytes(rawKey[49:]),
-		}, nil
+		return ecdsa.ParseUncompressedPublicKey(elliptic.P384(), key.Bytes())
 	case ecdh.P521():
-		return &ecdsa.PublicKey{
-			Curve: elliptic.P521(),
-			X:     big.NewInt(0).SetBytes(rawKey[1:67]),
-			Y:     big.NewInt(0).SetBytes(rawKey[67:]),
-		}, nil
+		return ecdsa.ParseUncompressedPublicKey(elliptic.P521(), key.Bytes())
 	default:
 		return nil, errors.New("failed to convert *ecdh.PublicKey to *ecdsa.PublicKey")
 	}

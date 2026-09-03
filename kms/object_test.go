@@ -34,7 +34,7 @@ func Test_object_FileMode(t *testing.T) {
 	pub, pemData := generateKey(t)
 	type fields struct {
 		Path    string
-		Object  interface{}
+		Object  any
 		pemData *bytes.Buffer
 	}
 	tests := []struct {
@@ -45,7 +45,7 @@ func Test_object_FileMode(t *testing.T) {
 		wantMode    fs.FileMode
 		wantModTime time.Time
 		wantIsDir   bool
-		wantSys     interface{}
+		wantSys     any
 	}{
 		{"ok", fields{"path", pub, pemData}, "path", int64(pemData.Len()), 0400, time.Time{}, false, pub},
 	}
@@ -82,7 +82,7 @@ func Test_object_load(t *testing.T) {
 	pub, pemData := generateKey(t)
 	type fields struct {
 		Path   string
-		Object interface{}
+		Object any
 	}
 	tests := []struct {
 		name        string
@@ -113,7 +113,7 @@ func Test_object_Stat(t *testing.T) {
 	pub, pemData := generateKey(t)
 	type fields struct {
 		Path   string
-		Object interface{}
+		Object any
 	}
 	tests := []struct {
 		name    string
@@ -154,7 +154,7 @@ func Test_object_Read(t *testing.T) {
 	pub, pemData := generateKey(t)
 	type fields struct {
 		Path   string
-		Object interface{}
+		Object any
 	}
 	type args struct {
 		b []byte

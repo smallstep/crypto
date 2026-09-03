@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -173,6 +175,8 @@ func Test_getSigningAlgorithm(t *testing.T) {
 		{"P256", args{&ecdsa.PublicKey{}, crypto.SHA256}, "ECDSA_SHA_256", false},
 		{"P384", args{&ecdsa.PublicKey{}, crypto.SHA384}, "ECDSA_SHA_384", false},
 		{"P521", args{&ecdsa.PublicKey{}, crypto.SHA512}, "ECDSA_SHA_512", false},
+		{"Ed25519", args{ed25519.PublicKey{}, crypto.Hash(0)}, "ED25519_SHA_512", false},
+		{"ML-DSA", args{&mldsa.PublicKey{}, crypto.Hash(0)}, "ML_DSA_SHAKE_256", false},
 		{"fail type", args{[]byte("key"), crypto.SHA256}, "", true},
 		{"fail rsa alg", args{&rsa.PublicKey{}, crypto.MD5}, "", true},
 		{"fail ecdsa alg", args{&ecdsa.PublicKey{}, crypto.MD5}, "", true},

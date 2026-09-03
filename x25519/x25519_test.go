@@ -24,7 +24,7 @@ func mustTeeReader(t *testing.T) *bytes.Buffer {
 }
 
 func BenchmarkGenerateKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, _, err := GenerateKey(rand.Reader); err != nil {
 			b.Fatal(err)
 		}
@@ -42,8 +42,7 @@ func BenchmarkSignVerify(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		sig, err := Sign(rand.Reader, priv, data)
 		if err != nil {
 			b.Fatal(err)
@@ -65,8 +64,7 @@ func BenchmarkSignVerifyMethod(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		sig, err := priv.Sign(rand.Reader, data, crypto.Hash(0))
 		if err != nil {
 			b.Fatal(err)
@@ -256,7 +254,7 @@ func TestVectors(t *testing.T) {
 
 func TestSignVerify(t *testing.T) {
 	iterations := 1000
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		pub, priv, err := GenerateKey(rand.Reader)
 		if err != nil {
 			t.Fatal(err)

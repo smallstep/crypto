@@ -75,6 +75,9 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 		req.Digest.Digest = &kmspb.Digest_Sha512{
 			Sha512: digest,
 		}
+	case crypto.Hash(0):
+		req.Digest = nil
+		req.Data = digest
 	default:
 		return nil, errors.Errorf("unsupported hash function %v", h)
 	}

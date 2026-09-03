@@ -394,13 +394,13 @@ func TestWithTemplateFile(t *testing.T) {
 			{Type: "ip", Value: "127.0.0.1"},
 			{Type: "uri", Value: "uri:foo:bar"},
 		},
-		TokenKey: map[string]interface{}{
+		TokenKey: map[string]any{
 			"iss": "https://iss",
 			"sub": "sub",
 			"nbf": now.Unix(),
 		},
-		WebhooksKey: map[string]interface{}{
-			"Test": map[string]interface{}{
+		WebhooksKey: map[string]any{
+			"Test": map[string]any{
 				"notAfter": now.Add(10 * time.Hour).Format(time.RFC3339),
 			},
 		},
@@ -457,7 +457,7 @@ func TestWithTemplateFile(t *testing.T) {
 	}
 }
 
-func mustMarshal(t *testing.T, value interface{}, params string) string {
+func mustMarshal(t *testing.T, value any, params string) string {
 	t.Helper()
 	b, err := asn1.MarshalWithParams(value, params)
 	if err != nil {
@@ -510,7 +510,7 @@ func Test_asn1Encode(t *testing.T) {
 func Test_asn1Marshal(t *testing.T) {
 	now := time.Now()
 	type args struct {
-		v      interface{}
+		v      any
 		params []string
 	}
 	tests := []struct {

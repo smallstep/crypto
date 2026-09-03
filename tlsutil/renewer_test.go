@@ -205,9 +205,9 @@ func TestNewRenewer(t *testing.T) {
 }
 
 func TestRenewer_Run(t *testing.T) {
-	var i int32
+	var i atomic.Int32
 	fn := func() (*tls.Certificate, *tls.Config, error) {
-		atomic.AddInt32(&i, 1)
+		i.Add(1)
 		return testRenewFunc()
 	}
 
@@ -222,7 +222,7 @@ func TestRenewer_Run(t *testing.T) {
 	defer r.Stop()
 
 	time.Sleep(2 * time.Second)
-	if ii := atomic.LoadInt32(&i); ii == 0 {
+	if ii := i.Load(); ii == 0 {
 		t.Errorf("Renewer.Run() timer didn't run")
 	} else {
 		t.Logf("Renewer.Run() run %d times", ii)
@@ -230,9 +230,9 @@ func TestRenewer_Run(t *testing.T) {
 }
 
 func TestRenewer_RunContext(t *testing.T) {
-	var i int32
+	var i atomic.Int32
 	fn := func() (*tls.Certificate, *tls.Config, error) {
-		atomic.AddInt32(&i, 1)
+		i.Add(1)
 		return testRenewFunc()
 	}
 
@@ -248,7 +248,7 @@ func TestRenewer_RunContext(t *testing.T) {
 	r.RunContext(ctx)
 
 	time.Sleep(2 * time.Second)
-	if ii := atomic.LoadInt32(&i); ii == 0 {
+	if ii := i.Load(); ii == 0 {
 		t.Errorf("Renewer.RunContext() timer didn't run")
 	} else {
 		t.Logf("Renewer.RunContext() run %d times", ii)

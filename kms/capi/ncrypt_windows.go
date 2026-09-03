@@ -197,7 +197,7 @@ type CERT_ISSUER_SERIAL_NUMBER struct {
 }
 
 // CERT_ID - https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/ns-wincrypt-cert_id
-// TODO: might be able to merge these two types into one that uses interface{} instead
+// TODO: might be able to merge these two types into one that uses any instead
 type CERT_ID_KEYIDORHASH struct {
 	idChoice    uint32
 	KeyIDOrHash CRYPTOAPI_BLOB
@@ -350,7 +350,7 @@ func nCryptFinalizeKey(keyHandle uintptr, flags uint32) error {
 	return nil
 }
 
-func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue interface{}, flags uint32) error {
+func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue any, flags uint32) error {
 	var valLen int
 	var valPtr uintptr
 

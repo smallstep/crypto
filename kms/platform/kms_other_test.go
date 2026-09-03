@@ -44,7 +44,7 @@ func TestKMS_SearchCertificates_other(t *testing.T) {
 	}{
 		{"not implemented", platformKMS, args{&apiv1.SearchCertificatesRequest{
 			Name: "kms:",
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}
@@ -80,7 +80,7 @@ func TestKMS_CleanupCredentials_other(t *testing.T) {
 				"issuer": []string{chain[0].Issuer.CommonName},
 			}).String(),
 			RawSubject: chain[0].RawSubject,
-		}}, func(tt assert.TestingT, err error, i ...interface{}) bool {
+		}}, func(tt assert.TestingT, err error, i ...any) bool {
 			return assert.ErrorIs(tt, err, apiv1.NotImplementedError{})
 		}},
 	}

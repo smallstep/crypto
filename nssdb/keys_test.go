@@ -56,8 +56,9 @@ func TestObjectToECPublicKey(t *testing.T) {
 	pub, err := obj.ToECPublicKey()
 	require.NoError(t, err)
 	assert.Equal(t, elliptic.P256(), pub.Curve)
-	assert.Equal(t, ecPoint[3:35], pub.X.Bytes())
-	assert.Equal(t, ecPoint[35:], pub.Y.Bytes())
+	pubBytes, err := pub.Bytes()
+	require.NoError(t, err)
+	assert.Equal(t, ecPoint[2:], pubBytes)
 }
 
 func TestEcPrivKeyToObject(t *testing.T) {
