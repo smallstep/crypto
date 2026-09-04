@@ -1138,7 +1138,7 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return false
 }
 
-var notFoundError = apiv1.NotFoundError{
+var errCertificateNotFound = apiv1.NotFoundError{
 	Message: "certificate not found",
 }
 
@@ -1249,7 +1249,7 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte, opts ...loadCertifi
 	}
 
 	if len(certs) == 0 {
-		return nil, notFoundError
+		return nil, errCertificateNotFound
 	}
 
 	// Filter the certificates by the subject distinguished name components
@@ -1261,7 +1261,7 @@ func loadCertificate(u *certAttributes, subjectKeyID []byte, opts ...loadCertifi
 			return !u.matchesSubject(cert)
 		})
 		if len(certs) == 0 {
-			return nil, notFoundError
+			return nil, errCertificateNotFound
 		}
 	}
 
