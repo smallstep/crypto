@@ -9,10 +9,13 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/json"
 	"reflect"
 	"testing"
+	"text/template"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,6 +62,21 @@ func TestGetFuncMap(t *testing.T) {
 			t.Errorf("GetFuncMap() contains the function %s", name)
 		}
 	}
+}
+
+// TestGetFuncMap_cel pins that a func map obtained with GetFuncMap, which is
+// not bound to any template data, evaluates a CEL expression against the data
+// the template passes as "$".
+func TestGetFuncMap_cel(t *testing.T) {
+	tmpl, err := template.New("template").Funcs(GetFuncMap()).Parse(`{{ cel "Token.sub" $ }}`)
+	require.NoError(t, err)
+
+	data := TemplateData{
+		TokenKey: map[string]any{"sub": "8ff6a183"},
+	}
+	buf := new(bytes.Buffer)
+	require.NoError(t, tmpl.Execute(buf, data))
+	assert.Equal(t, "8ff6a183", buf.String())
 }
 
 func TestWithTemplate(t *testing.T) {
@@ -202,6 +220,125 @@ func TestWithTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWithTemplate_cel(t *testing.T) {
+	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com", "foo@foo.com", "bar@foo.com", "::1", "https://foo.com"})
+
+	buf := func(s string) Options {
+		return Options{
+			CertBuffer: bytes.NewBufferString(s),
+		}
+	}
+
+	type args struct {
+		text string
+		data TemplateData
+		cr   *x509.CertificateRequest
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      Options
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"subject", args{`{{cel "Subject.CommonName + \".\" + Subject.Country[0]"}}`, TemplateData{
+			SubjectKey: Subject{
+				CommonName: "example",
+				Country:    []string{"ES"},
+			},
+		}, cr}, buf("example.ES"), assert.NoError},
+		{"sans", args{`{{cel "SANs.filter(s, s.Value.contains(\"foo\")).map(s, s.Value)"}}`, TemplateData{
+			SANsKey: CreateSANs([]string{"foo.com", "foo@foo.com", "::1", "https://foo.com"}),
+		}, cr}, buf("[foo.com foo@foo.com https://foo.com]"), assert.NoError},
+		{"token with $", args{`{{cel "Token.sub" $}}`, TemplateData{
+			TokenKey: map[string]any{"sub": "sub"},
+		}, cr}, buf("sub"), assert.NoError},
+		{"token", args{`{{cel "json.encode({'subject':{'commonName': Token.sub}, 'uris':[Token.iss]})"}}`, TemplateData{
+			TokenKey: map[string]any{
+				"iss": "https://iss",
+				"sub": "sub",
+				"nbf": time.Now().Unix(),
+			},
+		}, cr}, buf(`{"subject":{"commonName":"sub"},"uris":["https://iss"]}`), assert.NoError},
+		{"webhoks", args{`{{cel "strings.quote(Webhooks.Device.?Serial.or(Webhooks.Device.?Hostname).orValue('Unknown'))"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"OS":       "Linux",
+					"Hostname": "d1.example.com",
+				},
+			},
+		}, cr}, buf(`"d1.example.com"`), assert.NoError},
+		{"webhoks with get", args{`{{cel "'hostname:' + Webhooks.Device.get('Hostname') + ', serial:' + Webhooks.Device.get('Serial')"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"OS":       "Linux",
+					"Hostname": "d1.example.com",
+				},
+			},
+		}, cr}, buf("hostname:d1.example.com, serial:"), assert.NoError},
+		{"insecure", args{`{{cel "Insecure.CR.EmailAddresses.filter(s, s == Insecure.User.Email).first().value()"}}`, TemplateData{
+			InsecureKey: TemplateData{
+				UserKey: map[string]any{
+					"Email": "bar@foo.com",
+				},
+			},
+		}, cr}, buf("bar@foo.com"), assert.NoError},
+		{"authorizationCrt", args{`{{cel "\"arn:aws:iam:1234567890:role/\" + AuthorizationCrt.Subject.OrganizationalUnit[0].lowerAscii()"}}`, TemplateData{
+			AuthorizationCrtKey: &x509.Certificate{
+				Subject: pkix.Name{OrganizationalUnit: []string{"Eng"}},
+			},
+		}, cr}, buf("arn:aws:iam:1234567890:role/eng"), assert.NoError},
+		{"authorizationChain", args{`{{cel "\"arn:aws:iam:1234567890:role/\" + AuthorizationChain.map(x, x.Subject.OrganizationalUnit[0]).reverse().join('.').lowerAscii()"}}`, TemplateData{
+			AuthorizationChainKey: []*x509.Certificate{
+				{Subject: pkix.Name{OrganizationalUnit: []string{"Eng"}}},
+				{Subject: pkix.Name{OrganizationalUnit: []string{"OpSec"}}},
+			},
+		}, cr}, buf("arn:aws:iam:1234567890:role/opsec.eng"), assert.NoError},
+		{"fail compile", args{`{{cel "MyKey.CommonName"}}`, TemplateData{
+			"MyKey": Subject{CommonName: "example.com"},
+		}, cr}, Options{}, assert.Error},
+		{"fail eval", args{`{{cel "Webhooks.Device.Serial"}}`, TemplateData{
+			WebhooksKey: map[string]any{
+				"Device": map[string]any{
+					"Hostname": "example.com",
+				},
+			},
+		}, cr}, Options{}, assert.Error},
+		{"fail costlimit", args{`{{cel "lists.range(1000000)"}}`, TemplateData{
+			SubjectKey: Subject{CommonName: "example.com"},
+		}, cr}, Options{}, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got Options
+			fn := WithTemplate(tt.args.text, tt.args.data)
+			tt.assertion(t, fn(tt.args.cr, &got))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestWithTemplate_celTemplateDataFromJSON pins that CEL resolves Subject and
+// SANs after a provisioner's template data has overwritten them. Unmarshaling
+// JSON into a TemplateData rewrites every key it carries, so the values under
+// those keys are not always the x509util structs, and a declared object type
+// would resolve their fields to null instead of failing.
+func TestWithTemplate_celTemplateDataFromJSON(t *testing.T) {
+	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
+
+	data := CreateTemplateData("foo", []string{"foo.com"})
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"Subject": {"CommonName": "example", "Country": ["ES"]},
+		"SANs": [{"Type": "dns", "Value": "a.example.com"}]
+	}`), &data))
+	require.IsType(t, map[string]any{}, data[SubjectKey])
+	require.IsType(t, []any{}, data[SANsKey])
+
+	var o Options
+	text := `{{cel "Subject.CommonName + \".\" + Subject.Country[0]"}} {{cel "SANs.map(s, s.Value)"}}`
+	require.NoError(t, WithTemplate(text, data)(cr, &o))
+	assert.Equal(t, "example.ES [a.example.com]", o.CertBuffer.String())
 }
 
 func TestWithTemplateBase64(t *testing.T) {
