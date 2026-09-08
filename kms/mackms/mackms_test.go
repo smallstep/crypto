@@ -447,6 +447,9 @@ func TestMacKMS_CreateKey(t *testing.T) {
 		{"fail signatureAlgorithm secureEnclave", &MacKMS{}, args{&apiv1.CreateKeyRequest{
 			Name: "mackms:label=test-p256;se=true", SignatureAlgorithm: apiv1.ECDSAWithSHA512,
 		}}, require.Nil, assert.Error},
+		{"fail policy without secureEnclave", &MacKMS{}, args{&apiv1.CreateKeyRequest{
+			Name: "mackms:label=test-p256;policy=user-presence",
+		}}, require.Nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -566,8 +569,14 @@ func Test_parseURI(t *testing.T) {
 		{"ok label uri simple", args{"mackms:the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
 		{"ok label empty tag", args{"mackms:label=the-label;tag="}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
 		{"ok label empty tag no equal", args{"mackms:label=the-label;tag"}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
+		{"ok policy user-presence", args{"mackms:label=k;se=true;policy=user-presence"}, &keyAttributes{label: "k", tag: DefaultTag, retry: true, useSecureEnclave: true, authPolicy: authPolicyUserPresence}, assert.NoError},
+		{"ok policy user-verification with cache", args{"mackms:label=k;se=true;policy=user-verification;cache=60s"}, &keyAttributes{label: "k", tag: DefaultTag, retry: true, useSecureEnclave: true, authPolicy: authPolicyUserVerification, authReuse: 60 * time.Second}, assert.NoError},
+		{"ok policy none with reason", args{"mackms:label=k;policy=none;reason=hello"}, &keyAttributes{label: "k", tag: DefaultTag, retry: true, authReason: "hello"}, assert.NoError},
 		{"fail parse", args{"mackms:%label=the-label"}, nil, assert.Error},
 		{"fail missing label", args{"mackms:hash=0102abcd"}, nil, assert.Error},
+		{"fail unknown policy", args{"mackms:label=k;se=true;policy=bogus"}, nil, assert.Error},
+		{"fail bad cache", args{"mackms:label=k;se=true;policy=user-presence;cache=nope"}, nil, assert.Error},
+		{"fail negative cache", args{"mackms:label=k;se=true;policy=user-presence;cache=-1s"}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

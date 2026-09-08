@@ -85,6 +85,7 @@ var (
 	KSecPrivateKeyAttrs                              = cf.TypeRef(C.kSecPrivateKeyAttrs)
 	KSecReturnRef                                    = cf.TypeRef(C.kSecReturnRef)
 	KSecReturnAttributes                             = cf.TypeRef(C.kSecReturnAttributes)
+	KSecUseAuthenticationContext                     = cf.TypeRef(C.kSecUseAuthenticationContext)
 	KSecValueRef                                     = cf.TypeRef(C.kSecValueRef)
 	KSecValueData                                    = cf.TypeRef(C.kSecValueData)
 )
