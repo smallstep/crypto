@@ -17,18 +17,29 @@ import (
 // true when compiled with Go 1.27 or later.
 const Supported = true
 
-type Options = mldsa.Options
+const (
+	PrivateKeySize       = mldsa.PrivateKeySize
+	MLDSA44PublicKeySize = mldsa.MLDSA44PublicKeySize
+	MLDSA65PublicKeySize = mldsa.MLDSA65PublicKeySize
+	MLDSA87PublicKeySize = mldsa.MLDSA87PublicKeySize
+	MLDSA44SignatureSize = mldsa.MLDSA44SignatureSize
+	MLDSA65SignatureSize = mldsa.MLDSA65SignatureSize
+	MLDSA87SignatureSize = mldsa.MLDSA87SignatureSize
+)
 
-type Parameters = mldsa.Parameters
-
-type PrivateKey = mldsa.PrivateKey
-
-type PublicKey = mldsa.PublicKey
+type (
+	Options    = mldsa.Options
+	Parameters = mldsa.Parameters
+	PrivateKey = mldsa.PrivateKey
+	PublicKey  = mldsa.PublicKey
+)
 
 var (
-	GenerateKey = mldsa.GenerateKey
-	Verify      = mldsa.Verify
-	MLDSA44     = mldsa.MLDSA44
-	MLDSA65     = mldsa.MLDSA65
-	MLDSA87     = mldsa.MLDSA87
+	GenerateKey   = mldsa.GenerateKey
+	NewPrivateKey = mldsa.NewPrivateKey
+	NewPublicKey  = mldsa.NewPublicKey
+	Verify        = mldsa.Verify
+	MLDSA44       = mldsa.MLDSA44
+	MLDSA65       = mldsa.MLDSA65
+	MLDSA87       = mldsa.MLDSA87
 )

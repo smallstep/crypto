@@ -21,6 +21,24 @@ var errNotSupported = errors.New("mldsa is not supported")
 // false when compiled with a Go toolchain older than 1.27.
 const Supported = false
 
+const (
+	PrivateKeySize       = 32
+	MLDSA44PublicKeySize = 1312
+	MLDSA65PublicKeySize = 1952
+	MLDSA87PublicKeySize = 2592
+	MLDSA44SignatureSize = 2420
+	MLDSA65SignatureSize = 3309
+	MLDSA87SignatureSize = 4627
+)
+
+type Options struct {
+	Context string
+}
+
+func (o *Options) HashFunc() crypto.Hash {
+	return 0
+}
+
 type Parameters struct{}
 
 func MLDSA44() Parameters {
@@ -35,15 +53,27 @@ func MLDSA87() Parameters {
 	return Parameters{}
 }
 
-type Options struct {
-	Context string
-}
-
-func (o *Options) HashFunc() crypto.Hash {
+func (p Parameters) PublicKeySize() int {
 	return 0
 }
 
+func (p Parameters) SignatureSize() int {
+	return 0
+}
+
+func (p Parameters) String() string {
+	return ""
+}
+
 type PrivateKey struct{}
+
+func GenerateKey(params Parameters) (*PrivateKey, error) {
+	return nil, errNotSupported
+}
+
+func NewPrivateKey(params Parameters, seed []byte) (*PrivateKey, error) {
+	return nil, errNotSupported
+}
 
 func (sk *PrivateKey) Bytes() []byte {
 	return nil
@@ -65,7 +95,15 @@ func (sk *PrivateKey) Sign(_ io.Reader, message []byte, opts crypto.SignerOpts) 
 	return nil, errNotSupported
 }
 
+func (sk *PrivateKey) SignDeterministic(message []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	return nil, errNotSupported
+}
+
 type PublicKey struct{}
+
+func NewPublicKey(params Parameters, encoding []byte) (*PublicKey, error) {
+	return nil, errNotSupported
+}
 
 func (pk *PublicKey) Bytes() []byte {
 	return nil
@@ -77,10 +115,6 @@ func (pk *PublicKey) Equal(x crypto.PublicKey) bool {
 
 func (pk *PublicKey) Parameters() Parameters {
 	return Parameters{}
-}
-
-func GenerateKey(params Parameters) (*PrivateKey, error) {
-	return nil, errNotSupported
 }
 
 func Verify(pk *PublicKey, message, signature []byte, opts *Options) error {

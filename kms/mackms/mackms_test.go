@@ -1934,9 +1934,9 @@ func TestMacKMS_DeleteCertificate_bySubject(t *testing.T) {
 	t.Cleanup(func() {
 		// The certificates are deleted by the test itself; this only removes
 		// the leftovers if the test fails early.
-		kms := &MacKMS{}
+		km := &MacKMS{}
 		for _, crt := range []*x509.Certificate{certA, certB, certC} {
-			_ = kms.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: serialURI(crt)})
+			_ = km.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: serialURI(crt)})
 		}
 	})
 
