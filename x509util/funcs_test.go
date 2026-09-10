@@ -7,6 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSetCELCostLimit(t *testing.T) {
+	prev := CELCostLimit()
+	t.Cleanup(func() { SetCELCostLimit(prev) })
+
+	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
+	fn := WithTemplate(`{{cel "lists.range(1000).size()"}}`, TemplateData{})
+
+	// The default limit admits an ordinary list-sized expression.
+	var o Options
+	require.NoError(t, fn(cr, &o))
+	assert.Equal(t, "1000", o.CertBuffer.String())
+
+	// Tightening the limit applies to the already compiled expression.
+	SetCELCostLimit(1)
+	assert.Equal(t, uint64(1), CELCostLimit())
+	assert.ErrorContains(t, fn(cr, &Options{}), "cost limit exceeded")
+}
+
 func TestRegisterTemplateFunc(t *testing.T) {
 	cr, _ := createCertificateRequest(t, "foo", []string{"foo.com"})
 

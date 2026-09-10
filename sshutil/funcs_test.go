@@ -12,6 +12,26 @@ import (
 	"go.step.sm/crypto/x509util"
 )
 
+func TestSetCELCostLimit(t *testing.T) {
+	prev := CELCostLimit()
+	t.Cleanup(func() { SetCELCostLimit(prev) })
+
+	cr := CertificateRequest{Key: mustGeneratePublicKey(t)}
+	fn := WithTemplate(`{{cel "lists.range(1000).size()"}}`, TemplateData{})
+
+	// The default limit admits an ordinary list-sized expression.
+	var o Options
+	require.NoError(t, fn(cr, &o))
+	assert.Equal(t, "1000", o.CertBuffer.String())
+
+	// Tightening the limit applies to the already compiled expression, and the
+	// limit is process-wide: X.509 and SSH template evaluation share it.
+	SetCELCostLimit(1)
+	assert.Equal(t, uint64(1), CELCostLimit())
+	assert.Equal(t, uint64(1), x509util.CELCostLimit())
+	assert.ErrorContains(t, fn(cr, &Options{}), "cost limit exceeded")
+}
+
 func TestRegisterTemplateFunc(t *testing.T) {
 	cr := CertificateRequest{Key: mustGeneratePublicKey(t), Type: UserCert.String()}
 	data := CreateTemplateData(UserCert, "jane@example.com", []string{"jane"})
