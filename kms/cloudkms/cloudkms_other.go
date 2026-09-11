@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
+
 	"go.step.sm/crypto/kms/apiv1"
 )
 
