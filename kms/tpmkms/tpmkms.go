@@ -1062,6 +1062,20 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 	// prefixed with "app-" (see prefixKey / go-attestation), which is how the
 	// key was persisted in the PCP KSP. CAPI resolves the keyset from key-scope,
 	// falling back to store-location when key-scope is unset.
+	//
+	// Only for a key this TPMKMS actually holds, though. A caller may name a key
+	// that is not a TPM key at all — a Windows endpoint with no key protection
+	// has its key created through CAPI in the software KSP, under the bare name,
+	// and this store has never heard of it. Claiming such a certificate lives in
+	// "app-<name>" under the Platform Crypto Provider names a container that
+	// does not exist: the certificate then reports HasPrivateKey while resolving
+	// no key at all, so it cannot complete a handshake and cannot be found again
+	// by a lookup that goes through the key.
+	//
+	// The non-Windows branch of StoreCertificateChain already resolves the key
+	// before storing; this makes the Windows branch agree, and falls back to
+	// discovery — what every caller had before the explicit binding — when the
+	// name is not ours.
 	v := url.Values{
 		"store-location":              []string{location},
 		"store":                       []string{store},
@@ -1071,12 +1085,28 @@ func (k *TPMKMS) storeCertificateChainToWindowsCertificateStore(req *apiv1.Store
 		"intermediate-store-location": []string{intermediateCAStoreLocation},
 		"intermediate-store":          []string{intermediateCAStore},
 	}
-	if o.name != "" {
+	switch {
+	case o.name == "":
+	case k.managesKey(o.name):
 		v.Set("key", tpm.ApplicationKeyName(o.name))
 		v.Set("provider", microsoftPCP)
 		if o.keyScope != "" {
 			v.Set("key-scope", o.keyScope)
 		}
+	default:
+		// Named a key this TPM does not hold, so let CAPI find it. Discovery is
+		// re-enabled here specifically, overriding the blanket
+		// skip-find-certificate-key the platform wrapper injects into every
+		// Windows request: that exists to avoid a smart-card prompt while
+		// looking for a TPM key discovery cannot find anyway, and neither half
+		// of that reasoning applies to a key held by another provider.
+		//
+		// Without this the certificate is stored with no key association at
+		// all, which is how a non-attested endpoint's certificate behaved
+		// between the skip being introduced and the explicit binding being
+		// added. CAPI restricts the search to the keyset the store location
+		// implies, so this does not widen it.
+		v.Set("skip-find-certificate-key", "false")
 	}
 
 	return k.windowsCertificateManager.StoreCertificateChain(&apiv1.StoreCertificateChainRequest{
@@ -1910,6 +1940,19 @@ func (k *TPMKMS) getAK(ctx context.Context, name string) (*tpm.AK, error) {
 		return nil, notFoundError(err)
 	}
 	return ak, nil
+}
+
+// managesKey reports whether name identifies a key held by this TPM.
+//
+// Only a definitive "no" is treated as one. A lookup that fails for any other
+// reason — the TPM busy, unavailable, or unreadable under the current identity
+// — leaves the answer unknown, and the caller keeps the explicit association it
+// would otherwise have made. Guessing "not ours" there would drop the binding
+// for a genuine TPM key and reintroduce the machine-scoped discovery failure
+// the explicit association exists to avoid.
+func (k *TPMKMS) managesKey(name string) bool {
+	_, err := k.tpm.GetKey(context.Background(), name)
+	return !errors.Is(err, tpm.ErrNotFound)
 }
 
 func (k *TPMKMS) getKey(ctx context.Context, name string) (*tpm.Key, error) {
