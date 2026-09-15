@@ -8,22 +8,22 @@ Guidance for AI coding agents working in this repository. Claude Code loads it t
 library only, no binaries: X.509 and SSH certificate templating, key generation and
 PEM/JWK handling, a pluggable KMS abstraction (software, AWS, GCP, Azure, PKCS #11,
 YubiKey, ssh-agent, TPM, macOS Keychain, Windows CAPI), and TPM 2.0 attestation.
-[`step`](https://github.com/smallstep/cli) and [`step-ca`](https://github.com/smallstep/certificates)
-are the main consumers; changes here ship to them by bumping the dependency, so keep
-exported APIs backward compatible. `go.mod` requires Go 1.26; CI tests `stable` and
-`oldstable`.
+[`step`](https://github.com/smallstep/cli), [`step-ca`](https://github.com/smallstep/certificates),
+and [`step-kms-plugin`](https://github.com/smallstep/step-kms-plugin) are the main
+consumers; changes here ship to them by bumping the dependency, so keep exported APIs
+backward compatible. `go.mod` requires Go 1.26; CI tests on `stable` (the newest Go
+release) and `oldstable` (the previous minor release), so code must build on both.
 
 ## Commands
 
 ```bash
-make bootstrap      # install golangci-lint, govulncheck, gotestsum into $(go env GOPATH)/bin
 go build ./...      # compiles everything, ~15s cold
 make test           # defaulttest + simulatortest + combined coverage.out (what CI runs)
-make defaulttest    # gotestsum ./... with coverage (~4000 tests, ~40s on a laptop)
+make defaulttest    # go tool gotestsum ./... with coverage (~4000 tests, ~40s on a laptop)
 make simulatortest  # CGO_ENABLED=1, -tags tpmsimulator, ./tpm and ./kms/tpmkms only (~10s)
-make race           # gotestsum -race ./...
-make fmt            # goimports -local go.step.sm/crypto
-make lint           # golangci-lint (config curled from smallstep/workflows) + govulncheck
+make race           # go tool gotestsum -race ./...
+make fmt            # go tool goimports -local go.step.sm/crypto
+make lint           # go tool golangci-lint (config curled from smallstep/workflows) + go tool govulncheck
 make generate       # go generate ./... (only the azurekms mock)
 ```
 
@@ -34,9 +34,12 @@ go test -run TestNewCertificate ./x509util/
 CGO_ENABLED=1 go test -tags tpmsimulator -run TestTPM_CreateAK ./tpm/
 ```
 
-`make test` and `make race` need `gotestsum` on `PATH`; `make lint` needs network
-access to fetch `.golangci.yml`. Coverage output (`*.out`) is gitignored. There is no `go.work`, no submodules, and nothing in
-the default test run needs cloud credentials or hardware. CI (`.github/workflows/ci.yml`)
+Tooling (`golangci-lint`, `goimports`, `govulncheck`, `gotestsum`) comes from the
+`tool` block in `go.mod` and runs through `go tool`; there is nothing to install and
+`make bootstrap` is a no-op, but the first invocation needs network access to download
+the tool modules, and `make lint` always needs network to fetch `.golangci.yml`.
+Coverage output (`*.out`) is gitignored. There is no `go.work`, no submodules, and
+nothing in the default test run needs cloud credentials or hardware. CI (`.github/workflows/ci.yml`)
 calls the shared `smallstep/workflows` `goCI.yml` with `V=1 make test`, CodeQL, and
 `libpcsclite-dev` installed for the cgo YubiKey backend.
 
@@ -141,8 +144,8 @@ without hardware. Cloud backend tests use fakes and never call out.
   `internal/templates` FuncMap (sprig plus `toTime`, `formatTime`, etc.); the `fail`
   function surfaces user-visible template errors. The `Default*Template` constants are
   consumed verbatim by `step-ca` provisioners, so changing them is a behavior change.
-- **Imports**: `goimports -local go.step.sm/crypto`; lint rules come from the shared
-  `smallstep/workflows/.golangci.yml`, not a file in this repo.
+- **Imports**: `make fmt` (`go tool goimports -local go.step.sm/crypto`); lint rules
+  come from the shared `smallstep/workflows/.golangci.yml`, not a file in this repo.
 - **Releases**: pushing a `v*` tag runs CI and creates a GitHub release. Tag only from
   `master`; `go.mod` retracts `v0.77.3` - `v0.77.7` because they were tagged from a branch.
   Consumers pin by version, so local cross-repo work uses
