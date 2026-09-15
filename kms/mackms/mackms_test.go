@@ -74,7 +74,7 @@ func mustCreateKey(t *testing.T, name string, signatureAlgorithm apiv1.Signature
 func createPrivateKeyOnly(t *testing.T, name string, signatureAlgorithm apiv1.SignatureAlgorithm) *apiv1.CreateKeyResponse {
 	t.Helper()
 
-	u, err := parseURI(name)
+	u, err := parseURI(name, true)
 	require.NoError(t, err)
 	u.sigAlgorithm = signatureAlgorithm
 	u.keySize = signatureAlgorithmMapping[signatureAlgorithm].Size
@@ -356,6 +356,11 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 		}))
 	})
 
+	u, err := uri.ParseWithScheme(Scheme, r1.Name)
+	require.NoError(t, err)
+	hash := u.Get("hash")
+	require.NotEmpty(t, hash)
+
 	type args struct {
 		req *apiv1.GetPublicKeyRequest
 	}
@@ -375,8 +380,10 @@ func TestMacKMS_GetPublicKey(t *testing.T) {
 		{"ok uri simple", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:test-p256"}}, r1.PublicKey, assert.NoError},
 		{"ok uri label", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256"}}, r1.PublicKey, assert.NoError},
 		{"ok uri label + tag", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256;tag=com.smallstep.crypto"}}, r1.PublicKey, assert.NoError},
+		{"ok uri hash", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: fmt.Sprintf("mackms:hash=%s", hash)}}, r1.PublicKey, assert.NoError},
 		{"fail bad label", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-fail-p256"}}, nil, assert.Error},
 		{"fail bad tag", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:label=test-p256;tag=com.step.crypto"}}, nil, assert.Error},
+		{"fail no label nor hash", &MacKMS{}, args{&apiv1.GetPublicKeyRequest{Name: "mackms:tag=com.step.crypto"}}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -418,7 +425,7 @@ func TestMacKMS_CreateKey(t *testing.T) {
 				require.Nil(tt, resp.PrivateKey)
 				require.NotEmpty(tt, resp.CreateSignerRequest)
 
-				u, err := parseURI(resp.Name)
+				u, err := parseURI(resp.Name, true)
 				require.NoError(tt, err)
 				require.NotEmpty(tt, u.label)
 				require.NotEmpty(tt, u.tag)
@@ -433,7 +440,7 @@ func TestMacKMS_CreateKey(t *testing.T) {
 				require.Nil(tt, resp.PrivateKey)
 				require.NotEmpty(tt, resp.CreateSignerRequest)
 
-				u, err := parseURI(resp.Name)
+				u, err := parseURI(resp.Name, true)
 				require.NoError(tt, err)
 				require.NotEmpty(tt, u.label)
 				require.Empty(tt, u.tag)
@@ -462,7 +469,7 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 	kms := &MacKMS{}
 	resp, err := kms.CreateKey(&apiv1.CreateKeyRequest{
 		Name:               "mackms:label=test-p256",
-		SignatureAlgorithm: apiv1.SHA256WithRSA,
+		SignatureAlgorithm: apiv1.ECDSAWithSHA256,
 	})
 	require.NoError(t, err)
 
@@ -471,6 +478,11 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 			Name: resp.Name,
 		}))
 	})
+
+	u, err := uri.ParseWithScheme(Scheme, resp.Name)
+	require.NoError(t, err)
+	hash := u.Get("hash")
+	require.NotEmpty(t, hash)
 
 	assertSigner := func(tt require.TestingT, i1 any, i2 ...any) {
 		require.IsType(tt, &Signer{}, i1)
@@ -506,6 +518,9 @@ func TestMacKMS_CreateSigner(t *testing.T) {
 		}}, assertSigner, assert.NoError},
 		{"ok simple name", &MacKMS{}, args{&apiv1.CreateSignerRequest{
 			SigningKey: "mackms:label=test-p256",
+		}}, assertSigner, assert.NoError},
+		{"ok hash", &MacKMS{}, args{&apiv1.CreateSignerRequest{
+			SigningKey: fmt.Sprintf("mackms:hash=%s", hash),
 		}}, assertSigner, assert.NoError},
 		{"fail signingKey", &MacKMS{}, args{&apiv1.CreateSignerRequest{}}, require.Nil, assert.Error},
 		{"fail uri", &MacKMS{}, args{&apiv1.CreateSignerRequest{SigningKey: "mackms:tag=foo"}}, require.Nil, assert.Error},
@@ -552,7 +567,8 @@ func TestMacKMS_DeleteKey(t *testing.T) {
 
 func Test_parseURI(t *testing.T) {
 	type args struct {
-		rawuri string
+		rawuri       string
+		requireLabel bool
 	}
 	tests := []struct {
 		name      string
@@ -560,18 +576,21 @@ func Test_parseURI(t *testing.T) {
 		want      *keyAttributes
 		assertion assert.ErrorAssertionFunc
 	}{
-		{"ok", args{"mackms:label=the-label;tag=the-tag;hash=0102abcd"}, &keyAttributes{label: "the-label", tag: "the-tag", hash: []byte{1, 2, 171, 205}}, assert.NoError},
-		{"ok label", args{"the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
-		{"ok label uri", args{"mackms:label=the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
-		{"ok label uri simple", args{"mackms:the-label"}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
-		{"ok label empty tag", args{"mackms:label=the-label;tag="}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
-		{"ok label empty tag no equal", args{"mackms:label=the-label;tag"}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
-		{"fail parse", args{"mackms:%label=the-label"}, nil, assert.Error},
-		{"fail missing label", args{"mackms:hash=0102abcd"}, nil, assert.Error},
+		{"ok", args{"mackms:label=the-label;tag=the-tag;hash=0102abcd", true}, &keyAttributes{label: "the-label", tag: "the-tag", hash: []byte{1, 2, 171, 205}}, assert.NoError},
+		{"ok label", args{"the-label", true}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
+		{"ok label uri", args{"mackms:label=the-label", true}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
+		{"ok label uri simple", args{"mackms:the-label", true}, &keyAttributes{label: "the-label", tag: DefaultTag, retry: true}, assert.NoError},
+		{"ok label empty tag", args{"mackms:label=the-label;tag=", true}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
+		{"ok label empty tag no equal", args{"mackms:label=the-label;tag", true}, &keyAttributes{label: "the-label", tag: ""}, assert.NoError},
+		{"ok empty label and tag with hash", args{"mackms:hash=0102abcd", false}, &keyAttributes{label: "", tag: DefaultTag, hash: []byte{1, 2, 171, 205}, retry: true}, assert.NoError},
+		{"ok empty label with tag and hash", args{"mackms:hash=0102abcd;tag=the-tag", false}, &keyAttributes{label: "", tag: "the-tag", hash: []byte{1, 2, 171, 205}}, assert.NoError},
+		{"fail parse", args{"mackms:%label=the-label", true}, nil, assert.Error},
+		{"fail missing label", args{"mackms:hash=0102abcd", true}, nil, assert.Error},
+		{"fail missing label and hash", args{"mackms:tag=the-tag", false}, nil, assert.Error},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseURI(tt.args.rawuri)
+			got, err := parseURI(tt.args.rawuri, tt.args.requireLabel)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -2158,7 +2177,7 @@ func Test_keyAttributes_retryAttributes(t *testing.T) {
 
 	mustFields := func(s string) fields {
 		t.Helper()
-		u, err := parseURI(s)
+		u, err := parseURI(s, true)
 		require.NoError(t, err)
 		return fields{
 			label: u.label,
@@ -2239,7 +2258,7 @@ func Test_createHash(t *testing.T) {
 
 	getHash := func(r *apiv1.CreateKeyResponse) []byte {
 		t.Helper()
-		u, err := parseURI(r.Name)
+		u, err := parseURI(r.Name, true)
 		require.NoError(t, err)
 		return u.hash
 	}
