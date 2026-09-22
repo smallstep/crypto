@@ -5,7 +5,7 @@ go 1.26.0
 retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
 
 require (
-	cloud.google.com/go/kms v1.33.0
+	cloud.google.com/go/kms v1.34.0
 	filippo.io/edwards25519 v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
