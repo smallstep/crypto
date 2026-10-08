@@ -126,6 +126,7 @@ CErVHSJIs+BdtTVNY9AwtyPmnyb0v4mSTzvWdw==
 type YubiKey struct {
 	yk            pivKey
 	pin           string
+	defaultPIN    bool
 	card          string
 	managementKey []byte
 }
@@ -197,7 +198,9 @@ const maximumManagementKeyLength = 32
 //	yubikey:slot-id=9a?pin-value=123456
 //
 // If the pin or the management key are not provided, we will use the default
-// ones.
+// ones. Note that a failed PIN verification consumes one of the card's PIN
+// retries, so if the card does not use the default PIN, always provide it
+// with pin-value, pin-source or pin-prompt.
 func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
 	var managementKey [maximumManagementKeyLength]byte
@@ -244,7 +247,8 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 		copy(managementKey[:managementKeyLength], b[:managementKeyLength])
 	}
 
-	if opts.Pin != "" {
+	defaultPIN := opts.Pin == ""
+	if !defaultPIN {
 		pin = opts.Pin
 	}
 
@@ -281,6 +285,7 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	return &YubiKey{
 		yk:            yk,
 		pin:           pin,
+		defaultPIN:    defaultPIN,
 		card:          card,
 		managementKey: managementKey[:managementKeyLength],
 	}, nil
@@ -406,7 +411,8 @@ func (k *YubiKey) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, e
 		return nil, errors.New("private key is not a crypto.Signer")
 	}
 	return &syncSigner{
-		Signer: signer,
+		Signer:     signer,
+		defaultPIN: k.defaultPIN,
 	}, nil
 }
 
@@ -444,7 +450,8 @@ func (k *YubiKey) CreateDecrypter(req *apiv1.CreateDecrypterRequest) (crypto.Dec
 		return nil, errors.New("private key is not a crypto.Decrypter")
 	}
 	return &syncDecrypter{
-		Decrypter: decrypter,
+		Decrypter:  decrypter,
+		defaultPIN: k.defaultPIN,
 	}, nil
 }
 
@@ -712,12 +719,14 @@ var m sync.Mutex
 // error 6982: security status not satisfied" with two concurrent signs.
 type syncSigner struct {
 	crypto.Signer
+	defaultPIN bool
 }
 
 func (s *syncSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	m.Lock()
 	defer m.Unlock()
-	return s.Signer.Sign(rand, digest, opts)
+	sig, err := s.Signer.Sign(rand, digest, opts)
+	return sig, wrapPINError(err, s.defaultPIN)
 }
 
 // syncDecrypter wraps a crypto.Decrypter with a mutex to avoid the error "smart
@@ -725,12 +734,30 @@ func (s *syncSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 // concurrent decryptions.
 type syncDecrypter struct {
 	crypto.Decrypter
+	defaultPIN bool
 }
 
 func (s *syncDecrypter) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 	m.Lock()
 	defer m.Unlock()
-	return s.Decrypter.Decrypt(rand, msg, opts)
+	plain, err := s.Decrypter.Decrypt(rand, msg, opts)
+	return plain, wrapPINError(err, s.defaultPIN)
+}
+
+// wrapPINError explains where the PIN came from when PIN verification fails
+// and no PIN was ever provided: New falls back to the YubiKey factory default
+// PIN, each failed verification consumes one of the card's PIN retries, and
+// without this context the error reads as if the user mistyped a PIN that
+// this package chose itself.
+func wrapPINError(err error, defaultPIN bool) error {
+	if err == nil || !defaultPIN {
+		return err
+	}
+	var authErr piv.AuthErr
+	if !errors.As(err, &authErr) {
+		return err
+	}
+	return fmt.Errorf("%w; the YubiKey factory default PIN was tried because no PIN was available; provide one with pin-value, pin-source or pin-prompt", err)
 }
 
 var _ apiv1.CertificateManager = (*YubiKey)(nil)
