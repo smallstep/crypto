@@ -5,11 +5,15 @@ package capi
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -32,10 +36,18 @@ const (
 	NCRYPT_READER_PROPERTY          = "SmartCardReader"
 	NCRYPT_ALGORITHM_PROPERTY       = "Algorithm Name"
 	NCRYPT_PCP_USAGE_AUTH_PROPERTY  = "PCP_USAGEAUTH"
+	NCRYPT_EXPORT_POLICY_PROPERTY   = "Export Policy"
 
 	// Key Storage Flags
-	NCRYPT_MACHINE_KEY_FLAG = 0x00000020
-	NCRYPT_SILENT_FLAG      = 0x00000040
+	NCRYPT_MACHINE_KEY_FLAG     = 0x00000020
+	NCRYPT_SILENT_FLAG          = 0x00000040
+	NCRYPT_DO_NOT_FINALIZE_FLAG = 0x00000400
+
+	// Key import
+	NCRYPT_PKCS8_PRIVATE_KEY_BLOB = "PKCS8_PRIVATEKEY"
+	BCRYPT_ECCPRIVATE_BLOB        = "ECCPRIVATEBLOB"
+	NCRYPTBUFFER_PKCS_KEY_NAME    = 45
+	NCRYPTBUFFER_VERSION          = 0
 
 	// Errors
 	NTE_NOT_SUPPORTED         = uint32(0x80090029)
@@ -43,6 +55,7 @@ const (
 	NTE_BAD_FLAGS             = uint32(0x80090009)
 	NTE_NO_MORE_ITEMS         = uint32(0x8009002A)
 	NTE_BAD_KEYSET            = uint32(0x80090016)
+	NTE_EXISTS                = uint32(0x8009000F)
 	SCARD_W_CANCELLED_BY_USER = uint32(0x8010006E)
 
 	// wincrypt.h constants
@@ -119,6 +132,9 @@ const (
 	ecs1Magic = 0x31534345 // "ECS1" BCRYPT_ECDSA_PUBLIC_P256_MAGIC
 	ecs3Magic = 0x33534345 // "ECS3" BCRYPT_ECDSA_PUBLIC_P384_MAGIC
 	ecs5Magic = 0x35534345 // "ECS5" BCRYPT_ECDSA_PUBLIC_P521_MAGIC
+	ecs2Magic = 0x32534345 // "ECS2" BCRYPT_ECDSA_PRIVATE_P256_MAGIC
+	ecs4Magic = 0x34534345 // "ECS4" BCRYPT_ECDSA_PRIVATE_P384_MAGIC
+	ecs6Magic = 0x36534345 // "ECS6" BCRYPT_ECDSA_PRIVATE_P521_MAGIC
 
 	ALG_RSA        = "RSA"
 	ALG_ECDSA_P256 = "ECDSA_P256"
@@ -160,6 +176,7 @@ var (
 	procNCryptExportKey           = nCrypt.MustFindProc("NCryptExportKey")
 	procNCryptFinalizeKey         = nCrypt.MustFindProc("NCryptFinalizeKey")
 	procNCryptFreeObject          = nCrypt.MustFindProc("NCryptFreeObject")
+	procNCryptImportKey           = nCrypt.MustFindProc("NCryptImportKey")
 	procNCryptOpenKey             = nCrypt.MustFindProc("NCryptOpenKey")
 	procNCryptDeleteKey           = nCrypt.MustFindProc("NCryptDeleteKey")
 	procNCryptOpenStorageProvider = nCrypt.MustFindProc("NCryptOpenStorageProvider")
@@ -234,6 +251,8 @@ func errNoToStr(e uint32) string {
 		return "NTE_NO_MORE_ITEMS"
 	case NTE_NOT_SUPPORTED:
 		return "NTE_NOT_SUPPORTED"
+	case NTE_EXISTS:
+		return "NTE_EXISTS"
 	case SCARD_W_CANCELLED_BY_USER:
 		return "User cancelled smartcard action"
 	default:
@@ -299,6 +318,110 @@ func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName, algorith
 
 	if r != 0 {
 		return 0, fmt.Errorf("NCryptCreatePersistedKey returned %v", errNoToStr(uint32(r)))
+	}
+
+	return kh, nil
+}
+
+// privateKeyBlob returns the blob type and contents NCryptImportKey takes for
+// key.
+//
+// An ECDSA key goes in as a BCRYPT_ECCPRIVATE_BLOB carrying the ECDSA private
+// magic rather than as PKCS#8. PKCS#8 names only the generic EC algorithm, and
+// the software KSP imports such a key into the ECDH algorithm group, where it
+// is not an ECDSA signing key. An RSA key has one algorithm either way.
+func privateKeyBlob(key crypto.PrivateKey) (string, []byte, error) {
+	switch k := key.(type) {
+	case *ecdsa.PrivateKey:
+		var magic uint32
+		switch k.Curve {
+		case elliptic.P256():
+			magic = ecs2Magic
+		case elliptic.P384():
+			magic = ecs4Magic
+		case elliptic.P521():
+			magic = ecs6Magic
+		default:
+			return "", nil, fmt.Errorf("unsupported curve %s", k.Curve.Params().Name)
+		}
+
+		// BCRYPT_ECCKEY_BLOB, then X, Y and d, each big-endian and padded to
+		// the field size.
+		size := (k.Curve.Params().BitSize + 7) / 8
+		blob := make([]byte, 8+3*size)
+		binary.LittleEndian.PutUint32(blob[0:4], magic)
+		binary.LittleEndian.PutUint32(blob[4:8], uint32(size))
+		k.X.FillBytes(blob[8 : 8+size])
+		k.Y.FillBytes(blob[8+size : 8+2*size])
+		k.D.FillBytes(blob[8+2*size:])
+
+		return BCRYPT_ECCPRIVATE_BLOB, blob, nil
+	case *rsa.PrivateKey:
+		blob, err := x509.MarshalPKCS8PrivateKey(k)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed marshaling private key: %w", err)
+		}
+
+		return NCRYPT_PKCS8_PRIVATE_KEY_BLOB, blob, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported private key type %T", key)
+	}
+}
+
+// nCryptBuffer and nCryptBufferDesc are NCryptBuffer and NCryptBufferDesc,
+// the parameter list NCryptImportKey takes.
+type nCryptBuffer struct {
+	cbBuffer   uint32
+	bufferType uint32
+	pvBuffer   unsafe.Pointer
+}
+
+type nCryptBufferDesc struct {
+	ulVersion uint32
+	cBuffers  uint32
+	pBuffers  unsafe.Pointer
+}
+
+// nCryptImportKey imports a private key blob of blobType into the provider as
+// a persisted key in containerName, without finalizing it: the caller sets
+// whatever properties have to be in place before the key is usable and then
+// calls nCryptFinalizeKey.
+func nCryptImportKey(providerHandle uintptr, containerName, blobType string, blob []byte, flags uint32) (uintptr, error) {
+	if len(blob) == 0 {
+		return 0, errors.New("no key to import")
+	}
+
+	name, err := windows.UTF16FromString(containerName)
+	if err != nil {
+		return 0, fmt.Errorf("invalid container name %q: %w", containerName, err)
+	}
+
+	buffer := nCryptBuffer{
+		cbBuffer:   uint32(len(name) * 2), // UTF-16, including the terminating NUL
+		bufferType: NCRYPTBUFFER_PKCS_KEY_NAME,
+		pvBuffer:   unsafe.Pointer(&name[0]),
+	}
+	params := nCryptBufferDesc{
+		ulVersion: NCRYPTBUFFER_VERSION,
+		cBuffers:  1,
+		pBuffers:  unsafe.Pointer(&buffer),
+	}
+
+	var kh uintptr
+	r, _, _ := procNCryptImportKey.Call(
+		providerHandle,
+		0,
+		uintptr(unsafe.Pointer(wide(blobType))),
+		uintptr(unsafe.Pointer(&params)),
+		uintptr(unsafe.Pointer(&kh)),
+		uintptr(unsafe.Pointer(&blob[0])),
+		uintptr(len(blob)),
+		uintptr(flags|NCRYPT_DO_NOT_FINALIZE_FLAG))
+	runtime.KeepAlive(name)
+	runtime.KeepAlive(&buffer)
+	runtime.KeepAlive(blob)
+	if r != 0 {
+		return 0, fmt.Errorf("NCryptImportKey for container %q returned %v", containerName, errNoToStr(uint32(r)))
 	}
 
 	return kh, nil

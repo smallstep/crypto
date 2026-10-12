@@ -759,6 +759,111 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}, nil
 }
 
+// ImportKeyRequest is the parameter used in the ImportKey method.
+type ImportKeyRequest struct {
+	// Name is the URI naming the key container ("key", required) and the
+	// keyset it is imported into ("store-location"), as for CreateKey.
+	Name string
+	// PrivateKey is the key to import: an *ecdsa.PrivateKey or an
+	// *rsa.PrivateKey.
+	PrivateKey crypto.PrivateKey
+}
+
+// ImportKey persists an existing private key in the storage provider, in the
+// named container, where CreateKey would have generated a new one. It is the
+// way to have the provider hold a key that also exists somewhere else, such as
+// a key file.
+//
+// The imported key is not exportable: the provider signs with it, and a copy
+// of the private key has to come from wherever it was imported from. A
+// container that already exists is not replaced; the import fails with
+// NTE_EXISTS.
+//
+// Only the Microsoft Software Key Storage Provider is supported.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, error) {
+	if req.PrivateKey == nil {
+		return nil, errors.New("importKeyRequest 'privateKey' cannot be empty")
+	}
+	if k.providerName != ProviderMSKSP {
+		return nil, fmt.Errorf("cannot import keys into %s", k.providerName)
+	}
+
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+	if u.keyContainerName == "" {
+		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
+	}
+
+	blobType, blob, err := privateKeyBlob(req.PrivateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	keyFlags, err := k.getKeyFlags(u)
+	if err != nil {
+		return nil, err
+	}
+
+	// Checked first because the import does not: given a container that
+	// already exists, the software KSP replaces the key in it.
+	if existing, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags); err == nil {
+		nCryptFreeObject(existing)
+		return nil, fmt.Errorf("unable to import key: container %q returned %v", u.keyContainerName, errNoToStr(NTE_EXISTS))
+	}
+
+	kh, err := nCryptImportKey(k.providerHandle, u.keyContainerName, blobType, blob, keyFlags)
+	if err != nil {
+		return nil, fmt.Errorf("unable to import key: %w", err)
+	}
+
+	// Set before finalizing, which is when the provider fixes the policy.
+	if err := nCryptSetProperty(kh, NCRYPT_EXPORT_POLICY_PROPERTY, uint32(0), 0); err != nil {
+		nCryptFreeObject(kh)
+		return nil, fmt.Errorf("unable to set key NCRYPT_EXPORT_POLICY_PROPERTY: %w", err)
+	}
+
+	if err := nCryptFinalizeKey(kh, 0); err != nil {
+		nCryptFreeObject(kh)
+		return nil, fmt.Errorf("unable to finalize key: %w", err)
+	}
+
+	// Finalizing persisted the key, so from here a failure removes it rather
+	// than leave a container the caller was told was not created.
+	// nCryptDeleteKey also frees the handle.
+	uc, err := nCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
+	if err != nil {
+		_ = nCryptDeleteKey(kh)
+		return nil, fmt.Errorf("unable to retrieve NCRYPT_UNIQUE_NAME_PROPERTY: %w", err)
+	}
+
+	pub, err := getPublicKey(kh)
+	if err != nil {
+		_ = nCryptDeleteKey(kh)
+		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
+	}
+	nCryptFreeObject(kh)
+
+	importedKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
+	if u.storeLocation != "" {
+		importedKeyURI += fmt.Sprintf(";%s=%s", StoreLocationArg, u.storeLocation)
+	}
+
+	return &apiv1.CreateKeyResponse{
+		Name:      importedKeyURI,
+		PublicKey: pub,
+		CreateSignerRequest: apiv1.CreateSignerRequest{
+			SigningKey: importedKeyURI,
+		},
+	}, nil
+}
+
 // DeleteKey deletes the key from the key id (Microsoft calls it 'Key Container Name') passed in via the URI
 func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 	u, err := parseURI(req.Name)
