@@ -3,6 +3,7 @@
 package capi
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -16,9 +17,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 
 	"go.step.sm/crypto/fingerprint"
 	"go.step.sm/crypto/kms/apiv1"
+	"go.step.sm/crypto/x509util"
 )
 
 // mustStoreSelfSignedCertificate generates a self-signed certificate, stores it
@@ -130,4 +133,81 @@ func TestCAPIKMS_SearchCertificates_keyContainerName(t *testing.T) {
 	assert.Equal(t, cert.Raw, found.Certificate.Raw)
 	assert.NoError(t, found.Err)
 	assert.Equal(t, containerName, found.KeyName)
+}
+
+// TestCAPIKMS_machineKeyset runs only on a developer Windows machine with
+// administrative rights, which creating a machine-keyset key requires. It pins
+// that a key created in the machine keyset stays addressable as one: through
+// the URI CreateKey returns, and through the container name when the
+// certificate stored for it is looked up or deleted. Each fails with
+// NTE_BAD_KEYSET if the key is opened in the user keyset instead.
+func TestCAPIKMS_machineKeyset(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("creating a machine-keyset key requires administrative rights")
+	}
+
+	k, err := New(context.Background(), apiv1.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = k.Close() })
+
+	suffix := make([]byte, 8)
+	_, err = rand.Read(suffix)
+	require.NoError(t, err)
+	container := "go-step-crypto-test-" + hex.EncodeToString(suffix)
+	keyName := "capi:key=" + container + ";store-location=machine"
+
+	resp, err := k.CreateKey(&apiv1.CreateKeyRequest{
+		Name:               keyName,
+		SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, k.DeleteKey(&apiv1.DeleteKeyRequest{Name: keyName}))
+	})
+
+	signer, err := k.CreateSigner(&resp.CreateSignerRequest)
+	require.NoError(t, err, "the URI CreateKey returned must open the key it created")
+	assert.Equal(t, resp.PublicKey, signer.Public())
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+	// A certificate is found from its key by subject key identifier, which Go
+	// sets on its own only for CA certificates.
+	skid, err := x509util.GenerateSubjectKeyID(signer.Public())
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		SubjectKeyId: skid,
+		Subject:      pkix.Name{CommonName: "go.step.sm/crypto capi machine keyset test"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, signer.Public(), signer)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+
+	certName := "capi:store-location=machine;store=My;key=" + container
+	require.NoError(t, k.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name:        certName,
+		Certificate: cert,
+	}))
+	fp, err := fingerprint.New(cert.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, k.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+			Name: "capi:store-location=machine;store=My;sha1=" + fp,
+		}))
+	})
+
+	loaded, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{Name: certName})
+	require.NoError(t, err, "the certificate must be found through its machine-keyset key")
+	assert.Equal(t, cert.Raw, loaded.Raw)
+
+	require.NoError(t, k.DeleteCertificate(&apiv1.DeleteCertificateRequest{Name: certName}))
+	_, err = k.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: "capi:store-location=machine;store=My;sha1=" + fp,
+	})
+	assert.ErrorIs(t, err, apiv1.NotFoundError{}, "the certificate must be deleted through its machine-keyset key")
 }
