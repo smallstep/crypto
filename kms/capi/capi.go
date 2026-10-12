@@ -496,17 +496,9 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			}
 		}
 	case u.keyContainerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.keyContainerName},
-			}).String(),
-		})
+		keyID, err := k.containerKeyID(u)
 		if err != nil {
 			return nil, err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
 		}
 		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
 			if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
@@ -751,6 +743,12 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 	}
 
 	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
+	// The keyset is part of the key's address: a key created in the machine
+	// keyset cannot be opened without NCRYPT_MACHINE_KEY_FLAG, so a URI that
+	// omits it names a key that does not exist.
+	if u.storeLocation != "" {
+		createdKeyURI += fmt.Sprintf(";%s=%s", StoreLocationArg, u.storeLocation)
+	}
 
 	return &apiv1.CreateKeyResponse{
 		Name:      createdKeyURI,
@@ -1232,17 +1230,9 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			prevCert = certHandle
 		}
 	case u.keyContainerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.keyContainerName},
-			}).String(),
-		})
+		keyID, err := k.containerKeyID(u)
 		if err != nil {
 			return err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return fmt.Errorf("error generating SubjectKeyID: %w", err)
 		}
 		certHandle, err = findCertificateBySubjectKeyID(st, keyID)
 		if err != nil {
@@ -1252,6 +1242,36 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
+}
+
+// containerKeyID returns the subject key identifier of the key in the
+// container u names, which is how a certificate is found from its key.
+//
+// The key is opened in the keyset the URI names for it, which is not
+// necessarily the store the certificate is searched in (see KeyScopeArg).
+// Only the machine keyset is forwarded: it is the one that needs a flag to
+// open, and "user" is refused by providers whose keys are machine-wide.
+func (k *CAPIKMS) containerKeyID(u *uriAttributes) ([]byte, error) {
+	keyName := url.Values{
+		ContainerNameArg: []string{u.keyContainerName},
+	}
+	if u.isMachineKeyset() {
+		keyName.Set(StoreLocationArg, MachineStoreLocation)
+	}
+
+	key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+		Name: uri.New(Scheme, keyName).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	keyID, err := x509util.GenerateSubjectKeyID(key)
+	if err != nil {
+		return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
+	}
+
+	return keyID, nil
 }
 
 // deleteCertContextAndMaybeKey removes the certificate referenced by certHandle
