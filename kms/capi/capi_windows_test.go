@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/hex"
 	"math/big"
 	"testing"
@@ -229,7 +230,13 @@ func TestCAPIKMS_ImportKey(t *testing.T) {
 	require.NoError(t, err)
 	ecP384Key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	require.NoError(t, err)
+	ecP521Key, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	require.NoError(t, err)
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	rsa3072Key, err := rsa.GenerateKey(rand.Reader, 3072)
+	require.NoError(t, err)
+	rsa4096Key, err := rsa.GenerateKey(rand.Reader, 4096)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -239,7 +246,10 @@ func TestCAPIKMS_ImportKey(t *testing.T) {
 	}{
 		{"ecdsa user", ecKey, "user"},
 		{"ecdsa p384 user", ecP384Key, "user"},
+		{"ecdsa p521 user", ecP521Key, "user"},
 		{"rsa user", rsaKey, "user"},
+		{"rsa 3072 user", rsa3072Key, "user"},
+		{"rsa 4096 user", rsa4096Key, "user"},
 		{"ecdsa machine", ecKey, "machine"},
 	}
 
@@ -286,9 +296,13 @@ func TestCAPIKMS_ImportKey(t *testing.T) {
 			require.NoError(t, err)
 			defer nCryptFreeObject(kh)
 
-			policy, err := nCryptGetPropertyInt(kh, wide(NCRYPT_EXPORT_POLICY_PROPERTY))
+			// The export policy is a DWORD, so it is decoded from exactly four
+			// bytes rather than through nCryptGetPropertyInt, which reads a
+			// whole int.
+			policy, err := getProperty(kh, wide(NCRYPT_EXPORT_POLICY_PROPERTY))
 			require.NoError(t, err)
-			assert.Zero(t, policy, "the imported key must not be exportable")
+			require.Len(t, policy, 4)
+			assert.Zero(t, binary.LittleEndian.Uint32(policy), "the imported key must not be exportable")
 			_, err = nCryptExportKey(kh, NCRYPT_PKCS8_PRIVATE_KEY_BLOB)
 			assert.Error(t, err, "exporting the private key must fail")
 
