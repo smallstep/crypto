@@ -182,11 +182,13 @@ var signatureAlgorithmMapping = map[apiv1.SignatureAlgorithm]algorithmAttributes
 // ones:
 //   - my-name
 //   - mackms:label=my-name;tag=com.smallstep.crypto;hash=ccb792f9d9a1262bfb814a339876f825bdba1261
+//   - mackms:tag=com.smallstep.crypto;hash=ccb792f9d9a1262bfb814a339876f825bdba1261
 //
 // The above URIs support the following attributes:
-//   - "label" corresponds with Apple's kSecAttrLabel. It is always required and
-//     represents the key name. You will be able to see the keys in the Keychain,
-//     looking for the value.
+//   - "label" corresponds with Apple's kSecAttrLabel. It represents the key name.
+//     You will be able to see the keys in the keychain, looking for the value.
+//     It is required when calling CreateKey and DeleteKey. It is required when
+//     calling GetPublicKey and CreateSigner, unless "hash" is set.
 //   - "tag" corresponds with kSecAttrApplicationTag. It defaults to
 //     com.smallstep.crypto. If tag is an empty string ("tag="), the attribute
 //     will not be set.
@@ -242,7 +244,7 @@ func (k *MacKMS) GetPublicKey(req *apiv1.GetPublicKeyRequest) (crypto.PublicKey,
 		return nil, fmt.Errorf("getPublicKeyRequest 'name' cannot be empty")
 	}
 
-	u, err := parseURI(req.Name)
+	u, err := parseURI(req.Name, false) // lookup key by label and/or hash
 	if err != nil {
 		return nil, fmt.Errorf("mackms GetPublicKey failed: %w", err)
 	}
@@ -268,7 +270,7 @@ func (k *MacKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		return nil, fmt.Errorf("createKeyRequest 'name' cannot be empty")
 	}
 
-	u, err := parseURI(req.Name)
+	u, err := parseURI(req.Name, true) // creation always requires a label
 	if err != nil {
 		return nil, fmt.Errorf("mackms CreateKey failed: %w", err)
 	}
@@ -411,7 +413,7 @@ func (k *MacKMS) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		return nil, fmt.Errorf("createSignerRequest 'signingKey' cannot be empty")
 	}
 
-	u, err := parseURI(req.SigningKey)
+	u, err := parseURI(req.SigningKey, false) // lookup key by label and/or hash
 	if err != nil {
 		return nil, fmt.Errorf("mackms CreateSigner failed: %w", err)
 	}
@@ -658,7 +660,7 @@ func (*MacKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("deleteKeyRequest 'name' cannot be empty")
 	}
 
-	u, err := parseURI(req.Name)
+	u, err := parseURI(req.Name, true) // deletion always requires a label
 	if err != nil {
 		return fmt.Errorf("mackms DeleteKey failed: %w", err)
 	}
@@ -1384,7 +1386,7 @@ func storeCertificate(u *certAttributes, cert *x509.Certificate) error {
 	return nil
 }
 
-func parseURI(rawuri string) (*keyAttributes, error) {
+func parseURI(rawuri string, requireLabel bool) (*keyAttributes, error) {
 	// When rawuri is just the key name
 	if !strings.HasPrefix(strings.ToLower(rawuri), Scheme) {
 		return &keyAttributes{
@@ -1416,17 +1418,24 @@ func parseURI(rawuri string) (*keyAttributes, error) {
 	// With regular values, uris look like this:
 	// mackms:label=my-key;tag=my-tag;hash=010a...;se=true;bio=true
 	label := u.Get("label")
-	if label == "" {
+	if requireLabel && label == "" {
 		return nil, fmt.Errorf("error parsing %q: label is required", rawuri)
 	}
+
+	hash := u.GetEncoded("hash")
+	if label == "" && len(hash) == 0 {
+		return nil, fmt.Errorf("error parsing %q: one of label or hash is required", rawuri)
+	}
+
 	tag := u.Get("tag")
 	if tag == "" && !u.Has("tag") {
 		tag = DefaultTag
 	}
+
 	return &keyAttributes{
 		label:            label,
 		tag:              tag,
-		hash:             u.GetEncoded("hash"),
+		hash:             hash,
 		retry:            !u.Has("tag"),
 		useSecureEnclave: u.GetBool("se"),
 		useBiometrics:    u.GetBool("bio"),
