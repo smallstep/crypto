@@ -237,6 +237,10 @@ func GetX5cInsecureHeader(jwt *JSONWebToken) ([]*x509.Certificate, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error decoding x5cInsecure header certs")
 	}
+	// An empty list decodes without error, and every caller wants a leaf.
+	if len(chain) == 0 {
+		return nil, errors.New("ssh check-host token x5cInsecure header is empty")
+	}
 	return chain, nil
 }
 
