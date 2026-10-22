@@ -150,18 +150,154 @@ var pivOpen = func(card string) (pivKey, error) {
 	return piv.Open(card)
 }
 
-// openCard wraps pivOpen with a cache. It loads a card connection from the
-// cache if present.
-func openCard(card string) (pivKey, error) {
+// probeCard opens a connection to the given card, loading it from the cache if
+// present. The second return value reports whether we opened the connection: it
+// is owned by the caller, who must close it if it does not use the card. A
+// connection from the cache is in use by another YubiKey, and it is not ours to
+// close.
+//
+// A connection is only added to the cache when the card is selected: another
+// YubiKey must never get a connection that we are about to close.
+func probeCard(card string) (pivKey, bool, error) {
 	if v, ok := pivMap.Load(card); ok {
-		return v.(pivKey), nil
+		return v.(pivKey), false, nil
 	}
 	yk, err := pivOpen(card)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	pivMap.Store(card, yk)
-	return yk, nil
+	return yk, true, nil
+}
+
+// isYubiKey reports whether the name of a smart card reader, e.g. "Yubico
+// YubiKey OTP+FIDO+CCID 0", identifies a YubiKey. Looking for a YubiKey by the
+// name of its reader is the method documented in github.com/go-piv/piv-go, and
+// the one used by Yubico's ykman.
+func isYubiKey(card string) bool {
+	return strings.Contains(strings.ToLower(card), "yubikey")
+}
+
+// selectCard returns a connection to a YubiKey, and the name of the smart card
+// reader it is connected to.
+//
+// The readers that identify a YubiKey by name are always used first. Opening a
+// reader takes exclusive access to the card in it, and with piv-go v2.6.0 the
+// connection to a card without the PIV applet -- a payment card or a corporate
+// badge in the reader built in a laptop -- is not always released, so we avoid
+// opening those readers whenever we can.
+func selectCard(cards []string, serial string) (pivKey, string, error) {
+	if len(cards) == 0 {
+		return nil, "", errors.New("error detecting yubikey: try removing and reconnecting the device")
+	}
+
+	// A serial number cannot be read without opening the card, so we look for it
+	// in all the readers, the YubiKeys first.
+	if serial != "" {
+		return selectCardWithSerial(cards, serial)
+	}
+	return findFirstYubiKey(cards)
+}
+
+// findFirstYubiKey returns a connection to the card in the first reader that
+// identifies a YubiKey and can be opened, and the name of that reader. When no
+// reader identifies a YubiKey, or none of the YubiKeys can be opened, it falls
+// back to the first reader reported by the smart card service, the one that
+// this method opened before, so that a device that works today keeps working:
+// a YubiKey connected to an NFC reader, or another device with support for the
+// PIV applet, is named after its reader and not after Yubico.
+func findFirstYubiKey(cards []string) (pivKey, string, error) {
+	var firstErr error
+	open := func(card string) (pivKey, bool) {
+		yk, opened, err := probeCard(card)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("error opening yubikey in reader %q: %w", card, err)
+			}
+			return nil, false
+		}
+		if opened {
+			pivMap.Store(card, yk)
+		}
+		return yk, true
+	}
+
+	// Open the YubiKeys in the order reported by the smart card service.
+	for _, card := range cards {
+		if !isYubiKey(card) {
+			continue
+		}
+		if yk, ok := open(card); ok {
+			return yk, card, nil
+		}
+	}
+	if card := cards[0]; !isYubiKey(card) {
+		if yk, ok := open(card); ok {
+			return yk, card, nil
+		}
+	}
+	return nil, "", firstErr
+}
+
+// selectCardWithSerial returns a connection to the YubiKey with the given serial
+// number, and the name of the smart card reader it is connected to. It scans
+// every reader, the YubiKeys before the rest: opening a reader takes exclusive
+// access to the card in it, so we only open the other readers when the serial
+// number is not on a YubiKey.
+func selectCardWithSerial(cards []string, serial string) (pivKey, string, error) {
+	var firstErr error
+	scanned := make([]string, 0, len(cards))
+	scan := func(card string) (pivKey, bool) {
+		scanned = append(scanned, strconv.Quote(card))
+		yk, opened, err := probeCard(card)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("error opening yubikey in reader %q: %w", card, err)
+			}
+			return nil, false
+		}
+		s, err := yk.Serial()
+		if err == nil && serial == strconv.FormatUint(uint64(s), 10) {
+			if opened {
+				pivMap.Store(card, yk)
+			}
+			return yk, true
+		}
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("error reading the serial number in reader %q: %w", card, err)
+		}
+		// Release the cards that we open and don't use, they would stay locked
+		// for the rest of the process.
+		if opened {
+			_ = yk.Close()
+		}
+		return nil, false
+	}
+
+	var others []string
+	for _, card := range cards {
+		if !isYubiKey(card) {
+			others = append(others, card)
+			continue
+		}
+		if yk, ok := scan(card); ok {
+			return yk, card, nil
+		}
+	}
+	for _, card := range others {
+		if yk, ok := scan(card); ok {
+			return yk, card, nil
+		}
+	}
+
+	// Always name the readers that we scanned: the error of the reader that
+	// failed to open, or whose serial number we could not read, is context, it
+	// is not the reason why we didn't find the key. Surfacing only the failure
+	// of an empty built-in reader is the error reported in #649.
+	readers := strings.Join(scanned, ", ")
+	if firstErr != nil {
+		return nil, "", fmt.Errorf("failed to find key with serial number %s in the readers %s: %w", serial, readers, firstErr)
+	}
+	return nil, "", fmt.Errorf("failed to find key with serial number %s in the readers %s", serial, readers)
 }
 
 // validManagementKeyLengths contains the valid lengths
@@ -198,6 +334,12 @@ const maximumManagementKeyLength = 32
 //
 // If the pin or the management key are not provided, we will use the default
 // ones.
+//
+// If the serial number is not provided, we will use the first YubiKey. YubiKeys
+// are identified by the name of the smart card reader they are connected to: a
+// YubiKey connected to an NFC reader, or another device with support for the
+// PIV applet, is named after its reader. If no reader identifies a YubiKey, or
+// none of the YubiKeys can be opened, we will use the first reader.
 func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	pin := "123456"
 	var managementKey [maximumManagementKeyLength]byte
@@ -252,30 +394,10 @@ func New(_ context.Context, opts apiv1.Options) (*YubiKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(cards) == 0 {
-		return nil, errors.New("error detecting yubikey: try removing and reconnecting the device")
-	}
-	card := cards[0]
 
-	var yk pivKey
-	if serial != "" {
-		// Attempt to locate the yubikey with the given serial.
-		for _, name := range cards {
-			if k, err := openCard(name); err == nil {
-				if s, err := k.Serial(); err == nil {
-					if serial == strconv.FormatUint(uint64(s), 10) {
-						yk = k
-						card = name
-						break
-					}
-				}
-			}
-		}
-		if yk == nil {
-			return nil, errors.Errorf("failed to find key with serial number %s, slot 0x9a might be empty", serial)
-		}
-	} else if yk, err = openCard(cards[0]); err != nil {
-		return nil, errors.Wrap(err, "error opening yubikey")
+	yk, card, err := selectCard(cards, serial)
+	if err != nil {
+		return nil, err
 	}
 
 	return &YubiKey{
