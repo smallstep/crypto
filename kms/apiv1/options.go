@@ -145,7 +145,7 @@ func (e NotImplementedError) Is(target error) bool {
 }
 
 // AlreadyExistsError is the type of error returned if a key already exists. This
-// is currently only implemented for pkcs11, tpmkms, and mackms.
+// is currently only implemented for pkcs11, tpmkms, mackms, and capi's ImportKey.
 type AlreadyExistsError struct {
 	Message string
 }
