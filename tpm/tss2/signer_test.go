@@ -144,6 +144,52 @@ func TestSign(t *testing.T) {
 	}
 }
 
+func TestSign_nilOpts(t *testing.T) {
+	rw := openTPM(t)
+	t.Cleanup(func() {
+		assert.NoError(t, rw.Close())
+	})
+
+	keyHnd, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", ECCSRKTemplate)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, tpm2.FlushContext(rw, keyHnd))
+	})
+
+	createSigner := func(t *testing.T, params tpm2.Public) *Signer {
+		t.Helper()
+		priv, pub, _, _, _, err := tpm2.CreateKey(rw, keyHnd, tpm2.PCRSelection{}, "", "", params)
+		require.NoError(t, err)
+		signer, err := CreateSigner(rw, New(pub, priv))
+		require.NoError(t, err)
+		signer.SetSRKTemplate(ECCSRKTemplate)
+		return signer
+	}
+
+	ecSigner := createSigner(t, defaultKeyParamsEC)
+	pub, ok := ecSigner.Public().(*ecdsa.PublicKey)
+	require.True(t, ok)
+
+	// A digest of any length is signed as ecdsa.PrivateKey.Sign would.
+	for _, n := range []int{1, 16, 20, 31, 32, 33, 48, 64, 66} {
+		digest := make([]byte, n)
+		_, err := rand.Read(digest)
+		require.NoError(t, err)
+		digest[0] |= 0x80
+
+		sig, err := ecSigner.Sign(rand.Reader, digest, nil)
+		require.NoError(t, err, "%d-byte digest", n)
+		assert.True(t, ecdsa.VerifyASN1(pub, digest, sig), "%d-byte digest", n)
+	}
+
+	_, err = ecSigner.Sign(rand.Reader, nil, nil)
+	assert.Error(t, err)
+
+	rsaSigner := createSigner(t, defaultKeyParamsRSA)
+	_, err = rsaSigner.Sign(rand.Reader, make([]byte, 32), nil)
+	assert.Error(t, err)
+}
+
 func TestSign_SetTPM(t *testing.T) {
 	var signer *Signer
 

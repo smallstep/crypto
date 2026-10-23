@@ -1373,6 +1373,29 @@ func Test_syncSigner_Sign(t *testing.T) {
 	assert.True(t, ecdsa.VerifyASN1(&s.PublicKey, sum[:], sig))
 }
 
+func Test_syncSigner_Sign_nilOpts(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	_, edKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, rsaKeySize)
+	require.NoError(t, err)
+
+	// A short digest is signed as ecdsa.PrivateKey.Sign would.
+	digest := []byte{0x80, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
+	sig, err := (&syncSigner{Signer: ecKey}).Sign(rand.Reader, digest, nil)
+	require.NoError(t, err)
+	assert.True(t, ecdsa.VerifyASN1(&ecKey.PublicKey, digest, sig))
+
+	message := []byte("the-data")
+	sig, err = (&syncSigner{Signer: edKey}).Sign(rand.Reader, message, nil)
+	require.NoError(t, err)
+	assert.True(t, ed25519.Verify(edKey.Public().(ed25519.PublicKey), message, sig))
+
+	_, err = (&syncSigner{Signer: rsaKey}).Sign(rand.Reader, make([]byte, 32), nil)
+	assert.Error(t, err)
+}
+
 func Test_syncDecrypter_Decrypt(t *testing.T) {
 	d, err := rsa.GenerateKey(rand.Reader, rsaKeySize)
 	require.NoError(t, err)

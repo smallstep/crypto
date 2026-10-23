@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/big"
 	"runtime"
 	"strconv"
@@ -211,7 +212,27 @@ func (k *PKCS11) CreateSigner(req *apiv1.CreateSignerRequest) (crypto.Signer, er
 		return nil, errors.Wrap(err, "createSigner failed")
 	}
 
+	// crypto11 RSA keys panic on nil opts.
+	if s, ok := signer.(crypto11.SignerDecrypter); ok {
+		if _, ok := s.Public().(*rsa.PublicKey); ok {
+			return &rsaSigner{s}, nil
+		}
+	}
+
 	return signer, nil
+}
+
+// rsaSigner wraps a crypto11 RSA key to fail instead of panicking when Sign
+// gets nil opts.
+type rsaSigner struct {
+	crypto11.SignerDecrypter
+}
+
+func (s *rsaSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	if opts == nil {
+		return nil, errors.New("rsa keys require signer options")
+	}
+	return s.SignerDecrypter.Sign(rand, digest, opts)
 }
 
 // CreateDecrypter creates a decrypter using a key present in the PKCS#11

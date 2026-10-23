@@ -15,6 +15,8 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
+
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 )
 
 // Signer implements a crypto.Signer using the AWS KMS.
@@ -70,6 +72,11 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign signs digest with the private key stored in the Azure Key Vault.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	digest, opts, err := cryptoutil.SignerOpts(s.Public(), digest, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "keyVault Sign failed")
+	}
+
 	alg, err := getSigningAlgorithm(s.Public(), opts)
 	if err != nil {
 		return nil, err

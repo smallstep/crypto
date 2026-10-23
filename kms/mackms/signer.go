@@ -26,6 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"io"
 
@@ -83,6 +84,9 @@ func getSecKeyAlgorithm(pub crypto.PublicKey, opts crypto.SignerOpts) (security.
 	case *ecdsa.PublicKey:
 		return security.KSecKeyAlgorithmECDSASignatureDigestX962, nil
 	case *rsa.PublicKey:
+		if opts == nil {
+			return 0, errors.New("rsa keys require signer options")
+		}
 		size := opts.HashFunc().Size()
 		// RSA-PSS
 		if _, ok := opts.(*rsa.PSSOptions); ok {

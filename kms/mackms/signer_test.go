@@ -26,11 +26,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.step.sm/crypto/internal/darwin/security"
 	"go.step.sm/crypto/kms/apiv1"
 )
 
@@ -49,6 +51,35 @@ func createKey(t *testing.T, name string, sa apiv1.SignatureAlgorithm) *apiv1.Cr
 		}))
 	})
 	return resp
+}
+
+func Test_getSecKeyAlgorithm(t *testing.T) {
+	tests := []struct {
+		name    string
+		pub     crypto.PublicKey
+		opts    crypto.SignerOpts
+		want    security.SecKeyAlgorithm
+		wantErr bool
+	}{
+		{"ok ecdsa", &ecdsa.PublicKey{}, crypto.SHA256, security.KSecKeyAlgorithmECDSASignatureDigestX962, false},
+		{"ok ecdsa nil opts", &ecdsa.PublicKey{}, nil, security.KSecKeyAlgorithmECDSASignatureDigestX962, false},
+		{"ok rsa", &rsa.PublicKey{}, crypto.SHA256, security.KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256, false},
+		{"ok rsa pss", &rsa.PublicKey{}, &rsa.PSSOptions{Hash: crypto.SHA384}, security.KSecKeyAlgorithmRSASignatureDigestPSSSHA384, false},
+		{"fail rsa nil opts", &rsa.PublicKey{}, nil, 0, true},
+		{"fail rsa hash", &rsa.PublicKey{}, crypto.SHA1, 0, true},
+		{"fail key", []byte("key"), crypto.SHA256, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getSecKeyAlgorithm(tt.pub, tt.opts)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestECDH_ECDH(t *testing.T) {
