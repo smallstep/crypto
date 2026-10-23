@@ -333,6 +333,9 @@ func nCryptCreatePersistedKey(provisionerHandle uintptr, containerName, algorith
 func privateKeyBlob(key crypto.PrivateKey) (string, []byte, error) {
 	switch k := key.(type) {
 	case *ecdsa.PrivateKey:
+		if k == nil || k.D == nil || k.X == nil || k.Y == nil || k.Curve == nil {
+			return "", nil, errors.New("incomplete ECDSA private key")
+		}
 		var magic uint32
 		switch k.Curve {
 		case elliptic.P256():
@@ -357,6 +360,9 @@ func privateKeyBlob(key crypto.PrivateKey) (string, []byte, error) {
 
 		return BCRYPT_ECCPRIVATE_BLOB, blob, nil
 	case *rsa.PrivateKey:
+		if k == nil || k.N == nil || k.D == nil {
+			return "", nil, errors.New("incomplete RSA private key")
+		}
 		blob, err := x509.MarshalPKCS8PrivateKey(k)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed marshaling private key: %w", err)
