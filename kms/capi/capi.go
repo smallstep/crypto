@@ -836,7 +836,7 @@ func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, er
 
 	// Finalizing persisted the key, so from here a failure removes it rather
 	// than leave a container the caller was told was not created.
-	// nCryptDeleteKey also frees the handle.
+	// nCryptDeleteKey consumes the handle.
 	uc, err := nCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
 	if err != nil {
 		_ = nCryptDeleteKey(kh)
@@ -885,8 +885,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("unable to open key: %w", err)
 	}
 
-	defer nCryptFreeObject(kh)
-
+	// nCryptDeleteKey consumes the handle.
 	return nCryptDeleteKey(kh)
 }
 
