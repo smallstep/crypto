@@ -1122,6 +1122,61 @@ func Test_tss2Signer_Sign_RSAPSS(t *testing.T) {
 	}))
 }
 
+// Test_signers_Sign_nilOpts checks that both TPM signers sign an ECDSA digest
+// of any length with nil opts as ecdsa.PrivateKey.Sign would, and that RSA
+// keys fail with nil opts.
+func Test_signers_Sign_nilOpts(t *testing.T) {
+	ctx := context.Background()
+	tpm := newSimulatedTPM(t)
+
+	signers := func(t *testing.T, name string, config CreateKeyConfig) map[string]crypto.Signer {
+		t.Helper()
+		key, err := tpm.CreateKey(ctx, name, config)
+		require.NoError(t, err)
+		s, err := key.Signer(ctx)
+		require.NoError(t, err)
+		tss2Key, err := key.ToTSS2(ctx)
+		require.NoError(t, err)
+		tss2Signer, err := CreateTSS2Signer(ctx, tpm, tss2Key)
+		require.NoError(t, err)
+		return map[string]crypto.Signer{"signer": s, "tss2Signer": tss2Signer}
+	}
+
+	for _, size := range []int{256, 384, 521} {
+		for name, s := range signers(t, fmt.Sprintf("ecdsa-%d", size), CreateKeyConfig{Algorithm: "ECDSA", Size: size}) {
+			pub, ok := s.Public().(*ecdsa.PublicKey)
+			require.True(t, ok)
+			for _, n := range []int{1, 16, 20, 28, 31, 32, 33, 47, 48, 49, 63, 64, 65, 66, 80} {
+				t.Run(fmt.Sprintf("%s/P-%d/%d", name, size, n), func(t *testing.T) {
+					digest := make([]byte, n)
+					_, err := rand.Read(digest)
+					require.NoError(t, err)
+					digest[0] |= 0x80
+
+					sig, err := s.Sign(rand.Reader, digest, nil)
+					if size == 521 && n > 64 {
+						assert.Error(t, err)
+						return
+					}
+					require.NoError(t, err)
+					assert.True(t, ecdsa.VerifyASN1(pub, digest, sig))
+				})
+			}
+			t.Run(fmt.Sprintf("%s/P-%d/empty", name, size), func(t *testing.T) {
+				_, err := s.Sign(rand.Reader, nil, nil)
+				assert.Error(t, err)
+			})
+		}
+	}
+
+	for name, s := range signers(t, "rsa", CreateKeyConfig{Algorithm: "RSA", Size: 2048}) {
+		t.Run(name+"/RSA", func(t *testing.T) {
+			_, err := s.Sign(rand.Reader, make([]byte, 32), nil)
+			assert.Error(t, err)
+		})
+	}
+}
+
 func TestTPMOnlyFailsWithoutStorageWhenRequired(t *testing.T) {
 	tpm, err := New(withSimulator(t)) // defaults to blackhole; no storage
 	require.NoError(t, err)

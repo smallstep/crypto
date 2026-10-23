@@ -1,9 +1,14 @@
 package cloudkms
 
 import (
+	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -166,6 +171,69 @@ func Test_signer_Sign(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("signer.Sign() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func Test_signer_Sign_nilOpts(t *testing.T) {
+	keyName := "projects/p/locations/l/keyRings/k/cryptoKeys/c/cryptoKeyVersions/1"
+	client := &MockClient{
+		asymmetricSign: func(_ context.Context, r *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
+			var b []byte
+			switch {
+			case r.Digest.GetSha256() != nil:
+				b = append([]byte("sha256:"), r.Digest.GetSha256()...)
+			case r.Digest.GetSha384() != nil:
+				b = append([]byte("sha384:"), r.Digest.GetSha384()...)
+			case r.Digest.GetSha512() != nil:
+				b = append([]byte("sha512:"), r.Digest.GetSha512()...)
+			default:
+				b = append([]byte("data:"), r.Data...)
+			}
+			return &kmspb.AsymmetricSignResponse{Signature: b}, nil
+		},
+	}
+
+	p256 := &ecdsa.PublicKey{Curve: elliptic.P256()}
+	p384 := &ecdsa.PublicKey{Curve: elliptic.P384()}
+	p521 := &ecdsa.PublicKey{Curve: elliptic.P521()}
+	sha256Digest := bytes.Repeat([]byte{1}, 32)
+	sha384Digest := bytes.Repeat([]byte{2}, 48)
+	sha512Digest := bytes.Repeat([]byte{3}, 64)
+
+	tests := []struct {
+		name      string
+		publicKey crypto.PublicKey
+		digest    []byte
+		want      []byte
+		wantErr   bool
+	}{
+		{"ok P-256", p256, sha256Digest, append([]byte("sha256:"), sha256Digest...), false},
+		{"ok P-384", p384, sha384Digest, append([]byte("sha384:"), sha384Digest...), false},
+		{"ok P-521", p521, sha512Digest, append([]byte("sha512:"), sha512Digest...), false},
+		{"ok P-256 truncated", p256, sha384Digest, append([]byte("sha256:"), sha384Digest[:32]...), false},
+		{"ok P-384 padded", p384, sha256Digest, append([]byte("sha384:"), append(make([]byte, 16), sha256Digest...)...), false},
+		{"ok P-521 padded", p521, sha256Digest[:16], append([]byte("sha512:"), append(make([]byte, 48), sha256Digest[:16]...)...), false},
+		{"ok P-384 truncated", p384, append(append([]byte{}, sha384Digest...), make([]byte, 18)...), append([]byte("sha384:"), sha384Digest...), false},
+		{"ok ed25519", ed25519.PublicKey{}, []byte("message"), []byte("data:message"), false},
+		{"fail P-521 digest length", p521, make([]byte, 66), nil, true},
+		{"fail empty digest", p256, nil, nil, true},
+		{"fail rsa", &rsa.PublicKey{}, sha256Digest, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Signer{
+				client:     client,
+				signingKey: keyName,
+				publicKey:  tt.publicKey,
+			}
+			got, err := s.Sign(rand.Reader, tt.digest, nil)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

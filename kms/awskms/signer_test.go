@@ -1,10 +1,12 @@
 package awskms
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
@@ -109,6 +111,27 @@ func TestSigner_Sign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rsaKey, err := pemutil.ParseKey([]byte(rsaPublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p521Key, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	algClient := func(alg types.SigningAlgorithmSpec, digest []byte) *MockClient {
+		return &MockClient{
+			sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {
+				if input.SigningAlgorithm != alg {
+					return nil, fmt.Errorf("unexpected signing algorithm %s", input.SigningAlgorithm)
+				}
+				if !bytes.Equal(input.Message, digest) {
+					return nil, fmt.Errorf("unexpected message %x", input.Message)
+				}
+				return &kms.SignOutput{Signature: signature}, nil
+			},
+		}
+	}
 
 	type fields struct {
 		client    KeyManagementClient
@@ -128,7 +151,15 @@ func TestSigner_Sign(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, []byte("digest"), crypto.SHA256}, signature, false},
+		{"ok nil opts", fields{algClient(types.SigningAlgorithmSpecEcdsaSha256, bytes.Repeat([]byte{1}, 32)), "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, bytes.Repeat([]byte{1}, 32), nil}, signature, false},
+		{"ok nil opts truncated", fields{algClient(types.SigningAlgorithmSpecEcdsaSha256, bytes.Repeat([]byte{1}, 32)), "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, bytes.Repeat([]byte{1}, 66), nil}, signature, false},
+		{"ok nil opts padded", fields{algClient(types.SigningAlgorithmSpecEcdsaSha256, append(make([]byte, 16), bytes.Repeat([]byte{1}, 16)...)), "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, bytes.Repeat([]byte{1}, 16), nil}, signature, false},
+		{"ok nil opts P-521", fields{algClient(types.SigningAlgorithmSpecEcdsaSha512, bytes.Repeat([]byte{1}, 64)), "be468355-ca7a-40d9-a28b-8ae1c4c7f936", p521Key.Public()}, args{rand.Reader, bytes.Repeat([]byte{1}, 64), nil}, signature, false},
+		{"ok nil opts P-521 padded", fields{algClient(types.SigningAlgorithmSpecEcdsaSha512, append(make([]byte, 32), bytes.Repeat([]byte{1}, 32)...)), "be468355-ca7a-40d9-a28b-8ae1c4c7f936", p521Key.Public()}, args{rand.Reader, bytes.Repeat([]byte{1}, 32), nil}, signature, false},
+		{"fail nil opts P-521 digest length", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", p521Key.Public()}, args{rand.Reader, bytes.Repeat([]byte{1}, 66), nil}, nil, true},
 		{"fail alg", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, []byte("digest"), crypto.MD5}, nil, true},
+		{"fail nil opts empty digest", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", key}, args{rand.Reader, nil, nil}, nil, true},
+		{"fail nil opts rsa", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", rsaKey}, args{rand.Reader, make([]byte, 32), nil}, nil, true},
 		{"fail key", fields{okClient, "be468355-ca7a-40d9-a28b-8ae1c4c7f936", []byte("key")}, args{rand.Reader, []byte("digest"), crypto.SHA256}, nil, true},
 		{"fail sign", fields{&MockClient{
 			sign: func(ctx context.Context, input *kms.SignInput, opts ...func(*kms.Options)) (*kms.SignOutput, error) {

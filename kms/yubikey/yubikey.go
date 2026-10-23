@@ -21,6 +21,7 @@ import (
 	"github.com/go-piv/piv-go/v2/piv"
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/pemutil"
@@ -715,6 +716,11 @@ type syncSigner struct {
 }
 
 func (s *syncSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	digest, opts, err := cryptoutil.SignerOpts(s.Public(), digest, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "yubikey Sign failed")
+	}
+
 	m.Lock()
 	defer m.Unlock()
 	return s.Signer.Sign(rand, digest, opts)

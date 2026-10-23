@@ -1450,6 +1450,9 @@ func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 		return b.Bytes()
 
 	case "RSA":
+		if opts == nil {
+			return nil, errors.New("rsa keys require signer options")
+		}
 		hf := opts.HashFunc()
 		hashAlg, ok := hashAlgorithms[hf]
 		if !ok {

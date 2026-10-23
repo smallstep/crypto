@@ -32,6 +32,7 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 
 	"go.step.sm/crypto/internal/utils/convert"
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 )
 
 var (
@@ -164,6 +165,11 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign implements the [crypto.Signer] interface.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	digest, opts, err = cryptoutil.SignerOpts(s.publicKey, digest, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed signing: %w", err)
+	}
+
 	parent, err := convert.SafeUint32(s.tpmKey.Parent)
 	if err != nil {
 		return nil, fmt.Errorf("failed converting parent handle: %w", err)

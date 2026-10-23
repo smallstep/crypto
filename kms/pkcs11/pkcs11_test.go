@@ -482,6 +482,27 @@ func TestPKCS11_CreateKey(t *testing.T) {
 	}
 }
 
+// fakeSignerDecrypter is a crypto11.SignerDecrypter backed by a Go RSA key.
+type fakeSignerDecrypter struct {
+	*rsa.PrivateKey
+}
+
+func (fakeSignerDecrypter) Delete() error { return nil }
+
+func Test_rsaSigner_Sign(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	s := &rsaSigner{fakeSignerDecrypter{key}}
+
+	digest := make([]byte, 32)
+	sig, err := s.Sign(rand.Reader, digest, crypto.SHA256)
+	require.NoError(t, err)
+	assert.NoError(t, rsa.VerifyPKCS1v15(&key.PublicKey, crypto.SHA256, digest, sig))
+
+	_, err = s.Sign(rand.Reader, digest, nil)
+	assert.Error(t, err)
+}
+
 func TestPKCS11_CreateSigner(t *testing.T) {
 	k := setupPKCS11(t)
 	data := []byte("buggy-coheir-RUBRIC-rabbet-liberal-eaglet-khartoum-stagger")

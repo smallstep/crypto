@@ -251,6 +251,21 @@ func TestSigner_Sign(t *testing.T) {
 		{"RSA-PSS SHA512", "", azkeys.SignatureAlgorithmPS512, rsaPSSSHA512Digest, azkeys.SignResponse{
 			KeyOperationResult: azkeys.KeyOperationResult{Result: rsaPSSSHA512ResultSig},
 		}, nil},
+		{"P-256 nil opts", "", azkeys.SignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p256ResultSig},
+		}, nil},
+		{"P-384 nil opts", "my-version", azkeys.SignatureAlgorithmES384, p384Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p386ResultSig},
+		}, nil},
+		{"P-521 nil opts", "my-version", azkeys.SignatureAlgorithmES512, p521Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p521ResultSig},
+		}, nil},
+		{"P-256 nil opts padded", "", azkeys.SignatureAlgorithmES256, append(make([]byte, 16), p256Digest[16:]...), azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p256ResultSig},
+		}, nil},
+		{"P-384 nil opts truncated", "my-version", azkeys.SignatureAlgorithmES384, p384Digest, azkeys.SignResponse{
+			KeyOperationResult: azkeys.KeyOperationResult{Result: p386ResultSig},
+		}, nil},
 		// Errors
 		{"fail Sign", "", azkeys.SignatureAlgorithmRS256, rsaSHA256Digest, azkeys.SignResponse{}, errTest},
 		{"fail sign length", "", azkeys.SignatureAlgorithmES256, p256Digest, azkeys.SignResponse{
@@ -322,6 +337,21 @@ func TestSigner_Sign(t *testing.T) {
 				Hash:       crypto.SHA512,
 			},
 		}, rsaPSSSHA512Sig, false},
+		{"ok P-256 nil opts", fields{client, "my-key", "", p256}, args{
+			rand.Reader, p256Digest, nil,
+		}, p256Sig, false},
+		{"ok P-384 nil opts", fields{client, "my-key", "my-version", p384}, args{
+			rand.Reader, p384Digest, nil,
+		}, p384Sig, false},
+		{"ok P-521 nil opts", fields{client, "my-key", "my-version", p521}, args{
+			rand.Reader, p521Digest, nil,
+		}, p521Sig, false},
+		{"ok P-256 nil opts padded", fields{client, "my-key", "", p256}, args{
+			rand.Reader, p256Digest[16:], nil,
+		}, p256Sig, false},
+		{"ok P-384 nil opts truncated", fields{client, "my-key", "my-version", p384}, args{
+			rand.Reader, append(append([]byte{}, p384Digest...), make([]byte, 18)...), nil,
+		}, p384Sig, false},
 		{"fail Sign", fields{client, "my-key", "", rsaSHA256}, args{
 			rand.Reader, rsaSHA256Digest, crypto.SHA256,
 		}, nil, true},
@@ -345,6 +375,15 @@ func TestSigner_Sign(t *testing.T) {
 		}, nil, true},
 		{"fail Ed25519", fields{client, "my-key", "", ed25519Key}, args{
 			rand.Reader, []byte("message"), crypto.Hash(0),
+		}, nil, true},
+		{"fail P-521 nil opts digest length", fields{client, "my-key", "my-version", p521}, args{
+			rand.Reader, make([]byte, 66), nil,
+		}, nil, true},
+		{"fail ECDSA nil opts empty digest", fields{client, "my-key", "", p256}, args{
+			rand.Reader, nil, nil,
+		}, nil, true},
+		{"fail RSA nil opts", fields{client, "my-key", "", rsaSHA256}, args{
+			rand.Reader, rsaSHA256Digest, nil,
 		}, nil, true},
 	}
 	for _, tt := range tests {

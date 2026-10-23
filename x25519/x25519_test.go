@@ -284,6 +284,22 @@ func TestSignVerify(t *testing.T) {
 	}
 }
 
+func TestPrivateKey_Sign_nilOpts(t *testing.T) {
+	pub, priv, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data := []byte("message")
+	sig, err := priv.Sign(rand.Reader, data, nil)
+	if err != nil {
+		t.Fatalf("PrivateKey.Sign() error = %v", err)
+	}
+	if !Verify(pub, data, sig) {
+		t.Error("Verify() = false, want true")
+	}
+}
+
 func TestGenerateKey(t *testing.T) {
 	buf := mustTeeReader(t)
 	buf.Write([]byte{
