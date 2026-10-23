@@ -130,10 +130,10 @@ const (
 	// Magic numbers for public key blobs.
 	rsa1Magic = 0x31415352 // "RSA1" BCRYPT_RSAPUBLIC_MAGIC
 	ecs1Magic = 0x31534345 // "ECS1" BCRYPT_ECDSA_PUBLIC_P256_MAGIC
-	ecs3Magic = 0x33534345 // "ECS3" BCRYPT_ECDSA_PUBLIC_P384_MAGIC
-	ecs5Magic = 0x35534345 // "ECS5" BCRYPT_ECDSA_PUBLIC_P521_MAGIC
 	ecs2Magic = 0x32534345 // "ECS2" BCRYPT_ECDSA_PRIVATE_P256_MAGIC
+	ecs3Magic = 0x33534345 // "ECS3" BCRYPT_ECDSA_PUBLIC_P384_MAGIC
 	ecs4Magic = 0x34534345 // "ECS4" BCRYPT_ECDSA_PRIVATE_P384_MAGIC
+	ecs5Magic = 0x35534345 // "ECS5" BCRYPT_ECDSA_PUBLIC_P521_MAGIC
 	ecs6Magic = 0x36534345 // "ECS6" BCRYPT_ECDSA_PRIVATE_P521_MAGIC
 
 	ALG_RSA        = "RSA"
@@ -419,6 +419,7 @@ func nCryptImportKey(providerHandle uintptr, containerName, blobType string, blo
 		uintptr(flags|NCRYPT_DO_NOT_FINALIZE_FLAG))
 	runtime.KeepAlive(name)
 	runtime.KeepAlive(&buffer)
+	runtime.KeepAlive(&params)
 	runtime.KeepAlive(blob)
 	if r != 0 {
 		return 0, fmt.Errorf("NCryptImportKey for container %q returned %v", containerName, errNoToStr(uint32(r)))
