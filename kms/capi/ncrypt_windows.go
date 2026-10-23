@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -432,6 +433,13 @@ func nCryptImportKey(providerHandle uintptr, containerName, blobType string, blo
 	}
 
 	return kh, nil
+}
+
+// isBadKeyset reports whether err is NCryptOpenKey reporting that the
+// container it was asked to open does not exist in the keyset it looked in.
+func isBadKeyset(err error) bool {
+	return err != nil && (errors.Is(err, windows.Errno(NTE_BAD_KEYSET)) ||
+		strings.Contains(err.Error(), errNoToStr(NTE_BAD_KEYSET)))
 }
 
 func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpec, flags uint32) (uintptr, error) {

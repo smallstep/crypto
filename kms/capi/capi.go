@@ -742,13 +742,10 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
 	}
 
-	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
 	// The keyset is part of the key's address: a key created in the machine
 	// keyset cannot be opened without NCRYPT_MACHINE_KEY_FLAG, so a URI that
 	// omits it names a key that does not exist.
-	if u.storeLocation != "" {
-		createdKeyURI += fmt.Sprintf(";%s=%s", StoreLocationArg, u.storeLocation)
-	}
+	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc, StoreLocationArg, u.storeLocation)
 
 	return &apiv1.CreateKeyResponse{
 		Name:      createdKeyURI,
@@ -777,9 +774,12 @@ type ImportKeyRequest struct {
 // The imported key is not exportable: the provider signs with it, and a copy
 // of the private key has to come from wherever it was imported from. A
 // container that already exists is not replaced; the import fails with
-// NTE_EXISTS.
+// [apiv1.AlreadyExistsError].
 //
-// Only the Microsoft Software Key Storage Provider is supported.
+// Only the Microsoft Software Key Storage Provider is supported so far. Other
+// providers, such as the Platform Crypto Provider, take keys in other blob
+// formats and are not covered yet. A "key-spec" is refused: an imported key
+// has no legacy key spec.
 //
 // # Experimental
 //
@@ -800,11 +800,16 @@ func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, er
 	if u.keyContainerName == "" {
 		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
 	}
+	if u.keySpec != "" {
+		return nil, fmt.Errorf("%v cannot be set on an imported key", KeySpec)
+	}
 
 	blobType, blob, err := privateKeyBlob(req.PrivateKey)
 	if err != nil {
 		return nil, err
 	}
+	// The blob holds the private key: clear it once the provider has its copy.
+	defer clear(blob)
 
 	keyFlags, err := k.getKeyFlags(u)
 	if err != nil {
@@ -812,10 +817,18 @@ func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, er
 	}
 
 	// Checked first because the import does not: given a container that
-	// already exists, the software KSP replaces the key in it.
-	if existing, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags); err == nil {
+	// already exists, the software KSP replaces the key in it. Only a
+	// container that is not there is imported; any other failure to open it,
+	// such as access being denied, says nothing about whether it exists.
+	existing, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags)
+	switch {
+	case err == nil:
 		nCryptFreeObject(existing)
-		return nil, fmt.Errorf("unable to import key: container %q returned %v", u.keyContainerName, errNoToStr(NTE_EXISTS))
+		return nil, apiv1.AlreadyExistsError{
+			Message: fmt.Sprintf("unable to import key: container %q returned %v", u.keyContainerName, errNoToStr(NTE_EXISTS)),
+		}
+	case !isBadKeyset(err):
+		return nil, fmt.Errorf("unable to open key container %q: %w", u.keyContainerName, err)
 	}
 
 	kh, err := nCryptImportKey(k.providerHandle, u.keyContainerName, blobType, blob, keyFlags)
@@ -850,10 +863,7 @@ func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, er
 	}
 	nCryptFreeObject(kh)
 
-	importedKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
-	if u.storeLocation != "" {
-		importedKeyURI += fmt.Sprintf(";%s=%s", StoreLocationArg, u.storeLocation)
-	}
+	importedKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc, StoreLocationArg, u.storeLocation)
 
 	return &apiv1.CreateKeyResponse{
 		Name:      importedKeyURI,
