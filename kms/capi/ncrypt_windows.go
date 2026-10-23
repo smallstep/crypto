@@ -453,15 +453,20 @@ func nCryptOpenKey(provisionerHandle uintptr, containerName string, legacyKeySpe
 	return kh, nil
 }
 
+// nCryptDeleteKey deletes the key keyHandle refers to and consumes the handle:
+// NCryptDeleteKey frees it when it succeeds, and it is freed here when it
+// fails, so the caller frees it in neither case.
+//
+// The status NCryptDeleteKey returns decides the outcome. The thread's last
+// error is not part of its contract, and taking a stale one for a failure
+// would free a handle the deletion already freed.
 func nCryptDeleteKey(keyHandle uintptr) error {
-	r, _, err := procNCryptDeleteKey.Call(
+	r, _, _ := procNCryptDeleteKey.Call(
 		keyHandle,
 		0,
 	)
-	if !errors.Is(err, windows.Errno(0)) {
-		return fmt.Errorf("NCryptDeleteKey returned %w", err)
-	}
 	if r != 0 {
+		nCryptFreeObject(keyHandle)
 		return fmt.Errorf("NCryptDeleteKey returned %v", errNoToStr(uint32(r)))
 	}
 
