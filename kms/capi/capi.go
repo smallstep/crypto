@@ -1365,17 +1365,29 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 // necessarily the store the certificate is searched in (see KeyScopeArg).
 // Only the machine keyset is forwarded: it is the one that needs a flag to
 // open, and "user" is refused by providers whose keys are machine-wide.
+//
+// A machine store implies the machine keyset only when "key-scope" is unset,
+// and a certificate in a machine store can be bound to a key in the user's
+// keyset. So a key that is not in the machine keyset is then looked up in the
+// user's. An explicit "key-scope" is followed alone.
 func (k *CAPIKMS) containerKeyID(u *uriAttributes) ([]byte, error) {
-	keyName := url.Values{
-		ContainerNameArg: []string{u.keyContainerName},
-	}
-	if u.isMachineKeyset() {
-		keyName.Set(StoreLocationArg, MachineStoreLocation)
+	publicKey := func(machine bool) (crypto.PublicKey, error) {
+		keyName := url.Values{
+			ContainerNameArg: []string{u.keyContainerName},
+		}
+		if machine {
+			keyName.Set(StoreLocationArg, MachineStoreLocation)
+		}
+		return k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: uri.New(Scheme, keyName).String(),
+		})
 	}
 
-	key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-		Name: uri.New(Scheme, keyName).String(),
-	})
+	machine := u.isMachineKeyset()
+	key, err := publicKey(machine)
+	if err != nil && machine && u.keyScope == "" && k.providerName != ProviderMSPCP && isBadKeyset(err) {
+		key, err = publicKey(false)
+	}
 	if err != nil {
 		return nil, err
 	}

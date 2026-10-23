@@ -216,6 +216,85 @@ func TestCAPIKMS_machineKeyset(t *testing.T) {
 	assert.ErrorIs(t, err, apiv1.NotFoundError{}, "the certificate must be deleted through its machine-keyset key")
 }
 
+// TestCAPIKMS_containerKeyset runs only on a developer Windows machine with
+// administrative rights, which a certificate in the machine store requires. It
+// pins how a certificate in the machine store is found through a key in the
+// user's keyset: with no "key-scope" the user's keyset is searched once the
+// machine keyset has no such key, while an explicit "key-scope" is followed
+// alone, so "machine" does not find it and "user" does.
+func TestCAPIKMS_containerKeyset(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("storing a certificate in the machine store requires administrative rights")
+	}
+
+	k, err := New(context.Background(), apiv1.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = k.Close() })
+
+	suffix := make([]byte, 8)
+	_, err = rand.Read(suffix)
+	require.NoError(t, err)
+	container := "go-step-crypto-test-" + hex.EncodeToString(suffix)
+	keyName := "capi:key=" + container
+
+	resp, err := k.CreateKey(&apiv1.CreateKeyRequest{
+		Name:               keyName,
+		SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, k.DeleteKey(&apiv1.DeleteKeyRequest{Name: keyName}))
+	})
+	signer, err := k.CreateSigner(&resp.CreateSignerRequest)
+	require.NoError(t, err)
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+	skid, err := x509util.GenerateSubjectKeyID(signer.Public())
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		SubjectKeyId: skid,
+		Subject:      pkix.Name{CommonName: "go.step.sm/crypto capi container keyset test"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, signer.Public(), signer)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+
+	require.NoError(t, k.StoreCertificate(&apiv1.StoreCertificateRequest{
+		Name:        "capi:store-location=machine;store=My;key-scope=user;key=" + container,
+		Certificate: cert,
+	}))
+	fp, err := fingerprint.New(cert.Raw, crypto.SHA1, fingerprint.HexFingerprint)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, k.DeleteCertificate(&apiv1.DeleteCertificateRequest{
+			Name: "capi:store-location=machine;store=My;sha1=" + fp,
+		}))
+	})
+
+	loaded, err := k.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: "capi:store-location=machine;store=My;key=" + container,
+	})
+	require.NoError(t, err, "without key-scope the user's keyset must be searched")
+	assert.Equal(t, cert.Raw, loaded.Raw)
+
+	loaded, err = k.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: "capi:store-location=machine;store=My;key-scope=user;key=" + container,
+	})
+	require.NoError(t, err, "key-scope=user must find the key in the user's keyset")
+	assert.Equal(t, cert.Raw, loaded.Raw)
+
+	_, err = k.LoadCertificate(&apiv1.LoadCertificateRequest{
+		Name: "capi:store-location=machine;store=My;key-scope=machine;key=" + container,
+	})
+	assert.True(t, isBadKeyset(err), "key-scope=machine must not fall back to the user's keyset: %v", err)
+}
+
 // TestCAPIKMS_ImportKey runs only on a developer Windows machine. It pins that
 // an imported key is the key that was imported -- the provider signs with it
 // and reports its public key -- and that the provider holds it as a
@@ -307,7 +386,7 @@ func TestCAPIKMS_ImportKey(t *testing.T) {
 			assert.Error(t, err, "exporting the private key must fail")
 
 			_, err = k.ImportKey(&ImportKeyRequest{Name: keyName, PrivateKey: tt.key})
-			assert.ErrorContains(t, err, "NTE_EXISTS", "an existing container must not be replaced")
+			assert.ErrorIs(t, err, apiv1.AlreadyExistsError{}, "an existing container must not be replaced")
 		})
 	}
 }
@@ -326,6 +405,14 @@ func TestCAPIKMS_ImportKey_refusals(t *testing.T) {
 	assert.ErrorContains(t, err, "key not specified")
 	_, err = k.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize))})
 	assert.ErrorContains(t, err, "unsupported private key type")
+	_, err = k.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: (*ecdsa.PrivateKey)(nil)})
+	assert.ErrorContains(t, err, "incomplete ECDSA private key")
+	_, err = k.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: &ecdsa.PrivateKey{}})
+	assert.ErrorContains(t, err, "incomplete ECDSA private key")
+	_, err = k.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: (*rsa.PrivateKey)(nil)})
+	assert.ErrorContains(t, err, "incomplete RSA private key")
+	_, err = k.ImportKey(&ImportKeyRequest{Name: "capi:key=x;key-spec=AT_SIGNATURE", PrivateKey: ecKey})
+	assert.ErrorContains(t, err, "key-spec cannot be set")
 
 	pcp := &CAPIKMS{providerName: ProviderMSPCP}
 	_, err = pcp.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: ecKey})
