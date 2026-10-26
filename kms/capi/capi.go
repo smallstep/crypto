@@ -825,7 +825,7 @@ func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, er
 	case err == nil:
 		nCryptFreeObject(existing)
 		return nil, apiv1.AlreadyExistsError{
-			Message: fmt.Sprintf("unable to import key: container %q returned %v", u.keyContainerName, errNoToStr(NTE_EXISTS)),
+			Message: fmt.Sprintf("unable to import key: container %q already exists", u.keyContainerName),
 		}
 	case !isBadKeyset(err):
 		return nil, fmt.Errorf("unable to open key container %q: %w", u.keyContainerName, err)
@@ -1358,6 +1358,28 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	}
 }
 
+// containerKeysets returns the keysets containerKeyID opens u's container in,
+// in order, true standing for the machine keyset; the second is tried only
+// when the first has no such container.
+//
+// A machine store implies the machine keyset only when "key-scope" is unset,
+// and a certificate in a machine store can be bound to a key in the user's
+// keyset, so the user's is tried after it. An explicit "key-scope" is followed
+// alone, as is the machine keyset with the Platform Crypto Provider, whose keys
+// are machine-wide. A smart card's keys are on the card rather than in either
+// keyset, and the Smart Card KSP refuses the machine flag, so they are opened
+// without it.
+func (k *CAPIKMS) containerKeysets(u *uriAttributes) []bool {
+	switch {
+	case k.providerName == ProviderMSSC, !u.isMachineKeyset():
+		return []bool{false}
+	case u.keyScope != "" || k.providerName == ProviderMSPCP:
+		return []bool{true}
+	default:
+		return []bool{true, false}
+	}
+}
+
 // containerKeyID returns the subject key identifier of the key in the
 // container u names, which is how a certificate is found from its key.
 //
@@ -1366,10 +1388,7 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 // Only the machine keyset is forwarded: it is the one that needs a flag to
 // open, and "user" is refused by providers whose keys are machine-wide.
 //
-// A machine store implies the machine keyset only when "key-scope" is unset,
-// and a certificate in a machine store can be bound to a key in the user's
-// keyset. So a key that is not in the machine keyset is then looked up in the
-// user's. An explicit "key-scope" is followed alone.
+// The keysets tried are containerKeysets'.
 func (k *CAPIKMS) containerKeyID(u *uriAttributes) ([]byte, error) {
 	publicKey := func(machine bool) (crypto.PublicKey, error) {
 		keyName := url.Values{
@@ -1383,10 +1402,10 @@ func (k *CAPIKMS) containerKeyID(u *uriAttributes) ([]byte, error) {
 		})
 	}
 
-	machine := u.isMachineKeyset()
-	key, err := publicKey(machine)
-	if err != nil && machine && u.keyScope == "" && k.providerName != ProviderMSPCP && isBadKeyset(err) {
-		key, err = publicKey(false)
+	keysets := k.containerKeysets(u)
+	key, err := publicKey(keysets[0])
+	if err != nil && len(keysets) > 1 && isBadKeyset(err) {
+		key, err = publicKey(keysets[1])
 	}
 	if err != nil {
 		return nil, err

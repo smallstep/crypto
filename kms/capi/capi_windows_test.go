@@ -418,3 +418,26 @@ func TestCAPIKMS_ImportKey_refusals(t *testing.T) {
 	_, err = pcp.ImportKey(&ImportKeyRequest{Name: "capi:key=x", PrivateKey: ecKey})
 	assert.ErrorContains(t, err, "cannot import keys into")
 }
+
+func TestCAPIKMS_containerKeysets(t *testing.T) {
+	machineStore := &uriAttributes{storeLocation: MachineStoreLocation}
+	tests := map[string]struct {
+		provider string
+		u        *uriAttributes
+		want     []bool
+	}{
+		"a user store uses the user keyset":                         {ProviderMSKSP, &uriAttributes{storeLocation: UserStoreLocation}, []bool{false}},
+		"a machine store tries the machine keyset, then the user's": {ProviderMSKSP, machineStore, []bool{true, false}},
+		"an explicit machine scope is followed alone":               {ProviderMSKSP, &uriAttributes{storeLocation: UserStoreLocation, keyScope: MachineStoreLocation}, []bool{true}},
+		"an explicit user scope is followed alone":                  {ProviderMSKSP, &uriAttributes{storeLocation: MachineStoreLocation, keyScope: UserStoreLocation}, []bool{false}},
+		"platform crypto provider keys are machine-wide":            {ProviderMSPCP, machineStore, []bool{true}},
+		"smart card keys are opened without the machine flag":       {ProviderMSSC, machineStore, []bool{false}},
+		"smart card keys ignore an explicit machine scope":          {ProviderMSSC, &uriAttributes{storeLocation: MachineStoreLocation, keyScope: MachineStoreLocation}, []bool{false}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			k := &CAPIKMS{providerName: tt.provider}
+			assert.Equal(t, tt.want, k.containerKeysets(tt.u))
+		})
+	}
+}
