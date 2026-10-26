@@ -496,17 +496,9 @@ func (k *CAPIKMS) getCertContext(u *uriAttributes) (*windows.CertContext, error)
 			}
 		}
 	case u.keyContainerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.keyContainerName},
-			}).String(),
-		})
+		keyID, err := k.containerKeyID(u)
 		if err != nil {
 			return nil, err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
 		}
 		if handle, err = findCertificateBySubjectKeyID(st, keyID); err != nil {
 			if !errors.Is(err, apiv1.NotFoundError{}) || !canLookupByIssuer {
@@ -750,13 +742,134 @@ func (k *CAPIKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespon
 		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
 	}
 
-	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc)
+	// The keyset is part of the key's address: a key created in the machine
+	// keyset cannot be opened without NCRYPT_MACHINE_KEY_FLAG, so a URI that
+	// omits it names a key that does not exist.
+	createdKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc, StoreLocationArg, u.storeLocation)
 
 	return &apiv1.CreateKeyResponse{
 		Name:      createdKeyURI,
 		PublicKey: pub,
 		CreateSignerRequest: apiv1.CreateSignerRequest{
 			SigningKey: createdKeyURI,
+		},
+	}, nil
+}
+
+// ImportKeyRequest is the parameter used in the ImportKey method.
+type ImportKeyRequest struct {
+	// Name is the URI naming the key container ("key", required) and the
+	// keyset it is imported into ("store-location"), as for CreateKey.
+	Name string
+	// PrivateKey is the key to import: an *ecdsa.PrivateKey or an
+	// *rsa.PrivateKey.
+	PrivateKey crypto.PrivateKey
+}
+
+// ImportKey persists an existing private key in the storage provider, in the
+// named container, where CreateKey would have generated a new one. It is the
+// way to have the provider hold a key that also exists somewhere else, such as
+// a key file.
+//
+// The imported key is not exportable: the provider signs with it, and a copy
+// of the private key has to come from wherever it was imported from. A
+// container that already exists is not replaced; the import fails with
+// [apiv1.AlreadyExistsError].
+//
+// Only the Microsoft Software Key Storage Provider is supported so far. Other
+// providers, such as the Platform Crypto Provider, take keys in other blob
+// formats and are not covered yet. A "key-spec" is refused: an imported key
+// has no legacy key spec.
+//
+// # Experimental
+//
+// Notice: This method is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func (k *CAPIKMS) ImportKey(req *ImportKeyRequest) (*apiv1.CreateKeyResponse, error) {
+	if req.PrivateKey == nil {
+		return nil, errors.New("importKeyRequest 'privateKey' cannot be empty")
+	}
+	if k.providerName != ProviderMSKSP {
+		return nil, fmt.Errorf("cannot import keys into %s", k.providerName)
+	}
+
+	u, err := parseURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+	if u.keyContainerName == "" {
+		return nil, fmt.Errorf("%v not specified", ContainerNameArg)
+	}
+	if u.keySpec != "" {
+		return nil, fmt.Errorf("%v cannot be set on an imported key", KeySpec)
+	}
+
+	blobType, blob, err := privateKeyBlob(req.PrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	// The blob holds the private key: clear it once the provider has its copy.
+	defer clear(blob)
+
+	keyFlags, err := k.getKeyFlags(u)
+	if err != nil {
+		return nil, err
+	}
+
+	// Checked first because the import does not: given a container that
+	// already exists, the software KSP replaces the key in it. Only a
+	// container that is not there is imported; any other failure to open it,
+	// such as access being denied, says nothing about whether it exists.
+	existing, err := nCryptOpenKey(k.providerHandle, u.keyContainerName, 0, keyFlags)
+	switch {
+	case err == nil:
+		nCryptFreeObject(existing)
+		return nil, apiv1.AlreadyExistsError{
+			Message: fmt.Sprintf("unable to import key: container %q already exists", u.keyContainerName),
+		}
+	case !isBadKeyset(err):
+		return nil, fmt.Errorf("unable to open key container %q: %w", u.keyContainerName, err)
+	}
+
+	kh, err := nCryptImportKey(k.providerHandle, u.keyContainerName, blobType, blob, keyFlags)
+	if err != nil {
+		return nil, fmt.Errorf("unable to import key: %w", err)
+	}
+
+	// Set before finalizing, which is when the provider fixes the policy.
+	if err := nCryptSetProperty(kh, NCRYPT_EXPORT_POLICY_PROPERTY, uint32(0), 0); err != nil {
+		nCryptFreeObject(kh)
+		return nil, fmt.Errorf("unable to set key NCRYPT_EXPORT_POLICY_PROPERTY: %w", err)
+	}
+
+	if err := nCryptFinalizeKey(kh, 0); err != nil {
+		nCryptFreeObject(kh)
+		return nil, fmt.Errorf("unable to finalize key: %w", err)
+	}
+
+	// Finalizing persisted the key, so from here a failure removes it rather
+	// than leave a container the caller was told was not created.
+	// nCryptDeleteKey consumes the handle.
+	uc, err := nCryptGetPropertyStr(kh, NCRYPT_UNIQUE_NAME_PROPERTY)
+	if err != nil {
+		_ = nCryptDeleteKey(kh)
+		return nil, fmt.Errorf("unable to retrieve NCRYPT_UNIQUE_NAME_PROPERTY: %w", err)
+	}
+
+	pub, err := getPublicKey(kh)
+	if err != nil {
+		_ = nCryptDeleteKey(kh)
+		return nil, fmt.Errorf("unable to retrieve public key: %w", err)
+	}
+	nCryptFreeObject(kh)
+
+	importedKeyURI := fmt.Sprintf("%s:%s=%s;%s=%s;%s=%s", Scheme, ProviderNameArg, k.providerName, ContainerNameArg, uc, StoreLocationArg, u.storeLocation)
+
+	return &apiv1.CreateKeyResponse{
+		Name:      importedKeyURI,
+		PublicKey: pub,
+		CreateSignerRequest: apiv1.CreateSignerRequest{
+			SigningKey: importedKeyURI,
 		},
 	}, nil
 }
@@ -782,8 +895,7 @@ func (k *CAPIKMS) DeleteKey(req *apiv1.DeleteKeyRequest) error {
 		return fmt.Errorf("unable to open key: %w", err)
 	}
 
-	defer nCryptFreeObject(kh)
-
+	// nCryptDeleteKey consumes the handle.
 	return nCryptDeleteKey(kh)
 }
 
@@ -1232,17 +1344,9 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 			prevCert = certHandle
 		}
 	case u.keyContainerName != "":
-		key, err := k.GetPublicKey(&apiv1.GetPublicKeyRequest{
-			Name: uri.New(Scheme, url.Values{
-				ContainerNameArg: []string{u.keyContainerName},
-			}).String(),
-		})
+		keyID, err := k.containerKeyID(u)
 		if err != nil {
 			return err
-		}
-		keyID, err := x509util.GenerateSubjectKeyID(key)
-		if err != nil {
-			return fmt.Errorf("error generating SubjectKeyID: %w", err)
 		}
 		certHandle, err = findCertificateBySubjectKeyID(st, keyID)
 		if err != nil {
@@ -1252,6 +1356,67 @@ func (k *CAPIKMS) DeleteCertificate(req *apiv1.DeleteCertificateRequest) error {
 	default:
 		return fmt.Errorf("%q, %q, or %q and %q is required to find a certificate", HashArg, KeyIDArg, IssuerNameArg, SerialNumberArg)
 	}
+}
+
+// containerKeysets returns the keysets containerKeyID opens u's container in,
+// in order, true standing for the machine keyset; the second is tried only
+// when the first has no such container.
+//
+// A machine store implies the machine keyset only when "key-scope" is unset,
+// and a certificate in a machine store can be bound to a key in the user's
+// keyset, so the user's is tried after it. An explicit "key-scope" is followed
+// alone, as is the machine keyset with the Platform Crypto Provider, whose keys
+// are machine-wide. A smart card's keys are on the card rather than in either
+// keyset, and the Smart Card KSP refuses the machine flag, so they are opened
+// without it.
+func (k *CAPIKMS) containerKeysets(u *uriAttributes) []bool {
+	switch {
+	case k.providerName == ProviderMSSC, !u.isMachineKeyset():
+		return []bool{false}
+	case u.keyScope != "" || k.providerName == ProviderMSPCP:
+		return []bool{true}
+	default:
+		return []bool{true, false}
+	}
+}
+
+// containerKeyID returns the subject key identifier of the key in the
+// container u names, which is how a certificate is found from its key.
+//
+// The key is opened in the keyset the URI names for it, which is not
+// necessarily the store the certificate is searched in (see KeyScopeArg).
+// Only the machine keyset is forwarded: it is the one that needs a flag to
+// open, and "user" is refused by providers whose keys are machine-wide.
+//
+// The keysets tried are containerKeysets'.
+func (k *CAPIKMS) containerKeyID(u *uriAttributes) ([]byte, error) {
+	publicKey := func(machine bool) (crypto.PublicKey, error) {
+		keyName := url.Values{
+			ContainerNameArg: []string{u.keyContainerName},
+		}
+		if machine {
+			keyName.Set(StoreLocationArg, MachineStoreLocation)
+		}
+		return k.GetPublicKey(&apiv1.GetPublicKeyRequest{
+			Name: uri.New(Scheme, keyName).String(),
+		})
+	}
+
+	keysets := k.containerKeysets(u)
+	key, err := publicKey(keysets[0])
+	if err != nil && len(keysets) > 1 && isBadKeyset(err) {
+		key, err = publicKey(keysets[1])
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	keyID, err := x509util.GenerateSubjectKeyID(key)
+	if err != nil {
+		return nil, fmt.Errorf("error generating SubjectKeyID: %w", err)
+	}
+
+	return keyID, nil
 }
 
 // deleteCertContextAndMaybeKey removes the certificate referenced by certHandle
