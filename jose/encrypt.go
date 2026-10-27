@@ -104,7 +104,7 @@ func Decrypt(data []byte, opts ...Option) ([]byte, error) {
 		if looksLikeJWE(data) {
 			return nil, errors.Wrap(err, "error parsing JWE")
 		}
-		return data, nil //nolint:nilerr // Return the given data if we cannot parse it as encrypted.
+		return data, nil
 	}
 
 	// Try with the given password.
