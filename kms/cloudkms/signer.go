@@ -10,6 +10,7 @@ import (
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -57,6 +58,11 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign signs digest with the private key stored in Google's Cloud KMS.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	digest, opts, err := cryptoutil.SignerOpts(s.Public(), digest, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "cloudKMS Sign failed")
+	}
+
 	req := &kmspb.AsymmetricSignRequest{
 		Name:   s.signingKey,
 		Digest: &kmspb.Digest{},

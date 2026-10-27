@@ -26,11 +26,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"io"
 
 	cf "go.step.sm/crypto/internal/darwin/corefoundation"
 	"go.step.sm/crypto/internal/darwin/security"
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 )
 
 // Signer implements the [crypto.Signer] interface using macOS Keychain or the
@@ -50,6 +52,11 @@ func (s *Signer) Public() crypto.PublicKey {
 // opts). For an ECDSA key, it will be a DER-serialized, ASN.1 signature
 // structure.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	// Security.framework signs an empty digest, but crypto/ecdsa rejects it.
+	if _, ok := s.pub.(*ecdsa.PublicKey); ok && len(digest) == 0 {
+		return nil, errors.New("mackms Sign failed: digest cannot be empty")
+	}
+
 	algo, err := getSecKeyAlgorithm(s.pub, opts)
 	if err != nil {
 		return nil, fmt.Errorf("mackms Sign failed: %w", err)
@@ -83,6 +90,9 @@ func getSecKeyAlgorithm(pub crypto.PublicKey, opts crypto.SignerOpts) (security.
 	case *ecdsa.PublicKey:
 		return security.KSecKeyAlgorithmECDSASignatureDigestX962, nil
 	case *rsa.PublicKey:
+		if opts == nil {
+			return 0, cryptoutil.ErrSignerOptsRequired
+		}
 		size := opts.HashFunc().Size()
 		// RSA-PSS
 		if _, ok := opts.(*rsa.PSSOptions); ok {

@@ -29,6 +29,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"go.step.sm/crypto/fingerprint"
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 	"go.step.sm/crypto/randutil"
@@ -1596,6 +1597,13 @@ func newCAPISigner(kh uintptr, containerName, _ string) (crypto.Signer, error) {
 }
 
 func (s *CAPISigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	// Nil opts fail for RSA keys, and pad or truncate ECDSA digests to the
+	// size of a hash, which providers like the TPM one require.
+	digest, opts, err := cryptoutil.SignerOpts(s.PublicKey, digest, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	switch s.algorithmGroup {
 	case "ECDSA":
 		signatureBytes, err := nCryptSignHash(s.keyHandle, digest, "", 0)

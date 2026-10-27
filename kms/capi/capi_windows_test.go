@@ -15,6 +15,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"go.step.sm/crypto/fingerprint"
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/x509util"
 )
@@ -137,6 +139,116 @@ func TestCAPIKMS_SearchCertificates_keyContainerName(t *testing.T) {
 	assert.Equal(t, cert.Raw, found.Certificate.Raw)
 	assert.NoError(t, found.Err)
 	assert.Equal(t, containerName, found.KeyName)
+}
+
+// capiProviders are the key storage providers used in the signer tests, with
+// the store location each requires. The TPM provider only supports machine
+// keys.
+var capiProviders = map[string]string{
+	ProviderMSKSP: UserStoreLocation,
+	ProviderMSPCP: MachineStoreLocation,
+}
+
+// mustCreateSigner creates a key with the given provider and returns its
+// signer. It registers the removal of the key with t.Cleanup.
+func mustCreateSigner(t *testing.T, provider, location string, sa apiv1.SignatureAlgorithm, bits int) crypto.Signer {
+	t.Helper()
+
+	k, err := New(context.Background(), apiv1.Options{
+		URI: "capi:provider=" + provider,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, k.Close()) })
+
+	resp, err := k.CreateKey(&apiv1.CreateKeyRequest{
+		Name:               "capi:store-location=" + location,
+		SignatureAlgorithm: sa,
+		Bits:               bits,
+	})
+	require.NoError(t, err)
+	// The URI returned by CreateKey doesn't include the store location.
+	name := resp.Name + ";store-location=" + location
+	t.Cleanup(func() {
+		assert.NoError(t, k.DeleteKey(&apiv1.DeleteKeyRequest{Name: name}))
+	})
+
+	signer, err := k.CreateSigner(&apiv1.CreateSignerRequest{SigningKey: name})
+	require.NoError(t, err)
+	return signer
+}
+
+// TestCAPISigner_Sign_nilOpts checks that, for every digest length from 1 to
+// 80 bytes, a signature with nil opts verifies against the original digest, as
+// it would if ecdsa.PrivateKey.Sign had signed it. An empty digest, with or
+// without opts, and, for P-521, a digest longer than 64 bytes must fail. It
+// runs only on a developer Windows machine, using the software and the TPM key
+// storage providers.
+func TestCAPISigner_Sign_nilOpts(t *testing.T) {
+	for provider, location := range capiProviders {
+		t.Run(provider, func(t *testing.T) {
+			for _, sa := range []apiv1.SignatureAlgorithm{apiv1.ECDSAWithSHA256, apiv1.ECDSAWithSHA384, apiv1.ECDSAWithSHA512} {
+				t.Run(sa.String(), func(t *testing.T) {
+					signer := mustCreateSigner(t, provider, location, sa, 0)
+					pub, ok := signer.Public().(*ecdsa.PublicKey)
+					require.True(t, ok)
+
+					for n := 0; n <= 80; n++ {
+						t.Run(fmt.Sprint(n), func(t *testing.T) {
+							if n == 0 {
+								_, err := signer.Sign(rand.Reader, nil, nil)
+								assert.EqualError(t, err, "digest cannot be empty")
+								// CNG rejects an empty digest.
+								_, err = signer.Sign(rand.Reader, nil, crypto.SHA256)
+								assert.Error(t, err)
+								return
+							}
+
+							digest := make([]byte, n)
+							_, err := rand.Read(digest)
+							require.NoError(t, err)
+							// Make the leftmost byte non-zero, so truncating or
+							// padding the wrong end of the digest changes the
+							// signed value.
+							digest[0] |= 0x80
+
+							sig, err := signer.Sign(rand.Reader, digest, nil)
+							if pub.Curve == elliptic.P521() && n > 64 {
+								assert.Error(t, err)
+								return
+							}
+							require.NoError(t, err)
+							assert.True(t, ecdsa.VerifyASN1(pub, digest, sig))
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestCAPISigner_Sign_rsaNilOpts checks that RSA keys fail with nil opts, as
+// the signature depends on the hash. It runs only on a developer Windows
+// machine, using the software and the TPM key storage providers.
+func TestCAPISigner_Sign_rsaNilOpts(t *testing.T) {
+	for provider, location := range capiProviders {
+		t.Run(provider, func(t *testing.T) {
+			signer := mustCreateSigner(t, provider, location, apiv1.SHA256WithRSA, 2048)
+			pub, ok := signer.Public().(*rsa.PublicKey)
+			require.True(t, ok)
+
+			digest := sha256.Sum256([]byte("message"))
+			_, err := signer.Sign(rand.Reader, digest[:], nil)
+			assert.ErrorIs(t, err, cryptoutil.ErrSignerOptsRequired)
+
+			// CNG rejects an empty digest.
+			_, err = signer.Sign(rand.Reader, nil, crypto.SHA256)
+			assert.Error(t, err)
+
+			sig, err := signer.Sign(rand.Reader, digest[:], crypto.SHA256)
+			require.NoError(t, err)
+			assert.NoError(t, rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], sig))
+		})
+	}
 }
 
 // TestCAPIKMS_machineKeyset runs only on a developer Windows machine with

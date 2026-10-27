@@ -26,11 +26,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.step.sm/crypto/internal/darwin/security"
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 )
 
@@ -49,6 +54,93 @@ func createKey(t *testing.T, name string, sa apiv1.SignatureAlgorithm) *apiv1.Cr
 		}))
 	})
 	return resp
+}
+
+func Test_getSecKeyAlgorithm(t *testing.T) {
+	tests := []struct {
+		name    string
+		pub     crypto.PublicKey
+		opts    crypto.SignerOpts
+		want    security.SecKeyAlgorithm
+		wantErr bool
+	}{
+		{"ok ecdsa", &ecdsa.PublicKey{}, crypto.SHA256, security.KSecKeyAlgorithmECDSASignatureDigestX962, false},
+		{"ok ecdsa nil opts", &ecdsa.PublicKey{}, nil, security.KSecKeyAlgorithmECDSASignatureDigestX962, false},
+		{"ok rsa", &rsa.PublicKey{}, crypto.SHA256, security.KSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256, false},
+		{"ok rsa pss", &rsa.PublicKey{}, &rsa.PSSOptions{Hash: crypto.SHA384}, security.KSecKeyAlgorithmRSASignatureDigestPSSSHA384, false},
+		{"fail rsa nil opts", &rsa.PublicKey{}, nil, 0, true},
+		{"fail rsa hash", &rsa.PublicKey{}, crypto.SHA1, 0, true},
+		{"fail key", []byte("key"), crypto.SHA256, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getSecKeyAlgorithm(tt.pub, tt.opts)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestSigner_Sign_nilOpts checks that, for every digest length from 1 to 80
+// bytes, a signature with nil opts verifies against the original digest, as it
+// would if ecdsa.PrivateKey.Sign had signed it. Security.framework pads and
+// truncates the digest itself, so unlike cryptoutil.SignerOpts it supports
+// P-521 with digests longer than 64 bytes. An empty digest, with or without
+// opts, must fail.
+func TestSigner_Sign_nilOpts(t *testing.T) {
+	kms := &MacKMS{}
+	for _, sa := range []apiv1.SignatureAlgorithm{apiv1.ECDSAWithSHA256, apiv1.ECDSAWithSHA384, apiv1.ECDSAWithSHA512} {
+		resp := createKey(t, t.Name()+"-"+sa.String(), sa)
+		signer, err := kms.CreateSigner(&resp.CreateSignerRequest)
+		require.NoError(t, err)
+		pub, ok := signer.Public().(*ecdsa.PublicKey)
+		require.True(t, ok)
+
+		for n := 0; n <= 80; n++ {
+			t.Run(fmt.Sprintf("%s/%d", pub.Curve.Params().Name, n), func(t *testing.T) {
+				digest := make([]byte, n)
+				_, err := rand.Read(digest)
+				require.NoError(t, err)
+				if n == 0 {
+					_, err := signer.Sign(rand.Reader, digest, nil)
+					assert.EqualError(t, err, "mackms Sign failed: digest cannot be empty")
+					_, err = signer.Sign(rand.Reader, digest, crypto.SHA256)
+					assert.EqualError(t, err, "mackms Sign failed: digest cannot be empty")
+					return
+				}
+				// Make the leftmost byte non-zero, so truncating or padding
+				// the wrong end of the digest changes the signed value.
+				digest[0] |= 0x80
+
+				sig, err := signer.Sign(rand.Reader, digest, nil)
+				require.NoError(t, err)
+				assert.True(t, ecdsa.VerifyASN1(pub, digest, sig))
+			})
+		}
+	}
+}
+
+// TestSigner_Sign_rsaNilOpts checks that RSA keys fail with nil opts, as the
+// signature depends on the hash.
+func TestSigner_Sign_rsaNilOpts(t *testing.T) {
+	kms := &MacKMS{}
+	resp := createKey(t, t.Name(), apiv1.SHA256WithRSA)
+	signer, err := kms.CreateSigner(&resp.CreateSignerRequest)
+	require.NoError(t, err)
+	pub, ok := signer.Public().(*rsa.PublicKey)
+	require.True(t, ok)
+
+	digest := sha256.Sum256([]byte("message"))
+	_, err = signer.Sign(rand.Reader, digest[:], nil)
+	assert.ErrorIs(t, err, cryptoutil.ErrSignerOptsRequired)
+
+	sig, err := signer.Sign(rand.Reader, digest[:], crypto.SHA256)
+	require.NoError(t, err)
+	assert.NoError(t, rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], sig))
 }
 
 func TestECDH_ECDH(t *testing.T) {

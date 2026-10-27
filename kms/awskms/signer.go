@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 )
@@ -66,6 +67,11 @@ func (s *Signer) Public() crypto.PublicKey {
 
 // Sign signs digest with the private key stored in the AWS KMS.
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	digest, opts, err := cryptoutil.SignerOpts(s.Public(), digest, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "awskms Sign failed")
+	}
+
 	alg, err := getSigningAlgorithm(s.Public(), opts)
 	if err != nil {
 		return nil, err

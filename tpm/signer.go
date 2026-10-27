@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/tpm/storage"
 	"go.step.sm/crypto/tpm/tss2"
 )
@@ -27,6 +28,11 @@ func (s *signer) Public() crypto.PublicKey {
 // The TPM key is loaded lazily, meaning that every call to Sign()
 // will reload the TPM key to be used.
 func (s *signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	digest, opts, err = cryptoutil.SignerOpts(s.public, digest, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed signing with TPM key %q: %w", s.key.name, err)
+	}
+
 	ctx := context.Background()
 	if err = s.tpm.open(ctx, openOptions{machineKey: s.key.machineKey}); err != nil {
 		return nil, fmt.Errorf("failed opening TPM: %w", err)
