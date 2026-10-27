@@ -14,6 +14,8 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 )
 
 var defaultKeyParamsEC = tpm2.Public{
@@ -185,9 +187,10 @@ func TestSign_nilOpts(t *testing.T) {
 	_, err = ecSigner.Sign(rand.Reader, nil, nil)
 	assert.Error(t, err)
 
-	rsaSigner := createSigner(t, defaultKeyParamsRSA)
+	// RSA keys fail before using the TPM, so no key needs to be created.
+	rsaSigner := &Signer{publicKey: &rsa.PublicKey{}}
 	_, err = rsaSigner.Sign(rand.Reader, make([]byte, 32), nil)
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, cryptoutil.ErrSignerOptsRequired)
 }
 
 func TestSign_SetTPM(t *testing.T) {

@@ -20,6 +20,7 @@ import (
 	"github.com/ThalesGroup/crypto11"
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/kms/uri"
 )
@@ -229,8 +230,9 @@ type rsaSigner struct {
 }
 
 func (s *rsaSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	if opts == nil {
-		return nil, errors.New("rsa keys require signer options")
+	digest, opts, err := cryptoutil.SignerOpts(s.Public(), digest, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "pkcs11 Sign failed")
 	}
 	return s.SignerDecrypter.Sign(rand, digest, opts)
 }

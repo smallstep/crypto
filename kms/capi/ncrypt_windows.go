@@ -385,28 +385,26 @@ func nCryptSetProperty(keyHandle uintptr, propertyName string, propertyValue any
 
 func nCryptSignHash(kh uintptr, digest []byte, hashID string, saltLength int) ([]byte, error) {
 	var size uint32
-	var padInfoPtr uintptr
+	// padInfo is kept as an unsafe.Pointer, and only converted to uintptr in
+	// the Call arguments, so the padding info and the algorithm name it points
+	// to stay alive during the calls.
+	var padInfo unsafe.Pointer
 	var flags uint32
 	if hashID != "" {
 		if saltLength != 0 {
-			padInfo := BCRYPT_PSS_PADDING_INFO{pszAlgID: wide(hashID), cbSalt: uint32(saltLength)}
-			padInfoPtr = uintptr(unsafe.Pointer(&padInfo))
+			padInfo = unsafe.Pointer(&BCRYPT_PSS_PADDING_INFO{pszAlgID: wide(hashID), cbSalt: uint32(saltLength)})
 			flags = bCryptPadPSS
 		} else {
-			padInfo := BCRYPT_PKCS1_PADDING_INFO{pszAlgID: wide(hashID)}
-			padInfoPtr = uintptr(unsafe.Pointer(&padInfo))
+			padInfo = unsafe.Pointer(&BCRYPT_PKCS1_PADDING_INFO{pszAlgID: wide(hashID)})
 			flags = bCryptPadPKCS1
 		}
-	} else {
-		padInfoPtr = 0
-		flags = 0
 	}
 
 	// Obtain the size of the signature
 	r, _, err := procNCryptSignHash.Call(
 		kh,
-		padInfoPtr,
-		uintptr(unsafe.Pointer(&digest[0])),
+		uintptr(padInfo),
+		uintptr(unsafe.Pointer(unsafe.SliceData(digest))),
 		uintptr(len(digest)),
 		0,
 		0,
@@ -418,13 +416,16 @@ func nCryptSignHash(kh uintptr, digest []byte, hashID string, saltLength int) ([
 	if r != 0 {
 		return nil, fmt.Errorf("NCryptSignHash returned %v during size check", errNoToStr(uint32(r)))
 	}
+	if size == 0 {
+		return nil, errors.New("NCryptSignHash returned an empty signature size")
+	}
 
 	// Obtain the signature data
 	buf := make([]byte, size)
 	r, _, err = procNCryptSignHash.Call(
 		kh,
-		padInfoPtr,
-		uintptr(unsafe.Pointer(&digest[0])),
+		uintptr(padInfo),
+		uintptr(unsafe.Pointer(unsafe.SliceData(digest))),
 		uintptr(len(digest)),
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(size),

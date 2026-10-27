@@ -10,6 +10,10 @@ import (
 	"fmt"
 )
 
+// ErrSignerOptsRequired is returned when an RSA key is used with nil signer
+// options.
+var ErrSignerOptsRequired = errors.New("rsa keys require signer options")
+
 // SignerOpts returns the digest and options a signer must use to sign digest
 // with key. If opts is not nil, it returns digest and opts unchanged.
 //
@@ -47,7 +51,6 @@ func SignerOpts(key crypto.PublicKey, digest []byte, opts crypto.SignerOpts) ([]
 		size := h.Size()
 		switch n := len(digest); {
 		case n == 0:
-			// Matches ecdsa.PrivateKey.Sign, which rejects an empty digest.
 			return nil, nil, errors.New("digest cannot be empty")
 		case n == size:
 			return digest, h, nil
@@ -56,8 +59,6 @@ func SignerOpts(key crypto.PublicKey, digest []byte, opts crypto.SignerOpts) ([]
 			copy(padded[size-n:], digest)
 			return padded, h, nil
 		case k.Curve == elliptic.P521():
-			// ECDSA would use up to the leftmost 521 bits of the digest,
-			// which don't fit in the 512 bits of a SHA-512 digest.
 			return nil, nil, fmt.Errorf("unsupported digest length %d for P-521, the maximum is %d", n, size)
 		default:
 			// ECDSA uses only the leftmost bits of the digest, as many as the
@@ -65,7 +66,7 @@ func SignerOpts(key crypto.PublicKey, digest []byte, opts crypto.SignerOpts) ([]
 			return digest[:size], h, nil
 		}
 	case *rsa.PublicKey:
-		return nil, nil, errors.New("rsa keys require signer options")
+		return nil, nil, ErrSignerOptsRequired
 	default:
 		return digest, crypto.Hash(0), nil
 	}

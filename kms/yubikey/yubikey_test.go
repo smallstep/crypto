@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.step.sm/crypto/internal/utils/cryptoutil"
 	"go.step.sm/crypto/kms/apiv1"
 	"go.step.sm/crypto/minica"
 	"go.step.sm/crypto/pemutil"
@@ -1378,8 +1379,6 @@ func Test_syncSigner_Sign_nilOpts(t *testing.T) {
 	require.NoError(t, err)
 	_, edKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	rsaKey, err := rsa.GenerateKey(rand.Reader, rsaKeySize)
-	require.NoError(t, err)
 
 	// A short digest is signed as ecdsa.PrivateKey.Sign would.
 	digest := []byte{0x80, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
@@ -1392,8 +1391,9 @@ func Test_syncSigner_Sign_nilOpts(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ed25519.Verify(edKey.Public().(ed25519.PublicKey), message, sig))
 
-	_, err = (&syncSigner{Signer: rsaKey}).Sign(rand.Reader, make([]byte, 32), nil)
-	assert.Error(t, err)
+	// RSA keys fail before signing, so the key doesn't need to be valid.
+	_, err = (&syncSigner{Signer: &rsa.PrivateKey{}}).Sign(rand.Reader, make([]byte, 32), nil)
+	assert.ErrorIs(t, err, cryptoutil.ErrSignerOptsRequired)
 }
 
 func Test_syncDecrypter_Decrypt(t *testing.T) {
