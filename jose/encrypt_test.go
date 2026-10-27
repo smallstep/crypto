@@ -6,13 +6,14 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"reflect"
 	"testing"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v3"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -364,6 +365,12 @@ func TestDecrypt(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// JWEs with algorithms not supported by go-jose fail to parse, they must
+	// not be returned as plain data.
+	b64 := base64.RawURLEncoding.EncodeToString
+	unsupportedAlg := []byte(b64([]byte(`{"alg":"foo","enc":"A256GCM"}`)) + ".AA.AA.AA.AA")
+	unsupportedEnc := []byte(`{"protected":"` + b64([]byte(`{"alg":"A256KW","enc":"foo"}`)) + `","encrypted_key":"AA","iv":"AA","ciphertext":"AA","tag":"AA"}`)
+
 	type args struct {
 		data             []byte
 		opts             []Option
@@ -376,6 +383,8 @@ func TestDecrypt(t *testing.T) {
 		wantErr bool
 	}{
 		{"ok not encrypted", args{[]byte("foobar"), nil, nil}, []byte("foobar"), false},
+		{"ok not encrypted json", args{[]byte(`{"kty":"oct","k":"AA"}`), nil, nil}, []byte(`{"kty":"oct","k":"AA"}`), false},
+		{"ok not encrypted five parts", args{[]byte("a.b.c.d.e"), nil, nil}, []byte("a.b.c.d.e"), false},
 		{"ok WithPassword", args{encryptedData, []Option{WithPassword(testPassword)}, nil}, data, false},
 		{"ok WithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/passphrase.txt")}, nil}, data, false},
 		{"ok WithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {
@@ -388,6 +397,8 @@ func TestDecrypt(t *testing.T) {
 			return testPassword, nil
 		}}, data, false},
 		{"fail bad data", args{badEncryptedData, []Option{WithPassword(testPassword)}, nil}, nil, true},
+		{"fail unsupported alg", args{unsupportedAlg, []Option{WithPassword(testPassword)}, nil}, nil, true},
+		{"fail unsupported enc", args{unsupportedEnc, []Option{WithPassword(testPassword)}, nil}, nil, true},
 		{"fail WithPassword", args{encryptedData, []Option{WithPassword([]byte("bad-password"))}, nil}, nil, true},
 		{"fail WithPasswordFile", args{encryptedData, []Option{WithPasswordFile("testdata/oct.txt")}, nil}, nil, true},
 		{"fail WithPasswordPrompter", args{encryptedData, []Option{WithPasswordPrompter("What's the password?", func(s string) ([]byte, error) {

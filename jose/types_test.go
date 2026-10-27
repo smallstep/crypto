@@ -5,13 +5,19 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.step.sm/crypto/x25519"
 )
@@ -133,7 +139,7 @@ func TestSignVerify(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{"byte", args{SigningKey{Key: []byte("the-key")}, nil}, false},
+		{"byte", args{SigningKey{Key: []byte("the-32-byte-long-key-for-hs256!!")}, nil}, false},
 		{"P256", args{SigningKey{Key: p256}, nil}, false},
 		{"P384", args{SigningKey{Key: p384}, nil}, false},
 		{"P521", args{SigningKey{Key: p521}, nil}, false},
@@ -158,30 +164,86 @@ func TestSignVerify(t *testing.T) {
 					t.Errorf("Signer.Sign() error = %v", err)
 					return
 				}
-				jwt, err := ParseSigned(jws.FullSerialize())
+				compact, err := jws.CompactSerialize()
 				if err != nil {
-					t.Errorf("ParseSigned() error = %v", err)
+					t.Errorf("CompactSerialize() error = %v", err)
 					return
 				}
+				for _, tok := range []string{compact, jws.FullSerialize(), " \t" + compact + " \r\n"} {
+					jwt, err := ParseSigned(tok)
+					if err != nil {
+						t.Errorf("ParseSigned() error = %v", err)
+						return
+					}
 
-				var claims Claims
-				switch k := tt.args.sig.Key.(type) {
-				case crypto.Signer:
-					err = Verify(jwt, k.Public(), &claims)
-				case OpaqueSigner:
-					err = Verify(jwt, k.Public(), &claims)
-				default:
-					err = Verify(jwt, k, &claims)
-				}
-				if err != nil {
-					t.Errorf("JSONWebSignature.Verify() error = %v", err)
-					return
-				}
-				want := Claims{Subject: "sub"}
-				if !reflect.DeepEqual(claims, want) {
-					t.Errorf("JSONWebSignature.Verify() claims = %v, want %v", claims, want)
+					var claims Claims
+					switch k := tt.args.sig.Key.(type) {
+					case crypto.Signer:
+						err = Verify(jwt, k.Public(), &claims)
+					case OpaqueSigner:
+						err = Verify(jwt, k.Public(), &claims)
+					default:
+						err = Verify(jwt, k, &claims)
+					}
+					if err != nil {
+						t.Errorf("JSONWebSignature.Verify() error = %v", err)
+						return
+					}
+					want := Claims{Subject: "sub"}
+					if !reflect.DeepEqual(claims, want) {
+						t.Errorf("JSONWebSignature.Verify() claims = %v, want %v", claims, want)
+					}
 				}
 			}
+		})
+	}
+}
+
+func TestParseSigned_JSON(t *testing.T) {
+	key := []byte("the-32-byte-long-key-for-hs256!!")
+	b64 := base64.RawURLEncoding.EncodeToString
+
+	// The protected header uses a key order and spacing that go-jose would
+	// not produce when re-encoding it, so the signature only verifies if the
+	// original bytes are preserved.
+	protected := b64([]byte(`{ "typ": "JWT",  "alg": "HS256" }`))
+	payload := b64([]byte(`{"sub":"sub"}`))
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(protected + "." + payload))
+	signature := b64(mac.Sum(nil))
+
+	flattened := fmt.Sprintf(`{"payload":%q,"protected":%q,"signature":%q}`, payload, protected, signature)
+	general := fmt.Sprintf(`{"payload":%q,"signatures":[{"protected":%q,"signature":%q}]}`, payload, protected, signature)
+	indented := fmt.Sprintf("{\n  \"payload\": %q,\n  \"protected\": %q,\n  \"signature\": %q\n}\n", payload, protected, signature)
+
+	tests := []struct {
+		name      string
+		token     string
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok compact", protected + "." + payload + "." + signature, assert.NoError},
+		{"ok flattened", flattened, assert.NoError},
+		{"ok general", general, assert.NoError},
+		{"ok indented", indented, assert.NoError},
+		{"fail two signatures", fmt.Sprintf(`{"payload":%q,"signatures":[{"protected":%q,"signature":%q},{"protected":%q,"signature":%q}]}`,
+			payload, protected, signature, protected, signature), assert.Error},
+		{"fail unprotected header", fmt.Sprintf(`{"payload":%q,"protected":%q,"header":{"kid":"foo"},"signature":%q}`,
+			payload, protected, signature), assert.Error},
+		{"fail missing protected", fmt.Sprintf(`{"payload":%q,"header":{"alg":"HS256"},"signature":%q}`, payload, signature), assert.Error},
+		{"ok null header", fmt.Sprintf(`{"payload":%q,"protected":%q,"header":null,"signature":%q}`, payload, protected, signature), assert.NoError},
+		{"fail missing payload", fmt.Sprintf(`{"protected":%q,"signature":%q}`, protected, signature), assert.Error},
+		{"fail invalid json", `{"payload":`, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tok, err := ParseSigned(tt.token)
+			tt.assertion(t, err)
+			if err != nil {
+				return
+			}
+			var claims Claims
+			require.NoError(t, Verify(tok, key, &claims))
+			assert.Equal(t, Claims{Subject: "sub"}, claims)
 		})
 	}
 }

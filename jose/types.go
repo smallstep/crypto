@@ -1,16 +1,19 @@
-// Package jose is a wrapper for github.com/go-jose/go-jose/v3 and implements
+// Package jose is a wrapper for github.com/go-jose/go-jose/v4 and implements
 // utilities to parse and generate JWT, JWK and JWKSets.
 package jose
 
 import (
 	"crypto"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
-	jose "github.com/go-jose/go-jose/v3"
-	"github.com/go-jose/go-jose/v3/cryptosigner"
-	"github.com/go-jose/go-jose/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/cryptosigner"
+	"github.com/go-jose/go-jose/v4/jwt"
 
 	"go.step.sm/crypto/x25519"
 )
@@ -73,11 +76,18 @@ type Signature = jose.Signature
 // ErrCryptoFailure indicates an error in a cryptographic primitive.
 var ErrCryptoFailure = jose.ErrCryptoFailure
 
+// ErrInvalidKeySize indicates that the given key is not the correct size for
+// the selected algorithm, e.g. an HMAC key shorter than the hash output. It is
+// only returned when signing, go-jose wraps it in a generic error when
+// verifying an HMAC signature. Use ValidateJWK to detect short HMAC keys
+// before verifying.
+var ErrInvalidKeySize = jose.ErrInvalidKeySize
+
 // Claims represents public claim values (as specified in RFC 7519).
 type Claims = jwt.Claims
 
 // Builder is a utility for making JSON Web Tokens. Calls can be chained, and
-// errors are accumulated until the final call to CompactSerialize/FullSerialize.
+// errors are accumulated until the final call to Serialize.
 type Builder = jwt.Builder
 
 // NumericDate represents date and time as the number of seconds since the
@@ -222,9 +232,37 @@ const (
 	DefaultOctSize = 32
 )
 
+// supportedKeyAlgorithms is the list of key management algorithms accepted
+// when parsing a JWE.
+var supportedKeyAlgorithms = []KeyAlgorithm{
+	RSA1_5, RSA_OAEP, RSA_OAEP_256,
+	A128KW, A192KW, A256KW,
+	DIRECT,
+	ECDH_ES, ECDH_ES_A128KW, ECDH_ES_A192KW, ECDH_ES_A256KW,
+	A128GCMKW, A192GCMKW, A256GCMKW,
+	PBES2_HS256_A128KW, PBES2_HS384_A192KW, PBES2_HS512_A256KW,
+}
+
+// supportedContentEncryption is the list of content encryption algorithms
+// accepted when parsing a JWE.
+var supportedContentEncryption = []ContentEncryption{
+	A128CBC_HS256, A192CBC_HS384, A256CBC_HS512,
+	A128GCM, A192GCM, A256GCM,
+}
+
+// supportedSignatureAlgorithms is the list of signature algorithms accepted
+// when parsing a JWS or a JWT.
+var supportedSignatureAlgorithms = []SignatureAlgorithm{
+	HS256, HS384, HS512,
+	RS256, RS384, RS512,
+	ES256, ES384, ES512,
+	PS256, PS384, PS512,
+	EdDSA, XEdDSA,
+}
+
 // ParseEncrypted parses an encrypted message in compact or full serialization format.
 func ParseEncrypted(input string) (*JSONWebEncryption, error) {
-	return jose.ParseEncrypted(input)
+	return jose.ParseEncrypted(input, supportedKeyAlgorithms, supportedContentEncryption)
 }
 
 // NewEncrypter creates an appropriate encrypter based on the key type.
@@ -270,9 +308,73 @@ func Verify(token *JSONWebToken, publicKey any, dest ...any) error {
 	return token.Claims(publicKey, dest...)
 }
 
-// ParseSigned parses token from JWS form.
+// ParseSigned parses token from JWS form. It supports the compact
+// serialization format, and the JSON serialization format with a single
+// signature and without unprotected headers.
 func ParseSigned(s string) (*JSONWebToken, error) {
-	return jwt.ParseSigned(s)
+	// go-jose v4 jwt.ParseSigned no longer strips whitespace, keep the v3
+	// behavior so tokens with surrounding spaces or tabs are still accepted.
+	s = stripWhitespace(s)
+
+	// go-jose v4 jwt.ParseSigned only supports the compact serialization
+	// format, keep the v3 behavior and convert JSON tokens to compact.
+	if strings.HasPrefix(s, "{") {
+		var err error
+		if s, err = jsonToCompact(s); err != nil {
+			return nil, err
+		}
+	}
+
+	return jwt.ParseSigned(s, supportedSignatureAlgorithms)
+}
+
+// jsonToCompact converts a JWS in the flattened or general JSON serialization
+// format to the compact serialization format. It reuses the original base64url
+// segments, re-encoding the protected header might change the signed bytes.
+func jsonToCompact(s string) (string, error) {
+	type rawSignature struct {
+		Protected string          `json:"protected"`
+		Header    json.RawMessage `json:"header"`
+		Signature string          `json:"signature"`
+	}
+	var v struct {
+		Payload    *string        `json:"payload"`
+		Signatures []rawSignature `json:"signatures"`
+		rawSignature
+	}
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return "", fmt.Errorf("error parsing JWS: %w", err)
+	}
+
+	sig := v.rawSignature
+	switch {
+	case len(v.Signatures) == 1:
+		sig = v.Signatures[0]
+	case len(v.Signatures) > 1:
+		return "", errors.New("too many signatures in payload; expecting only one")
+	}
+	if v.Payload == nil {
+		return "", errors.New("missing payload in JWS message")
+	}
+	if sig.Protected == "" || (len(sig.Header) > 0 && string(sig.Header) != "null") {
+		return "", errors.New("JWT requires a protected header and no unprotected header")
+	}
+
+	return sig.Protected + "." + *v.Payload + "." + sig.Signature, nil
+}
+
+// stripWhitespace removes all the whitespace characters from the given
+// string.
+func stripWhitespace(s string) string {
+	if strings.IndexFunc(s, unicode.IsSpace) < 0 {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // Signed creates builder for signed tokens.
@@ -282,7 +384,7 @@ func Signed(sig Signer) Builder {
 
 // ParseJWS parses a signed message in compact or full serialization format.
 func ParseJWS(s string) (*JSONWebSignature, error) {
-	return jose.ParseSigned(s)
+	return jose.ParseSigned(s, supportedSignatureAlgorithms)
 }
 
 // Determine whether a JSONWebKey is symmetric

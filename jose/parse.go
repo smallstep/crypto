@@ -290,8 +290,9 @@ func guessKeyType(ctx *context, data []byte) keyType {
 	switch ctx.alg {
 	// jwk or file with oct data
 	case "HS256", "HS384", "HS512":
-		// Encrypted JWK ?
-		if _, err := ParseEncrypted(string(data)); err == nil {
+		// Encrypted JWK ? A JWE with algorithms not supported by go-jose fails
+		// to parse, but it must not be used as an oct key.
+		if _, err := ParseEncrypted(string(data)); err == nil || looksLikeJWE(data) {
 			return jwkKeyType
 		}
 		// JSON JWK ?
