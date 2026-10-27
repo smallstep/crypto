@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -114,17 +115,28 @@ func TestGenerateJWK(t *testing.T) {
 		{"OKP", "", "", "EdDSA", "sig", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
 		{"oct", "", "", "", "", 0, "HS256", 32, []byte{}, true},
 		{"oct", "", "", "sig", "", 0, "HS256", 32, []byte{}, true},
-		{"oct", "", "HS384", "sig", "a-kid", 16, "HS384", 16, []byte{}, true},
-		{"oct", "", "HS521", "sig", "a-kid", 64, "HS521", 64, []byte{}, true},
-		{"oct", "", "", "enc", "a-kid", 64, "A256GCMKW", 64, []byte{}, true},
+		{"oct", "", "HS384", "sig", "a-kid", 0, "HS384", 48, []byte{}, true},
+		{"oct", "", "HS384", "sig", "a-kid", 50, "HS384", 50, []byte{}, true},
+		{"oct", "", "HS512", "sig", "a-kid", 0, "HS512", 64, []byte{}, true},
+		{"oct", "", "HS512", "sig", "a-kid", 64, "HS512", 64, []byte{}, true},
+		{"oct", "", "", "enc", "a-kid", 32, "A256GCMKW", 32, []byte{}, true},
 		{"oct", "", "dir", "enc", "a-kid", 0, "dir", 32, []byte{}, true},
-		{"oct", "", "A128KW", "enc", "a-kid", 0, "A128KW", 32, []byte{}, true},
-		{"oct", "", "A192KW", "enc", "a-kid", 0, "A192KW", 32, []byte{}, true},
+		{"oct", "", "A128KW", "enc", "a-kid", 0, "A128KW", 16, []byte{}, true},
+		{"oct", "", "A192KW", "enc", "a-kid", 0, "A192KW", 24, []byte{}, true},
 		{"oct", "", "A256KW", "enc", "a-kid", 0, "A256KW", 32, []byte{}, true},
-		{"oct", "", "A128GCMKW", "enc", "a-kid", 0, "A128GCMKW", 32, []byte{}, true},
-		{"oct", "", "A192GCMKW", "enc", "a-kid", 0, "A192GCMKW", 32, []byte{}, true},
+		{"oct", "", "A128GCMKW", "enc", "a-kid", 0, "A128GCMKW", 16, []byte{}, true},
+		{"oct", "", "A192GCMKW", "enc", "a-kid", 0, "A192GCMKW", 24, []byte{}, true},
 		{"oct", "", "A256GCMKW", "enc", "a-kid", 0, "A256GCMKW", 32, []byte{}, true},
 		{"fail", "", "", "", "", 0, "", 0, nil, false},
+		{"oct", "", "", "sig", "", 16, "", 0, nil, false},
+		{"oct", "", "HS256", "sig", "", 31, "", 0, nil, false},
+		{"oct", "", "HS384", "sig", "a-kid", 16, "", 0, nil, false},
+		{"oct", "", "HS512", "sig", "a-kid", 32, "", 0, nil, false},
+		{"oct", "", "", "enc", "a-kid", 64, "", 0, nil, false},
+		{"oct", "", "A128KW", "enc", "a-kid", 32, "", 0, nil, false},
+		{"oct", "", "A192KW", "enc", "a-kid", 16, "", 0, nil, false},
+		{"oct", "", "A256KW", "enc", "a-kid", 20, "", 0, nil, false},
+		{"oct", "", "A128GCMKW", "enc", "a-kid", 32, "", 0, nil, false},
 	}
 
 	for _, tt := range tests {
@@ -164,6 +176,45 @@ func TestGenerateJWK(t *testing.T) {
 				assert.Equal(t, tc.expectedSize, len(key))
 			default:
 				t.Errorf("unexpected key type %T", key)
+			}
+		})
+	}
+}
+
+func TestHMACMinimumKeySize(t *testing.T) {
+	tests := []struct {
+		name      string
+		algorithm SignatureAlgorithm
+		size      int
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"HS256", HS256, 32, assert.NoError},
+		{"HS384", HS384, 48, assert.NoError},
+		{"HS512", HS512, 64, assert.NoError},
+		{"HS256 large", HS256, 33, assert.NoError},
+		{"HS384 large", HS384, 50, assert.NoError},
+		{"HS512 large", HS512, 67, assert.NoError},
+		{"fail HS256 small", HS256, 31, assert.Error},
+		{"fail HS384 small", HS384, 46, assert.Error},
+		{"fail HS512 small", HS512, 61, assert.Error},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := keyutil.GenerateKey("oct", "", tt.size)
+			require.NoError(t, err)
+			sig, err := NewSigner(SigningKey{
+				Algorithm: tt.algorithm,
+				Key:       key,
+			}, nil)
+			require.NoError(t, err)
+
+			jws, err := sig.Sign([]byte(`{"sub": "sub"}`))
+			tt.assertion(t, err)
+
+			if err == nil {
+				_, err = jws.CompactSerialize()
+				require.NoError(t, err)
 			}
 		})
 	}

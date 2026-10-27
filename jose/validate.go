@@ -125,7 +125,7 @@ func validateSigJWK(jwk *JSONWebKey) error {
 	case []byte:
 		switch jwk.Algorithm {
 		case HS256, HS384, HS512:
-			return nil
+			return validateOctKeySize(jwk.Algorithm, k)
 		}
 		errctx = "kty 'oct'"
 	case *rsa.PrivateKey, *rsa.PublicKey:
@@ -179,11 +179,11 @@ func validateEncJWK(jwk *JSONWebKey) error {
 	alg := KeyAlgorithm(jwk.Algorithm)
 	var kty string
 
-	switch jwk.Key.(type) {
+	switch k := jwk.Key.(type) {
 	case []byte:
 		switch alg {
 		case DIRECT, A128GCMKW, A192GCMKW, A256GCMKW, A128KW, A192KW, A256KW:
-			return nil
+			return validateOctKeySize(jwk.Algorithm, k)
 		}
 		kty = "oct"
 	case *rsa.PrivateKey, *rsa.PublicKey:
@@ -207,9 +207,9 @@ func validateEncJWK(jwk *JSONWebKey) error {
 
 // validateGeneric validates just the supported key types.
 func validateGeneric(jwk *JSONWebKey) error {
-	switch jwk.Key.(type) {
+	switch k := jwk.Key.(type) {
 	case []byte:
-		return nil
+		return validateOctKeySize(jwk.Algorithm, k)
 	case *rsa.PrivateKey, *rsa.PublicKey:
 		return nil
 	case *ecdsa.PrivateKey, *ecdsa.PublicKey:
@@ -219,4 +219,20 @@ func validateGeneric(jwk *JSONWebKey) error {
 	}
 
 	return errors.Errorf("unsupported key type '%T'", jwk.Key)
+}
+
+// validateOctKeySize validates the size of the given oct key for the given
+// algorithm. HMAC keys must be at least as long as the hash output, as RFC
+// 7518 §3.2 requires, and go-jose rejects shorter keys when signing or
+// verifying. AES key wrap keys must have the exact size of the algorithm, as
+// go-jose selects the AES variant from the key size. Other algorithms are
+// ignored.
+func validateOctKeySize(alg string, key []byte) error {
+	if n := hmacKeySize(alg); len(key) < n {
+		return errors.Errorf("alg '%s' requires a key of at least %d bytes", alg, n)
+	}
+	if n := aesKeySize(alg); n > 0 && len(key) != n {
+		return errors.Errorf("alg '%s' requires a key of %d bytes", alg, n)
+	}
+	return nil
 }

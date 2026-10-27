@@ -300,9 +300,10 @@ func TestValidateJWK_sig(t *testing.T) {
 		{"ok PS512", args{&JSONWebKey{Use: "sig", Algorithm: PS512, Key: rsaKey.Public()}}, false},
 		{"ok EdDSA", args{&JSONWebKey{Use: "sig", Algorithm: EdDSA, Key: edKey}}, false},
 		{"ok EdDSA pub", args{&JSONWebKey{Use: "sig", Algorithm: EdDSA, Key: edKey.Public()}}, false},
-		{"ok HS256", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: []byte("raw-key")}}, false},
-		{"ok HS384", args{&JSONWebKey{Use: "sig", Algorithm: HS384, Key: []byte("raw-key")}}, false},
-		{"ok HS512", args{&JSONWebKey{Use: "sig", Algorithm: HS512, Key: []byte("raw-key")}}, false},
+		{"ok HS256", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: make([]byte, 32)}}, false},
+		{"ok HS384", args{&JSONWebKey{Use: "sig", Algorithm: HS384, Key: make([]byte, 48)}}, false},
+		{"ok HS512", args{&JSONWebKey{Use: "sig", Algorithm: HS512, Key: make([]byte, 64)}}, false},
+		{"ok HS256 long", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: make([]byte, 64)}}, false},
 		{"ok OpaqueSigner", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: NewOpaqueSigner(p256Key)}}, false},
 		{"fail alg empty", args{&JSONWebKey{Use: "sig", Key: p256Key}}, true},
 		{"fail ECDSA", args{&JSONWebKey{Use: "sig", Algorithm: ES384, Key: p256Key}}, true},
@@ -310,8 +311,44 @@ func TestValidateJWK_sig(t *testing.T) {
 		{"fail RSA", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: rsaKey}}, true},
 		{"fail Ed25519", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: edKey}}, true},
 		{"fail bytes", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: []byte("raw-key")}}, true},
+		{"fail HS256 short", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: make([]byte, 31)}}, true},
+		{"fail HS384 short", args{&JSONWebKey{Use: "sig", Algorithm: HS384, Key: make([]byte, 47)}}, true},
+		{"fail HS512 short", args{&JSONWebKey{Use: "sig", Algorithm: HS512, Key: make([]byte, 63)}}, true},
 		{"fail OpaqueSigner", args{&JSONWebKey{Use: "sig", Algorithm: RS256, Key: p256Key}}, true},
 		{"fail unknown", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: "raw-key"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateJWK(tt.args.jwk); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateJWK() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateJWK_generic(t *testing.T) {
+	type args struct {
+		jwk *JSONWebKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{"ok oct", args{&JSONWebKey{Key: []byte("raw-key")}}, false},
+		{"ok oct A128KW", args{&JSONWebKey{Algorithm: string(A128KW), Key: make([]byte, 16)}}, false},
+		{"ok HS256", args{&JSONWebKey{Algorithm: HS256, Key: make([]byte, 32)}}, false},
+		{"ok HS512", args{&JSONWebKey{Algorithm: HS512, Key: make([]byte, 64)}}, false},
+		{"fail HS256 short", args{&JSONWebKey{Algorithm: HS256, Key: make([]byte, 31)}}, true},
+		{"fail HS512 short", args{&JSONWebKey{Algorithm: HS512, Key: make([]byte, 32)}}, true},
+		{"fail A128KW size", args{&JSONWebKey{Algorithm: string(A128KW), Key: make([]byte, 32)}}, true},
+		{"fail unknown", args{&JSONWebKey{Key: "raw-key"}}, true},
+		{"ok enc A128KW", args{&JSONWebKey{Use: "enc", Algorithm: string(A128KW), Key: make([]byte, 16)}}, false},
+		{"ok enc A192GCMKW", args{&JSONWebKey{Use: "enc", Algorithm: string(A192GCMKW), Key: make([]byte, 24)}}, false},
+		{"ok enc A256KW", args{&JSONWebKey{Use: "enc", Algorithm: string(A256KW), Key: make([]byte, 32)}}, false},
+		{"ok enc dir", args{&JSONWebKey{Use: "enc", Algorithm: string(DIRECT), Key: make([]byte, 64)}}, false},
+		{"fail enc A128KW size", args{&JSONWebKey{Use: "enc", Algorithm: string(A128KW), Key: make([]byte, 32)}}, true},
+		{"fail enc A256GCMKW size", args{&JSONWebKey{Use: "enc", Algorithm: string(A256GCMKW), Key: make([]byte, 64)}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

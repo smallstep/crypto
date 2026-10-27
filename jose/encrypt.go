@@ -1,7 +1,9 @@
 package jose
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -97,6 +99,11 @@ func Decrypt(data []byte, opts ...Option) ([]byte, error) {
 
 	enc, err := ParseEncrypted(string(data))
 	if err != nil {
+		// go-jose v4 rejects unsupported algorithms when parsing, do not return
+		// a JWE as if it was plain data.
+		if looksLikeJWE(data) {
+			return nil, errors.Wrap(err, "error parsing JWE")
+		}
 		return data, nil //nolint:nilerr // Return the given data if we cannot parse it as encrypted.
 	}
 
@@ -133,4 +140,30 @@ func Decrypt(data []byte, opts ...Option) ([]byte, error) {
 	}
 
 	return nil, errors.New("failed to decrypt JWE: invalid password")
+}
+
+// looksLikeJWE returns true if the given data has the shape of a JWE, a JSON
+// object with a ciphertext, or five dot-separated parts where the first one is
+// a header with an "enc" parameter.
+func looksLikeJWE(data []byte) bool {
+	s := stripWhitespace(string(data))
+	if strings.HasPrefix(s, "{") {
+		var v struct {
+			Ciphertext *string `json:"ciphertext"`
+		}
+		return json.Unmarshal([]byte(s), &v) == nil && v.Ciphertext != nil
+	}
+
+	parts := strings.Split(s, ".")
+	if len(parts) != 5 {
+		return false
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	var h struct {
+		Enc string `json:"enc"`
+	}
+	return json.Unmarshal(b, &h) == nil && h.Enc != ""
 }
