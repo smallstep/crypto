@@ -247,3 +247,64 @@ func TestParseSigned_JSON(t *testing.T) {
 		})
 	}
 }
+
+func TestParseJWS(t *testing.T) {
+	key := []byte("the-32-byte-long-key-for-hs256!!")
+	b64 := base64.RawURLEncoding.EncodeToString
+
+	// The protected header uses a key order and spacing that go-jose would
+	// not produce when re-encoding it, so the signature only verifies if the
+	// original bytes are preserved.
+	protected := b64([]byte(`{ "typ": "JWT",  "alg": "HS256" }`))
+	payload := []byte(`{"sub":"sub"}`)
+	encodedPayload := b64(payload)
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(protected + "." + encodedPayload))
+	signature := b64(mac.Sum(nil))
+
+	// Same payload signed with an algorithm that is not supported.
+	noneProtected := b64([]byte(`{"alg":"none"}`))
+
+	compact := protected + "." + encodedPayload + "." + signature
+	flattened := fmt.Sprintf(`{"payload":%q,"protected":%q,"signature":%q}`, encodedPayload, protected, signature)
+	general := fmt.Sprintf(`{"payload":%q,"signatures":[{"protected":%q,"signature":%q}]}`, encodedPayload, protected, signature)
+	indented := fmt.Sprintf("{\n  \"payload\": %q,\n  \"protected\": %q,\n  \"signature\": %q\n}\n", encodedPayload, protected, signature)
+
+	tests := []struct {
+		name           string
+		token          string
+		wantSignatures int
+		assertion      assert.ErrorAssertionFunc
+	}{
+		{"ok compact", compact, 1, assert.NoError},
+		{"ok compact with whitespace", " " + protected + ".\n" + encodedPayload + ".\t" + signature + "\n", 1, assert.NoError},
+		{"ok flattened", flattened, 1, assert.NoError},
+		{"ok general", general, 1, assert.NoError},
+		{"ok indented", indented, 1, assert.NoError},
+		{"ok two signatures", fmt.Sprintf(`{"payload":%q,"signatures":[{"protected":%q,"signature":%q},{"protected":%q,"signature":%q}]}`,
+			encodedPayload, protected, signature, protected, signature), 2, assert.NoError},
+		{"fail unsupported alg compact", noneProtected + "." + encodedPayload + "." + signature, 0, assert.Error},
+		{"fail unsupported alg json", fmt.Sprintf(`{"payload":%q,"protected":%q,"signature":%q}`, encodedPayload, noneProtected, signature), 0, assert.Error},
+		{"fail compact parts", protected + "." + encodedPayload, 0, assert.Error},
+		{"fail compact encoding", protected + ".!!!." + signature, 0, assert.Error},
+		{"fail missing payload", fmt.Sprintf(`{"protected":%q,"signature":%q}`, protected, signature), 0, assert.Error},
+		{"fail invalid json", `{"payload":`, 0, assert.Error},
+		{"fail empty", "", 0, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jws, err := ParseJWS(tt.token)
+			tt.assertion(t, err)
+			if err != nil {
+				assert.Nil(t, jws)
+				return
+			}
+			require.Len(t, jws.Signatures, tt.wantSignatures)
+			assert.Equal(t, string(HS256), jws.Signatures[0].Protected.Algorithm)
+
+			_, _, got, err := jws.VerifyMulti(key)
+			require.NoError(t, err)
+			assert.Equal(t, payload, got)
+		})
+	}
+}
