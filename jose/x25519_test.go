@@ -1,6 +1,7 @@
 package jose
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -241,7 +242,11 @@ func TestX25519Signer_Algs(t *testing.T) {
 }
 
 func TestX25519Signer_SignPayload(t *testing.T) {
-	buf := mustTeeReader(t)
+	reader := rand.Reader
+	t.Cleanup(func() {
+		rand.Reader = reader
+	})
+	buf := new(bytes.Buffer)
 	rand.Reader = buf
 
 	// Random

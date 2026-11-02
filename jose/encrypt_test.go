@@ -8,12 +8,10 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/go-jose/go-jose/v4"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,20 +21,33 @@ import (
 
 var testPassword = []byte("Supercalifragilisticexpialidocious")
 
-// mustTeeReader returns a buffer that can be used to capture reads from
-// rand.Reader and replay them if we set `rand.Reader` to that buffer.
-// mustTeeReader resets rand.Reader on cleanup.
-func mustTeeReader(t *testing.T) *bytes.Buffer {
+func mustFailRandReader(t *testing.T) {
 	t.Helper()
 	reader := rand.Reader
 	t.Cleanup(func() {
 		rand.Reader = reader
-		jose.RandReader = reader
 	})
-	buf := new(bytes.Buffer)
-	rand.Reader = io.TeeReader(reader, buf)
-	jose.RandReader = rand.Reader
-	return buf
+	rand.Reader = new(bytes.Buffer)
+}
+
+func assertEncrypted(t *testing.T, jwe *JSONWebEncryption, passphrase []byte, contentType string, want []byte) {
+	t.Helper()
+	s, err := jwe.CompactSerialize()
+	require.NoError(t, err)
+
+	parsed, err := ParseEncrypted(s)
+	require.NoError(t, err)
+	assert.Equal(t, string(PBES2_HS256_A128KW), parsed.Header.Algorithm)
+	assert.Equal(t, string(DefaultEncAlgorithm), parsed.Header.ExtraHeaders[HeaderKey("enc")])
+	if contentType != "" {
+		assert.Equal(t, contentType, parsed.Header.ExtraHeaders[HeaderKey("cty")])
+	} else {
+		assert.NotContains(t, parsed.Header.ExtraHeaders, HeaderKey("cty"))
+	}
+
+	got, err := Decrypt([]byte(s), WithPassword(passphrase))
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
 }
 
 func mustGenerateJWK(t *testing.T, kty, crv, alg, use, kid string, size int) *JSONWebKey {
@@ -132,100 +143,63 @@ func TestEncrypt(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		wantFn  func(t *testing.T) *JSONWebEncryption
+		prepare func(t *testing.T)
 		wantErr bool
 	}{
-		{"ok", args{data, []Option{WithPassword([]byte("password")), WithContentType("jwk+json")}},
-			func(t *testing.T) *JSONWebEncryption {
-				reader := mustTeeReader(t)
-				jwe := mustEncryptJWK(t, jwk, []byte("password"))
-				rand.Reader = reader
-				jose.RandReader = reader
-				return jwe
-			}, false},
+		{"ok", args{data, []Option{WithPassword([]byte("password")), WithContentType("jwk+json")}}, nil, false},
 		{"ok WithPasswordPrompter", args{data, []Option{
 			WithContentType("jwk+json"),
 			WithPasswordPrompter("Enter the password", func(s string) ([]byte, error) {
 				return []byte("password"), nil
-			})}},
-			func(t *testing.T) *JSONWebEncryption {
-				reader := mustTeeReader(t)
-				jwe := mustEncryptJWK(t, jwk, []byte("password"))
-				rand.Reader = reader
-				jose.RandReader = reader
-				return jwe
-			}, false},
+			})}}, nil, false},
 		{"ok with PromptPassword", args{data, []Option{WithContentType("jwk+json")}},
-			func(t *testing.T) *JSONWebEncryption {
+			func(t *testing.T) {
 				tmp := PromptPassword
 				t.Cleanup(func() { PromptPassword = tmp })
 				PromptPassword = func(s string) ([]byte, error) {
 					return []byte("password"), nil
 				}
-				reader := mustTeeReader(t)
-				jwe := mustEncryptJWK(t, jwk, []byte("password"))
-				rand.Reader = reader
-				jose.RandReader = reader
-				return jwe
 			}, false},
-		{"fail apply", args{data, []Option{WithPasswordFile("testdata/missing.txt")}},
-			func(t *testing.T) *JSONWebEncryption {
-				return nil
-			}, true},
+		{"fail apply", args{data, []Option{WithPasswordFile("testdata/missing.txt")}}, nil, true},
 		{"fail WithPasswordPrompter", args{data, []Option{
 			WithContentType("jwk+json"),
 			WithPasswordPrompter("Enter the password", func(s string) ([]byte, error) {
 				return nil, errors.New("test error")
-			})}},
-			func(t *testing.T) *JSONWebEncryption {
-				return nil
-			}, true},
+			})}}, nil, true},
 		{"fail with PromptPassword", args{data, []Option{WithContentType("jwk+json")}},
-			func(t *testing.T) *JSONWebEncryption {
+			func(t *testing.T) {
 				tmp := PromptPassword
 				t.Cleanup(func() { PromptPassword = tmp })
 				PromptPassword = func(s string) ([]byte, error) {
 					return nil, errors.New("test error")
 				}
-				return nil
 			}, true},
-		{"fail no passowrd", args{data, nil},
-			func(t *testing.T) *JSONWebEncryption {
-				return nil
-			}, true},
-		{"fail encrypt", args{data, []Option{WithPassword([]byte("password"))}},
-			func(t *testing.T) *JSONWebEncryption {
-				reader := mustTeeReader(t)
-				_, _ = randutil.Salt(PBKDF2SaltSize)
-				rand.Reader = reader
-				jose.RandReader = reader
-				return nil
-			}, true},
-		{"fail salt", args{data, []Option{WithPassword([]byte("password"))}},
-			func(t *testing.T) *JSONWebEncryption {
-				reader := mustTeeReader(t)
-				rand.Reader = reader
-				jose.RandReader = reader
-				return nil
-			}, true},
+		{"fail no passowrd", args{data, nil}, nil, true},
+		{"fail salt", args{data, []Option{WithPassword([]byte("password"))}}, mustFailRandReader, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want := tt.wantFn(t)
+			if tt.prepare != nil {
+				tt.prepare(t)
+			}
 			got, err := Encrypt(tt.args.data, tt.args.opts...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Encrypt() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
 				return
 			}
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("Encrypt() = %v, want %v", got, want)
-			}
+			require.NoError(t, err)
+			assertEncrypted(t, got, []byte("password"), "jwk+json", tt.args.data)
 		})
 	}
 }
 
 func TestEncryptJWK(t *testing.T) {
 	jwk := fixJWK(mustGenerateJWK(t, "EC", "P-256", "ES256", "", "", 0))
+	data, err := json.Marshal(jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	type args struct {
 		jwk        *JSONWebKey
@@ -234,44 +208,26 @@ func TestEncryptJWK(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		wantFn  func(t *testing.T) *JSONWebEncryption
+		prepare func(t *testing.T)
 		wantErr bool
 	}{
-		{"ok", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
-			reader := mustTeeReader(t)
-			jwe := mustEncryptJWK(t, jwk, []byte("planned password"))
-			rand.Reader = reader
-			jose.RandReader = reader
-			return jwe
-		}, false},
-		{"fail marshal", args{&JSONWebKey{Key: "a string"}, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
-			return nil
-		}, true},
-		{"fail encrypt", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
-			reader := mustTeeReader(t)
-			_, _ = randutil.Salt(PBKDF2SaltSize)
-			rand.Reader = reader
-			jose.RandReader = reader
-			return nil
-		}, true},
-		{"fail salt", args{jwk, []byte("planned password")}, func(t *testing.T) *JSONWebEncryption {
-			reader := mustTeeReader(t)
-			rand.Reader = reader
-			jose.RandReader = reader
-			return nil
-		}, true},
+		{"ok", args{jwk, []byte("planned password")}, nil, false},
+		{"fail marshal", args{&JSONWebKey{Key: "a string"}, []byte("planned password")}, nil, true},
+		{"fail salt", args{jwk, []byte("planned password")}, mustFailRandReader, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want := tt.wantFn(t)
+			if tt.prepare != nil {
+				tt.prepare(t)
+			}
 			got, err := EncryptJWK(tt.args.jwk, tt.args.passphrase)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EncryptJWK() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
 				return
 			}
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("EncryptJWK() = %v, want %v", got, want)
-			}
+			require.NoError(t, err)
+			assertEncrypted(t, got, tt.args.passphrase, "jwk+json", data)
 		})
 	}
 }

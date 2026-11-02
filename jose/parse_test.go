@@ -174,7 +174,7 @@ func TestReadKey(t *testing.T) {
 func TestReadKey_https(t *testing.T) {
 	ok, err := os.ReadFile("testdata/okp.pub.json")
 	require.NoError(t, err)
-	key, err := base64.RawURLEncoding.DecodeString("L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw")
+	key, err := base64.RawURLEncoding.DecodeString("lhY2Gxg0TsayFdM-hWRUNALLeFjsODE8g22C-G8x6nY")
 	require.NoError(t, err)
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func TestReadKey_https(t *testing.T) {
 	}{
 		{"ok", args{srvClient, srv.URL + "/ok", nil}, &JSONWebKey{
 			Key:                         ed25519.PublicKey(key),
-			KeyID:                       "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
+			KeyID:                       "UIB7JWWKXxnyJi92eW6Mq2bdvHBgRNs9qa9otBKX7Ik",
 			Algorithm:                   "EdDSA",
 			Use:                         "sig",
 			Certificates:                []*x509.Certificate{},
