@@ -1,8 +1,8 @@
 {
   "use": "sig",
   "kty": "OKP",
-  "kid": "qiCJG7r2L80rmWRrZMPfpanQHmZRcncOG7A7MBWn9qM",
+  "kid": "UIB7JWWKXxnyJi92eW6Mq2bdvHBgRNs9qa9otBKX7Ik",
   "crv": "Ed25519",
   "alg": "EdDSA",
-  "x": "L4WYxHsMVaspyhWuSp84v2meEYMEUdYnrn-w-jqP6iw"
+  "x": "lhY2Gxg0TsayFdM-hWRUNALLeFjsODE8g22C-G8x6nY"
 }

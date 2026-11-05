@@ -262,7 +262,11 @@ var supportedSignatureAlgorithms = []SignatureAlgorithm{
 
 // ParseEncrypted parses an encrypted message in compact or full serialization format.
 func ParseEncrypted(input string) (*JSONWebEncryption, error) {
-	return jose.ParseEncrypted(input, supportedKeyAlgorithms, supportedContentEncryption)
+	input = stripWhitespace(input)
+	if strings.HasPrefix(input, "{") {
+		return jose.ParseEncryptedJSON(input, supportedKeyAlgorithms, supportedContentEncryption)
+	}
+	return jose.ParseEncryptedCompact(input, supportedKeyAlgorithms, supportedContentEncryption)
 }
 
 // NewEncrypter creates an appropriate encrypter based on the key type.
@@ -384,7 +388,11 @@ func Signed(sig Signer) Builder {
 
 // ParseJWS parses a signed message in compact or full serialization format.
 func ParseJWS(s string) (*JSONWebSignature, error) {
-	return jose.ParseSigned(s, supportedSignatureAlgorithms)
+	s = stripWhitespace(s)
+	if strings.HasPrefix(s, "{") {
+		return jose.ParseSignedJSON(s, supportedSignatureAlgorithms)
+	}
+	return jose.ParseSignedCompact(s, supportedSignatureAlgorithms)
 }
 
 // Determine whether a JSONWebKey is symmetric

@@ -14,7 +14,7 @@ require (
 	github.com/ThalesGroup/crypto11 v1.6.2
 	github.com/aws/aws-sdk-go-v2/config v1.33.10
 	github.com/aws/aws-sdk-go-v2/service/kms v1.62.2
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/go-piv/piv-go/v2 v2.6.0
 	github.com/google/go-tpm v0.9.8
 	github.com/google/go-tpm-tools v0.4.11
