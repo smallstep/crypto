@@ -5,7 +5,7 @@ go 1.26.0
 retract [v0.77.3, v0.77.7] // unintentional releases tagged from non-master branch
 
 require (
-	cloud.google.com/go/kms v1.36.1
+	cloud.google.com/go/kms v1.37.0
 	filippo.io/edwards25519 v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
@@ -44,7 +44,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/iam v1.14.0 // indirect
-	cloud.google.com/go/longrunning v1.3.0 // indirect
+	cloud.google.com/go/longrunning v1.5.0 // indirect
 	codeberg.org/chavacava/garif v0.2.0 // indirect
 	codeberg.org/polyfloyd/go-errorlint v1.9.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
