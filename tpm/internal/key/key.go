@@ -111,6 +111,10 @@ type CreateConfig struct {
 	// this causes NCRYPT_MACHINE_KEY_FLAG to be passed to the underlying
 	// NCrypt PCP provider. Ignored on other platforms.
 	MachineKey bool
+	// Overwrite, when true, replaces a key already persisted under the same
+	// name rather than failing (NCRYPT_OVERWRITE_KEY_FLAG on Windows).
+	// Ignored on other platforms, where keys are not persisted under a name.
+	Overwrite bool
 }
 
 func (c *CreateConfig) Validate() error {
@@ -192,6 +196,7 @@ type KeyConfig struct {
 	Algorithm  Algorithm
 	Size       int
 	MachineKey bool
+	Overwrite  bool
 }
 
 var (

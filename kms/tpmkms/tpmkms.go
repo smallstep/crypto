@@ -519,6 +519,8 @@ func (k *TPMKMS) usesWindowsCertificateStore() bool {
 //   - tss2=true: is set to true, the PrivateKey response will contain a [tss2.TPMKey].
 //   - attest-by=<akName>: attest an application key at creation time with the AK identified by `akName`
 //   - qualifying-data=<random>: hexadecimal coded binary data that can be used to guarantee freshness when attesting creation of a key
+//   - overwrite=true: replace a key the provider already persists under the name rather than failing; meant for a key known
+//     to be unusable, since the replaced key and every credential issued for it are gone for good (Windows only)
 //
 // Some examples usages:
 //
@@ -641,6 +643,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			Size:           size,
 			QualifyingData: properties.qualifyingData,
 			MachineKey:     machineKey,
+			Overwrite:      properties.overwrite,
 		}
 		key, err = k.tpm.AttestKey(ctx, properties.attestBy, properties.name, config)
 		if err != nil {
@@ -654,6 +657,7 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 			Algorithm:  v.Type,
 			Size:       size,
 			MachineKey: machineKey,
+			Overwrite:  properties.overwrite,
 		}
 		key, err = k.tpm.CreateKey(ctx, properties.name, config)
 		if err != nil {
@@ -664,6 +668,13 @@ func (k *TPMKMS) CreateKey(req *apiv1.CreateKeyRequest) (*apiv1.CreateKeyRespons
 		}
 	}
 
+	return keyResponse(ctx, key, properties, machineKey)
+}
+
+// keyResponse is the [apiv1.CreateKeyResponse] for an application key that
+// was just created or adopted.
+func keyResponse(ctx context.Context, key *tpm.Key, properties objectProperties, machineKey bool) (*apiv1.CreateKeyResponse, error) {
+	var privateKey any
 	if properties.tss2 {
 		tpmKey, err := key.ToTSS2(ctx)
 		if err != nil {
@@ -2002,6 +2013,7 @@ var (
 	_ apiv1.CertificateManager           = (*TPMKMS)(nil)
 	_ apiv1.CertificateChainManager      = (*TPMKMS)(nil)
 	_ apiv1.CredentialsCleaner           = (*TPMKMS)(nil)
+	_ apiv1.KeyAdopter                   = (*TPMKMS)(nil)
 	_ apiv1.CertificateDeleter           = (*TPMKMS)(nil)
 	_ apiv1.SearchableCertificateManager = (*TPMKMS)(nil)
 	_ apiv1.AttestationClient            = (*attestationClient)(nil)

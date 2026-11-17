@@ -1340,6 +1340,14 @@ func TestKMS_CleanupCredentials(t *testing.T) {
 	}
 }
 
+func TestKMS_AdoptKey(t *testing.T) {
+	// softkms keeps no keys under a name, so there is nothing it could adopt.
+	softKMS := mustKMS(t, "kms:backend=softkms")
+
+	_, err := softKMS.AdoptKey(&apiv1.AdoptKeyRequest{Name: "kms:name=key1"})
+	assert.ErrorIs(t, err, apiv1.NotImplementedError{})
+}
+
 func TestKMS_SearchCertificates(t *testing.T) {
 	softKMS := mustKMS(t, "kms:backend=softkms")
 

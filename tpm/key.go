@@ -150,6 +150,14 @@ type CreateKeyConfig struct {
 	// alongside the key in storage so that load operations use the matching
 	// scope. Has no effect on non-Windows platforms.
 	MachineKey bool
+	// Overwrite, when true, replaces a key the provider already persists
+	// under the key's name rather than failing. The replaced key is gone for
+	// good, along with every credential issued for it, so it is meant for a
+	// key known to be unusable, such as one the provider can no longer open.
+	// On Windows this passes NCRYPT_OVERWRITE_KEY_FLAG on creation. Has no
+	// effect on non-Windows platforms, where keys are not persisted under a
+	// name.
+	Overwrite bool
 
 	// TODO(hs): move key name to this struct?
 }
@@ -172,6 +180,10 @@ type AttestKeyConfig struct {
 	// created in the local machine key store rather than in the current
 	// user's key store. See [CreateKeyConfig.MachineKey] for details.
 	MachineKey bool
+	// Overwrite, when true, replaces a key the provider already persists
+	// under the key's name rather than failing. See
+	// [CreateKeyConfig.Overwrite] for details.
+	Overwrite bool
 
 	// TODO(hs): add akName and key name to this struct?
 }
@@ -202,6 +214,7 @@ func (t *TPM) CreateKey(ctx context.Context, name string, config CreateKeyConfig
 		Algorithm:  config.Algorithm,
 		Size:       config.Size,
 		MachineKey: config.MachineKey,
+		Overwrite:  config.Overwrite,
 	}
 	if err := t.validate(&createConfig); err != nil {
 		return nil, fmt.Errorf("invalid key creation parameters: %w", err)
@@ -303,6 +316,7 @@ func (t *TPM) AttestKey(ctx context.Context, akName, name string, config AttestK
 		Size:           config.Size,
 		QualifyingData: config.QualifyingData,
 		Name:           prefixKey(name),
+		Overwrite:      config.Overwrite,
 	}
 	if err := t.validate(attestValidationWrapper(keyConfig)); err != nil {
 		return nil, fmt.Errorf("invalid key attestation parameters: %w", err)

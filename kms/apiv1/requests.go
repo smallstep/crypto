@@ -133,6 +133,21 @@ type GetPublicKeyRequest struct {
 	Name string
 }
 
+// AdoptKeyRequest is the parameter used in the kms.AdoptKey method.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type AdoptKeyRequest struct {
+	// Name is the key's URI, with the properties CreateKey takes for it.
+	Name string
+	// PublicKey is the public key the adopted key must have, such as the one
+	// in a certificate issued for it. A key with any other public key is not
+	// adopted.
+	PublicKey crypto.PublicKey
+}
+
 // CreateKeyRequest is the parameter used in the kms.CreateKey method.
 type CreateKeyRequest struct {
 	// Name represents the key name or label used to identify a key.
