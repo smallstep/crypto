@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"io"
 	"testing"
 
@@ -191,6 +192,53 @@ func TestSign_nilOpts(t *testing.T) {
 	rsaSigner := &Signer{publicKey: &rsa.PublicKey{}}
 	_, err = rsaSigner.Sign(rand.Reader, make([]byte, 32), nil)
 	assert.ErrorIs(t, err, cryptoutil.ErrSignerOptsRequired)
+}
+
+func TestSign_rsaParent(t *testing.T) {
+	rw := openTPM(t)
+	t.Cleanup(func() {
+		assert.NoError(t, rw.Close())
+	})
+
+	keyHnd, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", RSASRKTemplate)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, tpm2.FlushContext(rw, keyHnd))
+	})
+
+	priv, pub, _, _, _, err := tpm2.CreateKey(rw, keyHnd, tpm2.PCRSelection{}, "", "", defaultKeyParamsEC)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		opts      []TPMOption
+		rsaParent bool
+	}{
+		{"ok rsaParent", []TPMOption{WithRSAParent()}, true},
+		{"ok without rsaParent", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := New(pub, priv, tt.opts...)
+
+			der, err := MarshalPrivateKey(key)
+			require.NoError(t, err)
+			key, err = ParsePrivateKey(der)
+			require.NoError(t, err)
+			require.Equal(t, tt.rsaParent, key.RSAParent)
+
+			signer, err := CreateSigner(rw, key)
+			require.NoError(t, err)
+
+			sum := sha256.Sum256([]byte("rsa-parent"))
+			sig, err := signer.Sign(rand.Reader, sum[:], crypto.SHA256)
+			require.NoError(t, err)
+
+			publicKey, ok := signer.Public().(*ecdsa.PublicKey)
+			require.True(t, ok)
+			assert.True(t, ecdsa.VerifyASN1(publicKey, sum[:], sig))
+		})
+	}
 }
 
 func TestSign_SetTPM(t *testing.T) {

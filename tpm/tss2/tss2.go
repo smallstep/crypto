@@ -22,19 +22,23 @@ var (
 //		policy      [1] EXPLICIT SEQUENCE OF TPMPolicy OPTIONAL,
 //		secret      [2] EXPLICIT OCTET STRING OPTIONAL,
 //		authPolicy  [3] EXPLICIT SEQUENCE OF TPMAuthPolicy OPTIONAL,
+//		description [4] EXPLICIT UTF8String OPTIONAL,
+//		rsaParent   [5] EXPLICIT BOOLEAN OPTIONAL,
 //		parent      INTEGER,
 //		pubkey      OCTET STRING,
 //		privkey     OCTET STRING
 //	}
 type TPMKey struct {
-	Type       asn1.ObjectIdentifier
-	EmptyAuth  bool            `asn1:"optional,explicit,tag:0"`
-	Policy     []TPMPolicy     `asn1:"optional,explicit,tag:1"`
-	Secret     []byte          `asn1:"optional,explicit,tag:2"`
-	AuthPolicy []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
-	Parent     int
-	PublicKey  []byte
-	PrivateKey []byte
+	Type        asn1.ObjectIdentifier
+	EmptyAuth   bool            `asn1:"optional,explicit,tag:0"`
+	Policy      []TPMPolicy     `asn1:"optional,explicit,tag:1"`
+	Secret      []byte          `asn1:"optional,explicit,tag:2"`
+	AuthPolicy  []TPMAuthPolicy `asn1:"optional,explicit,tag:3"`
+	Description string          `asn1:"utf8,optional,explicit,tag:4"`
+	RSAParent   bool            `asn1:"optional,explicit,tag:5"`
+	Parent      int
+	PublicKey   []byte
+	PrivateKey  []byte
 }
 
 // TPMPolicy is defined in https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html#section-4.1:
@@ -107,6 +111,29 @@ func ParsePrivateKey(derBytes []byte) (*TPMKey, error) {
 	if tag, ok := readOptionalTag(&input, 3); ok {
 		if key.AuthPolicy, err = readTPMAuthPolicy(&tag); err != nil {
 			return nil, err
+		}
+	}
+
+	if tag, ok := readOptionalTag(&input, 4); ok {
+		var description cryptobyte.String
+		if !tag.ReadASN1(&description, cryptobyte_asn1.UTF8String) {
+			return nil, errors.New("malformed TSS2 description")
+		}
+		key.Description = string(description)
+	}
+
+	if tag, ok := readOptionalTag(&input, 5); ok {
+		if !readASN1Boolean(&tag, &key.RSAParent) {
+			return nil, errors.New("malformed TSS2 rsaParent")
+		}
+	}
+
+	// Skip optional fields defined after rsaParent.
+	for len(input) > 0 && input[0]&0xc0 == 0x80 {
+		var field cryptobyte.String
+		var tag cryptobyte_asn1.Tag
+		if !input.ReadAnyASN1(&field, &tag) {
+			return nil, errors.New("malformed TSS2 key")
 		}
 	}
 

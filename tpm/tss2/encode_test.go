@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
@@ -36,6 +37,14 @@ func TestNew(t *testing.T) {
 			Type:       oidLoadableKey,
 			EmptyAuth:  false,
 			Policy:     []TPMPolicy{{CommandCode: 1, CommandPolicy: []byte("command-policy")}},
+			Parent:     0x40000001,
+			PublicKey:  append([]byte{0, 6}, []byte("public")...),
+			PrivateKey: append([]byte{0, 7}, []byte("private")...),
+		}},
+		{"ok with RSA parent", args{[]byte("public"), []byte("private"), []TPMOption{WithRSAParent()}}, &TPMKey{
+			Type:       oidLoadableKey,
+			EmptyAuth:  true,
+			RSAParent:  true,
 			Parent:     0x40000001,
 			PublicKey:  append([]byte{0, 6}, []byte("public")...),
 			PrivateKey: append([]byte{0, 7}, []byte("private")...),
@@ -122,6 +131,18 @@ func TestEncode(t *testing.T) {
 				0x4, 0x9, 0x0, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
 			},
 		}, assert.NoError},
+		{"ok with RSA parent", args{[]byte("public"), []byte("private"), []TPMOption{WithRSAParent()}}, &pem.Block{
+			Type: "TSS2 PRIVATE KEY",
+			Bytes: []byte{
+				0x30, 0x2d,
+				0x6, 0x6, 0x67, 0x81, 0x5, 0xa, 0x1, 0x3,
+				0xa0, 0x3, 0x1, 0x1, 0xff,
+				0xa5, 0x3, 0x1, 0x1, 0xff,
+				0x2, 0x4, 0x40, 0x0, 0x0, 0x1,
+				0x4, 0x8, 0x0, 0x6, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
+				0x4, 0x9, 0x0, 0x7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
+			},
+		}, assert.NoError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -156,4 +177,18 @@ MCgGBmeBBQoBA6ADAQH/AgRAAAABBAgABnB1YmxpYwQJAAdwcml2YXRl
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestWithRSAParent(t *testing.T) {
+	key := New([]byte("public"), []byte("private"), WithRSAParent())
+	assert.True(t, key.RSAParent)
+
+	b, err := key.EncodeToMemory()
+	require.NoError(t, err)
+	block, _ := pem.Decode(b)
+	require.NotNil(t, block)
+
+	got, err := ParsePrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, key, got)
 }

@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 // key generated using:
@@ -225,6 +227,12 @@ func TestParsePrivateKey_marshal(t *testing.T) {
 				{Name: "auth-2", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 			}
 		})}, assert.NoError},
+		{"ok description", args{modKey(func(key *TPMKey) {
+			key.Description = "user@host"
+		})}, assert.NoError},
+		{"ok rsaParent", args{modKey(func(key *TPMKey) {
+			key.RSAParent = true
+		})}, assert.NoError},
 		{"ok all", args{&TPMKey{
 			Type:      oidLoadableKey,
 			EmptyAuth: true,
@@ -234,9 +242,11 @@ func TestParsePrivateKey_marshal(t *testing.T) {
 				{Name: "auth-1", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 				{Name: "auth-2", Policy: []TPMPolicy{fakePolicy1, fakePolicy2}},
 			},
-			Parent:     1234,
-			PublicKey:  []byte("pubkey"),
-			PrivateKey: []byte("privkey"),
+			Description: "user@host",
+			RSAParent:   true,
+			Parent:      1234,
+			PublicKey:   []byte("pubkey"),
+			PrivateKey:  []byte("privkey"),
 		}}, assert.NoError},
 	}
 	for _, tt := range tests {
@@ -250,6 +260,95 @@ func TestParsePrivateKey_marshal(t *testing.T) {
 			got, err := ParsePrivateKey(derBytes)
 			tt.assertion(t, err)
 			assert.Equal(t, tt.args.key, got)
+		})
+	}
+}
+
+func TestParsePrivateKey_optionalFields(t *testing.T) {
+	explicit := func(b *cryptobyte.Builder, tag uint8, fn cryptobyte.BuilderContinuation) {
+		b.AddASN1(cryptobyte_asn1.Tag(tag).Constructed().ContextSpecific(), fn)
+	}
+	encode := func(t *testing.T, fn cryptobyte.BuilderContinuation) []byte {
+		t.Helper()
+		var b cryptobyte.Builder
+		b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+			b.AddASN1ObjectIdentifier(oidLoadableKey)
+			explicit(b, 0, func(b *cryptobyte.Builder) {
+				b.AddASN1Boolean(true)
+			})
+			fn(b)
+			b.AddASN1Int64(0x40000001)
+			b.AddASN1OctetString([]byte("pubkey"))
+			b.AddASN1OctetString([]byte("privkey"))
+		})
+		der, err := b.Bytes()
+		require.NoError(t, err)
+		return der
+	}
+	description := func(b *cryptobyte.Builder) {
+		explicit(b, 4, func(b *cryptobyte.Builder) {
+			b.AddASN1(cryptobyte_asn1.UTF8String, func(b *cryptobyte.Builder) {
+				b.AddBytes([]byte("user@host"))
+			})
+		})
+	}
+	rsaParent := func(b *cryptobyte.Builder) {
+		explicit(b, 5, func(b *cryptobyte.Builder) {
+			b.AddASN1Boolean(true)
+		})
+	}
+	unknown := func(b *cryptobyte.Builder) {
+		explicit(b, 6, func(b *cryptobyte.Builder) {
+			b.AddASN1OctetString([]byte("unknown"))
+		})
+		explicit(b, 9, func(b *cryptobyte.Builder) {
+			b.AddASN1Int64(1)
+		})
+	}
+	want := func(description string, rsaParent bool) *TPMKey {
+		return &TPMKey{
+			Type:        oidLoadableKey,
+			EmptyAuth:   true,
+			Description: description,
+			RSAParent:   rsaParent,
+			Parent:      0x40000001,
+			PublicKey:   []byte("pubkey"),
+			PrivateKey:  []byte("privkey"),
+		}
+	}
+
+	tests := []struct {
+		name      string
+		fields    []cryptobyte.BuilderContinuation
+		want      *TPMKey
+		assertion assert.ErrorAssertionFunc
+	}{
+		{"ok description", []cryptobyte.BuilderContinuation{description}, want("user@host", false), assert.NoError},
+		{"ok rsaParent", []cryptobyte.BuilderContinuation{rsaParent}, want("", true), assert.NoError},
+		{"ok description and rsaParent", []cryptobyte.BuilderContinuation{description, rsaParent}, want("user@host", true), assert.NoError},
+		{"ok unknown fields", []cryptobyte.BuilderContinuation{description, rsaParent, unknown}, want("user@host", true), assert.NoError},
+		{"ok only unknown fields", []cryptobyte.BuilderContinuation{unknown}, want("", false), assert.NoError},
+		{"fail description", []cryptobyte.BuilderContinuation{func(b *cryptobyte.Builder) {
+			explicit(b, 4, func(b *cryptobyte.Builder) {
+				b.AddASN1OctetString([]byte("user@host"))
+			})
+		}}, nil, assert.Error},
+		{"fail rsaParent", []cryptobyte.BuilderContinuation{func(b *cryptobyte.Builder) {
+			explicit(b, 5, func(b *cryptobyte.Builder) {
+				b.AddASN1Int64(1)
+			})
+		}}, nil, assert.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			der := encode(t, func(b *cryptobyte.Builder) {
+				for _, fn := range tt.fields {
+					fn(b)
+				}
+			})
+			got, err := ParsePrivateKey(der)
+			tt.assertion(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
