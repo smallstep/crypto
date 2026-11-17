@@ -7,10 +7,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/binary"
 	"io"
 	"testing"
 
 	"github.com/google/go-tpm/legacy/tpm2"
+	tpm2d "github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,6 +242,139 @@ func TestSign_SetTPM(t *testing.T) {
 	}
 }
 
+// commandCounter counts the TPM commands written to rw by command code. If
+// secondLoadRC is set, it replaces the response code of the second Load.
+type commandCounter struct {
+	io.ReadWriter
+	counts       map[tpmutil.Command]int
+	last         tpmutil.Command
+	secondLoadRC uint32
+}
+
+func (c *commandCounter) Write(p []byte) (int, error) {
+	if len(p) >= 10 {
+		c.last = tpmutil.Command(binary.BigEndian.Uint32(p[6:10]))
+		c.counts[c.last]++
+	}
+	return c.ReadWriter.Write(p)
+}
+
+func (c *commandCounter) Read(p []byte) (int, error) {
+	n, err := c.ReadWriter.Read(p)
+	if c.secondLoadRC != 0 && c.last == tpm2.CmdLoad && c.counts[tpm2.CmdLoad] == 2 && n >= 10 {
+		binary.BigEndian.PutUint32(p[6:10], c.secondLoadRC)
+	}
+	return n, err
+}
+
+// eccSRKH2Template is the TCG EK Credential Profile H-2 template, as used by
+// github.com/foxboron/go-tpm-keyfiles for the SRK.
+var eccSRKH2Template = tpm2d.TPMTPublic{
+	Type:    tpm2d.TPMAlgECC,
+	NameAlg: tpm2d.TPMAlgSHA256,
+	ObjectAttributes: tpm2d.TPMAObject{
+		FixedTPM:            true,
+		FixedParent:         true,
+		SensitiveDataOrigin: true,
+		UserWithAuth:        true,
+		NoDA:                true,
+		Restricted:          true,
+		Decrypt:             true,
+	},
+	Parameters: tpm2d.NewTPMUPublicParms(tpm2d.TPMAlgECC, &tpm2d.TPMSECCParms{
+		Symmetric: tpm2d.TPMTSymDefObject{
+			Algorithm: tpm2d.TPMAlgAES,
+			KeyBits:   tpm2d.NewTPMUSymKeyBits(tpm2d.TPMAlgAES, tpm2d.TPMKeyBits(128)),
+			Mode:      tpm2d.NewTPMUSymMode(tpm2d.TPMAlgAES, tpm2d.TPMAlgCFB),
+		},
+		CurveID: tpm2d.TPMECCNistP256,
+	}),
+	Unique: tpm2d.NewTPMUPublicID(tpm2d.TPMAlgECC, &tpm2d.TPMSECCPoint{
+		X: tpm2d.TPM2BECCParameter{Buffer: []byte{}},
+		Y: tpm2d.TPM2BECCParameter{Buffer: []byte{}},
+	}),
+}
+
+func TestSign_srkFallback(t *testing.T) {
+	rw := openTPM(t)
+	t.Cleanup(func() {
+		assert.NoError(t, rw.Close())
+	})
+
+	rsaSRK := func(t *testing.T) tpmutil.Handle {
+		h, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", RSASRKTemplate)
+		require.NoError(t, err)
+		return h
+	}
+	eccH2SRK := func(t *testing.T) tpmutil.Handle {
+		rsp, err := tpm2d.CreatePrimary{
+			PrimaryHandle: tpm2d.TPMRHOwner,
+			InPublic:      tpm2d.New2B(eccSRKH2Template),
+		}.Execute(transport.FromReadWriter(rw))
+		require.NoError(t, err)
+		return tpmutil.Handle(rsp.ObjectHandle)
+	}
+
+	otherSRK := func(t *testing.T) tpmutil.Handle {
+		template := RSASRKTemplate
+		template.Attributes ^= tpm2.FlagNoDA
+		h, _, err := tpm2.CreatePrimary(rw, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", template)
+		require.NoError(t, err)
+		return h
+	}
+
+	tests := []struct {
+		name          string
+		srk           func(t *testing.T) tpmutil.Handle
+		corrupt       bool
+		secondLoadRC  uint32
+		wantTemplate  tpm2.Public
+		wantFirstLoad int
+		wantErrCode   tpm2.RCFmt1
+	}{
+		{"ok RSA SRK", rsaSRK, false, 0, RSASRKTemplate, 1, 0},
+		{"ok ECC H-2 SRK", eccH2SRK, false, 0, ECCSRKTemplate, 2, 0},
+		{"fail no fallback", eccH2SRK, true, 0, tpm2.Public{}, 1, tpm2.RCInsufficient},
+		// The second Load fails with TPM_RC_SIZE on parameter 1 (0x1d5), and
+		// the error of the first one is returned.
+		{"fail first error", otherSRK, false, 0x1d5, tpm2.Public{}, 2, tpm2.RCIntegrity},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srk := tt.srk(t)
+			priv, pub, _, _, _, err := tpm2.CreateKey(rw, srk, tpm2.PCRSelection{}, "", "", defaultKeyParamsEC)
+			require.NoError(t, err)
+			require.NoError(t, tpm2.FlushContext(rw, srk))
+			if tt.corrupt {
+				// A truncated blob fails to unmarshal under any parent.
+				priv = priv[:10]
+			}
+
+			counter := &commandCounter{ReadWriter: rw, counts: map[tpmutil.Command]int{}, secondLoadRC: tt.secondLoadRC}
+			signer, err := CreateSigner(counter, New(pub, priv))
+			require.NoError(t, err)
+
+			sum := sha256.Sum256([]byte("srk-fallback"))
+			for i, wantLoads := range []int{tt.wantFirstLoad, 1} {
+				clear(counter.counts)
+				sig, err := signer.Sign(rand.Reader, sum[:], crypto.SHA256)
+				assert.Equal(t, wantLoads, counter.counts[tpm2.CmdCreatePrimary], "CreatePrimary in signature %d", i+1)
+				assert.Equal(t, wantLoads, counter.counts[tpm2.CmdLoad], "Load in signature %d", i+1)
+				if tt.wantErrCode != 0 {
+					var perr tpm2.ParameterError
+					require.ErrorAs(t, err, &perr)
+					assert.Equal(t, tt.wantErrCode, perr.Code)
+					assert.Nil(t, signer.srkTemplate)
+					return
+				}
+				require.NoError(t, err)
+				assert.True(t, ecdsa.VerifyASN1(signer.Public().(*ecdsa.PublicKey), sum[:], sig))
+				assert.Equal(t, &tt.wantTemplate, signer.srkTemplate)
+			}
+		})
+	}
+}
+
 func TestCreateSigner(t *testing.T) {
 	var rw bytes.Buffer
 	key, err := ParsePrivateKey(parsePEM(p256TSS2PEM))
@@ -263,7 +400,7 @@ func TestCreateSigner(t *testing.T) {
 		assertion assert.ErrorAssertionFunc
 	}{
 		{"ok", args{&rw, key}, &Signer{
-			rw: &rw, publicKey: publicKey, tpmKey: key, srkTemplate: RSASRKTemplate,
+			rw: &rw, publicKey: publicKey, tpmKey: key,
 		}, assert.NoError},
 		{"fail rw", args{nil, key}, nil, assert.Error},
 		{"fail key", args{&rw, nil}, nil, assert.Error},

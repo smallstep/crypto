@@ -88,7 +88,7 @@ type Signer struct {
 	rw          io.ReadWriter
 	publicKey   crypto.PublicKey
 	tpmKey      *TPMKey
-	srkTemplate tpm2.Public
+	srkTemplate *tpm2.Public
 }
 
 // CreateSigner creates a new [crypto.Signer] with the given TPM (rw) and
@@ -121,18 +121,19 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 	}
 
 	return &Signer{
-		rw:          rw,
-		publicKey:   publicKey,
-		tpmKey:      key,
-		srkTemplate: RSASRKTemplate,
+		rw:        rw,
+		publicKey: publicKey,
+		tpmKey:    key,
 	}, nil
 }
 
 // SetSRKTemplate allows to change the Storage Root Key (SRK) template used
 // to load the the public/private blobs into an object in the TPM.
 //
-// It currently defaults to [RSASRKTemplate], the same used as the default in the
-// [go.step.sm/crypto/tpm] package.
+// By default the key is loaded under [RSASRKTemplate], the same used as the
+// default in the [go.step.sm/crypto/tpm] package, and if that fails with an
+// integrity error, under [ECCSRKTemplate]. Setting a template disables this
+// fallback.
 //
 // # Experimental
 //
@@ -140,7 +141,7 @@ func CreateSigner(rw io.ReadWriter, key *TPMKey) (*Signer, error) {
 // release.
 func (s *Signer) SetSRKTemplate(p tpm2.Public) {
 	s.m.Lock()
-	s.srkTemplate = p
+	s.srkTemplate = &p
 	s.m.Unlock()
 }
 
@@ -175,18 +176,9 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signa
 		return nil, fmt.Errorf("failed converting parent handle: %w", err)
 	}
 
-	parentHandle := tpmutil.Handle(parent)
-	if !handleIsPersistent(s.tpmKey.Parent) {
-		parentHandle, _, err = tpm2.CreatePrimary(s.rw, parentHandle, tpm2.PCRSelection{}, "", "", s.srkTemplate)
-		if err != nil {
-			return nil, fmt.Errorf("error creating primary: %w", err)
-		}
-		defer tpm2.FlushContext(s.rw, parentHandle)
-	}
-
-	keyHandle, _, err := tpm2.Load(s.rw, parentHandle, "", s.tpmKey.PublicKey[2:], s.tpmKey.PrivateKey[2:])
+	keyHandle, err := s.load(tpmutil.Handle(parent))
 	if err != nil {
-		return nil, fmt.Errorf("error loading key handle: %w", err)
+		return nil, err
 	}
 	defer tpm2.FlushContext(s.rw, keyHandle)
 
@@ -198,6 +190,61 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) (signa
 	default:
 		return nil, fmt.Errorf("unsupported signing key type %T", s.publicKey)
 	}
+}
+
+// load loads the key under the given parent. For a permanent parent it creates
+// the SRK, trying the templates from srkTemplates until one is found that the
+// key loads under, and remembers it for later calls.
+func (s *Signer) load(parent tpmutil.Handle) (tpmutil.Handle, error) {
+	pub, priv := s.tpmKey.PublicKey[2:], s.tpmKey.PrivateKey[2:]
+	if handleIsPersistent(s.tpmKey.Parent) {
+		h, _, err := tpm2.Load(s.rw, parent, "", pub, priv)
+		if err != nil {
+			return 0, fmt.Errorf("error loading key handle: %w", err)
+		}
+		return h, nil
+	}
+
+	s.m.Lock()
+	templates := srkTemplates()
+	if s.srkTemplate != nil {
+		templates = []tpm2.Public{*s.srkTemplate}
+	}
+	s.m.Unlock()
+
+	// On failure, report the error of the first template, as without fallback.
+	var firstErr error
+	for _, template := range templates {
+		srk, _, err := tpm2.CreatePrimary(s.rw, parent, tpm2.PCRSelection{}, "", "", template)
+		if err != nil {
+			return 0, fmt.Errorf("error creating primary: %w", err)
+		}
+		h, _, err := tpm2.Load(s.rw, srk, "", pub, priv)
+		tpm2.FlushContext(s.rw, srk)
+		if err == nil {
+			s.m.Lock()
+			s.srkTemplate = &template
+			s.m.Unlock()
+			return h, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		if !isIntegrityError(err) {
+			break
+		}
+	}
+	return 0, fmt.Errorf("error loading key handle: %w", firstErr)
+}
+
+// srkTemplates returns the SRK templates to try, in order.
+func srkTemplates() []tpm2.Public {
+	return []tpm2.Public{RSASRKTemplate, ECCSRKTemplate}
+}
+
+func isIntegrityError(err error) bool {
+	var perr tpm2.ParameterError
+	return errors.As(err, &perr) && perr.Code == tpm2.RCIntegrity && perr.Parameter == tpm2.RC1
 }
 
 // https://github.com/smallstep/go-attestation/blob/f5480326fb6d63859537ec89fbea7c62485bc4da/attest/wrapped_tpm20.go#L513
