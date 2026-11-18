@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/cryptotest"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -111,8 +113,29 @@ func TestGenerateJWK(t *testing.T) {
 		{"RSA", "", "RSA1_5", "enc", "a-kid", 2048, "RSA1_5", 2048, &rsa.PrivateKey{}, true},
 		{"RSA", "", "RSA-OAEP", "enc", "a-kid", 2048, "RSA-OAEP", 2048, &rsa.PrivateKey{}, true},
 		{"OKP", "", "", "", "", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
-		{"OKP", "", "", "", "sig", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
-		{"OKP", "", "", "EdDSA", "sig", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
+		{"OKP", "", "", "sig", "", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
+		{"OKP", "", "EdDSA", "sig", "a-kid", 0, "EdDSA", 64, ed25519.PrivateKey{}, true},
+		{"OKP", "", "", "enc", "", 0, "", 0, nil, false},
+		{"AKP", "", "", "sig", "a-kid", 0, "ML-DSA-44", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "ML-DSA-44", "", "sig", "", 0, "ML-DSA-44", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "ML-DSA-65", "", "sig", "", 0, "ML-DSA-65", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "ML-DSA-87", "", "sig", "", 0, "ML-DSA-87", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "", "ML-DSA-44", "sig", "", 0, "ML-DSA-44", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "", "ML-DSA-65", "sig", "", 0, "ML-DSA-65", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "", "ML-DSA-87", "sig", "", 0, "ML-DSA-87", 0, &mldsa.PrivateKey{}, true},
+		{"ML-DSA-44", "", "", "sig", "", 0, "ML-DSA-44", 0, &mldsa.PrivateKey{}, true},
+		{"ML-DSA-65", "", "", "sig", "", 0, "ML-DSA-65", 0, &mldsa.PrivateKey{}, true},
+		{"ML-DSA-87", "", "", "sig", "", 0, "ML-DSA-87", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "ML-DSA-65", "ML-DSA-65", "sig", "", 0, "ML-DSA-65", 0, &mldsa.PrivateKey{}, true},
+		{"ML-DSA-87", "", "ML-DSA-87", "sig", "", 0, "ML-DSA-87", 0, &mldsa.PrivateKey{}, true},
+		{"AKP", "ML-DSA-65", "ML-DSA-44", "sig", "", 0, "", 0, nil, false},
+		{"AKP", "", "ES256", "sig", "", 0, "", 0, nil, false},
+		{"ML-DSA-65", "", "ML-DSA-44", "sig", "", 0, "", 0, nil, false},
+		{"ML-DSA-44", "", "ES256", "sig", "", 0, "", 0, nil, false},
+		{"AKP", "", "", "enc", "", 0, "", 0, nil, false},
+		{"ML-DSA-44", "", "", "enc", "", 0, "", 0, nil, false},
+		{"ML-DSA-65", "", "", "enc", "", 0, "", 0, nil, false},
+		{"ML-DSA-87", "", "", "enc", "", 0, "", 0, nil, false},
 		{"oct", "", "", "", "", 0, "HS256", 32, []byte{}, true},
 		{"oct", "", "", "sig", "", 0, "HS256", 32, []byte{}, true},
 		{"oct", "", "HS384", "sig", "a-kid", 0, "HS384", 48, []byte{}, true},
@@ -143,6 +166,12 @@ func TestGenerateJWK(t *testing.T) {
 		tc := tt
 		t.Run(tc.kty, func(t *testing.T) {
 			t.Parallel()
+
+			// Skip ML-DSA tests
+			if !mldsa.Supported && (tc.kty == "AKP" || strings.HasPrefix(tc.kty, "ML-DSA")) {
+				t.SkipNow()
+			}
+
 			jwk, err := GenerateJWK(tc.kty, tc.crv, tc.alg, tc.use, tc.kid, tc.size)
 			if !tc.ok {
 				assert.Error(t, err)
@@ -172,6 +201,8 @@ func TestGenerateJWK(t *testing.T) {
 				assert.Equal(t, tc.expectedSize, key.N.BitLen())
 			case ed25519.PrivateKey:
 				assert.Equal(t, tc.expectedSize, len(key))
+			case *mldsa.PrivateKey:
+				assert.Equal(t, tc.expectedAlg, key.PublicKey().Parameters().String())
 			case []byte:
 				assert.Equal(t, tc.expectedSize, len(key))
 			default:
@@ -276,8 +307,29 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 	t.Parallel()
 	mustKey := func(filename string) any {
 		key, err := pemutil.Read(filename)
-		require.NoError(t, err)
+		if !mldsa.Supported && strings.Contains(filename, "mldsa") {
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+		}
 		return key
+	}
+	mustPublicKey := func(filename string) any {
+		key, err := pemutil.Read(filename)
+		if !mldsa.Supported && strings.Contains(filename, "mldsa") {
+			require.Error(t, err)
+			return nil
+		}
+
+		require.NoError(t, err)
+		switch k := key.(type) {
+		case crypto.Signer:
+			return k.Public()
+		case *x509.Certificate:
+			return k.PublicKey
+		default:
+			return key
+		}
 	}
 	mustCert := func(filename string) *x509.Certificate {
 		cert, err := pemutil.ReadCertificate(filename)
@@ -313,6 +365,18 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 		{"rsa", args{"../pemutil/testdata/openssl.rsa2048.pem", false}, &JSONWebKey{
 			Key: mustKey("../pemutil/testdata/openssl.rsa2048.pem"),
 		}, false},
+		{"ml-dsa-44", args{"../pemutil/testdata/pkcs8/openssl.mldsa44.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa44.pem"),
+			Algorithm: MLDSA44,
+		}, false},
+		{"ml-dsa-65", args{"../pemutil/testdata/pkcs8/openssl.mldsa65.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa65.pem"),
+			Algorithm: MLDSA65,
+		}, false},
+		{"ml-dsa-87", args{"../pemutil/testdata/pkcs8/openssl.mldsa87.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa87.pem"),
+			Algorithm: MLDSA87,
+		}, false},
 		{"p256 pub", args{"../pemutil/testdata/openssl.p256.pub.pem", false}, &JSONWebKey{
 			Key:       mustKey("../pemutil/testdata/openssl.p256.pub.pem"),
 			Algorithm: ES256,
@@ -332,19 +396,37 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 		{"rsa pub", args{"../pemutil/testdata/openssl.rsa2048.pub.pem", false}, &JSONWebKey{
 			Key: mustKey("../pemutil/testdata/openssl.rsa2048.pub.pem"),
 		}, false},
+		{"ml-dsa-44 pub", args{"../pemutil/testdata/pkcs8/openssl.mldsa44.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa44.pub.pem"),
+			Algorithm: MLDSA44,
+		}, false},
+		{"ml-dsa-65 pub", args{"../pemutil/testdata/pkcs8/openssl.mldsa65.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa65.pub.pem"),
+			Algorithm: MLDSA65,
+		}, false},
+		{"ml-dsa-87 pub", args{"../pemutil/testdata/pkcs8/openssl.mldsa87.pub.pem", false}, &JSONWebKey{
+			Key:       mustKey("../pemutil/testdata/pkcs8/openssl.mldsa87.pub.pem"),
+			Algorithm: MLDSA87,
+		}, false},
 		{"rsa cert", args{"testdata/rsa2048.crt", true}, &JSONWebKey{
-			Key:          mustCert("testdata/rsa2048.crt").PublicKey,
+			Key:          mustPublicKey("testdata/rsa2048.crt"),
 			Certificates: []*x509.Certificate{mustCert("testdata/rsa2048.crt")},
 		}, false},
 		{"ed25519 cert", args{"../x509util/testdata/ed25519.crt", true}, &JSONWebKey{
-			Key:          mustCert("../x509util/testdata/ed25519.crt").PublicKey,
+			Key:          mustPublicKey("../x509util/testdata/ed25519.crt"),
 			Certificates: []*x509.Certificate{mustCert("../x509util/testdata/ed25519.crt")},
 			Algorithm:    EdDSA,
 		}, false},
 		{"p256 cert", args{"../x509util/testdata/google.crt", false}, &JSONWebKey{
-			Key:          mustCert("../x509util/testdata/google.crt").PublicKey,
+			Key:          mustPublicKey("../x509util/testdata/google.crt"),
 			Certificates: []*x509.Certificate{mustCert("../x509util/testdata/google.crt")},
 			Algorithm:    ES256,
+			Use:          "sig",
+		}, false},
+		{"ml-dsa-44 cert", args{"../x509util/testdata/mldsa44.crt", false}, &JSONWebKey{
+			Key:          mustPublicKey("../x509util/testdata/mldsa44.key"),
+			Certificates: []*x509.Certificate{mustCert("../x509util/testdata/mldsa44.crt")},
+			Algorithm:    MLDSA44,
 			Use:          "sig",
 		}, false},
 		{"fail missing", args{"testdata/missing.txt", false}, nil, true},
@@ -353,6 +435,12 @@ func TestGenerateJWKFromPEM(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			// Skip ML-DSA tests
+			if strings.HasPrefix(tt.name, "ml-dsa") && !mldsa.Supported {
+				t.SkipNow()
+			}
+
 			got, err := GenerateJWKFromPEM(tt.args.filename, tt.args.subtle)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateJWKFromPEM() error = %v, wantErr %v", err, tt.wantErr)

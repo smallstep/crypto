@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 )
 
@@ -317,6 +318,19 @@ func TestValidateJWK_sig(t *testing.T) {
 		{"fail OpaqueSigner", args{&JSONWebKey{Use: "sig", Algorithm: RS256, Key: p256Key}}, true},
 		{"fail unknown", args{&JSONWebKey{Use: "sig", Algorithm: HS256, Key: "raw-key"}}, true},
 	}
+	if mldsa.Supported {
+		mldsaKey := mustSigner("AKP", "ML-DSA-65", 0)
+		tests = append(tests, []struct {
+			name    string
+			args    args
+			wantErr bool
+		}{
+			{"ok ML-DSA-65", args{&JSONWebKey{Use: "sig", Algorithm: MLDSA65, Key: mldsaKey}}, false},
+			{"ok ML-DSA-65 pub", args{&JSONWebKey{Use: "sig", Algorithm: MLDSA65, Key: mldsaKey.Public()}}, false},
+			{"fail ML-DSA", args{&JSONWebKey{Use: "sig", Algorithm: MLDSA44, Key: mldsaKey}}, true},
+			{"fail ML-DSA pub", args{&JSONWebKey{Use: "sig", Algorithm: ES256, Key: mldsaKey.Public()}}, true},
+		}...)
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := ValidateJWK(tt.args.jwk); (err != nil) != tt.wantErr {
@@ -349,6 +363,20 @@ func TestValidateJWK_generic(t *testing.T) {
 		{"ok enc dir", args{&JSONWebKey{Use: "enc", Algorithm: string(DIRECT), Key: make([]byte, 64)}}, false},
 		{"fail enc A128KW size", args{&JSONWebKey{Use: "enc", Algorithm: string(A128KW), Key: make([]byte, 32)}}, true},
 		{"fail enc A256GCMKW size", args{&JSONWebKey{Use: "enc", Algorithm: string(A256GCMKW), Key: make([]byte, 64)}}, true},
+	}
+	if mldsa.Supported {
+		mldsaKey, err := keyutil.GenerateSigner("AKP", "ML-DSA-44", 0)
+		require.NoError(t, err)
+		tests = append(tests, []struct {
+			name    string
+			args    args
+			wantErr bool
+		}{
+			{"ok ML-DSA", args{&JSONWebKey{Algorithm: MLDSA44, Key: mldsaKey}}, false},
+			{"ok ML-DSA pub", args{&JSONWebKey{Algorithm: MLDSA44, Key: mldsaKey.Public()}}, false},
+			{"fail enc ML-DSA", args{&JSONWebKey{Use: "enc", Algorithm: MLDSA44, Key: mldsaKey}}, true},
+			{"fail enc ML-DSA pub", args{&JSONWebKey{Use: "enc", Algorithm: MLDSA44, Key: mldsaKey.Public()}}, true},
+		}...)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

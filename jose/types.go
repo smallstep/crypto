@@ -167,20 +167,23 @@ const (
 
 // Signature algorithms
 const (
-	HS256  = "HS256"  // HMAC using SHA-256
-	HS384  = "HS384"  // HMAC using SHA-384
-	HS512  = "HS512"  // HMAC using SHA-512
-	RS256  = "RS256"  // RSASSA-PKCS-v1.5 using SHA-256
-	RS384  = "RS384"  // RSASSA-PKCS-v1.5 using SHA-384
-	RS512  = "RS512"  // RSASSA-PKCS-v1.5 using SHA-512
-	ES256  = "ES256"  // ECDSA using P-256 and SHA-256
-	ES384  = "ES384"  // ECDSA using P-384 and SHA-384
-	ES512  = "ES512"  // ECDSA using P-521 and SHA-512
-	PS256  = "PS256"  // RSASSA-PSS using SHA256 and MGF1-SHA256
-	PS384  = "PS384"  // RSASSA-PSS using SHA384 and MGF1-SHA384
-	PS512  = "PS512"  // RSASSA-PSS using SHA512 and MGF1-SHA512
-	EdDSA  = "EdDSA"  // Ed25519 with EdDSA signature schema
-	XEdDSA = "XEdDSA" // X25519 with XEdDSA signature schema
+	HS256   = "HS256"     // HMAC using SHA-256
+	HS384   = "HS384"     // HMAC using SHA-384
+	HS512   = "HS512"     // HMAC using SHA-512
+	RS256   = "RS256"     // RSASSA-PKCS-v1.5 using SHA-256
+	RS384   = "RS384"     // RSASSA-PKCS-v1.5 using SHA-384
+	RS512   = "RS512"     // RSASSA-PKCS-v1.5 using SHA-512
+	ES256   = "ES256"     // ECDSA using P-256 and SHA-256
+	ES384   = "ES384"     // ECDSA using P-384 and SHA-384
+	ES512   = "ES512"     // ECDSA using P-521 and SHA-512
+	PS256   = "PS256"     // RSASSA-PSS using SHA256 and MGF1-SHA256
+	PS384   = "PS384"     // RSASSA-PSS using SHA384 and MGF1-SHA384
+	PS512   = "PS512"     // RSASSA-PSS using SHA512 and MGF1-SHA512
+	EdDSA   = "EdDSA"     // Ed25519 with EdDSA signature schema
+	XEdDSA  = "XEdDSA"    // X25519 with XEdDSA signature schema
+	MLDSA44 = "ML-DSA-44" // ML-DSA-44 (FIPS 204, RFC 9964), requires Go 1.27 or later
+	MLDSA65 = "ML-DSA-65" // ML-DSA-65 (FIPS 204, RFC 9964), requires Go 1.27 or later
+	MLDSA87 = "ML-DSA-87" // ML-DSA-87 (FIPS 204, RFC 9964), requires Go 1.27 or later
 )
 
 // Content encryption algorithms
@@ -207,6 +210,7 @@ const (
 	EC  = "EC"  // Elliptic curves
 	RSA = "RSA" // RSA
 	OKP = "OKP" // Ed25519
+	AKP = "AKP" // ML-DSA
 	OCT = "oct" // Octet sequence
 )
 
@@ -220,8 +224,9 @@ const (
 	DefaultRSAKeyAlgorithm = RSA_OAEP_256
 	DefaultOctKeyAlgorithm = A256GCMKW
 	// Signature algorithms
-	DefaultRSASigAlgorithm = RS256
-	DefaultOctSigAlgorithm = HS256
+	DefaultRSASigAlgorithm   = RS256
+	DefaultOctSigAlgorithm   = HS256
+	DefaultMLDSASigAlgorithm = MLDSA44
 	// Content encryption algorithm
 	DefaultEncAlgorithm = A256GCM
 )
@@ -257,6 +262,7 @@ var supportedSignatureAlgorithms = []SignatureAlgorithm{
 	RS256, RS384, RS512,
 	ES256, ES384, ES512,
 	PS256, PS384, PS512,
+	MLDSA44, MLDSA65, MLDSA87,
 	EdDSA, XEdDSA,
 }
 
