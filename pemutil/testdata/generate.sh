@@ -1,6 +1,6 @@
 #!/bin/sh
 
-OPENSSL="/usr/local/Cellar/openssl@1.1/1.1.1-pre8/bin/openssl"
+OPENSSL="/usr/local/bin/openssl"
 SSH_KEYGEN="/usr/bin/ssh-keygen"
 
 #######################################
@@ -19,8 +19,13 @@ $OPENSSL genpkey -outform PEM -algorithm ED25519 -out pkcs8/openssl.ed25519.pem
 $OPENSSL genpkey -outform PEM -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out pkcs8/openssl.rsa2048.pem
 $OPENSSL genpkey -outform PEM -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out pkcs8/openssl.rsa4096.pem
 
+# ML-DSA
+$OPENSSL genpkey -algorithm ML-DSA-44 -provparam ml-dsa.output_formats=seed-only -out pkcs8/openssl.mldsa44.pem
+$OPENSSL genpkey -algorithm ML-DSA-65 -provparam ml-dsa.output_formats=seed-only -out pkcs8/openssl.mldsa65.pem
+$OPENSSL genpkey -algorithm ML-DSA-87 -provparam ml-dsa.output_formats=seed-only -out pkcs8/openssl.mldsa87.pem
+
 # Public
-NAMES="p256 p384 p521 ed25519 rsa2048 rsa4096"
+NAMES="p256 p384 p521 ed25519 rsa2048 rsa4096 mldsa44 mldsa65 mldsa87"
 for name in $NAMES
 do
 	$OPENSSL pkey -outform PEM -in "pkcs8/openssl.$name.pem" -pubout -out "pkcs8/openssl.$name.pub.pem"

@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -545,10 +546,11 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 	xPub, xPriv, err := x25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 
-	tests := []struct {
+	type testCase struct {
 		jwk      *JSONWebKey
 		expected string
-	}{
+	}
+	tests := []testCase{
 		{&JSONWebKey{Key: []byte{}, Use: ""}, HS256},
 		{&JSONWebKey{Key: []byte{}, Use: "sig"}, HS256},
 		{&JSONWebKey{Key: []byte{}, Use: "enc"}, "A256GCMKW"},
@@ -572,6 +574,15 @@ func TestGuessJWKAlgorithm(t *testing.T) {
 		{&JSONWebKey{Key: xPub, Use: "sig"}, XEdDSA},
 		{&JSONWebKey{Key: xPriv, Use: ""}, XEdDSA},
 		{&JSONWebKey{Key: xPriv, Use: "sig"}, XEdDSA},
+	}
+
+	if mldsa.Supported {
+		mldsa44, err := mldsa.GenerateKey(mldsa.MLDSA44())
+		require.NoError(t, err)
+		tests = append(tests,
+			testCase{&JSONWebKey{Key: mldsa44, Use: ""}, MLDSA44},
+			testCase{&JSONWebKey{Key: mldsa44, Use: "sig"}, MLDSA44},
+		)
 	}
 
 	// With context
