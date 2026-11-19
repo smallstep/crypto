@@ -31,6 +31,9 @@ type objectProperties struct {
 	// private key paired with each expired certificate is removed along with
 	// the certificate.
 	deleteKey bool
+	// overwrite, when true on a CreateKey URI, replaces a key the provider
+	// already persists under the key's name rather than failing.
+	overwrite bool
 	// keyScope, if set, is one of "machine" or "user". It controls
 	// whether the underlying private key lives in the local machine key
 	// store or in the current user's key store, and is independent of
@@ -94,6 +97,7 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		o.serial = u.Get("serial")
 		o.issuer = u.Get("issuer")
 		o.deleteKey = u.GetBool("delete-key")
+		o.overwrite = u.GetBool("overwrite")
 
 		// key-scope is independent of store-location: cert location and
 		// key ownership are orthogonal Windows concepts. See [machineKey]
@@ -103,6 +107,9 @@ func parseNameURI(nameURI string) (o objectProperties, err error) {
 		// validation
 		if o.ak && o.attestBy != "" {
 			return o, errors.New(`"ak" and "attest-by" are mutually exclusive`)
+		}
+		if o.ak && o.overwrite {
+			return o, errors.New(`"ak" and "overwrite" are mutually exclusive`)
 		}
 		switch o.keyScope {
 		case "", "machine", "user":
