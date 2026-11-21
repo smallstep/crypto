@@ -16,6 +16,7 @@ import (
 
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/mldsa"
+	"go.step.sm/crypto/x25519"
 )
 
 // ValidateSSHPOP validates the given SSH certificate and key for use in an
@@ -164,6 +165,11 @@ func validateSigJWK(jwk *JSONWebKey) error {
 			return nil
 		}
 		errctx = "kty 'OKP' and crv 'Ed25519'"
+	case x25519.PrivateKey, x25519.PublicKey:
+		if jwk.Algorithm == XEdDSA {
+			return nil
+		}
+		errctx = "kty 'OKP' and crv 'X25519'"
 	case *mldsa.PrivateKey, *mldsa.PublicKey:
 		if jwk.Algorithm == algForKey(k) {
 			return nil
