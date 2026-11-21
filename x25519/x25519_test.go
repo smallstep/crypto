@@ -5,10 +5,12 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha512"
 	"io"
 	"reflect"
 	"testing"
 
+	"filippo.io/edwards25519"
 	"golang.org/x/crypto/curve25519"
 )
 
@@ -240,7 +242,7 @@ func TestVectors(t *testing.T) {
 				t.Error("Verify() = false, want true")
 			}
 
-			// Ed265519 Verify
+			// Ed25519 Verify
 			ed, err := publicKey.ToEd25519()
 			if err != nil {
 				t.Errorf("PublicKey.ToEd25519() error = %v", err)
@@ -273,7 +275,7 @@ func TestSignVerify(t *testing.T) {
 			t.Fatalf("failed to verify: %d", i)
 		}
 
-		// Ed265519 Verify
+		// Ed25519 Verify
 		ed, err := pub.ToEd25519()
 		if err != nil {
 			t.Errorf("PublicKey.ToEd25519() error = %v", err)
@@ -391,14 +393,14 @@ func TestPrivateKey_Public(t *testing.T) {
 	tests := []struct {
 		name string
 		p    PrivateKey
-		want PublicKey
+		want crypto.PublicKey
 	}{
 		{"ok", []byte{
 			0x4e, 0x6c, 0xd9, 0xe8, 0x40, 0x4d, 0xe1, 0xe0,
 			0xc5, 0x22, 0x72, 0x8f, 0x78, 0xde, 0x88, 0x26,
 			0x58, 0x4b, 0x44, 0xef, 0xbc, 0xf6, 0xac, 0x10,
 			0x97, 0x67, 0x60, 0xcc, 0x41, 0xf1, 0x82, 0x0b,
-		}, []byte{
+		}, PublicKey{
 			0x51, 0xf3, 0xfe, 0x72, 0xb4, 0x35, 0x66, 0x52,
 			0x16, 0x16, 0x38, 0xfb, 0x9b, 0xf7, 0x17, 0x06,
 			0x87, 0xb6, 0x35, 0x53, 0xc1, 0x63, 0x9c, 0x73,
@@ -412,7 +414,7 @@ func TestPrivateKey_Public(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.p.Public(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("PrivateKey.Public() = %v, want %v", got, tt.want)
+				t.Errorf("PrivateKey.Public() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}
@@ -650,6 +652,367 @@ func TestPrivateKey_Equal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.p.Equal(tt.args.x); got != tt.want {
 				t.Errorf("PrivateKey.Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// fieldBytes returns the little-endian encoding of p + delta, where p is
+// 2^255 - 19, and delta is in [-19, 18].
+func fieldBytes(delta int) []byte {
+	b := bytes.Repeat([]byte{0xff}, 32)
+	b[0] = byte(0xed + delta)
+	b[31] = 0x7f
+	return b
+}
+
+func TestIsReduced(t *testing.T) {
+	highBit := make([]byte, 32)
+	highBit[31] = 0x80
+	tests := []struct {
+		name string
+		u    []byte
+		want bool
+	}{
+		{"zero", make([]byte, 32), true},
+		{"basepoint", curve25519.Basepoint, true},
+		{"p-1", fieldBytes(-1), true},
+		{"p", fieldBytes(0), false},
+		{"p+9", fieldBytes(9), false},
+		{"2^255-1", fieldBytes(18), false},
+		{"high bit", highBit, false},
+		{"short", make([]byte, 31), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isReduced(tt.u); got != tt.want {
+				t.Errorf("isReduced() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVerify_nonCanonicalPublicKey(t *testing.T) {
+	pub, priv, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := []byte("message")
+	sig, err := Sign(rand.Reader, priv, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Verify(pub, message, sig) {
+		t.Fatal("Verify() = false, want true")
+	}
+
+	// Same point, but with the most significant bit set.
+	highBit := bytes.Clone(pub)
+	highBit[31] |= 0x80
+	if Verify(highBit, message, sig) {
+		t.Error("Verify() with the most significant bit set = true, want false")
+	}
+
+	// The basepoint u = 9 converts to the twisted Edwards basepoint B, so a
+	// signature with the private scalar 1, s = r + h, is valid for it, and p+9
+	// is a non-canonical encoding of the same u.
+	r, err := edwards25519.NewScalar().SetUniformBytes(bytes.Repeat([]byte{0x42}, 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	R := (&edwards25519.Point{}).ScalarBaseMult(r).Bytes() //nolint:gocritic // variable names match crypto formulae docs
+	hDigest := sha512.Sum512(bytes.Join([][]byte{R, edwards25519.NewGeneratorPoint().Bytes(), message}, nil))
+	h, err := edwards25519.NewScalar().SetUniformBytes(hDigest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSig := make([]byte, SignatureSize)
+	copy(baseSig[:32], R)
+	copy(baseSig[32:], edwards25519.NewScalar().Add(r, h).Bytes())
+	if !Verify(curve25519.Basepoint, message, baseSig) {
+		t.Fatal("Verify() with u = 9 = false, want true")
+	}
+	if Verify(fieldBytes(9), message, baseSig) {
+		t.Error("Verify() with u = p+9 = true, want false")
+	}
+}
+
+func TestVerify_smallOrderPublicKey(t *testing.T) {
+	order8a := []byte{
+		0xe0, 0xeb, 0x7a, 0x7c, 0x3b, 0x41, 0xb8, 0xae,
+		0x16, 0x56, 0xe3, 0xfa, 0xf1, 0x9f, 0xc4, 0x6a,
+		0xda, 0x09, 0x8d, 0xeb, 0x9c, 0x32, 0xb1, 0xfd,
+		0x86, 0x62, 0x05, 0x16, 0x5f, 0x49, 0xb8, 0x00,
+	}
+	order8b := []byte{
+		0x5f, 0x9c, 0x95, 0xbc, 0xa3, 0x50, 0x8c, 0x24,
+		0xb1, 0xd0, 0xb1, 0x55, 0x9c, 0x83, 0xef, 0x5b,
+		0x04, 0x44, 0x5c, 0xc4, 0x58, 0x1c, 0x8e, 0x86,
+		0xd8, 0x22, 0x4e, 0xdd, 0xd0, 0x9f, 0x11, 0x57,
+	}
+	one := make([]byte, 32)
+	one[0] = 1
+
+	tests := []struct {
+		name string
+		u    PublicKey
+	}{
+		{"zero", make([]byte, 32)},
+		{"one", one},
+		{"p-1", fieldBytes(-1)},
+		{"order 8 a", order8a},
+		{"order 8 b", order8b},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			A, err := convertMont(tt.u) //nolint:gocritic // variable names match crypto formulae docs
+			if err != nil {
+				t.Fatalf("convertMont() error = %v", err)
+			}
+
+			// Forge a signature without a private key: with R = sB, the
+			// signature is valid if hA is the identity, and for a point of
+			// order at most 8 that happens for at least 1 in 8 random values
+			// of s.
+			message := []byte("forged message")
+			for range 1000 {
+				seed := make([]byte, 64)
+				if _, err := rand.Read(seed); err != nil {
+					t.Fatal(err)
+				}
+				s, err := edwards25519.NewScalar().SetUniformBytes(seed)
+				if err != nil {
+					t.Fatal(err)
+				}
+				R := (&edwards25519.Point{}).ScalarBaseMult(s) //nolint:gocritic // variable names match crypto formulae docs
+				hDigest := sha512.Sum512(bytes.Join([][]byte{R.Bytes(), A.Bytes(), message}, nil))
+				h, err := edwards25519.NewScalar().SetUniformBytes(hDigest[:])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if (&edwards25519.Point{}).ScalarMult(h, A).Equal(edwards25519.NewIdentityPoint()) != 1 {
+					continue
+				}
+
+				sig := append(R.Bytes(), s.Bytes()...)
+				if Verify(tt.u, message, sig) {
+					t.Fatal("Verify() with forged signature = true, want false")
+				}
+				return
+			}
+			t.Fatal("failed to forge a signature")
+		})
+	}
+}
+
+func TestNilRand(t *testing.T) {
+	pub, priv, err := GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	message := []byte("message")
+
+	sig, err := Sign(nil, priv, message)
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	if !Verify(pub, message, sig) {
+		t.Error("Verify() = false, want true")
+	}
+
+	sig, err = priv.Sign(nil, message, nil)
+	if err != nil {
+		t.Fatalf("PrivateKey.Sign() error = %v", err)
+	}
+	if !Verify(pub, message, sig) {
+		t.Error("Verify() = false, want true")
+	}
+}
+
+// TestVerify_libsignal checks that the signatures generated by libsignal and by
+// the curve25519_sign function of libsignal-protocol-c are rejected when the
+// sign bit is set in the most significant bit of s. That format is not part of
+// the XEdDSA specification.
+func TestVerify_libsignal(t *testing.T) {
+	// Test vector from
+	// https://github.com/signalapp/libsignal/blob/904c8dc8216073b078a5f2f5090e3da8382e6a92/rust/core/src/curve/curve25519.rs#L242
+	// The message is a serialized public key with the 0x05 type prefix.
+	alicePrivate := PrivateKey{
+		0xc0, 0x97, 0x24, 0x84, 0x12, 0xe5, 0x8b, 0xf0,
+		0x5d, 0xf4, 0x87, 0x96, 0x82, 0x05, 0x13, 0x27,
+		0x94, 0x17, 0x8e, 0x36, 0x76, 0x37, 0xf5, 0x81,
+		0x8f, 0x81, 0xe0, 0xe6, 0xce, 0x73, 0xe8, 0x65,
+	}
+	alicePublic := PublicKey{
+		0xab, 0x7e, 0x71, 0x7d, 0x4a, 0x16, 0x3b, 0x7d,
+		0x9a, 0x1d, 0x80, 0x71, 0xdf, 0xe9, 0xdc, 0xf8,
+		0xcd, 0xcd, 0x1c, 0xea, 0x33, 0x39, 0xb6, 0x35,
+		0x6b, 0xe8, 0x4d, 0x88, 0x7e, 0x32, 0x2c, 0x64,
+	}
+	aliceEphemeralPublic := []byte{
+		0x05, 0xed, 0xce, 0x9d, 0x9c, 0x41, 0x5c, 0xa7,
+		0x8c, 0xb7, 0x25, 0x2e, 0x72, 0xc2, 0xc4, 0xa5,
+		0x54, 0xd3, 0xeb, 0x29, 0x48, 0x5a, 0x0e, 0x1d,
+		0x50, 0x31, 0x18, 0xd1, 0xa8, 0x2d, 0x99, 0xfb,
+		0x4a,
+	}
+	aliceSignature := []byte{
+		0x5d, 0xe8, 0x8c, 0xa9, 0xa8, 0x9b, 0x4a, 0x11,
+		0x5d, 0xa7, 0x91, 0x09, 0xc6, 0x7c, 0x9c, 0x74,
+		0x64, 0xa3, 0xe4, 0x18, 0x02, 0x74, 0xf1, 0xcb,
+		0x8c, 0x63, 0xc2, 0x98, 0x4e, 0x28, 0x6d, 0xfb,
+		0xed, 0xe8, 0x2d, 0xeb, 0x9d, 0xcd, 0x9f, 0xae,
+		0x0b, 0xfb, 0xb8, 0x21, 0x56, 0x9b, 0x3d, 0x90,
+		0x01, 0xbd, 0x81, 0x30, 0xcd, 0x11, 0xd4, 0x86,
+		0xce, 0xf0, 0x47, 0xbd, 0x60, 0xb8, 0x6e, 0x88,
+	}
+
+	// Test vector from
+	// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_fast_tests.c#L284
+	curvesigPrivate := make(PrivateKey, 32)
+	curvesigPrivate[8] = 189
+	curvesigPrivate = clamp(curvesigPrivate)
+	curvesigPublic := PublicKey{
+		0x59, 0x95, 0xf4, 0x64, 0xe9, 0xd3, 0x4d, 0x5c,
+		0xa5, 0x6b, 0x99, 0x05, 0xb9, 0xa3, 0xcc, 0x37,
+		0xc4, 0x56, 0xb2, 0xd8, 0xd3, 0x13, 0xed, 0xbc,
+		0xf5, 0x84, 0xb7, 0x05, 0xb5, 0xc0, 0x49, 0x55,
+	}
+	curvesigSignature := []byte{
+		0xcf, 0x87, 0x3d, 0x03, 0x79, 0xac, 0x20, 0xe8,
+		0x89, 0x3e, 0x55, 0x67, 0xee, 0x0f, 0x89, 0x51,
+		0xf8, 0xdb, 0x84, 0x0d, 0x26, 0xb2, 0x43, 0xb4,
+		0x63, 0x52, 0x66, 0x89, 0xd0, 0x1c, 0xa7, 0x18,
+		0xac, 0x18, 0x9f, 0xb1, 0x67, 0x85, 0x74, 0xeb,
+		0xdd, 0xe5, 0x69, 0x33, 0x06, 0x59, 0x44, 0x8b,
+		0x0b, 0xd6, 0xc1, 0x97, 0x3f, 0x7d, 0x78, 0x0a,
+		0xb3, 0x95, 0x18, 0x62, 0x68, 0x03, 0xd7, 0x82,
+	}
+
+	tests := []struct {
+		name      string
+		priv      PrivateKey
+		pub       PublicKey
+		message   []byte
+		signature []byte
+	}{
+		{"libsignal", alicePrivate, alicePublic, aliceEphemeralPublic, aliceSignature},
+		{"libsignal-protocol-c", curvesigPrivate, curvesigPublic, make([]byte, 200), curvesigSignature},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pub, err := tt.priv.PublicKey()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(pub, tt.pub) {
+				t.Errorf("PrivateKey.PublicKey() = %x, want %x", pub, tt.pub)
+			}
+			if tt.signature[63]&0x80 == 0 {
+				t.Fatal("test vector does not have the sign bit set")
+			}
+			if Verify(tt.pub, tt.message, tt.signature) {
+				t.Error("Verify() = true, want false")
+			}
+			// Without the sign bit, it's a signature for the wrong point.
+			sig := bytes.Clone(tt.signature)
+			sig[63] &= 0x7F
+			if Verify(tt.pub, tt.message, sig) {
+				t.Error("Verify() without the sign bit = true, want false")
+			}
+
+			// Signatures generated by Sign use the format of the
+			// specification.
+			sig, err = Sign(rand.Reader, tt.priv, tt.message)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Verify(tt.pub, tt.message, sig) {
+				t.Error("Verify() = false, want true")
+			}
+		})
+	}
+}
+
+// TestVectors_libsignalSlow implements the XEdDSA pseudorandom tests in
+// https://github.com/signalapp/libsignal-protocol-c/blob/3a83a4f4ed2302ff6e68ab569c88793b50c22d28/src/curve25519/ed25519/tests/internal_slow_tests.c
+// The signatures are generated with xed25519_sign, verified with
+// xed25519_verify in xeddsa_slow_test, and with curve25519_verify in
+// xeddsa_to_curvesigs_slow_test.
+//
+// In each iteration, the private key and the random bytes are derived from the
+// previous signature, the new signature must verify, and then the signature or
+// the message are altered and the verification must fail. The signature after
+// 10000 iterations must match the expected value.
+func TestVectors_libsignalSlow(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping slow test vectors in short mode")
+	}
+
+	tests := []struct {
+		name    string
+		initial byte
+		want    []byte
+	}{
+		{"xeddsa", 0x01, []byte{
+			0x15, 0x29, 0x03, 0x38, 0x66, 0x16, 0xcd, 0x26,
+			0xbb, 0x3e, 0xec, 0xe2, 0x9f, 0x72, 0xa2, 0x5c,
+			0x7d, 0x05, 0xc9, 0xcb, 0x84, 0x3f, 0x92, 0x96,
+			0xb3, 0xfb, 0xb9, 0xdd, 0xd6, 0xed, 0x99, 0x04,
+			0xc1, 0xa8, 0x02, 0x16, 0xcf, 0x49, 0x3f, 0xf1,
+			0xbe, 0x69, 0xf9, 0xf1, 0xcc, 0x16, 0xd7, 0xdc,
+			0x6e, 0xd3, 0x78, 0xaa, 0x04, 0xeb, 0x71, 0x51,
+			0x9d, 0xe8, 0x7a, 0x5b, 0xd8, 0x49, 0x7b, 0x05,
+		}},
+		{"xeddsa to curvesigs", 0x02, []byte{
+			0x33, 0x50, 0xa8, 0x68, 0xcd, 0x9e, 0x74, 0x99,
+			0xa3, 0x5c, 0x33, 0x75, 0x2b, 0x22, 0x03, 0xf8,
+			0xb5, 0x0f, 0xea, 0x8c, 0x33, 0x1c, 0x68, 0x8b,
+			0xbb, 0xf3, 0x31, 0xcf, 0x7c, 0x42, 0x37, 0x35,
+			0xa0, 0x0e, 0x15, 0xb8, 0x5d, 0x2b, 0xe1, 0xa2,
+			0x03, 0x77, 0x94, 0x3d, 0x13, 0x5c, 0xd4, 0x9b,
+			0x6a, 0x31, 0xf4, 0xdc, 0xfe, 0x24, 0xad, 0x54,
+			0xeb, 0xd2, 0x98, 0x47, 0xf1, 0xcc, 0xbf, 0x0d,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			const iterations = 10000
+			message := make([]byte, 200)
+			signature := bytes.Repeat([]byte{tt.initial}, 64)
+			for count := 1; count <= iterations; count++ {
+				b := sha512.Sum512(signature)
+				priv := PrivateKey(bytes.Clone(b[:32]))
+				b = sha512.Sum512(priv)
+				random := b[:]
+				priv = clamp(priv)
+
+				pub, err := priv.PublicKey()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				signature, err = Sign(bytes.NewReader(random), priv, message)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !Verify(pub, message, signature) {
+					t.Fatalf("Verify() = false, want true at iteration %d", count)
+				}
+
+				if b[63]&1 == 1 {
+					signature[count%64] ^= 1
+				} else {
+					message[count%len(message)] ^= 1
+				}
+				if Verify(pub, message, signature) {
+					t.Fatalf("Verify() = true, want false at iteration %d", count)
+				}
+			}
+			if !bytes.Equal(signature, tt.want) {
+				t.Errorf("signature after %d iterations = %x, want %x", iterations, signature, tt.want)
 			}
 		})
 	}
