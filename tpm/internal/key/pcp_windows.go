@@ -294,7 +294,7 @@ func (h *winPCP) Close() error {
 	return closeNCryptObject(h.hProv)
 }
 
-func (h *winPCP) newKey(name string, alg string, length uint32, policy uint32, machineKey bool) (uintptr, []byte, []byte, error) {
+func (h *winPCP) newKey(name string, alg string, length uint32, policy uint32, machineKey, overwrite bool) (uintptr, []byte, []byte, error) {
 	var kh uintptr
 	utf16Name, err := windows.UTF16FromString(name)
 	if err != nil {
@@ -308,6 +308,9 @@ func (h *winPCP) newKey(name string, alg string, length uint32, policy uint32, m
 	var flags uint32
 	if machineKey {
 		flags = ncryptMachineKeyFlag
+	}
+	if overwrite {
+		flags |= ncryptOverwriteKeyFlag
 	}
 
 	// Create a persistent RSA key of the specified name.
@@ -391,15 +394,15 @@ func (h *winPCP) newKey(name string, alg string, length uint32, policy uint32, m
 // NewKey creates a persistent application key of the specified name.
 func (h *winPCP) NewKey(name string, config *KeyConfig) (uintptr, []byte, []byte, error) {
 	if config.Algorithm == RSA {
-		return h.newKey(name, "RSA", uint32(config.Size), 0, config.MachineKey)
+		return h.newKey(name, "RSA", uint32(config.Size), 0, config.MachineKey, config.Overwrite)
 	} else if config.Algorithm == ECDSA {
 		switch config.Size {
 		case 256:
-			return h.newKey(name, "ECDSA_P256", 0, 0, config.MachineKey)
+			return h.newKey(name, "ECDSA_P256", 0, 0, config.MachineKey, config.Overwrite)
 		case 384:
-			return h.newKey(name, "ECDSA_P384", 0, 0, config.MachineKey)
+			return h.newKey(name, "ECDSA_P384", 0, 0, config.MachineKey, config.Overwrite)
 		case 521:
-			return h.newKey(name, "ECDSA_P521", 0, 0, config.MachineKey)
+			return h.newKey(name, "ECDSA_P521", 0, 0, config.MachineKey, config.Overwrite)
 		default:
 			return 0, nil, nil, fmt.Errorf("unsupported ECDSA key size: %v", config.Size)
 		}

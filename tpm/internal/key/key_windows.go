@@ -18,6 +18,7 @@ func create(_ io.ReadWriteCloser, keyName string, config CreateConfig) ([]byte, 
 		Algorithm:  Algorithm(config.Algorithm),
 		Size:       config.Size,
 		MachineKey: config.MachineKey,
+		Overwrite:  config.Overwrite,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("pcp failed to mint application key: %w", err)

@@ -95,6 +95,7 @@ var (
 	_ apiv1.CertificateChainManager      = (*KMS)(nil)
 	_ apiv1.SearchableKeyManager         = (*KMS)(nil)
 	_ apiv1.CredentialsCleaner           = (*KMS)(nil)
+	_ apiv1.KeyAdopter                   = (*KMS)(nil)
 	_ apiv1.SearchableCertificateManager = (*KMS)(nil)
 )
 
@@ -307,6 +308,29 @@ func (k *KMS) SearchKeys(req *apiv1.SearchKeysRequest) (*apiv1.SearchKeysRespons
 	}
 
 	return nil, apiv1.NotImplementedError{}
+}
+
+// AdoptKey records a key the backend already persists under the name the
+// request gives, if the backend can adopt keys. See [apiv1.KeyAdopter].
+func (k *KMS) AdoptKey(req *apiv1.AdoptKeyRequest) (*apiv1.CreateKeyResponse, error) {
+	km, ok := k.backend.(apiv1.KeyAdopter)
+	if !ok {
+		return nil, apiv1.NotImplementedError{}
+	}
+
+	name, err := k.transformToURI(req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := clone(req)
+	r.Name = name
+	resp, err := km.AdoptKey(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return k.patchCreateKeyResponse(resp)
 }
 
 func (k *KMS) CleanupCredentials(req *apiv1.CleanupCredentialsRequest) error {

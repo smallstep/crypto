@@ -109,6 +109,18 @@ type CredentialsCleaner interface {
 	CleanupCredentials(req *CleanupCredentialsRequest) error
 }
 
+// KeyAdopter is an interface that KeyManager can implement to record a key
+// the underlying provider already persists under a name, rather than
+// creating one under it.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type KeyAdopter interface {
+	AdoptKey(req *AdoptKeyRequest) (*CreateKeyResponse, error)
+}
+
 // NameValidator is an interface that KeyManager can implement to validate a
 // given name or URI.
 type NameValidator interface {
