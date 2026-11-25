@@ -281,11 +281,13 @@ func TestGenerateKey(t *testing.T) {
 		{"ML-DSA-44", args{"ML-DSA-44", "", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"ML-DSA-65", args{"ML-DSA-65", "", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"ML-DSA-87", args{"ML-DSA-87", "", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
+		{"AKP", args{"AKP", "", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"AKP ML-DSA-44", args{"AKP", "ML-DSA-44", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"AKP ML-DSA-65", args{"AKP", "ML-DSA-65", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"AKP ML-DSA-87", args{"AKP", "ML-DSA-87", 0}, assertKey, crypto.Hash(0), !mldsa.Supported},
 		{"unknown EC curve", args{"EC", "P-128", 0}, nil, 0, true},
 		{"unknown OKP curve", args{"OKP", "Edward", 0}, nil, 0, true},
+		{"unknown AKP algorithm", args{"AKP", "ML-DSA", 0}, nil, 0, true},
 		{"unknown type", args{"FOO", "", 1024}, nil, 0, true},
 	}
 	for _, tt := range tests {

@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -129,8 +130,13 @@ func defaultOctSize(alg string) int {
 // GenerateJWK generates a JWK given the key type, curve, alg, use, kid and
 // the size of the RSA or oct keys if necessary.
 func GenerateJWK(kty, crv, alg, use, kid string, size int) (jwk *JSONWebKey, err error) {
-	if kty == "OKP" && use == "enc" && (crv == "" || crv == "Ed25519") {
-		return nil, errors.New("invalid algorithm: Ed25519 cannot be used for encryption")
+	if use == "enc" {
+		switch {
+		case kty == "Ed25519", kty == "OKP" && (crv == "" || crv == "Ed25519"):
+			return nil, errors.New("invalid algorithm: Ed25519 cannot be used for encryption")
+		case kty == "AKP" || kty == "ML-DSA-44" || kty == "ML-DSA-65" || kty == "ML-DSA-87":
+			return nil, errors.New("invalid algorithm: ML-DSA cannot be used for encryption")
+		}
 	}
 
 	switch {
@@ -140,6 +146,21 @@ func GenerateJWK(kty, crv, alg, use, kid string, size int) (jwk *JSONWebKey, err
 		crv = Ed25519
 	case kty == "RSA" && size == 0:
 		size = DefaultRSASize
+	case kty == "AKP":
+		// An AKP key has no curve, the algorithm is the only member that
+		// identifies the ML-DSA parameter set, so the two must agree.
+		switch {
+		case crv == "" && alg == "":
+			crv = DefaultMLDSASigAlgorithm
+		case crv == "":
+			crv = alg
+		case alg != "" && alg != crv:
+			return nil, errors.Errorf("invalid algorithm: %s cannot be used with an %s key", alg, crv)
+		}
+	case kty == "ML-DSA-44" || kty == "ML-DSA-65" || kty == "ML-DSA-87":
+		if alg != "" && alg != kty {
+			return nil, errors.Errorf("invalid algorithm: %s cannot be used with an %s key", alg, kty)
+		}
 	case kty == "oct":
 		// Resolve the default algorithm before generating the key, so the
 		// size defaults and checks use the algorithm the key will have.
@@ -195,7 +216,9 @@ func GenerateJWKFromPEM(filename string, subtle bool) (*JSONWebKey, error) {
 		return &JSONWebKey{
 			Key: key,
 		}, nil
-	case *ecdsa.PrivateKey, *ecdsa.PublicKey, ed25519.PrivateKey, ed25519.PublicKey:
+	case *ecdsa.PrivateKey, *ecdsa.PublicKey,
+		ed25519.PrivateKey, ed25519.PublicKey,
+		*mldsa.PrivateKey, *mldsa.PublicKey:
 		return &JSONWebKey{
 			Key:       key,
 			Algorithm: algForKey(key),
@@ -227,6 +250,10 @@ func algForKey(key crypto.PublicKey) string {
 		return getECAlgorithm(key.Curve)
 	case ed25519.PrivateKey, ed25519.PublicKey:
 		return EdDSA
+	case *mldsa.PublicKey:
+		return getMLDSAAlgorithm(key)
+	case *mldsa.PrivateKey:
+		return getMLDSAAlgorithm(key.PublicKey())
 	default:
 		return ""
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"go.step.sm/crypto/mldsa"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x25519"
 )
@@ -356,13 +357,16 @@ func guessJWKAlgorithm(ctx *context, jwk *JSONWebKey) {
 			jwk.Algorithm = EdDSA
 		case x25519.PrivateKey, x25519.PublicKey:
 			jwk.Algorithm = XEdDSA
+		// ML-DSA can only be used for signing operations.
+		case *mldsa.PrivateKey, *mldsa.PublicKey:
+			jwk.Algorithm = algForKey(k)
 		}
 	}
 }
 
 func guessOpaqueSigner(key crypto.PrivateKey) crypto.PrivateKey {
 	switch k := key.(type) {
-	case []byte, *ecdsa.PrivateKey, *rsa.PrivateKey, ed25519.PrivateKey:
+	case []byte, *ecdsa.PrivateKey, *rsa.PrivateKey, ed25519.PrivateKey, *mldsa.PrivateKey:
 		return key
 	case x25519.PrivateKey:
 		return X25519Signer(k)
@@ -386,6 +390,8 @@ func guessSignatureAlgorithm(key crypto.PrivateKey) SignatureAlgorithm {
 		return EdDSA
 	case x25519.PrivateKey, X25519Signer:
 		return XEdDSA
+	case *mldsa.PrivateKey:
+		return SignatureAlgorithm(getMLDSAAlgorithm(k.PublicKey()))
 	case crypto.Signer:
 		return guessSignatureAlgorithmFromPublicKey(k.Public())
 	case OpaqueSigner:
@@ -409,6 +415,8 @@ func guessSignatureAlgorithmFromPublicKey(key crypto.PublicKey) SignatureAlgorit
 		return EdDSA
 	case x25519.PublicKey:
 		return XEdDSA
+	case *mldsa.PublicKey:
+		return SignatureAlgorithm(getMLDSAAlgorithm(k))
 	default:
 		return ""
 	}
@@ -427,6 +435,8 @@ func guessKnownJWKAlgorithm(_ *context, jwk *JSONWebKey) {
 			jwk.Algorithm = EdDSA
 		case x25519.PrivateKey, x25519.PublicKey:
 			jwk.Algorithm = XEdDSA
+		case *mldsa.PrivateKey, *mldsa.PublicKey:
+			jwk.Algorithm = algForKey(k)
 		}
 	}
 }
@@ -443,6 +453,19 @@ func getECAlgorithm(crv elliptic.Curve) string {
 		return ES384
 	case P521:
 		return ES512
+	default:
+		return ""
+	}
+}
+
+func getMLDSAAlgorithm(key *mldsa.PublicKey) string {
+	switch key.Parameters() {
+	case mldsa.MLDSA44():
+		return MLDSA44
+	case mldsa.MLDSA65():
+		return MLDSA65
+	case mldsa.MLDSA87():
+		return MLDSA87
 	default:
 		return ""
 	}

@@ -15,6 +15,8 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"go.step.sm/crypto/keyutil"
+	"go.step.sm/crypto/mldsa"
+	"go.step.sm/crypto/x25519"
 )
 
 // ValidateSSHPOP validates the given SSH certificate and key for use in an
@@ -163,6 +165,16 @@ func validateSigJWK(jwk *JSONWebKey) error {
 			return nil
 		}
 		errctx = "kty 'OKP' and crv 'Ed25519'"
+	case x25519.PrivateKey, x25519.PublicKey:
+		if jwk.Algorithm == XEdDSA {
+			return nil
+		}
+		errctx = "kty 'OKP' and crv 'X25519'"
+	case *mldsa.PrivateKey, *mldsa.PublicKey:
+		if jwk.Algorithm == algForKey(k) {
+			return nil
+		}
+		errctx = "kty 'AKP'"
 	case OpaqueSigner:
 		for _, alg := range k.Algs() {
 			if jwk.Algorithm == string(alg) {
@@ -200,6 +212,8 @@ func validateEncJWK(jwk *JSONWebKey) error {
 		kty = "EC"
 	case ed25519.PrivateKey, ed25519.PublicKey:
 		return errors.New("key Ed25519 cannot be used for encryption")
+	case *mldsa.PrivateKey, *mldsa.PublicKey:
+		return errors.New("key ML-DSA cannot be used for encryption")
 	}
 
 	return errors.Errorf("alg '%s' is not compatible with kty '%s'", jwk.Algorithm, kty)
@@ -215,6 +229,8 @@ func validateGeneric(jwk *JSONWebKey) error {
 	case *ecdsa.PrivateKey, *ecdsa.PublicKey:
 		return nil
 	case ed25519.PrivateKey, ed25519.PublicKey:
+		return nil
+	case *mldsa.PrivateKey, *mldsa.PublicKey:
 		return nil
 	}
 
