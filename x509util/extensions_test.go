@@ -1379,6 +1379,35 @@ func mustParseURL(t *testing.T, s string) *url.URL {
 	return u
 }
 
+// createDirectoryNameSANExtension builds a SubjectAltName extension holding a
+// single directoryName GeneralName with the given attributes, which is how TPM
+// attestation certificates carry the TCG TPM attributes.
+func createDirectoryNameSANExtension(atvs ...pkix.AttributeTypeAndValue) (pkix.Extension, error) {
+	rdns := make(pkix.RDNSequence, 0, len(atvs))
+	for _, atv := range atvs {
+		rdns = append(rdns, pkix.RelativeDistinguishedNameSET{atv})
+	}
+	// directoryName names a CHOICE, so it is explicitly tagged.
+	dirName, err := asn1.MarshalWithParams(rdns, "explicit,tag:4")
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	value, err := asn1.Marshal(asn1.RawValue{
+		Class:      asn1.ClassUniversal,
+		Tag:        asn1.TagSequence,
+		IsCompound: true,
+		Bytes:      dirName,
+	})
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	return pkix.Extension{
+		Id:       asn1.ObjectIdentifier(oidExtensionSubjectAltName),
+		Critical: true,
+		Value:    value,
+	}, nil
+}
+
 func TestParseSubjectAlternativeNames(t *testing.T) {
 	permanentIdentifierSAN := SubjectAlternativeName{
 		Type:  PermanentIdentifierType,
@@ -1391,6 +1420,18 @@ func TestParseSubjectAlternativeNames(t *testing.T) {
 		ASN1Value: []byte(`{"type": "1.2.3.4", "serialNumber": "MTIzNDU2Nzg="}`),
 	}
 	hardwareModuleNameSANExtension, err := createSubjectAltNameExtension(nil, nil, nil, nil, []SubjectAlternativeName{hardwareModuleNameSAN}, true)
+	require.NoError(t, err)
+	tpmSANExtension, err := createDirectoryNameSANExtension(
+		pkix.AttributeTypeAndValue{Type: oidTPMManufacturer, Value: "id:53544D20"},
+		pkix.AttributeTypeAndValue{Type: oidTPMModel, Value: "SLB9670"},
+		pkix.AttributeTypeAndValue{Type: oidTPMVersion, Value: "id:00070055"},
+	)
+	require.NoError(t, err)
+	tpmNonStringSANExtension, err := createDirectoryNameSANExtension(
+		pkix.AttributeTypeAndValue{Type: oidTPMManufacturer, Value: 42},
+		pkix.AttributeTypeAndValue{Type: oidTPMModel, Value: "SLB9670"},
+		pkix.AttributeTypeAndValue{Type: oidTPMVersion, Value: []byte{0xde, 0xad, 0xbe, 0xef}},
+	)
 	require.NoError(t, err)
 	tests := []struct {
 		name     string
@@ -1453,6 +1494,32 @@ func TestParseSubjectAlternativeNames(t *testing.T) {
 						Type:         ObjectIdentifier([]int{1, 2, 3, 4}),
 						SerialNumber: []byte("12345678"),
 					},
+				},
+			},
+		},
+		{
+			name: "ok/tpm-hardware-details",
+			cert: &x509.Certificate{
+				Extensions: []pkix.Extension{tpmSANExtension},
+			},
+			wantSans: SubjectAlternativeNames{
+				TPMHardwareDetails: TPMHardwareDetails{
+					Manufacturer: "id:53544D20",
+					Model:        "SLB9670",
+					Version:      "id:00070055",
+				},
+			},
+		},
+		{
+			// A TPM attribute can carry any ASN.1 value. The ones that are not
+			// strings are skipped instead of being asserted.
+			name: "ok/tpm-hardware-details-non-string",
+			cert: &x509.Certificate{
+				Extensions: []pkix.Extension{tpmNonStringSANExtension},
+			},
+			wantSans: SubjectAlternativeNames{
+				TPMHardwareDetails: TPMHardwareDetails{
+					Model: "SLB9670",
 				},
 			},
 		},
