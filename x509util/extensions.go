@@ -1389,13 +1389,20 @@ func ParseSubjectAlternativeNames(c *x509.Certificate) (sans SubjectAlternativeN
 	tpmDetails := TPMHardwareDetails{}
 	for _, directoryName := range directoryNames {
 		for _, name := range directoryName.Names {
+			// The TCG TPM attributes are expected to be strings. A certificate
+			// can carry any ASN.1 value here, so skip the attribute instead of
+			// asserting the type.
+			value, isString := name.Value.(string)
+			if !isString {
+				continue
+			}
 			switch {
 			case name.Type.Equal(oidTPMManufacturer):
-				tpmDetails.Manufacturer = name.Value.(string)
+				tpmDetails.Manufacturer = value
 			case name.Type.Equal(oidTPMModel):
-				tpmDetails.Model = name.Value.(string)
+				tpmDetails.Model = value
 			case name.Type.Equal(oidTPMVersion):
-				tpmDetails.Version = name.Value.(string)
+				tpmDetails.Version = value
 			default:
 				// TODO(hs): handle other directoryNames?
 			}
