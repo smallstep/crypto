@@ -2796,3 +2796,25 @@ func TestTPMKMS_CleanupCredentials_keyEnumerationDegraded(t *testing.T) {
 		assert.Contains(t, err.Error(), "fall back to direct key deletion")
 	})
 }
+
+// A certificate is only bound to an "app-<name>" Platform Crypto Provider
+// container when the name really is one of this TPM's keys. A caller can name a
+// key created elsewhere -- on Windows an endpoint with no key protection has its
+// key made through CAPI in the software KSP, under the bare name -- and binding
+// that certificate to a PCP container names one that does not exist, leaving a
+// certificate that reports HasPrivateKey while resolving no key at all.
+func TestTPMKMS_managesKey(t *testing.T) {
+	tpm := newSimulatedTPM(t)
+	kms := &TPMKMS{tpm: tpm}
+
+	_, err := kms.CreateKey(&apiv1.CreateKeyRequest{
+		Name:               "tpmkms:name=ownkey",
+		SignatureAlgorithm: apiv1.ECDSAWithSHA256,
+	})
+	require.NoError(t, err)
+
+	assert.True(t, kms.managesKey("ownkey"),
+		"a key this TPM created must keep its explicit association")
+	assert.False(t, kms.managesKey("madeelsewhere"),
+		"a name this TPM has never held must fall back to discovery instead of claiming a PCP container")
+}
