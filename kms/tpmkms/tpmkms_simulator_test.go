@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -741,6 +743,48 @@ func TestTPMKMS_CreateSigner(t *testing.T) {
 			assert.NotNil(t, got)
 		})
 	}
+}
+
+func TestTPMKMS_CreateSigner_eccSRK(t *testing.T) {
+	sim, err := simulator.New()
+	require.NoError(t, err)
+	require.NoError(t, sim.Open())
+	t.Cleanup(func() {
+		assert.NoError(t, sim.Close())
+	})
+
+	// Create a key under the ECC P-256 SRK, as ssh-tpm-agent does.
+	srk, _, err := tpm2.CreatePrimary(sim, tpm2.HandleOwner, tpm2.PCRSelection{}, "", "", tss2.ECCSRKTemplate)
+	require.NoError(t, err)
+	priv, pub, _, _, _, err := tpm2.CreateKey(sim, srk, tpm2.PCRSelection{}, "", "", tpm2.Public{
+		Type:       tpm2.AlgECC,
+		NameAlg:    tpm2.AlgSHA256,
+		Attributes: tpm2.FlagSignerDefault ^ tpm2.FlagRestricted,
+		ECCParameters: &tpm2.ECCParams{
+			Sign:    &tpm2.SigScheme{Alg: tpm2.AlgECDSA, Hash: tpm2.AlgSHA256},
+			CurveID: tpm2.CurveNISTP256,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, tpm2.FlushContext(sim, srk))
+
+	pemBytes, err := tss2.New(pub, priv).EncodeToMemory()
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "tss2.pem")
+	require.NoError(t, os.WriteFile(path, pemBytes, 0600))
+
+	tpm, err := tpmp.New(tpmp.WithSimulator(sim), tpmp.WithStore(storage.NewDirstore(t.TempDir())))
+	require.NoError(t, err)
+	k := &TPMKMS{tpm: tpm}
+	signer, err := k.CreateSigner(&apiv1.CreateSignerRequest{SigningKey: "tpmkms:path=" + path})
+	require.NoError(t, err)
+
+	sum := sha256.Sum256([]byte("ecc-srk"))
+	sig, err := signer.Sign(rand.Reader, sum[:], crypto.SHA256)
+	require.NoError(t, err)
+	publicKey, ok := signer.Public().(*ecdsa.PublicKey)
+	require.True(t, ok)
+	assert.True(t, ecdsa.VerifyASN1(publicKey, sum[:], sig))
 }
 
 func TestTPMKMS_GetPublicKey(t *testing.T) {
