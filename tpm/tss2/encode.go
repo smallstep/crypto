@@ -19,6 +19,13 @@ func WithParent(parent tpmutil.Handle) TPMOption {
 	}
 }
 
+// WithRSAParent sets the [TPMKey] rsaParent field.
+func WithRSAParent() TPMOption {
+	return func(t *TPMKey) {
+		t.RSAParent = true
+	}
+}
+
 // New creates a new [TPMKey] with the given public and private keys.
 func New(pub, priv []byte, opts ...TPMOption) *TPMKey {
 	key := &TPMKey{
